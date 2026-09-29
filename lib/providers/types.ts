@@ -69,14 +69,12 @@ export interface VolcengineConfig {
   provider: 'volcengine';
   /** Volcengine application id (`X-Api-App-Id`). */
   appId: string;
-  /** Access token (`X-Api-Key`). */
+  /** Access token, sent as both `X-Api-Key` and `X-Api-Access-Key`. */
   accessToken: string;
   /** Resource id (`X-Api-Resource-Id`), e.g. `volc.service_type.10029`. */
   resourceId?: string;
   /** Model generation. Only `tts-1.0` reports sentence timings. */
   model?: 'tts-1.0' | 'tts-2.0';
-  /** Cluster for the legacy endpoint. */
-  cluster?: string;
   baseUrl?: string;
 }
 

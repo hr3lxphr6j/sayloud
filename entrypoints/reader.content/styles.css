@@ -1,0 +1,181 @@
+/*
+ * Side Player styles. These live inside the shadow root, so page styles cannot
+ * reach them and they cannot reach the page. No `:root`/`html`/`body` rules
+ * here: WXT hoists those into the document, which is not what we want.
+ */
+
+.side-player {
+  position: fixed;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  z-index: 2147483647;
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 28px;
+  padding: 8px 0;
+
+  border-radius: 14px;
+  background: rgba(28, 28, 30, 0.92);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.side-player:focus-visible {
+  outline: 2px solid #4c9aff;
+  outline-offset: 2px;
+}
+
+.side-player .control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Only what can be used right now is fully opaque. */
+.side-player .control:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.side-player .control:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.side-player .play-pause:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.side-player .rate {
+  width: auto;
+  min-width: 22px;
+  height: 16px;
+  border-radius: 8px;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.side-player .ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.side-player .ring svg {
+  /* Start the progress arc at twelve o'clock. */
+  transform: rotate(-90deg);
+}
+
+.side-player .ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 2.5;
+}
+
+.side-player .ring-value {
+  fill: none;
+  stroke: #4c9aff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.side-player .ring-error {
+  color: #ff6b6b;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.side-player .spinner {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: sayloud-spin 0.8s linear infinite;
+}
+
+@keyframes sayloud-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Bubble cards open to the left of the bar, which is where the room is. */
+.side-player .bubble {
+  position: absolute;
+  top: 50%;
+  right: 36px;
+  transform: translateY(-50%);
+
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 220px;
+  padding: 10px 12px;
+
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.24);
+  color: #1c1c1e;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.side-player .bubble-title {
+  margin-bottom: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.side-player .bubble-message {
+  color: #3c3c43;
+}
+
+.side-player .bubble-action {
+  margin-top: 8px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: #0071e3;
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.side-player .bubble-action:hover {
+  background: #0063c6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-player .spinner {
+    animation-duration: 2s;
+  }
+}

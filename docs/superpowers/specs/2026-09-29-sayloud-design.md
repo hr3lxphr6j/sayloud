@@ -61,19 +61,21 @@
   ParagraphPlay（行首内嵌按钮）/ SelectionButton（纯图标圆钮）
         ▲ 进度事件 {sentenceId, charStart, charEnd}     │ 指令 start/seek/pause/...
         │                                              ▼
-Service Worker：会话路由（Port 按 tab）、右键菜单、快捷键、tab 生命周期、chrome.tts
+Service Worker
+  PlaybackEngine：会话状态机 · 预取调度 · 进度推送（纯 TS，不直接依赖 chrome API）
+  SessionRouter：Port 按 tab、右键菜单、快捷键、tab 生命周期、storage.session 快照
+  BrowserSpeaker：chrome.tts
         ▲                                              │
-        │                                              ▼
-Offscreen Document（reason: AUDIO_PLAYBACK）
-  PlaybackEngine：会话状态机 · 预取 · 缓存 · 时间轴对齐 · 进度推送
-  Providers：dashscope / openai-compat / elevenlabs / azure（browser 在 SW 中执行）
+        │ 单句时间事件                                  ▼ 合成/播放单句
+Offscreen Document（reason: AUDIO_PLAYBACK，P2 起）
+  AudioWorker：Providers（dashscope / volcengine / openai-compat / elevenlabs / azure）· 缓存 · 时间轴对齐 · <audio> 播放
 
 Chrome Side Panel：只放设置，分「朗读」「设置」两个标签页（§3.6）。不放进度控制
 ```
 
 原则：
 
-1. **播放状态只有一份，由 offscreen 持有。** Side Player 只是它的视图。SW 本身不保存状态，只在 `storage.session` 里存一份会话快照，SW 被回收后靠它恢复消息路由。
+1. **播放状态只有一份，由 SW 里的 PlaybackEngine 持有。** Side Player 只是它的视图。每次状态变化都把会话快照写进 `storage.session`；SW 被回收后从快照恢复，恢复后一律是暂停状态。offscreen 不持有会话状态，只负责合成、缓存和播放单句音频，被关掉就重建（§6 V2）。浏览器语音由 `chrome.tts` 在 SW 里直接发声，两类服务走同一个引擎。
 2. **key 和网络请求只在扩展进程里处理，不进入网页。** 请求只由 offscreen 和 SW 发出，读取 key 的代码也只在这两处。这样不受页面 CORS 和 CSP 限制。
 3. **变速只用 `audio.playbackRate`。** 保持 `preservesPitch = true`，不通过请求参数让服务商调速。这样已合成的音频任何倍速都能复用，时间轴也自动按倍速缩放。
 4. **权限最小化。**
@@ -275,14 +277,15 @@ playing ──最后一句结束──► ended
 - **会话内容**：`{tabId, docId, sentences[], cursor, voice, rate}`。句子列表由 content script 提取后一次性发送过来。
 - **跳转**：上一句/下一句、Paragraph Play、点击跳读都直接设置 cursor。换音色时丢弃当前句的音频，从当前句重新开始读。变速只改 `playbackRate`。
 - **结束会话**：页面跳转（`tabs.onUpdated` 的 url 变化）或 tab 关闭时，结束会话。
-- **offscreen 被回收**：实测暂停约 35 秒后 offscreen 会被关闭（§6 V2）。引擎在暂停时，把 `{cursor, 句内 currentTime, voice, rate}` 镜像到 SW 的 `storage.session`。恢复播放时如果 `offscreen.hasDocument()` 为 false，就重建 offscreen，把会话恢复到上述快照，当前句优先从 L2 缓存取，再跳到原来的 currentTime。句子列表重新向 content script 要一份。
+- **SW 被回收**：引擎每次状态变化都把 `{tabId, sentences, cursor, resumeOffset, voice, rate}` 写进 `storage.session`。SW 重启后从快照恢复为 paused；content script 发现 Port 断开后重连，SW 回一条当前状态，竖条随之恢复。
+- **offscreen 被回收**（P2）：实测暂停约 35 秒后 offscreen 会被关闭（§6 V2）。offscreen 只放音频，没有会话状态。恢复播放时如果 `offscreen.hasDocument()` 为 false，就重建 offscreen，当前句优先从 L2 缓存取，再跳到暂停时的句内 currentTime。
 - **自动播放被拒**：`audio.play()` 报 NotAllowedError（企业策略或用户改过自动播放设置）时，进入 paused，气泡卡片提示「点击继续」。用户点击后由引擎重试。
 
 ### 4.2 进度推送
 
-- **推送方式**：offscreen 根据 `audio.currentTime` 和时间轴，用 `setTimeout` 定时到下一个词的开始时间，只在词切换时推送一次。offscreen 是隐藏页面，rAF 不会触发，所以不用 rAF。
-- **消息链路**：content script 和 SW 之间每个 tab 一个长连接 Port，SW 再转发给 offscreen。
-- **浏览器语音**：由 word 事件驱动，走同一个事件格式。
+- **推送方式**：offscreen 根据 `audio.currentTime` 和时间轴，用 `setTimeout` 定时到下一个词的开始时间，只在词切换时向 SW 报一次。offscreen 是隐藏页面，rAF 不会触发，所以不用 rAF。
+- **消息链路**：content script 和 SW 之间每个 tab 一个长连接 Port；引擎在 SW 里，offscreen 的时间事件先到 SW，再由引擎转成统一的进度事件发给 content script。
+- **浏览器语音**：由 SW 里的 `chrome.tts` word 事件直接驱动，走同一个事件格式。
 
 ### 4.3 预取
 

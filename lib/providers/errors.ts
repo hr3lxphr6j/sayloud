@@ -44,8 +44,10 @@ export function isProviderError(error: unknown): error is ProviderError {
  * fall back to the browser voice every time the user skips ahead.
  */
 export function isAbortError(error: unknown): boolean {
-  // Deliberately not `instanceof Error`: browsers and Node both reject an
-  // aborted fetch with a `DOMException`, which does not extend `Error`.
+  // Deliberately structural rather than `instanceof`: a rejection reason can be
+  // any value (`AbortController.abort()` takes one), and `instanceof` also
+  // fails across realms — which is exactly where a signal from another context
+  // would come from.
   return (
     typeof error === 'object' &&
     error !== null &&
@@ -58,6 +60,53 @@ export function isAbortError(error: unknown): boolean {
 export function networkError(cause: unknown): ProviderError {
   const message = cause instanceof Error ? cause.message : String(cause);
   return new ProviderError('network-error', message, cause);
+}
+
+/**
+ * What each unified code means, in one line the settings panel can show.
+ *
+ * The code is the part a user can act on ("the key is wrong" vs "the service is
+ * down"), so it leads; the provider's own message is appended as detail.
+ */
+const CODE_MESSAGES: Record<ProviderErrorCode, string> = {
+  'invalid-key': 'The API key was rejected. Check that it was copied in full.',
+  'service-unavailable': 'The service is unavailable right now. Try again in a moment.',
+  'rate-limit': 'The service is rate limiting this key. Wait a moment and retry.',
+  'no-quota': 'This account has no quota left for the service.',
+  'network-error': 'The request could not reach the service. Check the URL and your connection.',
+  unknown: 'The service rejected the request.',
+};
+
+/** The message of any thrown value, for logs and fallback copy. */
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  // A DOMException does not extend Error, and a failed `fetch` rejects with one.
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    const name = (error as { name: unknown }).name;
+    if (typeof name === 'string') return name;
+  }
+  return String(error);
+}
+
+/**
+ * One line for the settings panel: the code's explanation, then the provider's
+ * own message, which is usually the actionable half (`model not activated`,
+ * `bad gateway URL`).
+ *
+ * Never includes `details`: those can hold a whole response body, and echoing
+ * it in the panel would be noise at best. A cancellation is reported as such,
+ * because a superseded request is not a failure the user can act on.
+ */
+export function describeProviderError(error: unknown): string {
+  if (isAbortError(error)) return 'The request was cancelled.';
+
+  if (isProviderError(error)) {
+    const summary = CODE_MESSAGES[error.code];
+    const detail = error.message.trim();
+    return detail.length > 0 && detail !== summary ? `${summary} (${detail})` : summary;
+  }
+
+  return `Unexpected failure: ${errorMessage(error)}.`;
 }
 
 /** Provider-specific refinements applied before the generic status mapping. */

@@ -2,6 +2,17 @@ export function normalizeText(text: string): string {
   return text.replace(/\s+/g, ' ').trim().normalize('NFC');
 }
 
+/** True when `Intl.Segmenter` accepts the tag, so callers can fall back safely. */
+export function isSupportedLang(lang: string): boolean {
+  if (!lang) return false;
+  try {
+    new Intl.Segmenter(lang, { granularity: 'sentence' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface Segment {
   text: string;
   start: number;

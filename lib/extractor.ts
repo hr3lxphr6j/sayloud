@@ -68,10 +68,16 @@ const FLOW_TAGS = new Set([
 /**
  * Fewer blocks than this means the page carries no semantic structure, so the
  * `<br>` fallback takes over. Old HTML 4.01 archives (marxists.org and friends)
- * keep entire documents as `<br>`-separated text runs next to a title or two,
- * which block selectors alone would reduce to those two paragraphs.
+ * keep entire documents as `<br>`-separated text runs alongside headers,
+ * which block selectors alone would reduce to those headers.
  */
 const MIN_BLOCKS = 3;
+
+/**
+ * When blocks cover less than this fraction of the page's total text, the rest
+ * is likely BR-separated prose that block selectors missed.
+ */
+const MIN_COVERAGE = 0.3;
 
 /** A single collapsed character and the live text node it came from. */
 interface CharRef {
@@ -106,7 +112,11 @@ export function extractBlocks(): Block[] {
       );
       // A stub means Readability latched onto a title or a byline; the prose it
       // could not classify is worth another look further down.
-      if (entries.length >= MIN_BLOCKS) return entries.map((entry) => entry.block);
+      // Even when several blocks are found, if their total text is a tiny fraction
+      // of the page, the real content is likely BR-separated runs.
+      if (shouldUseDomBlocks(entries, liveRoot)) {
+        return entries.map((entry) => entry.block);
+      }
     }
   }
 
@@ -114,8 +124,28 @@ export function extractBlocks(): Block[] {
   if (!body) return [];
 
   const entries = collectBlockEntries(body, body, (el) => el);
-  if (entries.length >= MIN_BLOCKS) return entries.map((entry) => entry.block);
+  if (shouldUseDomBlocks(entries, body)) {
+    return entries.map((entry) => entry.block);
+  }
   return mergeTextBlocks(body, entries);
+}
+
+/**
+ * Decide whether to use blocks from DOM selectors or fall back to text extraction.
+ *
+ * Returns true when:
+ * - At least MIN_BLOCKS blocks are found, AND
+ * - Those blocks cover at least MIN_COVERAGE of the root's total text
+ *
+ * Example: marxists.org has 10 block elements (headers + a quote) but they only
+ * cover ~5% of the page's 27KB text — the rest is BR-separated prose.
+ */
+function shouldUseDomBlocks(entries: BlockEntry[], root: Element): boolean {
+  if (entries.length < MIN_BLOCKS) return false;
+  const blockText = entries.map((e) => e.block.text).join('').length;
+  const totalText = root.textContent?.trim().length || 0;
+  // If blocks capture < MIN_COVERAGE of the text, the rest is probably BR-separated.
+  return totalText === 0 || blockText / totalText >= MIN_COVERAGE;
 }
 
 /** Pair up a node and its clone so cloned nodes can be resolved to live ones. */

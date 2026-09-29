@@ -18,6 +18,11 @@ export type VoiceResolver = (lang: string) => string | undefined;
 
 export interface EngineDeps {
   speaker: Speaker;
+  /**
+   * Used once when `speaker` reports a TTS error, so a failing cloud service
+   * degrades to the browser voice instead of stopping playback.
+   */
+  fallbackSpeaker?: Speaker;
   resolveVoice: VoiceResolver;
   now?: () => number;
 }
@@ -38,11 +43,18 @@ const RATE_SAMPLE_MS = 250;
  * mid-sentence, so resuming a paused sentence replays it from the start.
  */
 export class PlaybackEngine {
-  private readonly speaker: Speaker;
+  private speaker: Speaker;
+  private readonly fallbackSpeaker: Speaker | undefined;
   private readonly resolveVoice: VoiceResolver;
   private readonly now: () => number;
   private readonly listeners = new Set<(event: EngineEvent) => void>();
   private readonly speakerSubscriptions: Array<() => void> = [];
+  /**
+   * Sticky for the worker's lifetime: a service that just failed is not retried
+   * on the next sentence, so a broken primary costs one failed utterance rather
+   * than one per sentence.
+   */
+  private usingFallback = false;
 
   private phase: EnginePhase = 'idle';
   private sentences: EngineSentence[] = [];
@@ -63,15 +75,11 @@ export class PlaybackEngine {
 
   constructor(deps: EngineDeps) {
     this.speaker = deps.speaker;
+    this.fallbackSpeaker = deps.fallbackSpeaker;
     this.resolveVoice = deps.resolveVoice;
     this.now = deps.now ?? (() => Date.now());
 
-    this.speakerSubscriptions.push(
-      this.speaker.on('start', () => this.setPhase('playing')),
-      this.speaker.on('word', (span) => this.onWord(span)),
-      this.speaker.on('end', () => this.onEnd()),
-      this.speaker.on('error', () => this.fail('tts-error'))
-    );
+    this.bindSpeakerEvents();
   }
 
   /** Bind the session to the tab that owns it, so snapshots carry the right id. */
@@ -180,8 +188,7 @@ export class PlaybackEngine {
   }
 
   dispose(): void {
-    for (const unsubscribe of this.speakerSubscriptions) unsubscribe();
-    this.speakerSubscriptions.length = 0;
+    this.unbindSpeakerEvents();
     this.listeners.clear();
     this.speaker.dispose();
   }
@@ -377,9 +384,53 @@ export class PlaybackEngine {
   }
 
   private fail(error: EngineError): void {
+    // Only a TTS error is worth retrying on another speaker: no installed voice
+    // is a dead end for every speaker, and the UI has to say so.
+    if (this.fallbackSpeaker && error === 'tts-error' && !this.usingFallback) {
+      this.switchToFallback();
+      return;
+    }
+
     this.error = error;
     this.speaker.stop();
     this.setPhase('error');
+  }
+
+  /**
+   * Degrade to the fallback speaker and replay the sentence it dropped.
+   *
+   * The phase is left alone on purpose: the failed utterance never advanced the
+   * cursor, and dropping to `loading` would flash the play button's spinner.
+   */
+  private switchToFallback(): void {
+    const fallback = this.fallbackSpeaker;
+    if (!fallback) return;
+
+    console.warn('[SayLoud] speaker failed, falling back to the browser voice');
+    this.usingFallback = true;
+
+    // Detach from the failed speaker before disposing it, so events still in
+    // flight from the utterance Chrome is tearing down cannot move the cursor.
+    this.unbindSpeakerEvents();
+    this.speaker.dispose();
+    this.speaker = fallback;
+    this.bindSpeakerEvents();
+
+    this.speakCurrent();
+  }
+
+  private bindSpeakerEvents(): void {
+    this.speakerSubscriptions.push(
+      this.speaker.on('start', () => this.setPhase('playing')),
+      this.speaker.on('word', (span) => this.onWord(span)),
+      this.speaker.on('end', () => this.onEnd()),
+      this.speaker.on('error', () => this.fail('tts-error'))
+    );
+  }
+
+  private unbindSpeakerEvents(): void {
+    for (const unsubscribe of this.speakerSubscriptions) unsubscribe();
+    this.speakerSubscriptions.length = 0;
   }
 
   private setPhase(phase: EnginePhase): void {

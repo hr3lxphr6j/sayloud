@@ -1,0 +1,509 @@
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type AudioCache, type AudioTimeline, AudioWorker } from '~/lib/audio-worker';
+import { CacheManager } from '~/lib/cache-manager';
+import type { OffscreenCommand, OffscreenEvent } from '~/lib/offscreen-protocol';
+import { ProviderError } from '~/lib/providers/errors';
+import type { Provider, ProviderConfig, ProviderId, SynthesisResult } from '~/lib/providers/types';
+import { type AudioLike, TimelinePlayer } from '~/lib/timeline-player';
+
+const CONFIG: ProviderConfig = { provider: 'dashscope', apiKey: 'k', model: 'cosyvoice-v3' };
+
+/** A rejection shaped like the one `fetch` produces when a signal fires. */
+function abortError(): Error {
+  return Object.assign(new Error('aborted'), { name: 'AbortError' });
+}
+
+/** Let the worker's in-flight promise chain advance by one turn. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** Wait for a condition the worker reaches asynchronously. */
+async function until(predicate: () => boolean, attempts = 50): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (predicate()) return;
+    await tick();
+  }
+  throw new Error('the condition was never met');
+}
+
+function result(bytes = 8, overrides: Partial<SynthesisResult> = {}): SynthesisResult {
+  return { audio: new ArrayBuffer(bytes), mime: 'audio/mpeg', durationMs: 0, ...overrides };
+}
+
+function synthesize(
+  id = 's1',
+  overrides: Partial<Extract<OffscreenCommand, { type: 'synthesize' }>> = {}
+) {
+  return {
+    type: 'synthesize' as const,
+    id,
+    text: 'hello',
+    voiceId: 'v1',
+    config: CONFIG,
+    ...overrides,
+  };
+}
+
+function fakeProvider(overrides: Partial<Provider> = {}): Provider {
+  return {
+    id: 'dashscope' as ProviderId,
+    name: 'DashScope',
+    capabilities: () => ({ timings: 'none' as const, maxChars: 200, concurrency: 2 }),
+    validate: async () => {},
+    listVoices: async () => [],
+    synthesize: vi.fn(async () => result()),
+    ...overrides,
+  } as Provider;
+}
+
+/** Everything the worker talks to, with the spies the assertions need. */
+function harness(options: { provider?: Provider; player?: Partial<AudioTimeline> } = {}) {
+  const provider = options.provider ?? fakeProvider();
+  const providers = new Map<ProviderId, Provider>([['dashscope', provider]]);
+
+  const cache: AudioCache = {
+    computeKey: vi.fn(async () => 'key'),
+    get: vi.fn(async () => undefined),
+    put: vi.fn(async () => {}),
+  };
+
+  const player: AudioTimeline = {
+    load: vi.fn(async () => ({ durationMs: 1234, hasTimings: true })),
+    play: vi.fn(async () => {}),
+    pause: vi.fn(),
+    stop: vi.fn(),
+    setRate: vi.fn(),
+    ...options.player,
+  };
+
+  const events: OffscreenEvent[] = [];
+  const worker = new AudioWorker({
+    providers,
+    cache,
+    player,
+    emit: (event) => events.push(event),
+  });
+
+  return { worker, provider, cache, player, events, providers };
+}
+
+describe('AudioWorker', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('synthesize', () => {
+    it('synthesizes, caches, loads and reports ready', async () => {
+      const { worker, provider, cache, player, events } = harness();
+
+      const reply = await worker.handleCommand(synthesize());
+
+      expect(provider.synthesize).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'hello', voiceId: 'v1' }),
+        CONFIG
+      );
+      expect(cache.put).toHaveBeenCalledWith('key', expect.anything());
+      expect(player.load).toHaveBeenCalledWith('s1', expect.anything());
+      expect(reply).toEqual({ durationMs: 1234, hasTimings: true });
+      expect(events).toEqual([{ type: 'ready', id: 's1', durationMs: 1234, hasTimings: true }]);
+    });
+
+    it('passes the text and voice into the cache key', async () => {
+      const { worker, cache } = harness();
+
+      await worker.handleCommand(synthesize());
+
+      expect(cache.computeKey).toHaveBeenCalledWith({
+        text: 'hello',
+        voiceId: 'v1',
+        config: CONFIG,
+      });
+    });
+
+    it('plays a cache hit without asking the provider', async () => {
+      const { worker, provider, cache, player, events } = harness();
+      const cached = result(64);
+      vi.mocked(cache.get).mockResolvedValue(cached);
+
+      const reply = await worker.handleCommand(synthesize());
+
+      expect(provider.synthesize).not.toHaveBeenCalled();
+      expect(cache.put).not.toHaveBeenCalled();
+      expect(player.load).toHaveBeenCalledWith('s1', cached);
+      expect(reply).toEqual({ durationMs: 1234, hasTimings: true });
+      expect(events).toHaveLength(1);
+    });
+
+    it('stops the sentence it replaces', async () => {
+      const { worker, player } = harness();
+
+      await worker.handleCommand(synthesize());
+
+      expect(player.stop).toHaveBeenCalled();
+    });
+
+    it('reports a provider failure as an error event and no reply', async () => {
+      const provider = fakeProvider({
+        synthesize: vi.fn(async () => {
+          throw new ProviderError('rate-limit', 'too many requests');
+        }),
+      });
+      const { worker, player, events } = harness({ provider });
+
+      const reply = await worker.handleCommand(synthesize());
+
+      expect(reply).toBeUndefined();
+      expect(player.load).not.toHaveBeenCalled();
+      expect(events).toEqual([
+        { type: 'error', id: 's1', code: 'rate-limit', message: 'too many requests' },
+      ]);
+    });
+
+    it('reports an unexpected failure as unknown', async () => {
+      const provider = fakeProvider({
+        synthesize: vi.fn(async () => {
+          throw new Error('the wiring is wrong');
+        }),
+      });
+      const { worker, events } = harness({ provider });
+
+      await worker.handleCommand(synthesize());
+
+      expect(events).toEqual([
+        { type: 'error', id: 's1', code: 'unknown', message: 'the wiring is wrong' },
+      ]);
+    });
+
+    it('reports a provider with no adapter', async () => {
+      const { worker, events } = harness();
+      const config: ProviderConfig = { provider: 'elevenlabs', apiKey: 'k' };
+
+      const reply = await worker.handleCommand(synthesize('s1', { config }));
+
+      expect(reply).toBeUndefined();
+      expect(events).toEqual([
+        {
+          type: 'error',
+          id: 's1',
+          code: 'unknown',
+          message: 'no adapter is registered for the elevenlabs provider',
+        },
+      ]);
+    });
+
+    it('gives up on a provider that never answers', async () => {
+      vi.useFakeTimers();
+      const provider = fakeProvider({
+        synthesize: vi.fn(
+          (request) =>
+            new Promise<SynthesisResult>((_resolve, reject) => {
+              request.signal.addEventListener('abort', () => {
+                reject(abortError());
+              });
+            })
+        ),
+      });
+      const { worker, events } = harness({ provider });
+
+      const pending = worker.handleCommand(synthesize());
+      await vi.advanceTimersByTimeAsync(30_000);
+      const reply = await pending;
+
+      expect(reply).toBeUndefined();
+      expect(events).toEqual([
+        {
+          type: 'error',
+          id: 's1',
+          code: 'network-error',
+          message: 'the provider did not answer in time',
+        },
+      ]);
+    });
+
+    it('reports an audio that cannot be decoded', async () => {
+      const { worker, events } = harness({
+        player: {
+          load: vi.fn(async () => {
+            throw new Error('the audio could not be decoded');
+          }),
+        },
+      });
+
+      const reply = await worker.handleCommand(synthesize());
+
+      expect(reply).toBeUndefined();
+      expect(events).toEqual([
+        { type: 'error', id: 's1', code: 'audio-error', message: 'the audio could not be decoded' },
+      ]);
+    });
+
+    it('still plays when the cache key cannot be computed', async () => {
+      const { worker, cache, player, events } = harness();
+      vi.mocked(cache.computeKey).mockRejectedValue(new Error('no crypto'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const reply = await worker.handleCommand(synthesize());
+
+      expect(reply).toEqual({ durationMs: 1234, hasTimings: true });
+      expect(player.load).toHaveBeenCalled();
+      expect(events).toHaveLength(1);
+      warn.mockRestore();
+    });
+
+    it('still plays when the cache cannot be written', async () => {
+      const { worker, cache, player, events } = harness();
+      vi.mocked(cache.put).mockRejectedValue(new Error('quota exceeded'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const reply = await worker.handleCommand(synthesize());
+
+      expect(reply).toEqual({ durationMs: 1234, hasTimings: true });
+      expect(player.load).toHaveBeenCalled();
+      expect(events).toHaveLength(1);
+      warn.mockRestore();
+    });
+
+    it('still plays when the cache read fails', async () => {
+      const { worker, cache, player, events } = harness();
+      vi.mocked(cache.get).mockRejectedValue(new Error('the store is corrupt'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const reply = await worker.handleCommand(synthesize());
+
+      expect(reply).toEqual({ durationMs: 1234, hasTimings: true });
+      expect(player.load).toHaveBeenCalled();
+      expect(events).toHaveLength(1);
+      warn.mockRestore();
+    });
+  });
+
+  describe('superseding', () => {
+    it('drops a synthesis that a newer one replaced', async () => {
+      const { worker, provider, player, events } = harness();
+      let release: (value: SynthesisResult) => void = () => {};
+      vi.mocked(provider.synthesize).mockReturnValue(
+        new Promise<SynthesisResult>((resolve) => {
+          release = resolve;
+        })
+      );
+
+      const first = worker.handleCommand(synthesize('old'));
+      const second = worker.handleCommand(synthesize('new'));
+
+      release(result());
+      const [firstReply, secondReply] = await Promise.all([first, second]);
+
+      expect(firstReply).toBeUndefined();
+      expect(secondReply).toEqual({ durationMs: 1234, hasTimings: true });
+      // Only the newer sentence reaches the player, and only one ready event.
+      expect(player.load).toHaveBeenCalledTimes(1);
+      expect(player.load).toHaveBeenCalledWith('new', expect.anything());
+      expect(events.filter((event) => event.type === 'ready')).toEqual([
+        { type: 'ready', id: 'new', durationMs: 1234, hasTimings: true },
+      ]);
+    });
+
+    it('aborts the request it replaced', async () => {
+      const { worker, provider } = harness();
+      const signals: AbortSignal[] = [];
+      vi.mocked(provider.synthesize)
+        .mockImplementationOnce(
+          (request) =>
+            new Promise<SynthesisResult>((_resolve, reject) => {
+              signals.push(request.signal);
+              request.signal.addEventListener('abort', () => reject(abortError()));
+            })
+        )
+        .mockImplementation(async (request) => {
+          signals.push(request.signal);
+          return result();
+        });
+
+      const first = worker.handleCommand(synthesize('first'));
+      await tick();
+      const second = worker.handleCommand(synthesize('second'));
+      const [firstReply, secondReply] = await Promise.all([first, second]);
+
+      expect(signals[0]?.aborted).toBe(true);
+      expect(signals[1]?.aborted).toBe(false);
+      expect(firstReply).toBeUndefined();
+      expect(secondReply).toEqual({ durationMs: 1234, hasTimings: true });
+    });
+
+    it('stays silent when a superseded request fails', async () => {
+      const { worker, provider, events } = harness();
+      let reject: (error: Error) => void = () => {};
+      vi.mocked(provider.synthesize)
+        .mockImplementationOnce(
+          () =>
+            new Promise<SynthesisResult>((_resolve, rejectPromise) => {
+              reject = rejectPromise;
+            })
+        )
+        .mockImplementation(async () => result());
+
+      const first = worker.handleCommand(synthesize('old'));
+      await tick();
+      const second = worker.handleCommand(synthesize('new'));
+      reject(abortError());
+      await Promise.all([first, second]);
+
+      expect(events.filter((event) => event.type === 'error')).toEqual([]);
+    });
+  });
+
+  describe('playback commands', () => {
+    it('plays the requested sentence from the requested offset', async () => {
+      const { worker, player } = harness();
+
+      await worker.handleCommand({ type: 'play', id: 's1', startTimeMs: 250 });
+
+      expect(player.play).toHaveBeenCalledWith('s1', 250);
+    });
+
+    it('reports a playback failure as an audio error', async () => {
+      const { worker, events } = harness({
+        player: {
+          play: vi.fn(async () => {
+            throw new Error('audio s1 is not loaded');
+          }),
+        },
+      });
+
+      await worker.handleCommand({ type: 'play', id: 's1', startTimeMs: 0 });
+
+      expect(events).toEqual([
+        { type: 'error', id: 's1', code: 'audio-error', message: 'audio s1 is not loaded' },
+      ]);
+    });
+
+    it('pauses', async () => {
+      const { worker, player } = harness();
+      await worker.handleCommand({ type: 'pause' });
+      expect(player.pause).toHaveBeenCalled();
+    });
+
+    it('changes the rate', async () => {
+      const { worker, player } = harness();
+      await worker.handleCommand({ type: 'setRate', rate: 1.5 });
+      expect(player.setRate).toHaveBeenCalledWith(1.5);
+    });
+
+    it('stops the player and abandons the request in flight', async () => {
+      const { worker, provider, player, events } = harness();
+      const signals: AbortSignal[] = [];
+      vi.mocked(provider.synthesize).mockImplementation(
+        (request) =>
+          new Promise<SynthesisResult>((_resolve, reject) => {
+            signals.push(request.signal);
+            request.signal.addEventListener('abort', () => reject(abortError()));
+          })
+      );
+
+      const pending = worker.handleCommand(synthesize());
+      await tick();
+      await worker.handleCommand({ type: 'stop' });
+      const reply = await pending;
+
+      expect(reply).toBeUndefined();
+      expect(signals[0]?.aborted).toBe(true);
+      expect(player.stop).toHaveBeenCalled();
+      expect(events).toEqual([]);
+    });
+  });
+});
+
+describe('AudioWorker over the real cache and player', () => {
+  /** A fake audio element driven by the test. */
+  function fakeAudio() {
+    const audio: AudioLike = {
+      src: '',
+      currentTime: 0,
+      playbackRate: 1,
+      duration: Number.NaN,
+      paused: true,
+      play: vi.fn(async () => {
+        audio.paused = false;
+      }),
+      pause: vi.fn(() => {
+        audio.paused = true;
+      }),
+      onloadedmetadata: null,
+      onerror: null,
+      onended: null,
+    };
+    return audio;
+  }
+
+  let events: OffscreenEvent[];
+  let worker: AudioWorker;
+  let provider: Provider;
+  let cache: CacheManager;
+  let audios: AudioLike[];
+
+  beforeEach(() => {
+    events = [];
+    audios = [];
+    provider = fakeProvider({
+      synthesize: vi.fn(async () =>
+        result(16, {
+          durationMs: 0,
+          timings: [{ charStart: 0, charEnd: 5, startMs: 0, endMs: 200 }],
+        })
+      ),
+    });
+    cache = new CacheManager({ factory: new IDBFactory(), dbName: 'test-cache' });
+
+    worker = new AudioWorker({
+      providers: new Map<ProviderId, Provider>([['dashscope', provider]]),
+      cache,
+      player: new TimelinePlayer({
+        emit: (event) => events.push(event),
+        createAudio: () => {
+          const audio = fakeAudio();
+          audios.push(audio);
+          return audio;
+        },
+        createObjectUrl: () => 'blob:fake',
+        revokeObjectUrl: () => {},
+      }),
+      emit: (event) => events.push(event),
+    });
+  });
+
+  it('serves the second synthesis from the cache', async () => {
+    const first = worker.handleCommand(synthesize('s1'));
+    await until(() => audios.length > 0);
+    const audio = audios.at(0);
+    if (!audio) throw new Error('no audio was created');
+    audio.duration = 1.5;
+    audio.onloadedmetadata?.();
+    expect(await first).toEqual({ durationMs: 1500, hasTimings: true });
+
+    const second = worker.handleCommand(synthesize('s2'));
+    await until(() => audios.length > 1);
+    const next = audios.at(1);
+    if (!next) throw new Error('no audio was created');
+    next.duration = 1.5;
+    next.onloadedmetadata?.();
+
+    expect(await second).toEqual({ durationMs: 1500, hasTimings: true });
+    expect(provider.synthesize).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the words the player reaches', async () => {
+    const pending = worker.handleCommand(synthesize('s1'));
+    await until(() => audios.length > 0);
+    const audio = audios.at(0);
+    if (!audio) throw new Error('no audio was created');
+    audio.duration = 1.5;
+    audio.onloadedmetadata?.();
+    await pending;
+
+    await worker.handleCommand({ type: 'play', id: 's1', startTimeMs: 0 });
+
+    expect(events).toContainEqual({ type: 'word', id: 's1', charStart: 0, charEnd: 5 });
+  });
+});

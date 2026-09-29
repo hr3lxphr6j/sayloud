@@ -14,6 +14,9 @@ declare global {
 export default defineBackground(() => {
   const app = createApp({ tts: browser.tts, storage: browser.storage });
 
+  // Track which tabs have active content scripts via their port connections.
+  const activeTabs = new Set<number>();
+
   // The engine resolves a voice synchronously per sentence, so the cache has to
   // be refreshed out of band whenever Chrome's voice list changes.
   browser.tts.onVoicesChanged.addListener(() => {
@@ -32,15 +35,27 @@ export default defineBackground(() => {
 
   browser.runtime.onConnect.addListener((port) => {
     if (port.name !== PORT_NAME) return;
+    const tabId = port.sender?.tab?.id;
+    if (tabId !== undefined) activeTabs.add(tabId);
+
     app.router.handlePort(toRouterPort(port));
+
+    port.onDisconnect.addListener(() => {
+      if (tabId !== undefined) activeTabs.delete(tabId);
+    });
   });
 
   browser.tabs.onRemoved.addListener((tabId) => {
     app.router.handleTabRemoved(tabId);
+    activeTabs.delete(tabId);
   });
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (changeInfo.url) app.router.handleTabUpdated(tabId, changeInfo);
+    if (changeInfo.url) {
+      app.router.handleTabUpdated(tabId, changeInfo);
+      // Navigation resets the content script, so treat it as gone.
+      activeTabs.delete(tabId);
+    }
   });
 
   // Only one tab reads at a time, so switching tabs pauses the running session.
@@ -60,10 +75,20 @@ export default defineBackground(() => {
    * Without a tab id this falls back to the active tab, which is what the e2e
    * hook uses: Playwright cannot click the toolbar icon, and it has no way to
    * learn Chrome's tab id for the page it is driving.
+   *
+   * Clicking the icon again when the reader is already mounted is a no-op,
+   * not a replay from the beginning.
    */
   async function activate(tabId?: number): Promise<void> {
     const id = tabId ?? (await activeTabId());
     if (id === undefined) return;
+
+    // If the tab already has an active port, the content script is running.
+    if (activeTabs.has(id)) {
+      console.log('[SayLoud] content script already active in tab', id);
+      return;
+    }
+
     try {
       await browser.scripting.executeScript({
         target: { tabId: id },

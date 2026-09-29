@@ -146,17 +146,46 @@ export function parseSse(text: string): SseEvent[] {
  * Volcengine answers with newline-delimited JSON, but proxies and chunk
  * boundaries can deliver objects back to back or split across lines, so
  * objects are found by brace matching rather than by splitting on newlines.
- * A trailing partial object is ignored; malformed chunks are skipped so one
- * bad frame does not discard the audio already received.
+ *
+ * A frame that does not parse does not end the scan: the search restarts one
+ * character later, so a stray `{` or a corrupt frame cannot swallow the valid
+ * frames that follow it. A trailing partial object is simply left unread.
  */
 export function parseJsonChunks(text: string): unknown[] {
   const chunks: unknown[] = [];
+  let index = 0;
+
+  while (index < text.length) {
+    const start = text.indexOf('{', index);
+    if (start < 0) break;
+
+    const end = findObjectEnd(text, start);
+    if (end < 0) {
+      // The object never closes — treat this brace as noise and look for the
+      // next one rather than giving up on the rest of the body.
+      index = start + 1;
+      continue;
+    }
+
+    const candidate = text.slice(start, end + 1);
+    try {
+      chunks.push(JSON.parse(candidate));
+      index = end + 1;
+    } catch {
+      index = start + 1;
+    }
+  }
+
+  return chunks;
+}
+
+/** Index of the `}` closing the object that starts at `start`, or -1. */
+function findObjectEnd(text: string, start: number): number {
   let depth = 0;
-  let start = -1;
   let inString = false;
   let escaped = false;
 
-  for (let index = 0; index < text.length; index++) {
+  for (let index = start; index < text.length; index++) {
     const char = text.charAt(index);
 
     if (inString) {
@@ -171,26 +200,17 @@ export function parseJsonChunks(text: string): unknown[] {
       continue;
     }
     if (char === '{') {
-      if (depth === 0) start = index;
       depth++;
       continue;
     }
     if (char === '}') {
       depth--;
-      if (depth === 0 && start >= 0) {
-        const candidate = text.slice(start, index + 1);
-        start = -1;
-        try {
-          chunks.push(JSON.parse(candidate));
-        } catch {
-          // Not JSON after all — skip this frame and keep the rest.
-        }
-      }
-      if (depth < 0) depth = 0;
+      if (depth === 0) return index;
+      if (depth < 0) return -1;
     }
   }
 
-  return chunks;
+  return -1;
 }
 
 /** True for a JSON object (not null, not an array). */

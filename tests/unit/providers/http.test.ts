@@ -216,6 +216,12 @@ describe('parseJsonChunks', () => {
     expect(parseJsonChunks('{bad}{"ok":1}')).toEqual([{ ok: 1 }]);
   });
 
+  it('resyncs past an unbalanced brace instead of swallowing later frames', () => {
+    // A stray `{` would otherwise open an object that never closes, hiding
+    // every valid frame after it.
+    expect(parseJsonChunks('{not json\n{"a":1}\n{"b":2}')).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
   it('ignores a trailing partial object', () => {
     expect(parseJsonChunks('{"a":1}{"b":')).toEqual([{ a: 1 }]);
   });

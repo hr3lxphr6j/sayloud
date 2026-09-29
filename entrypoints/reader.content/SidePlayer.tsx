@@ -172,6 +172,28 @@ export function SidePlayer({ controller }: SidePlayerProps) {
         {formatRate(status?.rate ?? 1)}
       </button>
 
+      <button
+        type="button"
+        class="control"
+        aria-label="Settings"
+        onClick={() => {
+          // Open side panel. Chrome 114+ supports sidePanel.open.
+          // This must be called synchronously in the click handler.
+          // WXT's browser polyfill doesn't have sidePanel, so we access it via globalThis.
+          const g = globalThis as typeof globalThis & {
+            chrome?: {
+              sidePanel?: { open: (opts: { windowId: number }) => void };
+              windows: { WINDOW_ID_CURRENT: number };
+            };
+          };
+          if (g.chrome?.sidePanel?.open && g.chrome.windows) {
+            g.chrome.sidePanel.open({ windowId: g.chrome.windows.WINDOW_ID_CURRENT });
+          }
+        }}
+      >
+        <GearIcon />
+      </button>
+
       {hint && (
         <BubbleCard
           title={hint.title}
@@ -227,6 +249,26 @@ function NextIcon() {
     <svg viewBox="0 0 16 16" width={ICON_SIZE} height={ICON_SIZE} aria-hidden="true">
       <path d="M3.5 3 11 8l-7.5 5Z" fill="currentColor" />
       <rect x="11" y="3" width="2" height="10" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width={ICON_SIZE} height={ICON_SIZE} aria-hidden="true">
+      <path
+        d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      />
+      <path
+        d="M7 1.5h2l.3 1.8a4.5 4.5 0 0 1 1.5.9l1.7-.6 1 1.7-1.3 1.3c.2.5.3 1 .3 1.5s-.1 1-.3 1.5l1.3 1.3-1 1.7-1.7-.6a4.5 4.5 0 0 1-1.5.9L9 14.5H7l-.3-1.8a4.5 4.5 0 0 1-1.5-.9l-1.7.6-1-1.7 1.3-1.3A4.5 4.5 0 0 1 3.5 8c0-.5.1-1 .3-1.5L2.5 5.2l1-1.7 1.7.6a4.5 4.5 0 0 1 1.5-.9L7 1.5Z"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linejoin="round"
+      />
     </svg>
   );
 }

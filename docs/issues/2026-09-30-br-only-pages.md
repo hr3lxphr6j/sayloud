@@ -108,7 +108,7 @@
 ## Timeline
 
 - **P1**: 记录 issue，不修复（浏览器语音已可用，用户可先测试主流网站）
-- **P2 前**: 实施 Option A，确保云端 TTS 也能处理此类页面
+- **P2 前**: ✅ 已实施 Option A（2026-09-30，见下）
 
 ## Workaround (P1)
 
@@ -116,7 +116,32 @@
 
 ---
 
-**Status**: Open  
+## Resolution (2026-09-30)
+
+Option A 已实施，`lib/extractor.ts`：
+
+1. `extractBlocks()` 现在要求 `MIN_BLOCKS = 3`：Readability 分支和 body 扫描
+   都只在这个数量以上才直接返回，否则交给文本兜底。
+2. `mergeTextBlocks()` 遍历 DOM：
+   - 已经产出 block 的块级元素（`collectBlockEntries()` 的结果）按文档顺序原样插入，
+     其子树不再重复扫描；
+   - 其余文本节点累加成一个 run，遇到 `<br>`、容器元素（`FLOW_TAGS`）或空 run 结束；
+   - 复用 `blockFromChars()`，所以 `rangeFor()` / `offsetAt()` 与块级路径语义一致。
+
+与 issue 里伪代码的差异（都是为了避免回归）：
+
+- **合并不是替换**：issue 的伪代码在兜底时只返回文本 block，会把
+  `<p>` 段落粘成一个 block（现有测试 `skips code, pre and hidden subtrees` 会挂）。
+  合并方案下块级元素保持原有边界。
+- **没有按 `\n\n` 切分**：HTML 里连续换行只是空白折叠，不是段落边界；
+  段落边界由 `<br>` 和容器元素给出。
+- 容器的 flush 解决了 `<div>Line 1</div><div>Line 2</div>`（源码无空白）
+  被粘成 `Line 1Line 2` 的问题。
+
+验证：13 个单测（`tests/unit/extractor-br.test.ts`）+ e2e fixture
+`tests/e2e/pages/br-only.html`；全部对旧实现做过红绿验证（旧代码下 11 个单测 + e2e 用例失败）。
+
+**Status**: Fixed  
 **Priority**: High  
 **Assignee**: TBD  
 **Milestone**: P2

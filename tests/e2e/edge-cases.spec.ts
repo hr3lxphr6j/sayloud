@@ -25,4 +25,18 @@ test.describe('pages SayLoud cannot read', () => {
       .poll(() => sentenceHighlight(page), { timeout: 10_000 })
       .toContain('first sentence');
   });
+
+  test('reads the body of a page whose paragraphs are only <br>-separated', async ({
+    page,
+    activate,
+  }) => {
+    await page.goto('/br-only.html');
+    await activate();
+
+    // Block selectors only find the title and the date on this page, so the
+    // body is only ever read if the text fallback picked it up.
+    await expect
+      .poll(() => sentenceHighlight(page), { timeout: 20_000 })
+      .toContain('First body sentence here.');
+  });
 });

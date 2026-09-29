@@ -276,7 +276,7 @@ playing ──最后一句结束──► ended
 - **跳转**：上一句/下一句、Paragraph Play、点击跳读都直接设置 cursor。换音色时丢弃当前句的音频，从当前句重新开始读。变速只改 `playbackRate`。
 - **结束会话**：页面跳转（`tabs.onUpdated` 的 url 变化）或 tab 关闭时，结束会话。
 - **offscreen 被回收**：实测暂停约 35 秒后 offscreen 会被关闭（§6 V2）。引擎在暂停时，把 `{cursor, 句内 currentTime, voice, rate}` 镜像到 SW 的 `storage.session`。恢复播放时如果 `offscreen.hasDocument()` 为 false，就重建 offscreen，把会话恢复到上述快照，当前句优先从 L2 缓存取，再跳到原来的 currentTime。句子列表重新向 content script 要一份。
-- **自动播放被拒**：`audio.play()` 报 NotAllowedError（企业策略或用户改过自动播放设置）时，进入 paused，竖条提示「点击继续」。用户点击竖条后由引擎重试。
+- **自动播放被拒**：`audio.play()` 报 NotAllowedError（企业策略或用户改过自动播放设置）时，进入 paused，气泡卡片提示「点击继续」。用户点击后由引擎重试。
 
 ### 4.2 进度推送
 
@@ -424,7 +424,7 @@ CI（GitHub Actions）依次跑：typecheck → Biome → 单元测试 → e2e �
 | # | 问题 | 状态 | 结论 / 设计影响 |
 |---|---|---|---|
 | V1 | content script 点击 → SW 调用 `sidePanel.open()`，用户手势能否保留 | ✅ 成立（有条件） | 可信点击后立即发消息能打开；点击后延迟 1.5 秒也能打开；延迟 6 秒、页面加载时自动发送、SW 直接调用，这三种都报 "may only be called in response to a user gesture"。Chrome 按约 5 秒的手势窗口判断（transient activation）。脚本合成的 click 在这窗口内也能打开，所以网页可以借用户的一次点击触发，但只会打开我们自己的设置页，风险可以接受。**设计**：齿轮的点击处理函数必须同步调用 `sendMessage`，SW 收到后也必须同步调用 `sidePanel.open`，中间不能有 await。 |
-| V2 | offscreen（AUDIO_PLAYBACK）不需要用户手势能否直接播放；暂停后是否会被关闭 | ✅ 成立，需要重建逻辑 | 默认自动播放策略下可以直接播放。加上 `--autoplay-policy=user-gesture-required` 时会报 NotAllowedError，说明企业策略或用户改过设置时可能失败。连续播放 48 秒没有被关闭；**暂停约 35 秒后 offscreen 被关闭**，重建后不需要手势就能继续播放。**设计**：引擎的暂停状态（cursor 和句内播放位置）要镜像到 SW 的 `storage.session`；恢复播放时如果 `hasDocument()` 为 false，就重建 offscreen，从缓存取出当前句，并跳到原来的播放位置。L1 内存缓存随之丢失，L2 仍在。`play()` 报 NotAllowedError 时，竖条提示"点击继续"。 |
+| V2 | offscreen（AUDIO_PLAYBACK）不需要用户手势能否直接播放；暂停后是否会被关闭 | ✅ 成立，需要重建逻辑 | 默认自动播放策略下可以直接播放。加上 `--autoplay-policy=user-gesture-required` 时会报 NotAllowedError，说明企业策略或用户改过设置时可能失败。连续播放 48 秒没有被关闭；**暂停约 35 秒后 offscreen 被关闭**，重建后不需要手势就能继续播放。**设计**：引擎的暂停状态（cursor 和句内播放位置）要镜像到 SW 的 `storage.session`；恢复播放时如果 `hasDocument()` 为 false，就重建 offscreen，从缓存取出当前句，并跳到原来的播放位置。L1 内存缓存随之丢失，L2 仍在。`play()` 报 NotAllowedError 时，气泡卡片提示「点击继续」。 |
 | V3 | `chrome.tts` 在 SW 里连续朗读时，SW 会不会被回收，导致 word 事件丢失 | ✅ 成立 | 独立启动的 Chrome 里，SW 发起一次 146 秒的朗读，期间 SW 不做任何事：339 个 word 事件全部收到，最后收到 `end` 事件，没有被回收。macOS 本地音色 180 个，全部支持 word 事件，`charIndex`/`length` 正确，中文音色婷婷按词返回。Port 保活作为保险仍然保留（竖条本来就有 Port）。 |
 | V4 | CosyVoice SSE 的 `words` 与传入的一句文本能否稳定对齐；服务端是否会再切句 | ✅ 成立（有注意事项） | 用 cosyvoice-v3-flash/longanyang、v3-plus 和 qwen-audio-3.0-tts-flash 实测，workspace 域名和通用域名都能用，首包约 0.35–0.7 秒。SSE 按标准格式分帧（`id:`/`event:`/`:HTTP_STATUS`/`data:`，空行结束一帧），事件类型为 `sentence-begin`/`sentence-synthesis`/`sentence-end`。**① `begin_index/end_index` 是「词的序号」，不是字符偏移**：中文按字切，英文按词切（`' quick'` 带前导空格）。**② 服务端会把数字和 URL 规范化**："1.27" 读作 "一点二七"，"35%" 读作 "百分之三十五"，URL 读作 "H T T P S"，但 `original_text` 和 `normalized_text` 显示的仍是原文，所以要用 `sequential-words` 对齐，对不上的词跳过，和 Kokoro 用同一套逻辑。**③ 服务端会自行切句**：310 字的请求被切成 index 0/1 两句，words 在帧之间是增量下发的，要按 `(sentence.index, begin_index)` 去重后拼接，时间是整段音频的绝对时间。引擎的 `maxChars` 取 **200**，保证一次请求只产生一句。**④** `cosyvoice-v3.5-flash` 加上系统音色会报 400（"Engine return error code: 418"），和文档说的「v3.5 不支持系统音色」一致，音色表要按模型过滤。Qwen-TTS（qwen3-tts-flash）的流式返回是 WAV 分片，最后一帧带 url，没有时间戳。 |
 | V5 | workspace 专属域名在 `chrome-extension://` 源下的 CORS / host 权限行为 | ✅ 成立 | 这条验证不需要 key。SW 带 `Authorization` 和 `X-DashScope-SSE` 头请求通用域名和 workspace 域名，都返回业务层的 401 InvalidApiKey，说明请求到达了服务端，没有被网络或 CORS 拦截。 |

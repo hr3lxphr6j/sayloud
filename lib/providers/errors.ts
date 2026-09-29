@@ -44,7 +44,14 @@ export function isProviderError(error: unknown): error is ProviderError {
  * fall back to the browser voice every time the user skips ahead.
  */
 export function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
+  // Deliberately not `instanceof Error`: browsers and Node both reject an
+  // aborted fetch with a `DOMException`, which does not extend `Error`.
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: unknown }).name === 'AbortError'
+  );
 }
 
 /** Wrap a transport-level failure (`fetch` rejected) as a provider error. */

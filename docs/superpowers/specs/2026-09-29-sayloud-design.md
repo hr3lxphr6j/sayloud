@@ -22,7 +22,8 @@
 - **Paragraph Play**：鼠标悬停段落时出现按钮，点击后从该段开始读。
 - **划词朗读**：通过选区按钮、右键菜单或快捷键朗读选中文字。
 - **6 类语音服务**：阿里云百炼、火山引擎豆包语音（剪映同款音色）、OpenAI 兼容端点（含本地服务）、ElevenLabs、Azure、浏览器内置语音。
-- **Chrome 原生侧边栏**：只放设置。
+- **Chrome 原生侧边栏**：只放设置，分「朗读」「设置」两个标签页。
+- **首次使用零配置**：默认用浏览器内置语音，装完就能读。
 - **本地音频缓存**：内存加 IndexedDB 两层。
 
 不包含：
@@ -55,8 +56,9 @@
   Extractor    提取正文 → Block/句子，保留字符偏移 → DOM Range 映射
   Segmenter    Intl.Segmenter 分句、分词
   Highlighter  CSS Custom Highlight API（当前句 / 当前词）
-  SidePlayer   竖条：剩余时间 · 播放/暂停 · 上一句/下一句 · 音色 · 倍速 · 齿轮
-  ParagraphPlay / SelectionButton
+  SidePlayer   28px 竖条：进度环 · 播放/暂停 · 上一句/下一句 · 音色 · 倍速 · 齿轮
+  BubbleCard   气泡卡片：鉴权失败 / 服务未开通 / 回到当前位置 / 自动播放被拒
+  ParagraphPlay（行首内嵌按钮）/ SelectionButton（纯图标圆钮）
         ▲ 进度事件 {sentenceId, charStart, charEnd}     │ 指令 start/seek/pause/...
         │                                              ▼
 Service Worker：会话路由（Port 按 tab）、右键菜单、快捷键、tab 生命周期、chrome.tts
@@ -66,7 +68,7 @@ Offscreen Document（reason: AUDIO_PLAYBACK）
   PlaybackEngine：会话状态机 · 预取 · 缓存 · 时间轴对齐 · 进度推送
   Providers：dashscope / openai-compat / elevenlabs / azure（browser 在 SW 中执行）
 
-Chrome Side Panel：只放设置（按站点开关、音色语速、服务商与 key、主题、缓存、快捷键、帮助）
+Chrome Side Panel：只放设置，分「朗读」「设置」两个标签页（§3.6）。不放进度控制
 ```
 
 原则：
@@ -134,7 +136,42 @@ interface Provider {
 - **百炼的地域差异**：官方文档写明 CosyVoice 和 Qwen-Audio-TTS 的 HTTP 接口只开放北京地域。设置页选新加坡地域时，要提示哪些模型可用。
 - **浏览器语音**：`chrome.tts` 在 offscreen 里调不到，所以放在 SW 里执行。引擎把它当成自己发声的 provider：指令经 SW 转发，word 事件回传后走同一套进度事件。
 
-## 3. 正文提取、分句与高亮
+### 2.3 配置表单由 schema 驱动
+
+六家服务商的配置字段各不相同，界面统一由数据描述渲染。新增一家服务商只写数据，不写界面代码。
+
+```ts
+interface ProviderField {
+  key: string;
+  type: 'password' | 'text' | 'url' | 'select' | 'tags' | 'switch';
+  label: string;                    // i18n 键
+  required?: boolean;
+  secret?: boolean;                 // 只存 storage.local；content script 永不读取
+  placeholder?: string;
+  hint?: string;                    // 字段下方的灰色说明
+  options?: { value: string; label: string }[];
+  layout?: 'full' | 'segmented';    // segmented 用于 2–3 个选项
+  pattern?: string;                 // 格式校验，如 Azure region
+  defaultValue?: string | boolean;
+}
+
+interface ProviderDescriptor {
+  id: 'dashscope' | 'volcengine' | 'openai-compat' | 'elevenlabs' | 'azure' | 'browser';
+  name: string;                     // i18n 键
+  fields: ProviderField[];          // browser 为 []
+  capabilities: { timings: 'exact' | 'sentence-only'; maxChars: number; concurrency: number };
+  voices: { source: 'static' | 'remote'; endpoint?: string };
+  help: { keyUrl: string; docsUrl: string };
+}
+```
+
+- 界面元素（密码框的显示/隐藏、必填星号、分段控件、占位符、测试连接按钮）全部由 `type` 和 `layout` 决定。
+- `secret: true` 是「绝不能出扩展进程」的标记。评审时据此检查 content script 不读取密钥（§4.6）。
+- `capabilities.timings` 决定音色列表里标不标「支持逐词时间戳」（§3.6）。
+- 错误码到错误类型的映射（鉴权 / 未开通 / 音色不匹配 / 限流）也在描述里声明，见 §4.5。
+- 六种 `type` 覆盖当前六家服务商的全部字段。以后需要更特殊的控件（OAuth 授权按钮、文件上传）再加 `type`，老的服务商不受影响。
+
+## 3. 正文提取、分句与界面
 
 ### 3.1 提取
 
@@ -156,10 +193,15 @@ interface Provider {
 
 ### 3.3 高亮与交互
 
-- **高亮实现**：
-  - 用 CSS Custom Highlight API 建两个 Highlight：`sayloud-sentence` 和 `sayloud-word`。
-  - `::highlight()` 的样式通过 `chrome.scripting.insertCSS` 注入，颜色可以在设置里调。
-  - 对页面 DOM 唯一的改动，是挂 Side Player 用的那一个 shadow host。
+**高亮分层**：句级是基准，词级是可选增强。
+
+- 用 CSS Custom Highlight API 建两个 Highlight：`sayloud-sentence` 和 `sayloud-word`。
+- `::highlight()` 的样式通过 `chrome.scripting.insertCSS` 注入，颜色可以在设置里调。
+- 句级高亮由「当前播到第几句」驱动，所有服务商都有。词级只在适配器返回了时间戳时叠加（§2.1）。
+- **已读淡化**：读过的句子颜色变浅，一眼看出读到哪了。设置项 `dimRead` **默认关闭**；开启时只淡化最近 N 句（默认 5），避免读完后整页变灰。
+- **深色页面**：同一套配色在深色页面上会刺眼。默认提供两套值（浅色页面句底 0.34、深色页面 0.24，词色分别用橙和暗金），设置项 `highlightAdaptive` 默认开启，按 `matchMedia('(prefers-color-scheme)')` 加页面背景亮度判断；关闭时用固定值。
+- 对页面 DOM 唯一的改动，是挂 Side Player 用的那一个 shadow host。
+
 - **自动滚动**：当前句离开视口时平滑滚回来。用户手动滚动后，自动滚动暂停 5 秒，竖条上显示「回到当前位置」。
 - **点击跳读**：朗读期间单击正文里的句子，就从那句开始读（`caretPositionFromPoint` 定位）。
   - 点击链接、按钮、输入框、contenteditable，或者正在选中文字时不触发。
@@ -168,16 +210,53 @@ interface Provider {
 
 ### 3.4 Side Player 竖条
 
-- **形态**：宽约 28px 的竖条，默认贴在视口右边缘，可拖动，靠近边缘时吸附，可收起成圆钮。位置按站点记住。
-- **控件（自上而下）**：剩余时间、播放/暂停、上一句、下一句、音色（头像或国旗，点击弹出快速切换）、倍速（0.5×–3×，步长 0.1，同时显示 wpm 或「字/分」）、齿轮。
-- **剩余时间**：先按「字符数 ÷ 该音色的基准语速」估算，每句实际播完后，用真实时长校正该音色的语速系数。
+- **形态**：宽 28px 的单列竖条，默认贴在视口右边缘，可拖动，靠近边缘时吸附，可收起成圆钮。位置按站点记住。
+- **控件（自上而下）**：剩余时间、播放/暂停、上一句、下一句、音色、倍速、齿轮。只有当前可用的控件是全不透明，其余降到 0.4。
+- **剩余时间**：用进度环表示整页读到哪了，不额外占宽度；悬停或点击时用气泡卡片显示「还剩 12 分 30 秒」。时间先按「字符数 ÷ 该音色的基准语速」估算，每句实际播完后用真实时长校正该音色的语速系数。
+- **状态**：播放中 / 暂停 / 首句加载中（播放键转圈）/ 出错（顶部换成红色感叹号）。28px 宽放不下文字，状态只靠图标变化表达。
+- **提示用气泡卡片**：需要文字的地方（鉴权失败、服务未开通、音色与模型不匹配、回到当前位置、自动播放被拒）统一用气泡卡片，从竖条左侧弹出。卡片可放标题、说明和最多两个按钮；普通提示 6 秒后淡出、鼠标移上去停住，带按钮的提示不自动消失。
 - **键盘与无障碍**：竖条获得焦点时，← / → 切换上一句/下一句，空格播放/暂停。所有控件都有 aria-label，可以用键盘操作。
 
 ### 3.5 Paragraph Play 与划词按钮
 
-- **Paragraph Play**：鼠标悬停在正文块上 300ms 后，在块的左侧显示一个播放按钮。点击后从该块开始读，之后按正文顺序继续。
-- **划词按钮**：选区稳定后显示在选区末端。点击只读选中部分，高亮照常显示。
+- **Paragraph Play**：鼠标悬停在正文块上 300ms 后，在该块第一行的行首插入一个 19px 的圆形播放按钮，同时该块轻微变色。点击后从该块开始读，之后按正文顺序继续。
+  - 按钮嵌在文字流里（`inline-flex` 的 span，`user-select: none`），永远不会盖住别的内容。
+  - 插入节点会改变文本流，所以插入前先记下该块的 `Range` 边界；如果插入后块的高度增加超过 1 行，就撤回按钮并改用浮层方式（`position: absolute` 压在行首）。
+  - 鼠标移出或朗读结束后移除按钮。
+- **划词按钮**：选区稳定后，在选区末端显示一个 22px 的纯图标圆钮（只有播放三角）。第一次出现时用气泡卡片提示一次「点这里朗读选中文字」，之后不再提示。点击只读选中部分，高亮照常显示。
 - **右键菜单与快捷键**：「朗读选中文字」不依赖划词按钮，没开启自动显示时也能用。
+
+### 3.6 设置面板（Chrome 侧边栏）
+
+侧边栏只放设置，不放进度控制。进度控制始终只在页面上的竖条里，避免两处状态需要同步。
+
+面板分两个标签页：
+
+- **朗读**：日常要调的东西。
+  - 当前音色卡片（头像、音色名、服务商、语速），点击进入音色选择页。
+  - 语速滑块（0.5×–3×，步长 0.1，同时显示 wpm 或「字/分」）。
+  - 本网站设置：显示竖条、段落播放按钮、划词朗读按钮三个开关，标题带当前域名。
+  - 朗读偏好：点击正文跳读、自动滚回当前句、跳过代码块、已读淡化、出错时改用浏览器语音（先问我 / 自动 / 从不）。
+- **设置**：配好就不动的东西。
+  - 服务商与密钥（见下）。
+  - 外观：主题（跟随系统 / 浅色 / 深色）、高亮颜色（自适应开关 + 句色 / 词色）。
+  - 缓存：是否持久化、上限（默认 200MB）、当前占用、清除。
+  - 快捷键、帮助与关于。
+
+**服务商与密钥**：列表里每行是一个可用的语音服务，点一行在原地展开表单（不跳页、也不用抽屉），配好的收起并在右侧显示摘要。已配置绿点，未配置灰点，出错红点。摘要示例：「已配置 · 5 个音色」「服务未开通」。
+
+OpenAI 兼容可以同时配多个实例（本地 Kokoro 一个、LocalAI 一个），**每个实例占一行**，和服务商同级平铺，行副标题标「OpenAI 兼容 · 127.0.0.1:8880」。列表底部是「+ 添加服务」。
+
+**音色选择页**：点「更换」后面板整体切到列表页，带返回箭头（不是抽屉，也不是页面内浮层）。顶部是搜索框和语言筛选，每行显示头像、音色名、特征说明，以及「支持逐词时间戳 / 仅句级高亮」标签（由 `capabilities.timings` 决定），行尾是试听按钮。
+
+### 3.7 首次使用
+
+BYOK 的门槛在于用户装完手里没有 key，所以默认状态必须能直接朗读。
+
+- **默认语音服务是浏览器内置语音**（`chrome.tts`）。装完点一下就能读，零配置。
+- 侧边栏「朗读」标签页顶部显示一条提示条：「现在用的是浏览器自带语音，可以立即朗读。想要更自然的声音？配置云端服务。」右侧「配置 ›」跳到「设置」标签页的服务商列表。用户配好任一云端服务后，提示条消失。
+- **申请 key 的步骤不写进扩展。** 服务商描述里只保留 `help.keyUrl` 和 `help.docsUrl`，界面上显示「去哪里找这些？↗」。分步指引写在仓库文档里（§5.5），因为各家控制台 UI 一直在变，写进扩展会在下次审核前就过期，而文档可以随时更新。
+- 鉴权或开通失败时，气泡卡片按类型分流：key 无效 → 「打开设置」；服务未开通 → 「去控制台开通」外链；音色与模型不匹配 → 「更换音色」。
 
 ## 4. 播放引擎、缓存、出错降级与设置存储
 
@@ -233,27 +312,30 @@ playing ──最后一句结束──► ended
 
 | 类型 | 判定 | 处理 |
 |---|---|---|
-| 鉴权 | 401/403、key 为空 | 立即暂停。竖条提示「API key 无效」，附带打开设置的按钮 |
+| 鉴权 | 401/403、key 为空 | 立即暂停。气泡卡片提示「API key 无效」，按钮「打开设置」/「用浏览器语音」 |
+| 服务未开通 | 豆包 `45000030`、百炼模型未开通 | 立即暂停。气泡卡片提示「服务未开通」，按钮「去控制台开通」外链 |
+| 音色不匹配 | 豆包 `55000000` | 立即暂停。气泡卡片提示「音色与模型版本不匹配」，按钮「更换音色」 |
 | 限流/额度 | 429、服务商的额度错误码 | 指数退避重试 2 次，仍失败就暂停并说明原因 |
 | 网络/服务端 | 5xx、15 秒超时、断网 | 重试 2 次。断网时暂停，监听 `online` 事件后提示可以继续 |
 | 单句被拒 | 400、内容审核 | 跳过该句并标记，继续读下一句 |
 | 时间戳异常 | 缺失或对不齐 | 该句只做句级高亮，不打断播放 |
 | 高亮失效 | DOM 节点被替换 | 按 §3.3 处理 |
+| 自动播放被拒 | `play()` 报 NotAllowedError | 进入暂停，气泡卡片提示「点击继续」，由引擎重试 |
 
-临时改用浏览器语音由 `fallbackToBrowser` 控制，默认值 `ask`：连续出错时提示框里提供「用浏览器语音继续」按钮。可以改为 `auto` 或 `never`。
+错误类型由 `ProviderDescriptor` 里的错误码映射得出（§2.3），不同服务商返回的码不一样，但界面上只有这几种提示。临时改用浏览器语音由 `fallbackToBrowser` 控制，默认 `ask`：连续出错时气泡卡片里多一个「用浏览器语音继续」按钮。可以改为 `auto` 或 `never`。
 
 ### 4.6 设置存储
 
 ```ts
 // chrome.storage.local（不同步；密钥只在这里）
-providers: {
-  dashscope?:   { apiKey: string; workspaceId?: string; region: 'cn-beijing' | 'ap-southeast-1' };
-  openaiCompat: Array<{ id: string; name: string; baseUrl: string; apiKey?: string; model: string;
-                        voices?: string[]; timestamps?: 'kokoro' }>;
-  elevenlabs?:  { apiKey: string; modelId: string };
-  azure?:       { key: string; region: string };
-  volcengine?:  { apiKey: string; resourceId: 'seed-tts-2.0' | 'seed-tts-1.0' | 'seed-icl-2.0' };
-};
+// 统一成实例列表，与「每个实例占一行」的界面一致；单例服务商只是列表里只有一个实例
+providerInstances: Array<{
+  instanceId: string;          // 随机 id
+  providerId: 'dashscope' | 'volcengine' | 'openai-compat' | 'elevenlabs' | 'azure' | 'browser';
+  label: string;               // 显示名，如「本地 Kokoro」「阿里云百炼」
+  config: Record<string, string | boolean | string[]>;   // 按 ProviderDescriptor.fields 渲染和校验
+  status?: { ok: boolean; checkedAt: number; error?: string };
+}>;
 sites: Record<string /* host */, { sidePlayer?: boolean; paragraphPlay?: boolean;
                                    selectionButton?: boolean; playerPos?: { edge: 'left' | 'right'; top: number } }>;
 rtfStats: Record<string /* provider:model:voice */, number>;
@@ -261,12 +343,14 @@ voiceListCache: Record<string /* providerId */, { voices: Voice[]; fetchedAt: nu
 
 // chrome.storage.sync（跨设备同步，不含任何密钥）
 prefs: {
-  voice: { providerId: string; voiceId: string; model?: string };
+  // instanceId 指向 storage.local 里的实例。换设备后指向不存在时，回落到 browser 实例
+  voice: { instanceId?: string; providerId: string; voiceId: string; model?: string };
   rate: number;
   theme: 'auto' | 'light' | 'dark';
   uiLang: 'auto' | 'zh-CN' | 'en';
-  highlight: { sentence: string; word: string };
+  highlight: { sentence: string; word: string; adaptive: boolean; dimRead: boolean; dimReadCount: number };
   autoScroll: boolean; clickToSeek: boolean; skipCode: boolean;
+  seenSelectionHint: boolean;   // 划词按钮的一次性提示只显示一次
   autoShowEverywhere: boolean;
   cache: { persist: boolean; limitMB: number };
   fallbackToBrowser: 'ask' | 'auto' | 'never';
@@ -275,7 +359,8 @@ prefs: {
 ```
 
 - **key 的存储**：key 以明文存在 `storage.local`，本机加密没有实际意义，因为解密密钥也只能放在本机。网页读不到这里的数据。
-- **content script 也能访问**：content script 在技术上也能访问 `storage.local`，所以我们的 content script 代码约定从不读取 `providers`。评审时要检查这一点。
+- **content script 也能访问**：content script 在技术上也能访问 `storage.local`，所以我们的 content script 代码约定从不读取 `providerInstances`。`secret: true` 的字段就存在这里。评审时要检查这一点。
+- **单例服务商的唯一性**：`dashscope`、`volcengine`、`elevenlabs`、`azure`、`browser` 在列表里各只能有一个实例（`browser` 实例在首次启动时自动建好）；`openai-compat` 可以有任意多个。
 - **版本迁移**：用 `schemaVersion` 做迁移。
 
 ## 5. 测试、国际化、快捷键与上架
@@ -325,7 +410,8 @@ CI（GitHub Actions）依次跑：typecheck → Biome → 单元测试 → e2e �
 ### 5.5 交付物
 
 - 扩展源码（MIT）。
-- README（中英），包含各服务商 key 的获取方式和本地 Kokoro-FastAPI 的配置示例。
+- README（中英），包含本地 Kokoro-FastAPI 的配置示例。
+- `docs/providers/*.md`（中英）：每个服务商「怎么申请 key」的分步说明。这部分**刻意不写进扩展**——各家控制台 UI 一直在变，写进扩展会在下次审核前就过期，而文档可以随时改。扩展里只放 `help.keyUrl` / `help.docsUrl` 链接。
 - 隐私说明页。
 - 商店素材（中英）。
 

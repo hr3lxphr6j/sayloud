@@ -108,8 +108,8 @@ interface Provider {
 
 - **整句为单位**：每句等完整缓冲后再播。流式接口（SSE）只在适配器内部拼接，不对引擎暴露。
 - **时间戳统一换算**：由共用的 `alignTimings(sentenceText, rawMarks, kind)` 把各家时间戳统一换算成相对原句的字符偏移。
-  - `offset`：服务直接给出偏移量，直接换算。
-  - `sequential-words`：只给词文本，按顺序在原句里查找（跳过空白和标点）。
+  - `offset`：服务直接给出原文字符偏移（Azure `WordBoundary`、chrome.tts `charIndex`），直接换算。
+  - `sequential-words`：只给词文本和词序号（CosyVoice 的 `begin_index` 是词序号，不是字符偏移；Kokoro 同理），按顺序在原句里查找（跳过空白和标点）。服务端会把数字、缩写、URL 规范化，比如 "1.27" 变成 "一点二七"，"Mr." 变成 "Mister"，遇到对不上的词就跳过，在两侧能对上的锚点之间按字符比例插值。
   - `chars`：字符级时间戳，按 `Intl.Segmenter` 的分词结果合并成词。
   - 对齐失败时返回 `undefined`，交给估算。
 - **估算**：没有时间轴时，按每个词的字符数占整句的比例，分配整句时长。
@@ -127,7 +127,8 @@ interface Provider {
 
 各家限制与约定：
 
-- **单次长度上限**：百炼的 CosyVoice 单次最多 600 字符，Qwen-TTS 最多 512 token。引擎按 `maxChars` 把长句切到上限以内，优先在逗号、分号处切分。
+- **单次长度上限**：百炼的 CosyVoice 单次最多 600 字符，Qwen-TTS 最多 512 token。引擎按 `maxChars` 把长句切到上限以内，优先在逗号、分号处切分。dashscope 的 `maxChars` 取 200，低于服务端自行切句的长度（§6 V4）。适配器仍要能合并多个 `sentence.index`，以防万一。
+- **服务未开通**：豆包返回 `45000030 requested resource not granted`、百炼返回模型未开通一类错误时，归为「服务未开通」，和「key 无效」分开提示，并附上控制台链接。
 - **豆包的鉴权方式**：只支持新版控制台的 `X-Api-Key` 鉴权；旧版控制台的 AppId + Access Token 本期不支持。
 - **豆包的句间上下文**：2.0 的 `section_id`（跨请求关联上下文）本期不用。原因是它会让同一段文本在不同上下文里生成不同音频，与按内容寻址的缓存冲突。
 - **百炼的地域差异**：官方文档写明 CosyVoice 和 Qwen-Audio-TTS 的 HTTP 接口只开放北京地域。设置页选新加坡地域时，要提示哪些模型可用。
@@ -339,12 +340,12 @@ CI（GitHub Actions）依次跑：typecheck → Biome → 单元测试 → e2e �
 | V1 | content script 点击 → SW 调用 `sidePanel.open()`，用户手势能否保留 | ✅ 成立（有条件） | 可信点击后立即发消息能打开；点击后延迟 1.5 秒也能打开；延迟 6 秒、页面加载时自动发送、SW 直接调用，这三种都报 "may only be called in response to a user gesture"。Chrome 按约 5 秒的手势窗口判断（transient activation）。脚本合成的 click 在这窗口内也能打开，所以网页可以借用户的一次点击触发，但只会打开我们自己的设置页，风险可以接受。**设计**：齿轮的点击处理函数必须同步调用 `sendMessage`，SW 收到后也必须同步调用 `sidePanel.open`，中间不能有 await。 |
 | V2 | offscreen（AUDIO_PLAYBACK）不需要用户手势能否直接播放；暂停后是否会被关闭 | ✅ 成立，需要重建逻辑 | 默认自动播放策略下可以直接播放。加上 `--autoplay-policy=user-gesture-required` 时会报 NotAllowedError，说明企业策略或用户改过设置时可能失败。连续播放 48 秒没有被关闭；**暂停约 35 秒后 offscreen 被关闭**，重建后不需要手势就能继续播放。**设计**：引擎的暂停状态（cursor 和句内播放位置）要镜像到 SW 的 `storage.session`；恢复播放时如果 `hasDocument()` 为 false，就重建 offscreen，从缓存取出当前句，并跳到原来的播放位置。L1 内存缓存随之丢失，L2 仍在。`play()` 报 NotAllowedError 时，竖条提示"点击继续"。 |
 | V3 | `chrome.tts` 在 SW 里连续朗读时，SW 会不会被回收，导致 word 事件丢失 | ✅ 成立 | 独立启动的 Chrome 里，SW 发起一次 146 秒的朗读，期间 SW 不做任何事：339 个 word 事件全部收到，最后收到 `end` 事件，没有被回收。macOS 本地音色 180 个，全部支持 word 事件，`charIndex`/`length` 正确，中文音色婷婷按词返回。Port 保活作为保险仍然保留（竖条本来就有 Port）。 |
-| V4 | CosyVoice SSE 的 `words` 与传入的一句文本能否稳定对齐；服务端是否会再切句 | ⏸ 待提供 key | 退路不变：引擎合并多个 sentence，按累计偏移换算 |
+| V4 | CosyVoice SSE 的 `words` 与传入的一句文本能否稳定对齐；服务端是否会再切句 | ✅ 成立（有注意事项） | 用 cosyvoice-v3-flash/longanyang、v3-plus 和 qwen-audio-3.0-tts-flash 实测，workspace 域名和通用域名都能用，首包约 0.35–0.7 秒。SSE 按标准格式分帧（`id:`/`event:`/`:HTTP_STATUS`/`data:`，空行结束一帧），事件类型为 `sentence-begin`/`sentence-synthesis`/`sentence-end`。**① `begin_index/end_index` 是「词的序号」，不是字符偏移**：中文按字切，英文按词切（`' quick'` 带前导空格）。**② 服务端会把数字和 URL 规范化**："1.27" 读作 "一点二七"，"35%" 读作 "百分之三十五"，URL 读作 "H T T P S"，但 `original_text` 和 `normalized_text` 显示的仍是原文，所以要用 `sequential-words` 对齐，对不上的词跳过并插值，和 Kokoro 用同一套逻辑。**③ 服务端会自行切句**：310 字的请求被切成 index 0/1 两句，words 在帧之间是增量下发的，要按 `(sentence.index, begin_index)` 去重后拼接，时间是整段音频的绝对时间。引擎的 `maxChars` 取 **200**，保证一次请求只产生一句。**④** `cosyvoice-v3.5-flash` 加上系统音色会报 400（"Engine return error code: 418"），和文档说的「v3.5 不支持系统音色」一致，音色表要按模型过滤。Qwen-TTS（qwen3-tts-flash）的流式返回是 WAV 分片，最后一帧带 url，没有时间戳。 |
 | V5 | workspace 专属域名在 `chrome-extension://` 源下的 CORS / host 权限行为 | ✅ 成立 | 这条验证不需要 key。SW 带 `Authorization` 和 `X-DashScope-SSE` 头请求通用域名和 workspace 域名，都返回业务层的 401 InvalidApiKey，说明请求到达了服务端，没有被网络或 CORS 拦截。 |
-| V6 | Azure Speech SDK 在 MV3 offscreen 里用订阅 key 能否连接 | 🟡 机制已确认，待提供 key 实连 | 读了 SDK 1.47 源码：浏览器环境下，`WebsocketConnection` 把所有请求头拼成 query 参数，订阅 key 以 `?Ocp-Apim-Subscription-Key=` 出现在 wss URL 里，不需要先换 token。浏览器打包文件压缩后 441KB。注意 key 会出现在 URL 里，错误日志不能打印完整 URL。 |
+| V6 | Azure Speech SDK 在 MV3 扩展页里用订阅 key 能否连接 | ✅ 成立 | SDK 1.47 的浏览器打包文件在扩展页里直接连通（region japaneast），wss URL 带 `?Ocp-Apim-Subscription-Key=`，和读源码的结论一致。中英文的 `WordBoundary` 的 `textOffset/wordLength` 都**直接对应原文字符偏移，0 处不一致**，数字和 "Mr." 按原文返回，所以用 `offset` 对齐即可；标点以 `PunctuationBoundary` 单独返回，合并时过滤掉。1 句约 1.1 秒完成。`speakTextAsync` 第二个参数传 `null`，只拿音频数据，由引擎统一播放。 |
 | V7 | Kokoro-FastAPI 带字幕接口的路径和返回格式 | ✅ 成立（有限制） | 版本 v0.9.0（CPU 镜像）。接口是 `POST /dev/captioned_speech`，请求体同 OpenAI，另加 `stream:false`；返回 `{audio(base64), audio_format, timestamps:[{word,start_time,end_time}]}`，单位是秒，标点单独算一项。**文本会被规范化**："Mr." 变成 "Mister"，"3" 变成 "three"，所以按顺序找词时，遇到对不上的词要跳过，并在两侧锚点之间插值。**中文（zf_*/zm_*）的 timestamps 是空数组**，只能估算。CORS 返回 `*`。`GET /v1/audio/voices` 返回对象数组（id/name）。 |
-| V8 | ElevenLabs `with-timestamps` 的请求和返回字段 | 🟡 文档已确认，待提供 key 实测 | 读了官方 OpenAPI：鉴权用请求头 `xi-api-key`；请求体必填 `text`，可选 `model_id`、`language_code`、`previous_text`/`next_text` 等；`output_format` 在 query 里；返回 `{audio_base64, alignment, normalized_alignment}`，alignment 是三个并行数组 `characters` / `character_start_times_seconds` / `character_end_times_seconds`。对齐用 `alignment`，它对应原文。CORS 预检允许所有来源和请求头。注意 `previous_text`/`next_text` 会让同一段文本生成的音频随上下文变化，和按内容寻址的缓存冲突，所以不传。 |
-| V9 | 豆包：扩展环境下能否带上 `X-Api-Key`；SSE 事件格式；1.0 时间戳能否对齐 | 🟡 请求头已验证，其余待提供 key | 用本地模拟服务对照实测（预检不放行 `x-api-key`）：普通网页发请求被 CORS 拦下；SW 和扩展页在有 host_permissions 时正常发出，服务端收到了这个头。真实的豆包接口用假 key 返回 `401 {code:45000010, message:"Invalid X-Api-Key"}`，说明请求头到达了服务端。**不需要 declarativeNetRequest。** SSE 格式和时间戳待实测。 |
+| V8 | ElevenLabs `with-timestamps` 的请求和返回字段 | 🟡 文档已确认；实测因 key 被拒而阻塞 | 接口返回 `invalid_api_key_length`："API key must be exactly 51 characters, got 50"。key 复制不完整，重新复制后再测。文档层面的结论同前：请求头 `xi-api-key`；返回 `{audio_base64, alignment, normalized_alignment}`，alignment 是三个并行数组；不传 `previous_text`/`next_text`。 |
+| V9 | 豆包：扩展环境下能否带上 `X-Api-Key`；SSE 事件格式；1.0 时间戳能否对齐 | 🟡 请求头已验证；实测因服务未开通而阻塞 | 请求头的结论同前（不需要 declarativeNetRequest）。用真 key 调 `seed-tts-1.0`/`seed-tts-2.0`/`seed-tts-1.0-concurr` 都返回 **403 `45000030 requested resource not granted`**，key 有效，但对应的语音合成资源没有开通或授权给这个 key。**设计补充**：适配器把 45000030 映射成「服务未开通」，提示用户去控制台开通对应的 Resource，不能归为 key 无效。 |
 
 残留风险：V1 和 V2 的结论来自 Chrome for Testing 149，其他版本的 Chrome 可能调整手势窗口或 offscreen 的回收时间。实现时按上述退路处理，不依赖具体数值。
 

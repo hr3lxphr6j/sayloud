@@ -1,0 +1,221 @@
+import { act, fireEvent, render, screen } from '@testing-library/preact';
+import { describe, expect, it, vi } from 'vitest';
+import type { ReaderState } from '~/entrypoints/reader.content/ReaderController';
+import {
+  formatRate,
+  HINTS,
+  nextRate,
+  RATE_STEPS,
+  SidePlayer,
+  type SidePlayerProps,
+} from '~/entrypoints/reader.content/SidePlayer';
+import type { EngineCommand, EngineStatus } from '~/lib/protocol';
+
+function statusOf(overrides: Partial<EngineStatus> = {}): EngineStatus {
+  return {
+    phase: 'playing',
+    index: 0,
+    total: 3,
+    rate: 1,
+    voice: 'Test',
+    charsRead: 0,
+    charsTotal: 300,
+    charsPerSec: 0,
+    ...overrides,
+  };
+}
+
+function stateOf(overrides: Partial<ReaderState> = {}): ReaderState {
+  return {
+    status: statusOf(),
+    hasContent: true,
+    error: null,
+    scrolledAway: false,
+    ...overrides,
+  };
+}
+
+/** A stand-in for ReaderController that records commands and can push state. */
+function fakeController(initial: ReaderState) {
+  const commands: EngineCommand[] = [];
+  const returnToPosition = vi.fn();
+  let current = initial;
+  let listener: ((state: ReaderState) => void) | null = null;
+
+  const controller: SidePlayerProps['controller'] = {
+    getState: () => current,
+    subscribe: (next) => {
+      listener = next;
+      return () => {
+        listener = null;
+      };
+    },
+    sendCommand: (command) => {
+      commands.push(command);
+    },
+    returnToPosition,
+  };
+
+  return {
+    controller,
+    commands,
+    returnToPosition,
+    push: (state: ReaderState) => {
+      current = state;
+      // Preact batches renders, so a pushed state needs act() to reach the DOM.
+      act(() => listener?.(state));
+    },
+  };
+}
+
+function renderPlayer(state: ReaderState = stateOf()) {
+  const fake = fakeController(state);
+  const result = render(<SidePlayer controller={fake.controller} />);
+  return { ...fake, ...result };
+}
+
+describe('nextRate', () => {
+  it('steps up through the preset speeds', () => {
+    expect(nextRate(1)).toBe(1.25);
+    expect(nextRate(1.25)).toBe(1.5);
+  });
+
+  it('wraps around at the top of the range', () => {
+    const last = RATE_STEPS[RATE_STEPS.length - 1];
+    expect(last).toBeDefined();
+    expect(nextRate(last as number)).toBe(RATE_STEPS[0]);
+  });
+
+  it('restarts the cycle for a rate it does not know', () => {
+    expect(nextRate(7)).toBe(RATE_STEPS[0]);
+  });
+});
+
+describe('formatRate', () => {
+  it('drops the trailing zeros', () => {
+    expect(formatRate(1)).toBe('1×');
+    expect(formatRate(1.5)).toBe('1.5×');
+    expect(formatRate(0.75)).toBe('0.75×');
+  });
+});
+
+describe('SidePlayer', () => {
+  it('renders the bar with a control for each action', () => {
+    renderPlayer(stateOf({ status: statusOf({ index: 1 }) }));
+
+    expect(screen.getByRole('toolbar', { name: 'SayLoud' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Previous sentence' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Next sentence' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Playback speed 1×' })).toBeDefined();
+  });
+
+  it('shows pause while reading and play while paused', () => {
+    const { push } = renderPlayer();
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeDefined();
+
+    push(stateOf({ status: statusOf({ phase: 'paused' }) }));
+    expect(screen.getByRole('button', { name: 'Play' })).toBeDefined();
+  });
+
+  it('sends toggle when play/pause is clicked', () => {
+    const { commands } = renderPlayer();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    expect(commands).toEqual([{ type: 'toggle' }]);
+  });
+
+  it('disables the sentence controls at the ends of the document', () => {
+    const { push } = renderPlayer(stateOf({ status: statusOf({ index: 0 }) }));
+
+    const prev = screen.getByRole('button', { name: 'Previous sentence' });
+    expect(prev.hasAttribute('disabled')).toBe(true);
+
+    push(stateOf({ status: statusOf({ index: 2 }) }));
+    const next = screen.getByRole('button', { name: 'Next sentence' });
+    expect(next.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('enables both sentence controls in the middle of the document', () => {
+    renderPlayer(stateOf({ status: statusOf({ index: 1 }) }));
+
+    expect(screen.getByRole('button', { name: 'Previous sentence' }).hasAttribute('disabled')).toBe(
+      false
+    );
+    expect(screen.getByRole('button', { name: 'Next sentence' }).hasAttribute('disabled')).toBe(
+      false
+    );
+  });
+
+  it('steps the speed when the rate control is clicked', () => {
+    const { commands } = renderPlayer();
+    fireEvent.click(screen.getByRole('button', { name: 'Playback speed 1×' }));
+    expect(commands).toEqual([{ type: 'setRate', rate: 1.25 }]);
+  });
+
+  it('reports the progress ring for screen readers', () => {
+    renderPlayer(stateOf({ status: statusOf({ charsRead: 150, charsTotal: 300 }) }));
+
+    const ring = screen.getByRole('button', { name: /Reading progress 50 percent/ });
+    expect(ring).toBeDefined();
+  });
+
+  it('replaces the ring with an error marker and explains it in a card', () => {
+    renderPlayer(
+      stateOf({ status: statusOf({ phase: 'error', error: 'no-voice' }), error: 'no-voice' })
+    );
+
+    expect(screen.getByRole('img', { name: /Reading progress/ })).toBeDefined();
+    expect(screen.getByRole('status').textContent).toContain(HINTS['no-voice'].title);
+    expect(screen.getByRole('status').textContent).toContain(HINTS['no-voice'].message);
+  });
+
+  it('explains an unreadable page even before the engine answers', () => {
+    renderPlayer(stateOf({ status: null, hasContent: false, error: 'no-content' }));
+
+    expect(screen.getByRole('status').textContent).toContain(HINTS['no-content'].message);
+    // Nothing is playing, so the control offers to start rather than pause.
+    expect(screen.getByRole('button', { name: 'Play' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('offers a way back once the reader has scrolled away', () => {
+    const { returnToPosition } = renderPlayer(stateOf({ scrolledAway: true }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to position' }));
+    expect(returnToPosition).toHaveBeenCalledOnce();
+  });
+
+  it('shows the remaining time while the pointer is over the bar', () => {
+    renderPlayer(
+      stateOf({
+        status: statusOf({ charsRead: 0, charsTotal: 9_000, charsPerSec: 12 }),
+      })
+    );
+
+    fireEvent.mouseEnter(screen.getByRole('toolbar'));
+    expect(screen.getByRole('status').textContent).toContain('12:30 left');
+  });
+
+  it('maps the arrow keys and space to playback commands', () => {
+    const { commands } = renderPlayer(stateOf({ status: statusOf({ index: 1 }) }));
+    const toolbar = screen.getByRole('toolbar');
+
+    fireEvent.keyDown(toolbar, { key: 'ArrowRight' });
+    fireEvent.keyDown(toolbar, { key: 'ArrowLeft' });
+    fireEvent.keyDown(toolbar, { key: ' ' });
+
+    expect(commands).toEqual([{ type: 'next' }, { type: 'prev' }, { type: 'toggle' }]);
+  });
+
+  it('leaves space to the button when a button has focus', () => {
+    const { commands } = renderPlayer(stateOf({ status: statusOf({ index: 1 }) }));
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Next sentence' }), { key: ' ' });
+    expect(commands).toEqual([]);
+  });
+
+  it('shows a spinner instead of the play icon while the sentence loads', () => {
+    const { container } = renderPlayer(stateOf({ status: statusOf({ phase: 'loading' }) }));
+
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeDefined();
+    expect(container.querySelector('.spinner')).not.toBeNull();
+  });
+});

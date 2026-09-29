@@ -19,8 +19,10 @@ export default defineConfig({
     name: 'SayLoud',
     version: '0.1.0',
     // The reader is injected into the clicked tab under `activeTab`, so the
-    // extension asks for no standing access to any site.
-    permissions: ['activeTab', 'scripting', 'storage', 'tts'],
+    // extension asks for no standing access to any site. `offscreen` is what
+    // lets the service worker own an audio document, which is the only place
+    // cloud audio can be decoded and played.
+    permissions: ['activeTab', 'scripting', 'storage', 'tts', 'offscreen'],
     action: {},
     ...(mode === 'e2e' && { host_permissions: e2eHostPermissions() }),
   }),

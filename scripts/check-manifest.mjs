@@ -18,9 +18,18 @@ import { readFile } from 'node:fs/promises';
  * injected into the clicked tab under `activeTab`, so no standing host access is
  * needed. `sidePanel` is added by WXT because `entrypoints/sidepanel` exists —
  * the manifest's `side_panel.default_path` is inert without it — and it grants
- * nothing beyond showing the panel.
+ * nothing beyond showing the panel. `offscreen` is P2's: cloud audio is fetched
+ * and played in an offscreen document, because a service worker cannot play
+ * audio and a content script would be subject to the page's CSP.
  */
-const EXPECTED_PERMISSIONS = ['activeTab', 'scripting', 'sidePanel', 'storage', 'tts'];
+const EXPECTED_PERMISSIONS = [
+  'activeTab',
+  'offscreen',
+  'scripting',
+  'sidePanel',
+  'storage',
+  'tts',
+];
 
 const path = process.argv[2] ?? '.output/chrome-mv3/manifest.json';
 

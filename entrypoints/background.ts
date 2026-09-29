@@ -1,4 +1,5 @@
 import { type Browser, browser } from 'wxt/browser';
+import { CONFIG_KEY, SELECTED_VOICES_KEY } from '~/lib/config-store';
 import { createApp } from '~/lib/container';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
@@ -12,7 +13,15 @@ declare global {
 }
 
 export default defineBackground(() => {
-  const app = createApp({ tts: browser.tts, storage: browser.storage });
+  const app = createApp({
+    tts: browser.tts,
+    storage: browser.storage,
+    offscreen: {
+      offscreen: browser.offscreen,
+      runtime: browser.runtime,
+      events: browser.runtime.onMessage,
+    },
+  });
 
   // Track which tabs have active content scripts via their port connections.
   const activeTabs = new Set<number>();
@@ -21,6 +30,14 @@ export default defineBackground(() => {
   // be refreshed out of band whenever Chrome's voice list changes.
   browser.tts.onVoicesChanged.addListener(() => {
     void app.voices.refresh();
+  });
+
+  // The provider and the chosen voice decide which speaker is speaking, so a
+  // save in the settings panel has to reach the router without a reload.
+  browser.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    if (!(CONFIG_KEY in changes) && !(SELECTED_VOICES_KEY in changes)) return;
+    void app.speakers.refresh();
   });
 
   // Restores a session left behind by a recycled service worker. The router
@@ -88,6 +105,11 @@ export default defineBackground(() => {
       console.log('[SayLoud] content script already active in tab', id);
       return;
     }
+
+    // The reader starts speaking as soon as it connects, and the voice it gets
+    // depends on the saved provider: reading that is asynchronous, so wait for
+    // it before there is anything to read with.
+    await app.ready;
 
     try {
       await browser.scripting.executeScript({

@@ -28,6 +28,7 @@
     "@vitest/coverage-v8": "^5.0.2",
     "@vitest/ui": "5.0.2",
     "@wxt-dev/browser": "0.3.4",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "20.14.5",
     "msw": "^3.0.0",
     "preact": "10.29.8",

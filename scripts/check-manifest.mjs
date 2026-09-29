@@ -11,8 +11,16 @@
  */
 import { readFile } from 'node:fs/promises';
 
-/** What the plan fixes for P1: nothing beyond these four. */
-const EXPECTED_PERMISSIONS = ['activeTab', 'scripting', 'storage', 'tts'];
+/**
+ * What the extension is allowed to ask for.
+ *
+ * `activeTab`, `scripting`, `storage` and `tts` are P1's set: the reader is
+ * injected into the clicked tab under `activeTab`, so no standing host access is
+ * needed. `sidePanel` is added by WXT because `entrypoints/sidepanel` exists —
+ * the manifest's `side_panel.default_path` is inert without it — and it grants
+ * nothing beyond showing the panel.
+ */
+const EXPECTED_PERMISSIONS = ['activeTab', 'scripting', 'sidePanel', 'storage', 'tts'];
 
 const path = process.argv[2] ?? '.output/chrome-mv3/manifest.json';
 

@@ -3,12 +3,9 @@
 // the Window, which MSW does not patch, so provider tests run under node.
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { isProviderError } from '~/lib/providers/errors';
 import {
   concatChunks,
   decodeBase64,
-  ensureOk,
-  errorResponse,
   isRecord,
   parseJsonChunks,
   parseSse,
@@ -66,43 +63,6 @@ describe('sendRequest', () => {
     await expect(
       sendRequest(URL_UNDER_TEST, { method: 'POST', signal: controller.signal })
     ).rejects.toMatchObject({ name: 'AbortError' });
-  });
-});
-
-describe('ensureOk', () => {
-  it('passes a 2xx through', async () => {
-    await expect(ensureOk(new Response('fine', { status: 200 }))).resolves.toBeUndefined();
-  });
-
-  it('maps the status and body message', async () => {
-    const response = new Response(JSON.stringify({ message: 'quota exhausted' }), { status: 402 });
-
-    await expect(ensureOk(response)).rejects.toMatchObject({
-      code: 'no-quota',
-      message: 'quota exhausted',
-    });
-  });
-
-  it('falls back to the status when the body has no message', async () => {
-    await expect(ensureOk(new Response('', { status: 503 }))).rejects.toMatchObject({
-      code: 'service-unavailable',
-      message: 'HTTP 503',
-    });
-  });
-});
-
-describe('errorResponse', () => {
-  it('uses the caller fallback when the body carries no message', async () => {
-    const error = await errorResponse(new Response('', { status: 400 }), 'bad request');
-
-    expect(error.message).toBe('bad request');
-    expect(error.code).toBe('unknown');
-  });
-
-  it('keeps the status and body in details for the error UI', async () => {
-    const error = await errorResponse(new Response('nope', { status: 429 }), 'fallback');
-
-    expect(error.details).toEqual({ status: 429, body: 'nope' });
   });
 });
 
@@ -265,11 +225,5 @@ describe('record readers', () => {
     expect(readFirstString(record, ['missing'])).toBeUndefined();
     expect(readFirstNumber(record, ['startMs', 'start_time'])).toBe(10);
     expect(readFirstNumber(record, ['missing'])).toBeUndefined();
-  });
-
-  it('produces ProviderError instances for status mapping', async () => {
-    const error = await errorResponse(new Response('', { status: 500 }), 'boom');
-
-    expect(isProviderError(error)).toBe(true);
   });
 });

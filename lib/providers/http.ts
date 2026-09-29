@@ -5,14 +5,7 @@
  * but the mechanics — network failures, base64 audio, SSE framing, chunked
  * JSON — are identical across services, so they live here.
  */
-import {
-  errorFromStatus,
-  isAbortError,
-  messageFromBody,
-  networkError,
-  type ProviderError,
-  readBodyText,
-} from './errors';
+import { isAbortError, networkError } from './errors';
 
 /**
  * Issue a request, translating transport failures into `ProviderError`.
@@ -33,27 +26,6 @@ export async function sendRequest(
     if (isAbortError(error)) throw error;
     throw networkError(error);
   }
-}
-
-/** Throw a mapped `ProviderError` unless the response is 2xx. */
-export async function ensureOk(response: Response): Promise<void> {
-  if (response.ok) return;
-
-  const body = await readBodyText(response);
-  throw errorFromStatus(response.status, messageFromBody(body, `HTTP ${response.status}`), {
-    status: response.status,
-    body,
-  });
-}
-
-/** Build a provider error from a non-2xx response, with the body preserved. */
-export async function errorResponse(response: Response, fallback: string): Promise<ProviderError> {
-  const body = await readBodyText(response);
-  return errorFromStatus(
-    response.status,
-    messageFromBody(body, fallback || `HTTP ${response.status}`),
-    { status: response.status, body }
-  );
 }
 
 /**

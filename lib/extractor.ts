@@ -3,6 +3,12 @@ import { isProbablyReaderable, Readability } from '@mozilla/readability';
 export interface Block {
   text: string;
   rangeFor(start: number, end: number): Range | null;
+  /**
+   * Map a DOM position back to an offset in `text`, for click-to-seek.
+   * Returns an insertion point in `[0, text.length]`, or null when `node`
+   * carries no text from this block.
+   */
+  offsetAt(node: Node, offset: number): number | null;
 }
 
 /** Elements that make up exactly one readable block. */
@@ -135,6 +141,18 @@ function buildBlock(el: Element): Block | null {
       range.setStart(first.node, first.offset);
       range.setEnd(last.node, last.offset + 1);
       return range;
+    },
+    offsetAt(node: Node, offset: number): number | null {
+      let lastOfNode = -1;
+      for (let i = 0; i < chars.length; i++) {
+        const ref = chars[i];
+        if (ref?.node !== node) continue;
+        if (ref.offset >= offset) return i;
+        lastOfNode = i;
+      }
+      // Past the last character this node contributes: report the position
+      // just after it so callers can still resolve a sentence.
+      return lastOfNode === -1 ? null : lastOfNode + 1;
     },
   };
 }

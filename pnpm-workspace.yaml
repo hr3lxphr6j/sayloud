@@ -1,0 +1,2 @@
+minimumReleaseAgeExclude:
+  - '@wxt-dev/browser@0.3.4'

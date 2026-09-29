@@ -1,10 +1,7 @@
 import { type Browser, browser } from 'wxt/browser';
-import { PlaybackEngine } from '~/lib/playback-engine';
+import { createApp } from '~/lib/container';
 import { PORT_NAME } from '~/lib/port';
-import { type RouterPort, SessionRouter } from '~/lib/router';
-import { SnapshotStore } from '~/lib/snapshot-store';
-import { BrowserSpeaker } from '~/lib/speaker';
-import { VoiceCache } from '~/lib/voice-cache';
+import type { RouterPort } from '~/lib/router';
 
 /** Emitted by WXT from `entrypoints/reader.content.tsx`. */
 const CONTENT_SCRIPT = '/content-scripts/reader.js';
@@ -15,25 +12,17 @@ declare global {
 }
 
 export default defineBackground(() => {
-  const voices = new VoiceCache(browser.tts);
-  const engine = new PlaybackEngine({
-    speaker: new BrowserSpeaker(browser.tts),
-    resolveVoice: (lang) => voices.resolve(lang),
-  });
-  const router = new SessionRouter({
-    engine,
-    snapshots: new SnapshotStore(browser.storage.session),
-    voices,
-  });
+  const app = createApp({ tts: browser.tts, storage: browser.storage });
 
   // The engine resolves a voice synchronously per sentence, so the cache has to
   // be refreshed out of band whenever Chrome's voice list changes.
   browser.tts.onVoicesChanged.addListener(() => {
-    void voices.refresh();
+    void app.voices.refresh();
   });
 
-  // Restores a session left behind by a recycled service worker.
-  router.start().catch((error: unknown) => {
+  // Restores a session left behind by a recycled service worker. The router
+  // refreshes the voice cache itself, so a restart picks up new voices too.
+  app.router.start().catch((error: unknown) => {
     console.error('[SayLoud] failed to start the session router', error);
   });
 
@@ -43,20 +32,20 @@ export default defineBackground(() => {
 
   browser.runtime.onConnect.addListener((port) => {
     if (port.name !== PORT_NAME) return;
-    router.handlePort(toRouterPort(port));
+    app.router.handlePort(toRouterPort(port));
   });
 
   browser.tabs.onRemoved.addListener((tabId) => {
-    router.handleTabRemoved(tabId);
+    app.router.handleTabRemoved(tabId);
   });
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (changeInfo.url) router.handleTabUpdated(tabId, changeInfo);
+    if (changeInfo.url) app.router.handleTabUpdated(tabId, changeInfo);
   });
 
   // Only one tab reads at a time, so switching tabs pauses the running session.
   browser.tabs.onActivated.addListener(({ tabId }) => {
-    router.handleTabActivated(tabId);
+    app.router.handleTabActivated(tabId);
   });
 
   if (import.meta.env.MODE === 'e2e') {

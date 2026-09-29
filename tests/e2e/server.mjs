@@ -28,6 +28,13 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  // Chrome fetches this itself, outside the page's network context, so a 404
+  // here shows up as a console error and hides real ones.
+  if (pathname === '/favicon.ico') {
+    response.writeHead(204).end();
+    return;
+  }
+
   const name = pathname.replace(/^\/+/, '') || 'index.html';
   const file = resolve(ROOT, name);
 

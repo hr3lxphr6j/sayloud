@@ -61,6 +61,24 @@ test.describe('reading a page with the browser voice', () => {
     await expect(page.locator(`#${HOST_ID}`)).toHaveCount(1);
   });
 
+  test('renders the 28px bar against the right edge', async ({ page, activate }) => {
+    await page.goto('/article.html');
+    await activate();
+
+    const bar = page.getByRole('toolbar', { name: 'SayLoud' });
+    await expect(bar).toBeVisible();
+
+    const box = await bar.boundingBox();
+    const viewport = page.viewportSize();
+    if (!box || !viewport) throw new Error('the bar was never laid out');
+
+    // The spec fixes the bar at 28px wide, pinned to the right edge in a single
+    // column. A taller-than-wide box is what makes it a bar and not a panel.
+    expect(box.width).toBe(28);
+    expect(viewport.width - (box.x + box.width)).toBeLessThanOrEqual(16);
+    expect(box.height).toBeGreaterThan(box.width);
+  });
+
   test('resumes a paused session after the worker is recycled', async ({
     page,
     context,

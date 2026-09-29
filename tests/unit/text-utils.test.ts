@@ -22,4 +22,34 @@ describe('text-utils', () => {
     const words = segmentWords('Hello world.', 'en');
     expect(words.map((w) => w.text)).toEqual(['Hello', 'world']);
   });
+
+  describe('offset alignment', () => {
+    // Highlighters slice the block text with [start, end), so a segment's text
+    // must be exactly the substring it claims to cover.
+    it('keeps English sentence offsets aligned with the trimmed text', () => {
+      const source = 'Hello world. Goodbye!';
+      const sents = segmentSentences(source, 'en');
+
+      expect(sents.length).toBeGreaterThan(0);
+      for (const s of sents) {
+        expect(s.text.length).toBe(s.end - s.start);
+        expect(source.slice(s.start, s.end)).toBe(s.text);
+      }
+    });
+
+    it('keeps Chinese sentence offsets aligned with the trimmed text', () => {
+      const source = '你好。 再见。';
+      const sents = segmentSentences(source, 'zh');
+
+      expect(sents.length).toBeGreaterThan(0);
+      for (const s of sents) {
+        expect(s.text.length).toBe(s.end - s.start);
+        expect(source.slice(s.start, s.end)).toBe(s.text);
+      }
+    });
+
+    it('drops whitespace-only segments', () => {
+      expect(segmentSentences('   ', 'en')).toEqual([]);
+    });
+  });
 });

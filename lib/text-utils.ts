@@ -10,9 +10,17 @@ export interface Segment {
 
 export function segmentSentences(text: string, lang: string): Segment[] {
   const seg = new Intl.Segmenter(lang, { granularity: 'sentence' });
-  return Array.from(seg.segment(text))
-    .map((s) => ({ text: s.segment.trim(), start: s.index, end: s.index + s.segment.length }))
-    .filter((s) => s.text.length > 0);
+  const segments: Segment[] = [];
+  for (const part of seg.segment(text)) {
+    // `Intl.Segmenter` keeps trailing whitespace inside a sentence, so trim it
+    // and shift `start` accordingly: consumers slice the source with
+    // [start, end), which only works while `text.length === end - start`.
+    const trimmed = part.segment.trim();
+    if (trimmed.length === 0) continue;
+    const start = part.index + (part.segment.length - part.segment.trimStart().length);
+    segments.push({ text: trimmed, start, end: start + trimmed.length });
+  }
+  return segments;
 }
 
 export function segmentWords(text: string, lang: string): Segment[] {

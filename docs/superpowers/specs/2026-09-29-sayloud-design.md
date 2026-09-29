@@ -21,7 +21,7 @@
 - **Side Player 竖条**：嵌在网页里，负责全部进度控制。
 - **Paragraph Play**：鼠标悬停段落时出现按钮，点击后从该段开始读。
 - **划词朗读**：通过选区按钮、右键菜单或快捷键朗读选中文字。
-- **5 类语音服务**：阿里云百炼、OpenAI 兼容端点（含本地服务）、ElevenLabs、Azure、浏览器内置语音。
+- **6 类语音服务**：阿里云百炼、火山引擎豆包语音（剪映同款音色）、OpenAI 兼容端点（含本地服务）、ElevenLabs、Azure、浏览器内置语音。
 - **Chrome 原生侧边栏**：只放设置。
 - **本地音频缓存**：内存加 IndexedDB 两层。
 
@@ -97,7 +97,7 @@ interface SynthesisResult {
 interface Voice { id: string; name: string; lang?: string; gender?: string; supportsTimings?: boolean }
 
 interface Provider {
-  id: 'dashscope' | 'openai-compat' | 'elevenlabs' | 'azure' | 'browser';
+  id: 'dashscope' | 'volcengine' | 'openai-compat' | 'elevenlabs' | 'azure' | 'browser';
   kind: 'audio' | 'self-speaking';          // browser 由 chrome.tts 自己发声
   capabilities(cfg): { timings: 'exact' | 'none'; maxChars: number; concurrency: number };
   validate(cfg): Promise<void>;             // 设置页「测试连接」
@@ -119,6 +119,7 @@ interface Provider {
 | 适配器 | 调用 | 逐词时间 | 音色 | 配置 |
 |---|---|---|---|---|
 | dashscope | HTTP，`X-DashScope-SSE: enable`，拼接 base64 分片。CosyVoice / Qwen-Audio-TTS：`https://{WorkspaceId}.{region}.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer`；Qwen-TTS：`https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`（国际站用 `dashscope-intl`） | CosyVoice v3/v3.5 开启 `word_timestamp_enabled` 后精确，返回每个字的 `begin_index/end_index/begin_time/end_time`；只在流式模式下可用，只有部分音色支持 | 内置静态音色表，标注是否支持时间戳 | apiKey、workspaceId、region（cn-beijing / ap-southeast-1）、model |
+| volcengine | `POST https://openspeech.bytedance.com/api/v3/tts/unidirectional`（HTTP Chunked/SSE），请求头 `X-Api-Key` + `X-Api-Resource-Id`（`seed-tts-2.0` / `seed-tts-1.0` / `seed-icl-2.0`，同时决定模型版本和计费方式） | 仅 TTS 1.0 音色：`enable_timestamp` 返回字/词级时间戳，跟在 `TTSSentenceEnd` 事件里，只支持中英文；2.0 音色走估算 | 内置静态音色表，按 1.0 / 2.0 分组，标注是否支持时间戳 | apiKey、resourceId、speaker |
 | openai-compat | `POST {baseUrl}/audio/speech` | OpenAI 官方没有。Kokoro-FastAPI 预设改走它的带字幕接口 | 先请求 `GET {baseUrl}/audio/voices`，失败就用用户填写的列表 | 可配置多个实例：name、baseUrl、apiKey（可空）、model、voices、timestamps 预设 |
 | elevenlabs | `POST /v1/text-to-speech/{voice}/with-timestamps` | 字符级，精确 | `GET /v1/voices` | apiKey、modelId |
 | azure | Speech SDK（WebSocket），在 offscreen 里懒加载 | `WordBoundary` 事件，精确 | voices/list 接口 | key、region |
@@ -127,6 +128,8 @@ interface Provider {
 各家限制与约定：
 
 - **单次长度上限**：百炼的 CosyVoice 单次最多 600 字符，Qwen-TTS 最多 512 token。引擎按 `maxChars` 把长句切到上限以内，优先在逗号、分号处切分。
+- **豆包的鉴权方式**：只支持新版控制台的 `X-Api-Key` 鉴权；旧版控制台的 AppId + Access Token 本期不支持。
+- **豆包的句间上下文**：2.0 的 `section_id`（跨请求关联上下文）本期不用。原因是它会让同一段文本在不同上下文里生成不同音频，与按内容寻址的缓存冲突。
 - **百炼的地域差异**：官方文档写明 CosyVoice 和 Qwen-Audio-TTS 的 HTTP 接口只开放北京地域。设置页选新加坡地域时，要提示哪些模型可用。
 - **浏览器语音**：`chrome.tts` 在 offscreen 里调不到，所以放在 SW 里执行。引擎把它当成自己发声的 provider：指令经 SW 转发，word 事件回传后走同一套进度事件。
 
@@ -246,6 +249,7 @@ providers: {
                         voices?: string[]; timestamps?: 'kokoro' }>;
   elevenlabs?:  { apiKey: string; modelId: string };
   azure?:       { key: string; region: string };
+  volcengine?:  { apiKey: string; resourceId: 'seed-tts-2.0' | 'seed-tts-1.0' | 'seed-icl-2.0' };
 };
 sites: Record<string /* host */, { sidePlayer?: boolean; paragraphPlay?: boolean;
                                    selectionButton?: boolean; playerPos?: { edge: 'left' | 'right'; top: number } }>;
@@ -305,7 +309,7 @@ CI（GitHub Actions）依次跑：typecheck → Biome → 单元测试 → e2e �
 
 - **权限**：`activeTab`、`scripting`、`offscreen`、`storage`、`unlimitedStorage`、`contextMenus`、`sidePanel`、`tts`。
 - **可选权限**：`optional_host_permissions` 包含：
-  - 各服务商域名：`*.aliyuncs.com`、`api.openai.com`、`api.elevenlabs.io`、`*.tts.speech.microsoft.com` 等
+  - 各服务商域名：`*.aliyuncs.com`、`openspeech.bytedance.com`、`api.openai.com`、`api.elevenlabs.io`、`*.tts.speech.microsoft.com` 等
   - 用户自定义的 baseUrl，申请时按其 origin 动态请求
   - `<all_urls>`，用于「在所有网站自动显示」
 - **单一用途**：朗读网页文字。
@@ -336,6 +340,7 @@ CI（GitHub Actions）依次跑：typecheck → Biome → 单元测试 → e2e �
 | V6 | Azure Speech SDK 在 MV3 offscreen 里用订阅 key 能否连接（浏览器 WebSocket 不能设置请求头，需要确认 SDK 走 query 参数还是先换取 token） | 先请求 `issueToken` 换取 token，再连接 |
 | V7 | Kokoro-FastAPI 带字幕接口的路径和返回格式 | 按 OpenAI 兼容方式处理，逐词位置用估算 |
 | V8 | ElevenLabs `with-timestamps` 的请求和返回字段 | 以官方文档为准，调整适配器 |
+| V9 | 豆包：在扩展环境下能否带上 `X-Api-Key` 请求头（实测 CORS 预检的允许列表里没有这个头，需要确认 host_permissions 能否绕过）；SSE 事件格式；1.0 时间戳与原句能否对齐 | 在 SW 里用 declarativeNetRequest 注入请求头；仍不行就只支持旧版 AppId 鉴权 |
 
 ## 附录 A：调研摘要
 
@@ -368,3 +373,12 @@ CI（GitHub Actions）依次跑：typecheck → Biome → 单元测试 → e2e �
 - **鉴权**：`Authorization: Bearer <API Key>`。浏览器原生 WebSocket 不能设置请求头，所以本期只走 HTTP。
 - **CORS**：实测 `dashscope.aliyuncs.com` 的 CORS 预检会回显 `chrome-extension://` 源。
 - **协议**：不兼容 OpenAI 的 `/audio/speech`，需要单独写适配器。
+
+### A.4 火山引擎豆包语音
+
+- 剪映自己不对外开放 AI 配音 API；它的配音用的是火山引擎的豆包语音模型，火山引擎的产品页称剪映为「深度合作伙伴」。
+- 接口类型：HTTP Chunked/SSE 单向流式，另有 WebSocket 单向和双向流式。
+- 鉴权：新版控制台用 `X-Api-Key`；旧版控制台用 AppId + Access Token。
+- 时间戳：`enable_timestamp` 只有 TTS 1.0 支持，只支持中英文。
+- 2026-09-29 实测 CORS 预检：`allow-origin: *`，但 `allow-headers` 里没有 `X-Api-Key`。
+- 非官方的剪映逆向接口没有授权，本项目不采用。

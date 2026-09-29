@@ -109,6 +109,8 @@ export interface ElevenLabsConfig {
   model?: string;
   /** Voice settings forwarded verbatim. */
   voiceSettings?: Record<string, unknown>;
+  /** Output format, e.g. `mp3_44100_128`. Sent as a query parameter. */
+  outputFormat?: string;
   baseUrl?: string;
 }
 

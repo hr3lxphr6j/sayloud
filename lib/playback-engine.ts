@@ -13,6 +13,9 @@ export type EngineError = NonNullable<EngineStatus['error']>;
 /** Resolve the voice name to use for a language, or undefined when none fits. */
 export type VoiceResolver = (lang: string) => string | undefined;
 
+// A resolver returns `undefined` to mean "no usable voice" and an empty string
+// to mean "let chrome.tts pick the default".
+
 export interface EngineDeps {
   speaker: Speaker;
   resolveVoice: VoiceResolver;
@@ -201,7 +204,8 @@ export class PlaybackEngine {
 
     // A page with no usable voice is a dead end; surface it before "loading"
     // so the UI can offer to install a voice instead of spinning forever.
-    if (!this.resolveVoice(this.sentences[this.index]?.lang ?? '')) {
+    // An empty name is valid here: chrome.tts reads it as "any available voice".
+    if (this.resolveVoice(this.sentences[this.index]?.lang ?? '') === undefined) {
       this.voice = '';
       this.fail('no-voice');
       return;
@@ -310,7 +314,7 @@ export class PlaybackEngine {
       if (!sentence || sentence.text.length === 0) continue;
 
       const voice = this.resolveVoice(sentence.lang);
-      if (!voice) {
+      if (voice === undefined) {
         this.index = index;
         this.voice = '';
         this.fail('no-voice');

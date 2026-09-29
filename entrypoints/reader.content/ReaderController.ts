@@ -250,7 +250,14 @@ export class ReaderController {
     // Our own smooth scroll fires scroll events; announce it so they are not
     // mistaken for the reader scrolling away.
     this.suspension.noteProgrammatic();
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Choose scroll alignment based on element position to avoid unnecessary jumps.
+    // For elements near the top, 'start' keeps the page from scrolling down to center them.
+    const rect = range.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const block = rect.top < viewportHeight * 0.3 ? 'start' : 'center';
+
+    element.scrollIntoView({ behavior: 'smooth', block });
   }
 
   private readonly onScroll = (): void => {

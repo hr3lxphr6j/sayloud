@@ -78,7 +78,7 @@ Chrome Side Panel：只放设置（按站点开关、音色语速、服务商与
    - 默认只用 activeTab：用户点工具栏图标、按快捷键或用右键菜单时，才向当前页注入脚本。
    - 服务商域名都放在 `optional_host_permissions` 里，用户配置该服务时再申请。
    - 「在所有网站自动显示 Side Player / Paragraph Play / 划词按钮」需要 `<all_urls>`，用户在设置里开启时才申请。开启后，用 `scripting.registerContentScripts` 动态注册脚本。
-5. **齿轮按钮打开侧边栏。** 做法是在 content script 的点击事件里发消息给 SW，由 SW 调用 `chrome.sidePanel.open({tabId})`。这一步能否保留用户手势需要验证（见 §6 V1）。如果不能，齿轮改为打开 options 页（和侧边栏用同一套设置 UI）。
+5. **齿轮按钮打开侧边栏。** 在 content script 的点击处理函数里同步调用 `sendMessage`，SW 收到后同步调用 `chrome.sidePanel.open({tabId})`，中间不能有 await。已实测可行（见 §6 V1）。如果调用失败，比如手势已经过期，就降级为打开 options 页（和侧边栏用同一套设置 UI）。
 
 ## 2. Provider 层
 
@@ -120,9 +120,9 @@ interface Provider {
 |---|---|---|---|---|
 | dashscope | HTTP，`X-DashScope-SSE: enable`，拼接 base64 分片。CosyVoice / Qwen-Audio-TTS：`https://{WorkspaceId}.{region}.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer`；Qwen-TTS：`https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`（国际站用 `dashscope-intl`） | CosyVoice v3/v3.5 开启 `word_timestamp_enabled` 后精确，返回每个字的 `begin_index/end_index/begin_time/end_time`；只在流式模式下可用，只有部分音色支持 | 内置静态音色表，标注是否支持时间戳 | apiKey、workspaceId、region（cn-beijing / ap-southeast-1）、model |
 | volcengine | `POST https://openspeech.bytedance.com/api/v3/tts/unidirectional`（HTTP Chunked/SSE），请求头 `X-Api-Key` + `X-Api-Resource-Id`（`seed-tts-2.0` / `seed-tts-1.0` / `seed-icl-2.0`，同时决定模型版本和计费方式） | 仅 TTS 1.0 音色：`enable_timestamp` 返回字/词级时间戳，跟在 `TTSSentenceEnd` 事件里，只支持中英文；2.0 音色走估算 | 内置静态音色表，按 1.0 / 2.0 分组，标注是否支持时间戳 | apiKey、resourceId、speaker |
-| openai-compat | `POST {baseUrl}/audio/speech` | OpenAI 官方没有。Kokoro-FastAPI 预设改走它的带字幕接口 | 先请求 `GET {baseUrl}/audio/voices`，失败就用用户填写的列表 | 可配置多个实例：name、baseUrl、apiKey（可空）、model、voices、timestamps 预设 |
-| elevenlabs | `POST /v1/text-to-speech/{voice}/with-timestamps` | 字符级，精确 | `GET /v1/voices` | apiKey、modelId |
-| azure | Speech SDK（WebSocket），在 offscreen 里懒加载 | `WordBoundary` 事件，精确 | voices/list 接口 | key、region |
+| openai-compat | `POST {baseUrl}/audio/speech` | OpenAI 官方没有。Kokoro-FastAPI 预设改走 `POST {origin}/dev/captioned_speech`（`stream:false`），返回逐词时间，单位是秒；它会规范化文本，按 `sequential-words` 对齐，对不上的词跳过并插值。中文音色没有时间戳，用估算 | 先请求 `GET {baseUrl}/audio/voices`，失败就用用户填写的列表 | 可配置多个实例：name、baseUrl、apiKey（可空）、model、voices、timestamps 预设 |
+| elevenlabs | `POST /v1/text-to-speech/{voice}/with-timestamps`，请求头 `xi-api-key`，返回 `{audio_base64, alignment}` | 字符级，精确。用 `alignment` 的三个并行数组，按 `chars` 合并成词；不传 `previous_text`/`next_text` | `GET /v1/voices` | apiKey、modelId |
+| azure | Speech SDK（WebSocket），在 offscreen 里懒加载；浏览器环境下订阅 key 拼在 wss URL 的 query 里，日志不能打印完整 URL | `WordBoundary` 事件，精确 | voices/list 接口 | key、region |
 | browser | `chrome.tts.speak`（在 SW 中执行） | word 事件的 `charIndex` | `chrome.tts.getVoices()` | 无 |
 
 各家限制与约定：
@@ -195,6 +195,8 @@ playing ──最后一句结束──► ended
 - **会话内容**：`{tabId, docId, sentences[], cursor, voice, rate}`。句子列表由 content script 提取后一次性发送过来。
 - **跳转**：上一句/下一句、Paragraph Play、点击跳读都直接设置 cursor。换音色时丢弃当前句的音频，从当前句重新开始读。变速只改 `playbackRate`。
 - **结束会话**：页面跳转（`tabs.onUpdated` 的 url 变化）或 tab 关闭时，结束会话。
+- **offscreen 被回收**：实测暂停约 35 秒后 offscreen 会被关闭（§6 V2）。引擎在暂停时，把 `{cursor, 句内 currentTime, voice, rate}` 镜像到 SW 的 `storage.session`。恢复播放时如果 `offscreen.hasDocument()` 为 false，就重建 offscreen，把会话恢复到上述快照，当前句优先从 L2 缓存取，再跳到原来的 currentTime。句子列表重新向 content script 要一份。
+- **自动播放被拒**：`audio.play()` 报 NotAllowedError（企业策略或用户改过自动播放设置）时，进入 paused，竖条提示「点击继续」。用户点击竖条后由引擎重试。
 
 ### 4.2 进度推送
 
@@ -330,17 +332,21 @@ CI（GitHub Actions）依次跑：typecheck → Biome → 单元测试 → e2e �
 
 以下都用一次性脚本验证，结论写回本文档。验证代码不保留。
 
-| # | 问题 | 不成立时的退路 |
-|---|---|---|
-| V1 | content script 点击 → SW 调用 `sidePanel.open()`，用户手势能否保留 | 齿轮改为打开 options 页 |
-| V2 | offscreen（AUDIO_PLAYBACK）不需要用户手势能否直接播放；暂停超过约 30 秒后是否会被关闭 | 恢复播放时重建 offscreen，并从 cursor 所在句重新开始 |
-| V3 | `chrome.tts` 在 SW 里连续朗读时，SW 会不会被回收，导致 word 事件丢失 | 朗读期间用 Port 让 SW 保持活跃 |
-| V4 | CosyVoice SSE 的 `words` 与传入的一句文本能否稳定对齐；服务端是否会再切句（`sentence.index` 大于 0） | 引擎合并多个 sentence，并按累计偏移换算 |
-| V5 | workspace 专属域名在 `chrome-extension://` 源下的 CORS 或 host 权限行为 | 退回 `dashscope.aliyuncs.com` 通用域名 |
-| V6 | Azure Speech SDK 在 MV3 offscreen 里用订阅 key 能否连接（浏览器 WebSocket 不能设置请求头，需要确认 SDK 走 query 参数还是先换取 token） | 先请求 `issueToken` 换取 token，再连接 |
-| V7 | Kokoro-FastAPI 带字幕接口的路径和返回格式 | 按 OpenAI 兼容方式处理，逐词位置用估算 |
-| V8 | ElevenLabs `with-timestamps` 的请求和返回字段 | 以官方文档为准，调整适配器 |
-| V9 | 豆包：在扩展环境下能否带上 `X-Api-Key` 请求头（实测 CORS 预检的允许列表里没有这个头，需要确认 host_permissions 能否绕过）；SSE 事件格式；1.0 时间戳与原句能否对齐 | 在 SW 里用 declarativeNetRequest 注入请求头；仍不行就只支持旧版 AppId 鉴权 |
+2026-09-29 实测环境：Chrome for Testing 149（macOS arm64），用 Playwright 加载未打包扩展；V3 的长朗读另外用独立启动的 Chrome 跑了一遍，没有挂 DevTools。
+
+| # | 问题 | 状态 | 结论 / 设计影响 |
+|---|---|---|---|
+| V1 | content script 点击 → SW 调用 `sidePanel.open()`，用户手势能否保留 | ✅ 成立（有条件） | 可信点击后立即发消息能打开；点击后延迟 1.5 秒也能打开；延迟 6 秒、页面加载时自动发送、SW 直接调用，这三种都报 "may only be called in response to a user gesture"。Chrome 按约 5 秒的手势窗口判断（transient activation）。脚本合成的 click 在这窗口内也能打开，所以网页可以借用户的一次点击触发，但只会打开我们自己的设置页，风险可以接受。**设计**：齿轮的点击处理函数必须同步调用 `sendMessage`，SW 收到后也必须同步调用 `sidePanel.open`，中间不能有 await。 |
+| V2 | offscreen（AUDIO_PLAYBACK）不需要用户手势能否直接播放；暂停后是否会被关闭 | ✅ 成立，需要重建逻辑 | 默认自动播放策略下可以直接播放。加上 `--autoplay-policy=user-gesture-required` 时会报 NotAllowedError，说明企业策略或用户改过设置时可能失败。连续播放 48 秒没有被关闭；**暂停约 35 秒后 offscreen 被关闭**，重建后不需要手势就能继续播放。**设计**：引擎的暂停状态（cursor 和句内播放位置）要镜像到 SW 的 `storage.session`；恢复播放时如果 `hasDocument()` 为 false，就重建 offscreen，从缓存取出当前句，并跳到原来的播放位置。L1 内存缓存随之丢失，L2 仍在。`play()` 报 NotAllowedError 时，竖条提示"点击继续"。 |
+| V3 | `chrome.tts` 在 SW 里连续朗读时，SW 会不会被回收，导致 word 事件丢失 | ✅ 成立 | 独立启动的 Chrome 里，SW 发起一次 146 秒的朗读，期间 SW 不做任何事：339 个 word 事件全部收到，最后收到 `end` 事件，没有被回收。macOS 本地音色 180 个，全部支持 word 事件，`charIndex`/`length` 正确，中文音色婷婷按词返回。Port 保活作为保险仍然保留（竖条本来就有 Port）。 |
+| V4 | CosyVoice SSE 的 `words` 与传入的一句文本能否稳定对齐；服务端是否会再切句 | ⏸ 待提供 key | 退路不变：引擎合并多个 sentence，按累计偏移换算 |
+| V5 | workspace 专属域名在 `chrome-extension://` 源下的 CORS / host 权限行为 | ✅ 成立 | 这条验证不需要 key。SW 带 `Authorization` 和 `X-DashScope-SSE` 头请求通用域名和 workspace 域名，都返回业务层的 401 InvalidApiKey，说明请求到达了服务端，没有被网络或 CORS 拦截。 |
+| V6 | Azure Speech SDK 在 MV3 offscreen 里用订阅 key 能否连接 | 🟡 机制已确认，待提供 key 实连 | 读了 SDK 1.47 源码：浏览器环境下，`WebsocketConnection` 把所有请求头拼成 query 参数，订阅 key 以 `?Ocp-Apim-Subscription-Key=` 出现在 wss URL 里，不需要先换 token。浏览器打包文件压缩后 441KB。注意 key 会出现在 URL 里，错误日志不能打印完整 URL。 |
+| V7 | Kokoro-FastAPI 带字幕接口的路径和返回格式 | ✅ 成立（有限制） | 版本 v0.9.0（CPU 镜像）。接口是 `POST /dev/captioned_speech`，请求体同 OpenAI，另加 `stream:false`；返回 `{audio(base64), audio_format, timestamps:[{word,start_time,end_time}]}`，单位是秒，标点单独算一项。**文本会被规范化**："Mr." 变成 "Mister"，"3" 变成 "three"，所以按顺序找词时，遇到对不上的词要跳过，并在两侧锚点之间插值。**中文（zf_*/zm_*）的 timestamps 是空数组**，只能估算。CORS 返回 `*`。`GET /v1/audio/voices` 返回对象数组（id/name）。 |
+| V8 | ElevenLabs `with-timestamps` 的请求和返回字段 | 🟡 文档已确认，待提供 key 实测 | 读了官方 OpenAPI：鉴权用请求头 `xi-api-key`；请求体必填 `text`，可选 `model_id`、`language_code`、`previous_text`/`next_text` 等；`output_format` 在 query 里；返回 `{audio_base64, alignment, normalized_alignment}`，alignment 是三个并行数组 `characters` / `character_start_times_seconds` / `character_end_times_seconds`。对齐用 `alignment`，它对应原文。CORS 预检允许所有来源和请求头。注意 `previous_text`/`next_text` 会让同一段文本生成的音频随上下文变化，和按内容寻址的缓存冲突，所以不传。 |
+| V9 | 豆包：扩展环境下能否带上 `X-Api-Key`；SSE 事件格式；1.0 时间戳能否对齐 | 🟡 请求头已验证，其余待提供 key | 用本地模拟服务对照实测（预检不放行 `x-api-key`）：普通网页发请求被 CORS 拦下；SW 和扩展页在有 host_permissions 时正常发出，服务端收到了这个头。真实的豆包接口用假 key 返回 `401 {code:45000010, message:"Invalid X-Api-Key"}`，说明请求头到达了服务端。**不需要 declarativeNetRequest。** SSE 格式和时间戳待实测。 |
+
+残留风险：V1 和 V2 的结论来自 Chrome for Testing 149，其他版本的 Chrome 可能调整手势窗口或 offscreen 的回收时间。实现时按上述退路处理，不依赖具体数值。
 
 ## 附录 A：调研摘要
 

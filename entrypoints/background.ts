@@ -11,7 +11,7 @@ const CONTENT_SCRIPT = '/content-scripts/reader.js';
 
 declare global {
   /** Test hook, only defined in `--mode e2e` builds. See `tests/e2e/fixtures.ts`. */
-  var sayloudActivate: ((tabId: number) => Promise<void>) | undefined;
+  var sayloudActivate: ((tabId?: number) => Promise<void>) | undefined;
 }
 
 export default defineBackground(() => {
@@ -67,12 +67,17 @@ export default defineBackground(() => {
    * The content script is registered at runtime rather than declared in the
    * manifest, so nothing is injected until the reader asks for it. `activeTab`
    * grants access to the clicked tab only.
+   *
+   * Without a tab id this falls back to the active tab, which is what the e2e
+   * hook uses: Playwright cannot click the toolbar icon, and it has no way to
+   * learn Chrome's tab id for the page it is driving.
    */
-  async function activate(tabId: number | undefined): Promise<void> {
-    if (tabId === undefined) return;
+  async function activate(tabId?: number): Promise<void> {
+    const id = tabId ?? (await activeTabId());
+    if (id === undefined) return;
     try {
       await browser.scripting.executeScript({
-        target: { tabId },
+        target: { tabId: id },
         files: [CONTENT_SCRIPT],
       });
     } catch (error) {
@@ -80,6 +85,11 @@ export default defineBackground(() => {
       // injection; there is no reader to show a hint in, so just report it.
       console.warn('[SayLoud] cannot read this page', error);
     }
+  }
+
+  async function activeTabId(): Promise<number | undefined> {
+    const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+    return tab?.id;
   }
 });
 

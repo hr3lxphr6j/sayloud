@@ -4,6 +4,7 @@
 .output-e2e/
 test-results/
 playwright-report/
+coverage/
 .wxt/
 node_modules/
 .idea/

@@ -1,2 +1,8 @@
 .env.local
 .superpowers/
+.output/
+.output-e2e/
+.wxt/
+node_modules/
+.idea/
+.DS_Store

@@ -1,0 +1,35 @@
+{
+  "name": "sayloud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "build:e2e": "SAYLOUD_E2E=1 wxt build --mode e2e",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "@babel/core": "^8.0.6",
+    "@biomejs/biome": "2.5.14",
+    "@mozilla/readability": "0.6.0",
+    "@playwright/test": "1.63.0",
+    "@preact/preset-vite": "2.10.6",
+    "@testing-library/preact": "3.2.4",
+    "@types/node": "^26.6.3",
+    "@vitest/ui": "5.0.2",
+    "@wxt-dev/browser": "0.3.4",
+    "happy-dom": "20.14.5",
+    "preact": "10.29.8",
+    "typescript": "6.0.3",
+    "vite": "^8.3.1",
+    "vitest": "5.0.2",
+    "wxt": "0.21.4"
+  }
+}

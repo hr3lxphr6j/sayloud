@@ -251,11 +251,12 @@ export class ReaderController {
     // mistaken for the reader scrolling away.
     this.suspension.noteProgrammatic();
 
-    // Choose scroll alignment based on element position to avoid unnecessary jumps.
-    // For elements near the top, 'start' keeps the page from scrolling down to center them.
-    const rect = range.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const block = rect.top < viewportHeight * 0.3 ? 'start' : 'center';
+    // Choose scroll alignment based on element's position in the document, not
+    // in the viewport. For elements near the document top, 'start' keeps the
+    // page from scrolling down unnecessarily; for the rest, 'center' keeps the
+    // sentence visible during continuous playback.
+    const distanceFromTop = element.getBoundingClientRect().top + window.scrollY;
+    const block = distanceFromTop < window.innerHeight * 0.5 ? 'start' : 'center';
 
     element.scrollIntoView({ behavior: 'smooth', block });
   }

@@ -59,12 +59,9 @@ describe('capabilities', () => {
     });
   });
 
-  it.each(['seed-tts-2.0', 'seed-icl-2.0'] as const)(
-    'reports no timings for %s, which returns an empty word list',
-    (resourceId) => {
-      expect(provider.capabilities(config({ resourceId })).timings).toBe('none');
-    }
-  );
+  it('reports no timings for seed-tts-2.0, which returns an empty word list', () => {
+    expect(provider.capabilities(config({ resourceId: 'seed-tts-2.0' })).timings).toBe('none');
+  });
 
   it('defaults to the timing-capable resource', () => {
     expect(provider.capabilities({ provider: 'volcengine', apiKey: 'k' })).toMatchObject({
@@ -83,7 +80,6 @@ describe('protocol helpers', () => {
   it('supportsTimings only for the 1.0 resource', () => {
     expect(supportsTimings('seed-tts-1.0')).toBe(true);
     expect(supportsTimings('seed-tts-2.0')).toBe(false);
-    expect(supportsTimings('seed-icl-2.0')).toBe(false);
   });
 
   it('maps the documented codes', () => {

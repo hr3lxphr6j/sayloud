@@ -47,6 +47,11 @@ export interface FieldSpec<K extends string = string> {
   readonly defaultValue?: string;
   /** The allowed values, for `kind: 'select'`. */
   readonly options?: readonly FieldOption[];
+  /**
+   * Values a `select` used to offer, mapped to what a stored config holding
+   * one is read as. Keeps a saved config usable after an option is dropped.
+   */
+  readonly retiredOptions?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -201,8 +206,9 @@ const SCHEMAS = {
         options: [
           { value: 'seed-tts-1.0', label: 'seed-tts-1.0 (word timings)' },
           { value: 'seed-tts-2.0', label: 'seed-tts-2.0 (sentence-level only)' },
-          { value: 'seed-icl-2.0', label: 'seed-icl-2.0 (sentence-level only)' },
         ],
+        // 声音复刻 speaks only cloned voices, which the picker cannot enter.
+        retiredOptions: { 'seed-icl-2.0': 'seed-tts-1.0' },
         help: 'The resource id decides both the model version and the billing mode.',
       },
       {
@@ -531,7 +537,11 @@ function coerceStored(field: FieldSpec, raw: unknown): unknown {
 
     case 'select':
       if (typeof raw !== 'string') return undefined;
-      return field.options?.some((option) => option.value === raw) ? raw : undefined;
+      if (field.options?.some((option) => option.value === raw)) return raw;
+      // An option that has since been retired maps to its replacement, so the
+      // rest of the saved config (the key above all) survives it. Anything
+      // else is still rejected.
+      return field.retiredOptions?.[raw];
 
     case 'kv':
       if (!isPlainObject(raw)) return undefined;

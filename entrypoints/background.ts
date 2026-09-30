@@ -21,8 +21,19 @@ declare global {
 }
 
 export default defineBackground(() => {
+  // Silence chrome.tts in E2E tests — the real system voice is noisy and
+  // distracting. Wrap speak() to force volume to 0; everything else passes through.
+  const tts = import.meta.env.MODE === 'e2e'
+    ? {
+        ...browser.tts,
+        speak: (utterance: string, options?: Parameters<typeof browser.tts.speak>[1]) => {
+          browser.tts.speak(utterance, { ...(options ?? {}), volume: 0 });
+        },
+      }
+    : browser.tts;
+
   const app = createApp({
-    tts: browser.tts,
+    tts,
     storage: browser.storage,
     offscreen: {
       offscreen: browser.offscreen,

@@ -96,20 +96,25 @@ export const en = {
     'SayLoud reads with the browser voice while its circle is selected. Keys saved for other providers are kept.',
   'provider.test': 'Test Connection',
   'provider.testing': 'Testing…',
-  'provider.save': 'Save',
   'provider.saving': 'Saving…',
-  'provider.forget': 'Forget saved key',
+  'provider.delete': 'Delete saved key',
   'provider.test-succeeded': 'Connection succeeded.',
   'provider.saved': 'Saved.',
-  // Save does not switch providers, and saying only "Saved." would leave the
+  // Saving does not switch providers, and saying only "Saved." would leave the
   // user waiting for something to happen.
   'provider.saved-not-active':
     'Saved, but not in use. Use the circle beside the name to switch to it.',
-  'provider.forgotten': 'Saved key removed.',
-  'provider.save-failed': 'Could not save: {detail}',
-  'provider.forget-failed': 'Could not remove: {detail}',
+  'provider.deleted': 'Saved key removed.',
+  // Saving happens when a field loses focus, and a form that fails validation
+  // writes nothing at all. The line has to say so, or a half-typed key looks
+  // stored; the fields themselves carry the reason.
+  'provider.not-saved': 'Not saved: {detail}',
+  'provider.not-saved-invalid': 'Not saved: fix the highlighted fields.',
+  'provider.delete-failed': 'Could not remove: {detail}',
   'provider.access-declined':
     'SayLoud needs access to this host to reach the service. Allow it in the prompt to continue.',
+  'provider.access-needed': 'Access to this host is not granted yet.',
+  'provider.grant-access': 'Grant access',
   'provider.timings-exact':
     'This configuration reports word timings, so words highlight as they are spoken.',
   'provider.timings-none':

@@ -18,11 +18,20 @@
  * the row's own button opens the form that configures it. They are siblings on
  * purpose — a button cannot hold another — and because saving a config must not
  * be the thing that starts using it.
+ *
+ * The form saves itself when a field loses focus (spec §8.2), which is why
+ * there is no Save button: there is nothing to press. What it does have is a
+ * line saying whether the write happened, because a form that fails validation
+ * writes nothing and leaves the typed key in place.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ConfigStore, SavedConfigs, VoiceNames } from '~/lib/config-store';
 import { type Translator, useT } from '~/lib/i18n';
-import { type PermissionsApi, requestProviderAccess } from '~/lib/provider-origins';
+import {
+  hasProviderAccess,
+  type PermissionsApi,
+  requestProviderAccess,
+} from '~/lib/provider-origins';
 import {
   configToFormValues,
   type FieldError,
@@ -233,10 +242,23 @@ function ProviderForm({
 }: ProviderFormProps) {
   const t = useT();
   const [values, setValues] = useState<FormValues>(() => configToFormValues(schema, saved));
-  /** Errors appear only once the user has tried to do something with the form. */
-  const [submitted, setSubmitted] = useState(false);
+  /**
+   * Whether the user has done something with this form.
+   *
+   * Field errors belong to a form somebody has tried to use: one that has just
+   * opened with an empty required field is not wrong yet. The form saves on the
+   * first blur, so that is exactly what "tried to use" means here.
+   */
+  const [touched, setTouched] = useState(false);
   const [test, setTest] = useState<AsyncStatus>({ kind: 'idle' });
   const [save, setSave] = useState<AsyncStatus>({ kind: 'idle' });
+  /**
+   * Whether the last save failed for lack of host access.
+   *
+   * That failure is the one the form can get out of, so it gets a way out: the
+   * prompt needs a user gesture, and only a click has one.
+   */
+  const [grantNeeded, setGrantNeeded] = useState(false);
   const inFlight = useRef<Deadline | null>(null);
 
   useEffect(() => () => inFlight.current?.cancel(), []);
@@ -244,17 +266,34 @@ function ProviderForm({
   const errors = validateFormValues(schema, values);
   const valid = Object.keys(errors).length === 0;
   const draft = valid ? formValuesToConfig(schema, values, saved) : null;
-  const busy = test.kind === 'running' || save.kind === 'running';
+  /**
+   * A running Test Connection owns the form: its result is about what is on
+   * screen, so the fields must not change under it.
+   *
+   * A running save deliberately does not. A save starts when a field loses
+   * focus, which is the first half of the click that focuses the next control —
+   * disabling anything for its duration would swallow that click.
+   */
+  const testing = test.kind === 'running';
+  /**
+   * Bumped by every edit, so a save that finishes after one does not report on
+   * values that are no longer on screen.
+   */
+  const revision = useRef(0);
+  /** The saved config as form values, which is what an edit is measured against. */
+  const savedValues = configToFormValues(schema, saved);
 
   const update = (key: string, value: FormValue) => {
     setValues((current) => ({ ...current, [key]: value }));
+    revision.current += 1;
     // A result from before the edit describes a config that no longer exists.
     setTest({ kind: 'idle' });
     setSave({ kind: 'idle' });
+    setGrantNeeded(false);
   };
 
   const onTest = async () => {
-    setSubmitted(true);
+    setTouched(true);
     if (!provider || !draft) return;
 
     // Before any await: the prompt needs the click's user gesture.
@@ -289,49 +328,108 @@ function ProviderForm({
     }
   };
 
-  const onSave = async () => {
-    setSubmitted(true);
-    if (!draft) return;
-
-    // Before any await: the prompt needs the click's user gesture.
-    const access = requestProviderAccess(draft, permissions);
-
+  /**
+   * Write `config` and report what happened.
+   *
+   * `access` is passed in rather than awaited here because the prompt needs the
+   * click's gesture and the first `await` gives it up; the caller starts it. A
+   * call whose gesture is gone must not have been made at all — see the check
+   * in `autoSave` — so a refusal here means the user declined the prompt or the
+   * host is not granted and no prompt could be raised.
+   */
+  const write = async (config: ProviderConfig, access: Promise<boolean>) => {
+    const started = revision.current;
     setSave({ kind: 'running' });
+    setGrantNeeded(false);
     try {
       // A config the extension cannot reach would only fail later, mid-read.
-      if (!(await access)) {
-        setSave({ kind: 'error', message: t('provider.access-declined') });
+      if (!(await access.catch(() => false))) {
+        if (revision.current === started) {
+          setGrantNeeded(true);
+          setSave({
+            kind: 'error',
+            message: t('provider.not-saved', { detail: t('provider.access-needed') }),
+          });
+        }
         return;
       }
-      await store.saveConfig(draft);
+      await store.saveConfig(config);
       // Saving is not switching, and this row was already the one in use — so
       // re-point the active config at what was just saved. Leaving the old
       // values there would mean the panel shows one key while the engine reads
       // with another until the user thinks to press the circle again.
       if (active) await store.setActiveConfig(schema.id);
-      setSave({ kind: 'ok', message: t(active ? 'provider.saved' : 'provider.saved-not-active') });
+      if (revision.current === started) {
+        setSave({
+          kind: 'ok',
+          message: t(active ? 'provider.saved' : 'provider.saved-not-active'),
+        });
+      }
+      // The write happened either way, so the owner still has to re-read.
       onChanged();
     } catch (error) {
-      setSave({
-        kind: 'error',
-        message: t('provider.save-failed', { detail: errorMessage(error) }),
-      });
+      if (revision.current === started) {
+        setSave({
+          kind: 'error',
+          message: t('provider.not-saved', { detail: errorMessage(error) }),
+        });
+      }
     }
   };
 
-  const onForget = async () => {
+  /**
+   * Save what was typed when a field loses focus.
+   *
+   * On blur rather than on every keystroke: a half-typed key is not a config,
+   * and writing one per character would fill storage with them. The form is
+   * validated whole, so an invalid one writes nothing and the saved values stay
+   * as they were.
+   */
+  const autoSave = () => {
+    setTouched(true);
+    if (!draft) {
+      // The fields say which one is wrong; the line says that nothing was
+      // written, which is the part looking at the form cannot tell you.
+      setGrantNeeded(false);
+      setSave({ kind: 'error', message: t('provider.not-saved-invalid') });
+      return;
+    }
+    // Tabbing through a form that was not edited is not a save.
+    const edited = schema.fields.some((field) => values[field.key] !== savedValues[field.key]);
+    if (!edited) return;
+
+    // Nothing is asked for here: a blur carries no user gesture, and
+    // `permissions.request` without one never comes back — the line would sit
+    // at "Saving…" forever. The grant is only checked, and the Grant access
+    // button takes on the asking.
+    void hasProviderAccess(draft, permissions).then((granted) =>
+      write(draft, Promise.resolve(granted))
+    );
+  };
+
+  /**
+   * Ask for the host grant again, now that there is a gesture to ask with, and
+   * write the config once it is there.
+   */
+  const onGrantAccess = () => {
+    if (!draft) return;
+    void write(draft, requestProviderAccess(draft, permissions));
+  };
+
+  const onDelete = async () => {
     setSave({ kind: 'running' });
+    setGrantNeeded(false);
     try {
       await store.forgetConfig(schema.id);
       setValues(configToFormValues(schema, null));
       setTest({ kind: 'idle' });
-      setSave({ kind: 'ok', message: t('provider.forgotten') });
-      // Forgetting the active provider also made the browser voice active.
+      setSave({ kind: 'ok', message: t('provider.deleted') });
+      // Deleting the active provider also made the browser voice active.
       onChanged();
     } catch (error) {
       setSave({
         kind: 'error',
-        message: t('provider.forget-failed', { detail: errorMessage(error) }),
+        message: t('provider.delete-failed', { detail: errorMessage(error) }),
       });
     }
   };
@@ -341,14 +439,20 @@ function ProviderForm({
       {schema.fields.length === 0 ? (
         <p class="notice">{t('provider.browser-notice')}</p>
       ) : (
-        <div class="form">
+        /*
+          The listener sits on the container, not on each field: `blur` does not
+          bubble, so a handler on the parent of a field never hears about it.
+          `focusout` does bubble, and it fires for every way out of a field —
+          including the one that closes this form.
+        */
+        <div class="form" onFocusOut={autoSave}>
           {schema.fields.map((field) => (
             <Field
               key={field.key}
               field={field}
               value={values[field.key]}
-              error={submitted ? errors[field.key] : undefined}
-              disabled={busy}
+              error={touched ? errors[field.key] : undefined}
+              disabled={testing}
               onChange={update}
             />
           ))}
@@ -364,36 +468,39 @@ function ProviderForm({
       )}
 
       {/*
-        No actions at all for the browser voice: there is no config of its own
-        to store, and a Save that reports success without writing anything is
-        worse than no button. The circle is what chooses it.
+        Test Connection is the only button left: the form saves itself when a
+        field loses focus, and a key that is already saved is dropped from the
+        link at the bottom. Neither needs a button of its own.
       */}
-      {schema.id !== 'browser' && (
+      {provider && (
         <div class="actions">
-          {provider && (
-            <button type="button" class="button" disabled={busy} onClick={() => void onTest()}>
-              {test.kind === 'running' ? t('provider.testing') : t('provider.test')}
-            </button>
-          )}
-          <button
-            type="button"
-            class="button primary"
-            disabled={busy}
-            onClick={() => void onSave()}
-          >
-            {save.kind === 'running' ? t('provider.saving') : t('provider.save')}
+          <button type="button" class="button" disabled={testing} onClick={() => void onTest()}>
+            {test.kind === 'running' ? t('provider.testing') : t('provider.test')}
           </button>
-          {saved && (
-            <button type="button" class="button" disabled={busy} onClick={() => void onForget()}>
-              {t('provider.forget')}
-            </button>
-          )}
         </div>
       )}
 
       <div class="form-results">
         <StatusLine status={test} />
-        <StatusLine status={save} />
+        <div class="save-status">
+          {/*
+            A running save needs a line of its own — there is no button left to
+            carry the spinner, and a silent pause after a blur reads as nothing
+            having happened.
+          */}
+          {save.kind === 'running' ? (
+            <p class="result muted" role="status">
+              {t('provider.saving')}
+            </p>
+          ) : (
+            <StatusLine status={save} />
+          )}
+          {grantNeeded && (
+            <button type="button" class="button" disabled={testing} onClick={onGrantAccess}>
+              {t('provider.grant-access')}
+            </button>
+          )}
+        </div>
       </div>
 
       {provider && (
@@ -402,11 +509,27 @@ function ProviderForm({
           provider={provider}
           config={draft}
           store={store}
-          disabled={busy}
-          onAttempt={() => setSubmitted(true)}
-          showFormErrors={submitted}
+          disabled={testing}
+          onAttempt={() => setTouched(true)}
+          showFormErrors={touched}
           {...(onVoiceSaved ? { onSaved: onVoiceSaved } : {})}
         />
+      )}
+
+      {/*
+        Last, and quiet: deleting is the rare thing to do here, and it is the
+        only way to drop a key once it is stored. Offered only when there is
+        something to delete.
+      */}
+      {saved && (
+        <button
+          type="button"
+          class="provider-delete"
+          disabled={testing}
+          onClick={() => void onDelete()}
+        >
+          {t('provider.delete')}
+        </button>
       )}
     </div>
   );

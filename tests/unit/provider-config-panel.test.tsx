@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { describe, expect, it, vi } from 'vitest';
-import { ProviderConfigPanel } from '~/entrypoints/sidepanel/ProviderConfig';
+import {
+  ProviderConfigPanel,
+  type ProviderConfigPanelProps,
+} from '~/entrypoints/sidepanel/ProviderConfig';
 import { ConfigStore, type LocalStorageArea } from '~/lib/config-store';
 import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
@@ -15,6 +18,42 @@ function memoryArea(): LocalStorageArea {
     },
     async set(items) {
       for (const [key, value] of Object.entries(items)) data.set(key, structuredClone(value));
+    },
+  };
+}
+
+/**
+ * An area whose writes wait to be released, so a save can be held in flight.
+ *
+ * A save is a storage write the test cannot otherwise observe half-done.
+ */
+function gatedArea(): { area: LocalStorageArea; release: () => void } {
+  const data = new Map<string, unknown>();
+  let open = false;
+  const pending: Array<() => void> = [];
+  return {
+    area: {
+      async get(keys) {
+        const result: Record<string, unknown> = {};
+        for (const key of Array.isArray(keys) ? keys : [keys]) result[key] = data.get(key);
+        return result;
+      },
+      set(items) {
+        return new Promise<void>((resolve) => {
+          const commit = () => {
+            for (const [key, value] of Object.entries(items)) data.set(key, structuredClone(value));
+            resolve();
+          };
+          // Releasing before the write arrives still releases it: a save spends
+          // a few microtasks reading the other configs first.
+          if (open) commit();
+          else pending.push(commit);
+        });
+      },
+    },
+    release: () => {
+      open = true;
+      for (const write of pending.splice(0)) write();
     },
   };
 }
@@ -46,13 +85,14 @@ const VOLCENGINE: ProviderConfig = {
  * The panel the way SidePanel mounts it: re-rendered from the store whenever
  * it reports a change.
  */
-async function renderPanel(store: ConfigStore) {
+async function renderPanel(store: ConfigStore, extra: Partial<ProviderConfigPanelProps> = {}) {
   const onChanged = vi.fn();
   const props = async () => ({
     store,
     providers,
     saved: await store.getConfig(),
     savedConfigs: await store.getSavedConfigs(),
+    ...extra,
   });
   const view = render(<ProviderConfigPanel {...(await props())} onChanged={onChanged} />);
   onChanged.mockImplementation(async () => {
@@ -101,6 +141,16 @@ function apiKeyField(): HTMLInputElement {
   return screen.getByLabelText(/API key/) as HTMLInputElement;
 }
 
+/**
+ * Take the focus away from a field, the way tabbing to the next one does.
+ *
+ * `focusout`, not `blur`: the form listens on its container, and `blur` does
+ * not bubble, so a container handler never sees it.
+ */
+function leave(element: HTMLElement): void {
+  fireEvent.focusOut(element);
+}
+
 describe('ProviderConfigPanel', () => {
   it('shows a key saved in this panel after switching away and back', async () => {
     const store = new ConfigStore(memoryArea());
@@ -108,7 +158,7 @@ describe('ProviderConfigPanel', () => {
 
     open('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-typed' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    leave(apiKeyField());
     // Not the provider in use, so "Saved." alone would leave the user thinking
     // nothing had happened.
     await screen.findByText(
@@ -129,7 +179,7 @@ describe('ProviderConfigPanel', () => {
     await renderPanel(store);
 
     open('openai-compat');
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    leave(screen.getByLabelText(/Base URL/));
     expect(screen.getByText('Base URL is required.')).toBeTruthy();
 
     // Typing fires `input`; `change` on a text field waits for blur in the
@@ -165,7 +215,7 @@ describe('ProviderConfigPanel', () => {
 
     open('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-typed' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    leave(apiKeyField());
 
     expect(
       await screen.findByText(
@@ -187,7 +237,7 @@ describe('ProviderConfigPanel', () => {
 
     open('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-2' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    leave(apiKeyField());
 
     await screen.findByText('Saved.');
     // An edit is not a switch: the row stays in use, with what was just saved.
@@ -202,9 +252,11 @@ describe('ProviderConfigPanel', () => {
     await renderPanel(store);
 
     open('browser');
-    // Nothing to save for a voice that is not configured; its circle is the
-    // control, so offering Save here would be a button that does nothing.
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    // Nothing to save and nothing to delete for a voice that is not
+    // configured; its circle is the only control it has, so any button here
+    // would be one that does nothing.
+    expect(screen.queryByRole('button', { name: 'Test Connection' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete saved key' })).toBeNull();
 
     fireEvent.click(providerDot('browser'));
 
@@ -212,13 +264,13 @@ describe('ProviderConfigPanel', () => {
     expect((await store.getSavedConfigs()).dashscope).toEqual(DASHSCOPE);
   });
 
-  it('forgets a saved key on request and clears the form', async () => {
+  it('deletes a saved key from the form link and clears the form', async () => {
     const store = new ConfigStore(memoryArea());
     await store.saveConfig(DASHSCOPE);
     await store.setActiveConfig('dashscope');
     const onChanged = await renderPanel(store);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Forget saved key' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete saved key' }));
 
     await waitFor(async () => expect(await store.getSavedConfigs()).toEqual({}));
     expect(await store.getConfig()).toEqual({ provider: 'browser' });
@@ -226,13 +278,129 @@ describe('ProviderConfigPanel', () => {
     await waitFor(() => expect(apiKeyField().value).toBe(''));
   });
 
-  it('offers no forget button for a provider with nothing saved', async () => {
+  it('offers no delete link for a provider with nothing saved', async () => {
     const store = new ConfigStore(memoryArea());
     await renderPanel(store);
 
     open('dashscope');
 
-    expect(screen.queryByRole('button', { name: 'Forget saved key' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete saved key' })).toBeNull();
+  });
+
+  it('offers the delete link once a key has been saved', async () => {
+    const store = new ConfigStore(memoryArea());
+    await renderPanel(store);
+
+    open('dashscope');
+    fireEvent.input(apiKeyField(), { target: { value: 'sk-typed' } });
+    leave(apiKeyField());
+    await screen.findByText(
+      'Saved, but not in use. Use the circle beside the name to switch to it.'
+    );
+
+    expect(await screen.findByRole('button', { name: 'Delete saved key' })).toBeTruthy();
+  });
+
+  it('keeps the saved key when a blur leaves the form as it was', async () => {
+    const area = memoryArea();
+    const written = vi.spyOn(area, 'set');
+    await renderPanel(new ConfigStore(area));
+
+    open('dashscope');
+    // Tabbing through an untouched form is not an edit, and writing the same
+    // values back would only make storage churn.
+    leave(apiKeyField());
+
+    expect(written).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing, and says so, when a blurred form does not validate', async () => {
+    const area = memoryArea();
+    const written = vi.spyOn(area, 'set');
+    await renderPanel(new ConfigStore(area));
+
+    open('dashscope');
+    leave(apiKeyField());
+
+    // The half-typed key is still in the field, so the line has to say that it
+    // was not stored — otherwise the user believes it was.
+    expect(screen.getByText('Not saved: fix the highlighted fields.')).toBeTruthy();
+    expect(screen.getByText('API key is required.')).toBeTruthy();
+    expect(written).not.toHaveBeenCalled();
+  });
+
+  it('keeps the rest of the form usable while a save is in flight', async () => {
+    const { area, release } = gatedArea();
+    await renderPanel(new ConfigStore(area));
+
+    open('dashscope');
+    fireEvent.input(apiKeyField(), { target: { value: 'sk-typed' } });
+    leave(apiKeyField());
+
+    // The blur that starts a save is the first half of the click that focuses
+    // the next control, so disabling anything until the write lands would
+    // swallow that click — a checkbox would never toggle.
+    await waitFor(() => expect(screen.getByText('Saving…')).toBeTruthy());
+    expect(apiKeyField().disabled).toBe(false);
+    expect((screen.getByLabelText(/Region/) as HTMLSelectElement).disabled).toBe(false);
+
+    release();
+    await screen.findByText(
+      'Saved, but not in use. Use the circle beside the name to switch to it.'
+    );
+  });
+
+  it('offers Grant access when a save needs a host grant, and retries on the click', async () => {
+    const store = new ConfigStore(memoryArea());
+    const request = vi.fn(() => Promise.resolve(true));
+    const onChanged = await renderPanel(store, { permissions: { request } });
+
+    open('volcengine');
+    fireEvent.input(apiKeyField(), { target: { value: 'volc-key' } });
+    fireEvent.change(screen.getByLabelText(/Resource id/), {
+      target: { value: 'seed-tts-1.0' },
+    });
+    leave(apiKeyField());
+
+    expect(
+      await screen.findByText('Not saved: Access to this host is not granted yet.')
+    ).toBeTruthy();
+    expect(await store.getSavedConfigs()).toEqual({});
+    // A blur carries no gesture, and a prompt-less request never comes back at
+    // all, so the save must not raise one: the button is where the asking goes.
+    expect(request).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grant access' }));
+
+    await screen.findByText(
+      'Saved, but not in use. Use the circle beside the name to switch to it.'
+    );
+    await waitFor(async () =>
+      expect((await store.getSavedConfigs()).volcengine).toMatchObject({ apiKey: 'volc-key' })
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith({ origins: ['https://openspeech.bytedance.com/*'] });
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('saves a host that was granted earlier without prompting again', async () => {
+    const store = new ConfigStore(memoryArea());
+    const request = vi.fn(() => Promise.resolve(true));
+    const contains = vi.fn(() => Promise.resolve(true));
+    await renderPanel(store, { permissions: { request, contains } });
+
+    open('volcengine');
+    fireEvent.input(apiKeyField(), { target: { value: 'volc-key' } });
+    fireEvent.change(screen.getByLabelText(/Resource id/), {
+      target: { value: 'seed-tts-1.0' },
+    });
+    leave(apiKeyField());
+
+    await screen.findByText(
+      'Saved, but not in use. Use the circle beside the name to switch to it.'
+    );
+    expect(contains).toHaveBeenCalledWith({ origins: ['https://openspeech.bytedance.com/*'] });
+    expect(request).not.toHaveBeenCalled();
   });
 });
 
@@ -413,7 +581,7 @@ describe('SidePanel settings state', () => {
     await screen.findByLabelText('Interface language');
     open('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-new' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    leave(apiKeyField());
     await screen.findByText(
       'Saved, but not in use. Use the circle beside the name to switch to it.'
     );

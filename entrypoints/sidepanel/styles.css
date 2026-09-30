@@ -254,6 +254,22 @@ h2 {
   gap: var(--space-2);
 }
 
+/* The save line and the Grant access button together: the button is the way out
+   of the failure the line reports. */
+/*
+ * The line's room is there whether or not there is anything to say. A save
+ * starts when a field loses focus, which is also the first half of the click
+ * that focuses the next control — a line that grew the form at that moment
+ * would move that control out from under the pointer.
+ */
+.save-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-height: 2lh;
+}
+
 /* --- controls ------------------------------------------------------------- */
 
 .button {
@@ -287,6 +303,32 @@ h2 {
 .button.disclosure:hover:not(:disabled) {
   border-color: transparent;
   background: var(--surface);
+}
+
+/*
+  Deleting a saved key: the rare thing to do here, drawn as a link at the bottom
+  of the form rather than as a button of its own, so it does not compete with
+  Test Connection.
+*/
+.provider-delete {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.provider-delete:hover:not(:disabled) {
+  color: var(--error);
+}
+
+.provider-delete:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .button:disabled {
@@ -636,6 +678,21 @@ code {
 }
 
 .provider-summary {
+  /*
+   * Two lines, and always room for two lines.
+   *
+   * Saving changes this line — from the schema's own sentence to
+   * "Configured · <voice>" — and a save is triggered by leaving a field, which
+   * is the first half of the click that focuses the next control. A row that
+   * changed height in that moment would move the buttons below it out from
+   * under the pointer, and the click would land on whatever moved into its
+   * place. The third line of the longest summary is ellipsised instead.
+   */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: 2lh;
+  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   overflow-wrap: anywhere;

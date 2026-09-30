@@ -3,9 +3,9 @@
  *
  * Loads the production build in Chromium, opens sidepanel.html, and exercises
  * what static checks cannot see: that the panel renders, that each provider
- * gets its own form, that validation blocks a bad config, that saving persists
- * across a reload, and that Test Connection and Load Voices work against a
- * local stub.
+ * gets its own form, that validation blocks a bad config, that leaving a field
+ * saves and persists across a reload, and that Test Connection and Load Voices
+ * work against a local stub.
  *
  * The tab list is walked rather than named: P4 adds a model tab, and this
  * script should not have to be rewritten for it. The two tabs it does drive by
@@ -182,14 +182,19 @@ check(
 // --- validation -------------------------------------------------------------
 await providerToggle('openai-compat').click();
 
-await page.getByRole('button', { name: 'Save' }).click();
+await page.locator('#field-baseUrl').focus();
+await page.keyboard.press('Tab');
 check(
-  'saving an empty required field shows an inline error',
+  'leaving an empty required field shows an inline error',
   (await page.getByText('Base URL is required.').count()) === 1
+);
+check(
+  'and says that nothing was written',
+  (await page.getByText('Not saved: fix the highlighted fields.').count()) === 1
 );
 
 await page.locator('#field-baseUrl').fill('localhost:8880');
-await page.getByRole('button', { name: 'Save' }).click();
+await page.keyboard.press('Tab');
 check(
   'a URL without a scheme is rejected inline',
   (await page.getByText('Enter a full URL').count()) === 1
@@ -204,7 +209,7 @@ await checkEventually(
     .textContent()
     .catch(() => 'no error rendered')
 );
-await page.locator('#field-headers').fill('X-Gateway: abc\nX-Second: def');
+await page.locator('#field-headers').fill('X-Gateway: abc');
 
 await page.locator('#field-baseUrl').fill('');
 await page.getByRole('button', { name: 'Load Voices' }).click();
@@ -224,13 +229,18 @@ await checkEventually(
 await page.locator('#field-apiKey').fill('test-key-123');
 await page.locator('#field-model').fill('kokoro');
 await page.locator('#field-captionedSpeech').check();
+// The last edit has to be one: leaving a field that was not changed is not a
+// save, and the check below is about what a save reports.
 await page.locator('#field-headers').fill('X-Gateway: abc\nX-Second: def');
-await page.getByRole('button', { name: 'Save' }).click();
-check(
-  'save says the config is stored but not yet in use',
-  (await page
-    .getByText('Saved, but not in use. Use the circle beside the name to switch to it.')
-    .count()) === 1
+// There is no Save button any more: leaving the last field is the save.
+await page.keyboard.press('Tab');
+await checkEventually(
+  'leaving the form saves it and says it is not in use yet',
+  async () =>
+    (await page
+      .getByText('Saved, but not in use. Use the circle beside the name to switch to it.')
+      .count()) === 1,
+  'the status line never reported a save'
 );
 
 const stored = await worker.evaluate(() => chrome.storage.local.get(null));
@@ -249,6 +259,20 @@ check(
   stored['sayloud:provider-config'] === undefined
 );
 
+// The way to drop a stored key is the form's own link, and it exists only
+// where there is a key to drop.
+await checkEventually(
+  'a saved provider offers a delete link on its form',
+  async () => (await page.locator('.provider-delete').count()) === 1,
+  'no delete link appeared'
+);
+await providerToggle('azure').click();
+check(
+  'a provider with nothing saved offers no delete link',
+  (await page.locator('.provider-delete').count()) === 0
+);
+await providerToggle('openai-compat').click();
+
 await page.reload();
 await settings();
 // The reload opens the row for the service in use — still the browser voice,
@@ -264,6 +288,24 @@ checkEqual(
     await page.locator('#field-headers').inputValue(),
   ],
   ['http://127.0.0.1:8899/v1', 'test-key-123', 'kokoro', true, 'X-Gateway: abc\nX-Second: def']
+);
+
+// Saving re-reads storage, which re-renders the whole list. If that rebuilt
+// the form, tabbing from one field to the next would drop the focus mid-tab.
+await page.locator('#field-apiKey').fill('test-key-1234');
+await page.keyboard.press('Tab');
+await checkEventually(
+  'leaving an edited field saves it',
+  async () => {
+    const saved = await worker.evaluate(() => chrome.storage.local.get('sayloud:provider-configs'));
+    return saved['sayloud:provider-configs']?.['openai-compat']?.apiKey === 'test-key-1234';
+  },
+  'the edit never reached storage'
+);
+check(
+  'focus lands on the next field while the save re-renders the panel',
+  (await page.evaluate(() => document.activeElement?.id ?? '')) === 'field-model',
+  `focus was on ${await page.evaluate(() => document.activeElement?.id ?? '')}`
 );
 
 // Switching what is in use is its own action, and it is the circle.
@@ -343,10 +385,10 @@ check(
 await settings();
 
 await page.getByRole('button', { name: 'Test Connection' }).click();
-await page.waitForSelector('.form-results .result', { timeout: 15000 }).catch(() => {});
+await page.waitForSelector('.form-results > .result', { timeout: 15000 }).catch(() => {});
 checkEqual(
   'Test Connection succeeds against the stub',
-  await page.locator('.form-results .result').first().textContent(),
+  await page.locator('.form-results > .result').first().textContent(),
   'Connection succeeded.'
 );
 
@@ -396,7 +438,7 @@ await page.waitForTimeout(3000);
 server.close();
 await page.getByRole('button', { name: 'Test Connection' }).click();
 await page.waitForTimeout(4000);
-const unreachable = String(await page.locator('.form-results .result').first().textContent());
+const unreachable = String(await page.locator('.form-results > .result').first().textContent());
 check(
   'Test Connection reports an unreachable service readably',
   /could not reach the service/.test(unreachable),

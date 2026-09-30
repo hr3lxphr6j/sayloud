@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { requestProviderAccess, requiredOrigins } from '~/lib/provider-origins';
+import { hasProviderAccess, requestProviderAccess, requiredOrigins } from '~/lib/provider-origins';
 
 describe('requiredOrigins', () => {
   it('asks for the default Volcengine host', () => {
@@ -53,5 +53,34 @@ describe('requestProviderAccess', () => {
       requestProviderAccess({ provider: 'dashscope', apiKey: 'k' }, { request })
     ).resolves.toBe(true);
     expect(request).not.toHaveBeenCalled();
+  });
+});
+
+describe('hasProviderAccess', () => {
+  it('needs nothing for a service that answers the preflight', async () => {
+    const contains = vi.fn(() => Promise.resolve(false));
+
+    await expect(
+      hasProviderAccess({ provider: 'dashscope', apiKey: 'k' }, { request: vi.fn(), contains })
+    ).resolves.toBe(true);
+    expect(contains).not.toHaveBeenCalled();
+  });
+
+  it('asks whether the grant is already there, without prompting', async () => {
+    const contains = vi.fn(() => Promise.resolve(true));
+
+    await expect(
+      hasProviderAccess({ provider: 'volcengine', apiKey: 'k' }, { request: vi.fn(), contains })
+    ).resolves.toBe(true);
+    expect(contains).toHaveBeenCalledWith({ origins: ['https://openspeech.bytedance.com/*'] });
+  });
+
+  it('reports no access when there is no way to ask', async () => {
+    await expect(
+      hasProviderAccess({ provider: 'volcengine', apiKey: 'k' }, undefined)
+    ).resolves.toBe(false);
+    await expect(
+      hasProviderAccess({ provider: 'volcengine', apiKey: 'k' }, { request: vi.fn() })
+    ).resolves.toBe(false);
   });
 });

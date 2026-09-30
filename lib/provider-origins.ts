@@ -18,6 +18,13 @@ import { DEFAULT_BASE_URL as VOLCENGINE_BASE_URL } from './providers/volcengine'
 /** The slice of `chrome.permissions` this module needs. */
 export interface PermissionsApi {
   request(permissions: { origins: string[] }): Promise<boolean>;
+  /**
+   * Whether an origin is already granted.
+   *
+   * Optional because a test double, or a build without the full API, may only
+   * have `request`; without it the caller assumes the grant is missing.
+   */
+  contains?(permissions: { origins: string[] }): Promise<boolean>;
 }
 
 /** Match patterns for the hosts `config` talks to that need a grant. */
@@ -48,6 +55,31 @@ export function requestProviderAccess(
   // ask; let the request fail on its own with the provider's error.
   if (!permissions) return Promise.resolve(true);
   return permissions.request({ origins });
+}
+
+/**
+ * Whether the host access `config` needs is there already.
+ *
+ * The question a save has to ask, as opposed to the prompt `request` raises.
+ * `request` without a user gesture does not come back at all — it neither
+ * resolves nor rejects — so a save triggered by a blur must check with
+ * `contains`, which needs no gesture, and leave the asking to a click.
+ *
+ * A missing grant is reported as "no access" rather than an error: the caller's
+ * way out of it is to offer the button that asks properly.
+ */
+export async function hasProviderAccess(
+  config: ProviderConfig,
+  permissions: PermissionsApi | undefined
+): Promise<boolean> {
+  const origins = requiredOrigins(config);
+  if (origins.length === 0) return true;
+  if (!permissions?.contains) return false;
+  try {
+    return await permissions.contains({ origins });
+  } catch {
+    return false;
+  }
 }
 
 function originPattern(url: string): string {

@@ -258,11 +258,10 @@ describe('synthesize', () => {
     expect(result.timings).toEqual([{ charStart: 0, charEnd: 2, startMs: 0, endMs: 300 }]);
   });
 
-  it('skips a normalized word instead of guessing where it went', async () => {
-    // The service reads "5" as "five" (spec §6 V9), so that word has no offsets
-    // in this sentence. It gets no highlight: the aligner rejects a set whose
-    // offsets no longer describe the text rather than partially trusting it, so
-    // the sentence falls back to sentence-level highlight (spec §2.1).
+  it('skips a normalized word and keeps the timings that do line up', async () => {
+    // The provider normalized "5" to "five", so that word cannot be placed.
+    // Spec §2.1 / V9: skip it rather than discarding the sentence — otherwise
+    // every sentence containing a number would lose word-level highlight.
     server.use(
       http.post(ENDPOINT, () =>
         HttpResponse.text(
@@ -284,7 +283,11 @@ describe('synthesize', () => {
       config()
     );
 
-    expect(result.timings).toBeUndefined();
+    // "It" [0,2) and "costs" [3,8); "5" is left unhighlighted, never guessed.
+    expect(result.timings?.map(({ charStart, charEnd }) => [charStart, charEnd])).toEqual([
+      [0, 2],
+      [3, 8],
+    ]);
   });
 
   it('returns no timings for a resource whose word list is empty', async () => {

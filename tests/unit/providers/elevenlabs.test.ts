@@ -217,8 +217,10 @@ describe('synthesize', () => {
     expect(result.timings).toBeUndefined();
   });
 
-  it('rejects normalized text whose words do not appear in the sentence', async () => {
-    // ElevenLabs aligns against the text it speaks: "5" is spoken as "five".
+  it('skips normalized words and keeps the ones that do line up', async () => {
+    // ElevenLabs aligns against the text it speaks: "5" is spoken as "five",
+    // so the alignment covers more characters than the sentence has. Spec
+    // §2.1 / V9: skip the words that do not line up, keep the rest.
     server.use(
       http.post(SYNTHESIZE, () =>
         HttpResponse.json({
@@ -233,7 +235,10 @@ describe('synthesize', () => {
       config()
     );
 
-    expect(result.timings).toBeUndefined();
+    expect(result.timings).toBeDefined();
+    expect(result.timings?.map(({ charStart, charEnd }) => [charStart, charEnd])).toContainEqual([
+      11, 18,
+    ]);
   });
 
   it('still aligns when only leading whitespace differs', async () => {

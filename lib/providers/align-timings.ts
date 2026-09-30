@@ -3,9 +3,11 @@
  *
  * Every provider reports word timing in its own vocabulary. This module
  * normalizes all of them to `WordTiming[]` in sentence-relative character
- * offsets, and — crucially — returns `undefined` when it cannot do so
- * faithfully. There is no estimation: an `undefined` result means the caller
- * falls back to sentence-level highlight only.
+ * offsets, and — crucially — never estimates. A word is highlighted only where
+ * its own text was found in the sentence; providers that normalize what they
+ * speak (reading "5" as "five") simply lose those words, and a sentence whose
+ * words cannot be placed at all returns `undefined` so the caller falls back to
+ * sentence-level highlight.
  */
 import type { WordTiming } from './types';
 
@@ -101,9 +103,21 @@ function alignOffsets(
  * `sequential-words`: locate each word's text in the sentence, in order.
  *
  * The cursor only moves forward, so a repeated word cannot match an earlier
- * occurrence. Any word that is not a verbatim substring of the sentence means
- * the provider normalized the text and its timings no longer line up, so the
- * whole alignment is rejected rather than partially trusted.
+ * occurrence.
+ *
+ * Providers commonly normalize the text they speak, so a word that is not a
+ * verbatim substring of the sentence is expected rather than exceptional —
+ * Volcengine and CosyVoice read "1.27" as "一 点 二 七", Kokoro and ElevenLabs
+ * read "5" as "five", and a URL is spoken as two pieces. Spec §2.1 / V9 are
+ * explicit about what to do: skip the words that do not line up and keep the
+ * rest. Rejecting the whole sentence instead would cost word-level highlight on
+ * every sentence containing a number, a unit or a link — which is most of them.
+ *
+ * Skipping can only ever omit a highlight, never place one wrongly: a word is
+ * still only ever highlighted where its own text was found, and the search
+ * never moves backwards. When nothing matches, `finalize` finds no spans and
+ * the caller falls back to sentence-level highlight, which is the same
+ * no-estimation rule that governs the rest of this module.
  */
 function alignSequentialWords(
   text: string,
@@ -121,7 +135,10 @@ function alignSequentialWords(
     if (word.startMs < 0 || word.endMs < word.startMs) return undefined;
 
     const charStart = text.indexOf(word.text, cursor);
-    if (charStart < 0) return undefined;
+    // Not found: the provider spoke something else here. Drop this word's
+    // timing and leave the cursor alone, so the next word still searches from
+    // the same place.
+    if (charStart < 0) continue;
 
     const charEnd = charStart + word.text.length;
     spans.push({ charStart, charEnd, startMs: word.startMs, endMs: word.endMs });

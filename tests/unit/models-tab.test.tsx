@@ -487,6 +487,47 @@ describe('the download source', () => {
     expect(built.storage.data.get(MODEL_SOURCE_KEY)).toBeUndefined();
   });
 
+  it('keeps a choice made before the saved source has been read', async () => {
+    // The read is asynchronous, so a click that lands first would otherwise be
+    // undone by it resolving a moment later: the control would snap back to
+    // what was saved before the user touched it.
+    const storage = fakeArea();
+    const pending: Array<() => void> = [];
+    const gated = {
+      get: (keys: string | string[]) =>
+        new Promise<Record<string, unknown>>((resolve) => {
+          pending.push(() => void storage.area.get(keys).then(resolve));
+        }),
+      set: (items: Record<string, unknown>) => storage.area.set(items),
+    };
+    const models: ModelAdmin = {
+      store: new ModelStore({
+        storage: gated,
+        cacheStorage: new FakeCaches(),
+        fetch: fakeFetch(routesFor(KOKORO_82M, [q8])),
+      }),
+      probe: () => Promise.resolve({ caps: { webgpu: false, shaderF16: false } }),
+    };
+    render(
+      <Harness
+        models={models}
+        store={new ConfigStore(storage.area)}
+        config={null}
+        savedConfigs={{}}
+        onChanged={vi.fn()}
+      />
+    );
+
+    const select = screen.getByLabelText('Download source') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'custom' } });
+    expect(screen.getByLabelText('Mirror URL')).toBeTruthy();
+
+    // Now let the read finish: it must not put the control back.
+    for (const release of pending.splice(0)) release();
+    await waitFor(() => expect(select.value).toBe('custom'));
+    expect(screen.getByLabelText('Mirror URL')).toBeTruthy();
+  });
+
   it('stores a usable custom mirror and confirms it', async () => {
     const built = renderTab();
     const select = (await screen.findByLabelText('Download source')) as HTMLSelectElement;

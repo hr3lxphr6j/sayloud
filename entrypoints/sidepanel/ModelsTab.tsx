@@ -26,7 +26,7 @@
  * offscreen document's worker, and keeping this file free of it is what makes
  * that structural rather than a convention.
  */
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
 import { formatDecimalBytes } from '~/lib/format-bytes';
 import { type MessageKey, type Translator, useT } from '~/lib/i18n';
@@ -116,13 +116,21 @@ function SourceCard({ models }: SourceCardProps) {
   const [invalid, setInvalid] = useState(false);
   const [saved, setSaved] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /**
+   * Whether the user has already chosen something.
+   *
+   * The stored source is read asynchronously, so a click that lands first
+   * would otherwise be undone by the read resolving a moment later — the
+   * control would snap back to what was saved before it was touched.
+   */
+  const touched = useRef(false);
 
   useEffect(() => {
     if (!store) return;
     let active = true;
     store.getSource().then(
       (setting) => {
-        if (!active) return;
+        if (!active || touched.current) return;
         setHost(setting.host);
         setCustomUrl(setting.customHostUrl ?? '');
       },
@@ -140,6 +148,7 @@ function SourceCard({ models }: SourceCardProps) {
     // The control leads: picking `custom` has to show the URL box before the
     // choice can be valid, or there is nowhere to type the URL that would
     // make it valid.
+    touched.current = true;
     setHost(next.host);
 
     if (next.host === 'custom' && !isHttpsUrl(customUrl)) {

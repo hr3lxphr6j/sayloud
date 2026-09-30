@@ -264,6 +264,14 @@ export const en = {
   'bubble.scrolled-away': 'You scrolled away from the sentence being read.',
   'bubble.back-to-position': 'Back to position',
   'bubble.remaining': '{time} left',
+
+  // --- on-device models -----------------------------------------------------
+  // Only the names the registry itself carries: the model and its tiers. The
+  // rest of the model tab's copy is added with the tab.
+  'model.kokoro-82m': 'Kokoro 82M',
+  'model.tier.light': 'Light',
+  'model.tier.standard': 'Standard',
+  'model.tier.hifi': 'High fidelity',
 } as const;
 
 /** Every message the UI can ask for. */

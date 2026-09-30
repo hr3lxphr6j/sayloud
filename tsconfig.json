@@ -2,6 +2,9 @@
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "preact"
+    "jsxImportSource": "preact",
+    // The Chinese syllable table is generated data (`scripts/gen-pinyin-table.py`)
+    // and shipped as JSON, so the runtime can read it without a code generator.
+    "resolveJsonModule": true
   }
 }

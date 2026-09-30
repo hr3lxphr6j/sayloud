@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlaybackEngine, type VoiceResolver } from '~/lib/playback-engine';
 import type { EngineEvent, EngineSentence, EngineStatus } from '~/lib/protocol';
-import type { Speaker, SpeakRequest } from '~/lib/speaker';
+import type { PrefetchRequest, Speaker, SpeakRequest } from '~/lib/speaker';
 
 /**
  * Fake speaker that mirrors the real one's contract: `stop()` invalidates the
  * current utterance, so events fired afterwards are dropped just like stale
  * `chrome.tts` events would be.
  */
-function fakeSpeaker() {
+function fakeSpeaker(options: { prefetch?: boolean } = {}) {
   const requests: SpeakRequest[] = [];
+  const prefetches: PrefetchRequest[][] = [];
   const listeners = new Map<string, Set<(payload: never) => void>>();
   let live = false;
   let stopCount = 0;
@@ -19,6 +20,13 @@ function fakeSpeaker() {
       requests.push(request);
       live = true;
     },
+    ...(options.prefetch === false
+      ? {}
+      : {
+          prefetch(batch: readonly PrefetchRequest[]) {
+            prefetches.push([...batch]);
+          },
+        }),
     stop() {
       live = false;
       stopCount += 1;
@@ -47,6 +55,7 @@ function fakeSpeaker() {
   return {
     speaker,
     requests,
+    prefetches,
     get stopCount() {
       return stopCount;
     },
@@ -357,6 +366,85 @@ describe('PlaybackEngine', () => {
       events.length = 0;
       engine.dispatch({ type: 'setRate', rate: 1 });
       expect(events).toHaveLength(0);
+    });
+  });
+
+  describe('prefetch', () => {
+    /**
+     * Sentences long enough that the horizon, not the document, limits how far
+     * ahead the engine looks. 150 non-CJK characters estimate at 10s.
+     */
+    const LONG: EngineSentence[] = Array.from({ length: 10 }, (_, index) => ({
+      text: `${index} `.padEnd(150, 'x'),
+      lang: 'en',
+    }));
+
+    it('warms the sentences after the cursor that fit the horizon', () => {
+      engine.dispatch({ type: 'load', sentences: LONG, startIndex: 0, rate: 1 });
+      fake.fire.start();
+
+      // The horizon at rate 1 is 12s, so two 10s sentences cross it.
+      expect(fake.prefetches).toEqual([
+        [
+          { text: LONG[1]?.text, voice: 'Samantha' },
+          { text: LONG[2]?.text, voice: 'Samantha' },
+        ],
+      ]);
+    });
+
+    it('looks further ahead at a higher rate', () => {
+      engine.dispatch({ type: 'load', sentences: LONG, startIndex: 0, rate: 2 });
+      fake.fire.start();
+
+      expect(fake.prefetches[0]).toHaveLength(3);
+    });
+
+    it('does not prefetch before the speaker reports it started', () => {
+      engine.dispatch({ type: 'load', sentences: LONG, startIndex: 0, rate: 1 });
+
+      expect(fake.prefetches).toEqual([]);
+    });
+
+    it('re-runs when the rate changes', () => {
+      engine.dispatch({ type: 'load', sentences: LONG, startIndex: 0, rate: 1 });
+      fake.fire.start();
+
+      engine.dispatch({ type: 'setRate', rate: 2 });
+      fake.fire.start();
+
+      expect(fake.prefetches).toHaveLength(2);
+      expect(fake.prefetches[1]).toHaveLength(3);
+    });
+
+    it('re-runs from the new cursor after a seek', () => {
+      engine.dispatch({ type: 'load', sentences: LONG, startIndex: 0, rate: 1 });
+      fake.fire.start();
+
+      engine.dispatch({ type: 'seek', index: 5 });
+      fake.fire.start();
+
+      expect(fake.prefetches[1]?.[0]).toEqual({ text: LONG[6]?.text, voice: 'Samantha' });
+    });
+
+    it('does not prefetch while paused', () => {
+      engine.dispatch({ type: 'load', sentences: LONG, startIndex: 0, rate: 1 });
+      fake.fire.start();
+      engine.dispatch({ type: 'pause' });
+      fake.prefetches.length = 0;
+
+      engine.dispatch({ type: 'next' });
+
+      expect(fake.prefetches).toEqual([]);
+    });
+
+    it('does nothing when the speaker has no prefetch', () => {
+      const bare = fakeSpeaker({ prefetch: false });
+      const plain = new PlaybackEngine({ speaker: bare.speaker, resolveVoice, now: () => time });
+      plain.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+
+      expect(() => bare.fire.start()).not.toThrow();
+      expect(plain.getStatus().phase).toBe('playing');
+      expect(bare.prefetches).toEqual([]);
     });
   });
 

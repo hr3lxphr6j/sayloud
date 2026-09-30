@@ -10,6 +10,8 @@ const CONFIG = { provider: 'browser' } as const;
 describe('isOffscreenCommand', () => {
   const valid: OffscreenCommand[] = [
     { type: 'synthesize', id: 'a', text: 'hi', voiceId: 'v', config: CONFIG },
+    { type: 'prefetch', items: [{ text: 'hi', voiceId: 'v' }], config: CONFIG },
+    { type: 'prefetch', items: [], config: CONFIG },
     { type: 'play', id: 'a', startTimeMs: 0 },
     { type: 'pause' },
     { type: 'setRate', rate: 1.5 },
@@ -32,6 +34,17 @@ describe('isOffscreenCommand', () => {
       { type: 'synthesize', id: 'a', text: 'hi', voiceId: 'v', config: null },
     ],
     ['a synthesize with an empty id', { type: 'synthesize', id: '', text: 'hi', voiceId: 'v' }],
+    ['a prefetch without items', { type: 'prefetch', config: CONFIG }],
+    ['a prefetch with non-array items', { type: 'prefetch', items: 'nope', config: CONFIG }],
+    [
+      'a prefetch item without a voice',
+      { type: 'prefetch', items: [{ text: 'hi' }], config: CONFIG },
+    ],
+    [
+      'a prefetch item with a non-string text',
+      { type: 'prefetch', items: [{ text: 1, voiceId: 'v' }], config: CONFIG },
+    ],
+    ['a prefetch with a null config', { type: 'prefetch', items: [], config: null }],
     ['a play without a time', { type: 'play', id: 'a' }],
     ['a play with NaN', { type: 'play', id: 'a', startTimeMs: Number.NaN }],
     ['a setRate without a rate', { type: 'setRate' }],

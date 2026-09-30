@@ -26,6 +26,12 @@ export type OffscreenCommand =
       voiceId: string;
       config: ProviderConfig;
     }
+  | {
+      type: 'prefetch';
+      /** Sentences to warm, nearest first. There is no reply. */
+      items: readonly { text: string; voiceId: string }[];
+      config: ProviderConfig;
+    }
   | { type: 'play'; id: string; startTimeMs: number }
   | { type: 'pause' }
   | { type: 'setRate'; rate: number }
@@ -70,6 +76,7 @@ export const OFFSCREEN_PATH = 'offscreen.html';
 
 const COMMAND_TYPES: ReadonlySet<string> = new Set([
   'synthesize',
+  'prefetch',
   'play',
   'pause',
   'setRate',
@@ -96,6 +103,13 @@ export function isOffscreenCommand(value: unknown): value is OffscreenCommand {
         isNonEmptyString(message.id) &&
         typeof message.text === 'string' &&
         typeof message.voiceId === 'string' &&
+        typeof message.config === 'object' &&
+        message.config !== null
+      );
+    case 'prefetch':
+      return (
+        Array.isArray(message.items) &&
+        message.items.every(isPrefetchItem) &&
         typeof message.config === 'object' &&
         message.config !== null
       );
@@ -132,6 +146,12 @@ function typeOf(value: unknown): string | null {
   if (typeof value !== 'object' || value === null) return null;
   const type = (value as { type?: unknown }).type;
   return typeof type === 'string' ? type : null;
+}
+
+function isPrefetchItem(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as { text?: unknown; voiceId?: unknown };
+  return typeof item.text === 'string' && typeof item.voiceId === 'string';
 }
 
 function isNonEmptyString(value: unknown): value is string {

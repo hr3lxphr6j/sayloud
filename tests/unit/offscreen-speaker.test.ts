@@ -313,6 +313,61 @@ describe('OffscreenSpeaker', () => {
     });
   });
 
+  describe('prefetch', () => {
+    it('forwards a prefetch without creating a document or superseding the utterance', async () => {
+      speaker.speak({ text: 'hello', voice: 'v1', rate: 1, lang: 'en' });
+      await tick();
+      const id = utteranceId(channel.commands);
+
+      speaker.prefetch([{ text: 'next', voice: 'v1' }]);
+      await tick();
+
+      expect(channel.commands).toContainEqual({
+        type: 'prefetch',
+        items: [{ text: 'next', voiceId: 'v1' }],
+        config: CONFIG,
+      });
+      expect(channel.channel.sendCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'prefetch' }),
+        { create: false }
+      );
+
+      // The sentence that is playing is untouched: its events still arrive.
+      events.deliver({ type: 'sentence-end', id });
+      expect(ends).toBe(1);
+      expect(started).toBe(1);
+    });
+
+    it('sends an empty voice id when a request has none', async () => {
+      speaker.prefetch([{ text: 'next' }]);
+      await tick();
+
+      expect(channel.commands).toContainEqual({
+        type: 'prefetch',
+        items: [{ text: 'next', voiceId: '' }],
+        config: CONFIG,
+      });
+    });
+
+    it('does not send an empty prefetch', async () => {
+      speaker.prefetch([]);
+      await tick();
+
+      expect(channel.commands).toEqual([]);
+    });
+
+    it('survives a prefetch that cannot be delivered', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(channel.channel.sendCommand).mockRejectedValue(new Error('no document'));
+
+      speaker.prefetch([{ text: 'next', voice: 'v1' }]);
+      await tick();
+
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+  });
+
   describe('listeners', () => {
     it('stops delivering after an unsubscribe', async () => {
       const seen: number[] = [];

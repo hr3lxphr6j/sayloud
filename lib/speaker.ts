@@ -34,6 +34,12 @@ export interface SpeakRequest {
   lang: string;
 }
 
+/** A sentence to warm in the cache before it is needed (spec §5.3). */
+export interface PrefetchRequest {
+  text: string;
+  voice?: string;
+}
+
 /** Word span in sentence-relative character offsets. */
 export interface WordSpan {
   charStart: number;
@@ -49,6 +55,12 @@ export interface SpeakerEvents {
 
 export interface Speaker {
   speak(request: SpeakRequest): void;
+  /**
+   * Warm the cache for sentences expected to play soon. Optional: the browser
+   * voice has nothing to warm, and leaving it undefined is what makes the
+   * engine's `speaker.prefetch?.(...)` a no-op for it.
+   */
+  prefetch?(requests: readonly PrefetchRequest[]): void;
   stop(): void;
   on<K extends keyof SpeakerEvents>(
     event: K,

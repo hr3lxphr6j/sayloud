@@ -13,6 +13,9 @@
  * - A new `synthesize` supersedes the one before it. The in-flight request is
  *   aborted and its result dropped, so a seek does not leave the previous
  *   sentence's audio to start playing a moment later.
+ * - A `prefetch` warms the cache and touches nothing else. It has its own
+ *   abort controllers and its own queue precisely so that it can never abort a
+ *   synthesis, silence the player, or report a failure as a playback error.
  * - Failures are reported as events, not rejections. The service worker's
  *   speaker would otherwise have to handle the same failure twice, once as a
  *   message event and once as a rejected `sendMessage`.
@@ -25,7 +28,7 @@ import type {
   SynthesizeReply,
 } from './offscreen-protocol';
 import { errorMessage, isAbortError, isProviderError, ProviderError } from './providers/errors';
-import type { Provider, ProviderId, SynthesisResult } from './providers/types';
+import type { Provider, ProviderConfig, ProviderId, SynthesisResult } from './providers/types';
 import type { LoadedAudioInfo } from './timeline-player';
 
 /** The cache operations the worker needs. `CacheManager` satisfies this. */
@@ -57,6 +60,49 @@ export interface AudioWorkerDeps {
 /** Long enough for a slow provider on a slow connection. */
 const DEFAULT_SYNTHESIZE_TIMEOUT_MS = 30_000;
 
+/**
+ * How many sentences may be queued for prefetching.
+ *
+ * The engine only ever asks for a few seconds ahead, so this is a guard rather
+ * than a working limit: it stops a document with thousands of sentences from
+ * pinning the whole article's worth of text and audio in memory.
+ */
+const MAX_PREFETCH_QUEUE = 8;
+
+/** A cloud provider takes two prefetches at a time. */
+const CLOUD_PREFETCH_CONCURRENCY = 2;
+/** A local server gets one: it is a single process on the user's machine. */
+const LOCAL_PREFETCH_CONCURRENCY = 1;
+
+/** One sentence waiting to be warmed in the cache. */
+interface PrefetchItem {
+  text: string;
+  voiceId: string;
+}
+
+/**
+ * How many prefetches may run at once for a config.
+ *
+ * Cloud services accept two in parallel; an `openai-compat` endpoint on
+ * loopback is one local process, and saturating it would slow down the sentence
+ * that is actually being played.
+ */
+export function prefetchConcurrency(config: ProviderConfig): number {
+  if (config.provider === 'openai-compat' && isLoopback(config.baseUrl)) {
+    return LOCAL_PREFETCH_CONCURRENCY;
+  }
+  return CLOUD_PREFETCH_CONCURRENCY;
+}
+
+function isLoopback(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
 export class AudioWorker {
   private readonly providers: ReadonlyMap<ProviderId, Provider>;
   private readonly cache: AudioCache;
@@ -71,6 +117,23 @@ export class AudioWorker {
    */
   private generation = 0;
   private inFlight: AbortController | null = null;
+
+  /**
+   * The prefetch queue, deliberately separate from the playback request.
+   *
+   * Prefetching must never touch the generation counter, the in-flight
+   * controller, or the player: a background sentence that is slow, or that
+   * fails, must not silence or fail the sentence the user is listening to.
+   */
+  private prefetchQueue: PrefetchItem[] = [];
+  private prefetchConfig: ProviderConfig | null = null;
+  /** Bumped whenever the queue is replaced or cancelled; stale work bails out. */
+  private prefetchBatch = 0;
+  /**
+   * Prefetches in flight. Doubles as the concurrency counter, so an aborted
+   * request still counts until its promise settles.
+   */
+  private readonly prefetchInFlight = new Set<AbortController>();
 
   constructor(deps: AudioWorkerDeps) {
     this.providers = deps.providers;
@@ -91,6 +154,9 @@ export class AudioWorker {
     switch (command.type) {
       case 'synthesize':
         return this.synthesize(command);
+      case 'prefetch':
+        this.prefetch(command);
+        return undefined;
       case 'play':
         await this.play(command.id, command.startTimeMs);
         return undefined;
@@ -116,6 +182,7 @@ export class AudioWorker {
     this.inFlight?.abort();
     this.inFlight = null;
     this.player.stop();
+    this.cancelPrefetches();
   }
 
   private async synthesize(
@@ -186,12 +253,114 @@ export class AudioWorker {
     }
   }
 
+  /**
+   * Warm the cache for the sentences the engine expects to play soon.
+   *
+   * Fire and forget: there is no reply, no `ready`, and — most importantly — no
+   * `error` event. The service worker reads a speaker error as "this sentence
+   * failed" and degrades to the browser voice, so a background prefetch that
+   * fails is only logged.
+   */
+  private prefetch(command: Extract<OffscreenCommand, { type: 'prefetch' }>): void {
+    this.cancelPrefetches();
+    this.prefetchConfig = command.config;
+    // A newer command replaces the earlier queue. The nearest sentences are the
+    // ones about to be needed, so the cap keeps the head and drops the tail.
+    this.prefetchQueue = command.items
+      .slice(0, MAX_PREFETCH_QUEUE)
+      .map((item) => ({ text: item.text, voiceId: item.voiceId }));
+    this.pumpPrefetch();
+  }
+
+  /**
+   * Drop the queue and abort everything in flight.
+   *
+   * Called by `supersede()` and `stop()`: a seek, a stop, a rate change or a
+   * voice change invalidates every prefetch, and a new `prefetch` command
+   * replaces the previous queue outright. The controllers are left in the
+   * in-flight set so the concurrency count stays honest until they settle.
+   */
+  private cancelPrefetches(): void {
+    this.prefetchBatch++;
+    this.prefetchQueue = [];
+    this.prefetchConfig = null;
+    for (const controller of this.prefetchInFlight) controller.abort();
+  }
+
+  /** Start as many queued prefetches as the provider's concurrency allows. */
+  private pumpPrefetch(): void {
+    const config = this.prefetchConfig;
+    if (!config) return;
+
+    const concurrency = prefetchConcurrency(config);
+    while (this.prefetchInFlight.size < concurrency) {
+      const item = this.prefetchQueue.shift();
+      if (!item) return;
+
+      const batch = this.prefetchBatch;
+      const controller = new AbortController();
+      this.prefetchInFlight.add(controller);
+      void this.runPrefetch(batch, controller, item, config).finally(() => {
+        this.prefetchInFlight.delete(controller);
+        this.pumpPrefetch();
+      });
+    }
+  }
+
+  /** Synthesize one queued sentence into the cache, and nothing else. */
+  private async runPrefetch(
+    batch: number,
+    controller: AbortController,
+    item: PrefetchItem,
+    config: ProviderConfig
+  ): Promise<void> {
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.synthesizeTimeoutMs);
+
+    try {
+      const identity: CacheIdentity = { text: item.text, voiceId: item.voiceId, config };
+      const key = await this.cacheKey(identity);
+      if (key === null || this.prefetchStale(batch)) return;
+
+      // Already warm: synthesizing again would spend a provider call to store
+      // the same bytes, which is what makes a second read of an article cheap.
+      if (await this.readCache(key)) return;
+      if (this.prefetchStale(batch)) return;
+
+      const result = await this.providerFor(config.provider).synthesize(
+        { text: item.text, voiceId: item.voiceId, signal: controller.signal },
+        config
+      );
+      if (this.prefetchStale(batch)) return;
+
+      await this.writeCache(key, result);
+    } catch (error) {
+      // A cancelled prefetch is the point of cancelling it, and a failure is
+      // silent: this must never surface as a playback error.
+      if (this.prefetchStale(batch)) return;
+      if (timedOut) console.warn('[SayLoud] a prefetch did not answer in time');
+      else if (!isAbortError(error)) console.warn('[SayLoud] a prefetch failed', error);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private prefetchStale(batch: number): boolean {
+    return batch !== this.prefetchBatch;
+  }
+
   /** Abort the request in flight and return the new generation. */
   private supersede(): number {
     this.generation++;
     this.inFlight?.abort();
     this.inFlight = null;
     this.player.stop();
+    // A prefetch is for audio that is about to be needed; once the engine has
+    // moved on, every outstanding one is for the wrong sentence.
+    this.cancelPrefetches();
     return this.generation;
   }
 

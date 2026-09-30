@@ -1,0 +1,331 @@
+# P4 风险项实测记录（2026-09-30）
+
+测试环境：macOS，Node v26.10.0，kokoro-js@1.2.1，@huggingface/transformers@3.8.1，
+phonemizer@1.2.1。临时目录 `/tmp/p4verify`。
+
+---
+
+## V18 — transformers.js 的 URL 模板 ✅ 通过
+
+用 fetch 拦截实测（`env.remoteHost` 设为规范主机、`remotePathTemplate = '{model}/resolve/{revision}/'`），
+transformers.js 请求的 URL 逐字符符合：
+
+```
+https://model-cache.sayloud.invalid/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/tokenizer.json
+https://model-cache.sayloud.invalid/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/tokenizer_config.json
+```
+
+**结论**：§3.5 的 canonical 缓存键方案成立，模板无需修正。
+
+### 各 dtype 实际请求的 ONNX 文件
+
+| dtype | 文件 |
+|---|---|
+| `q8` | `onnx/model_quantized.onnx` |
+| `fp16` | `onnx/model_fp16.onnx` |
+| `fp32` | `onnx/model.onnx` |
+| `q4` | `onnx/model_q4.onnx` |
+| `q4f16` | `onnx/model_q4f16.onnx` |
+| `int8` | `onnx/model_int8.onnx`（文件不存在，会 404） |
+| `bnb4` | `onnx/model_bnb4.onnx`（文件不存在，会 404） |
+
+`config.json` 只在第一次请求，之后走缓存。
+
+---
+
+## V19 — kokoro-js 的音色 URL 硬编码 ✅ 通过（且比 spec 写的更严重）
+
+`dist/kokoro.js` 里的原文（去混淆）：
+
+```js
+const url = `https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/${voice}.bin`;
+let cache;
+try {
+  cache = await caches.open("kokoro-voices");
+  const hit = await cache.match(url);          // ← key 就是这个硬编码 URL
+  if (hit) return await hit.arrayBuffer();
+} catch (e) { console.warn("Unable to open cache", e) }
+const r = await fetch(url);
+```
+
+**结论**：spec §1.2(b) 的描述准确。缓存桶 `kokoro-voices`，key = 硬编码的 HF URL。
+换源时必须靠 fetch patch 兜住。
+
+### 补充事实
+
+- 打包器实际选中的入口是 **`dist/kokoro.js`（12KB，Node 版）**，不是 `kokoro.web.js`（2.0MB）。
+  `package.json` 的 `exports` 只有 `node` 和 `default`，没有 `browser` 字段。
+  但 `"browser": { "path": false, "fs/promises": false }` 会把这两个 Node 模块 stub 掉，
+  于是 `if (i && Object.hasOwn(i, "readFile"))` 为假，走网络分支。**可行，但要实测确认打包结果。**
+- `dist/kokoro.js` 的顶层 `import` 里**没有** fetch 调用 —— 音色是 `generate()` 时才加载的，
+  所以 fetch patch 的时机不是问题（不必担心模块顶层就发请求）。
+- `generate_from_ids()` **不做音色校验**，可以直接用任意音色 id。
+- `_validate_voice` 的校验只发生在 `generate()` / `stream()`。
+
+---
+
+## 🔴 重大发现：kokoro-js 实际上是英文专用
+
+### 1. `VOICES` 元数据只有 28 个音色，全是英文
+
+实测（`new KokoroTTS({}, {})` 后调 `generate()`，`_validate_voice` 在模型工作之前执行）：
+
+```
+af_heart af_alloy af_aoede af_bella af_jessica af_kore af_nicole af_nova af_river af_sarah af_sky
+am_adam am_echo am_eric am_fenrir am_liam am_michael am_onyx am_puck am_santa
+bf_emma bf_isabella bm_george bm_lewis bf_alice bf_lily bm_daniel bm_fable
+```
+
+**28 个，全部 `en-us` / `en-gb`。** 用 `zf_xiaobei` / `jf_alpha` / `ef_dora` 调用一律抛：
+
+```
+Voice "zf_xiaobei" not found. Should be one of: af_heart, af_alloy, ...
+```
+
+三个 dist 文件（`kokoro.js` / `kokoro.web.js` / `kokoro.cjs`）**都不含** `zf_xiaobei`。
+
+### 2. 依赖的 phonemizer 是英文专用的 espeak-ng
+
+`phonemizer@1.2.1`（1.32MB，wasm 内联）实测：
+
+```
+phonemize('你好世界', 'cmn') → ❌ Invalid language identifier: "cmn".
+  Should be one of: en, en-029, en-gb, en-gb-scotland, en-gb-x-gbclan,
+  en-gb-x-gbcwmd, en-gb-x-rp, en-us, en-us-nyc, gmw/en, ...
+```
+
+**全是英文变体。** 语言列表来自 wasm 模块本身（`oe` 返回 `identifiers`），
+不是 JS 硬编码 —— 也就是说这个 wasm 构建**真的只有英文语音数据**。
+
+### 3. 官方模型卡声明英文专用
+
+`onnx-community/Kokoro-82M-v1.0-ONNX` 的 README frontmatter：
+
+```yaml
+language:
+- en
+```
+
+### 4. 参考实现 catm 也是英文专用
+
+`catm`（MIT，已上架 CWS，浏览器内 Kokoro 长文阅读器）：
+
+```ts
+export type VoiceId = "af_heart" | "af_bella" | "am_michael" | "am_eric";   // 只有 4 个
+const lang = voice.charAt(0) === "a" ? "en-us" : "en";                      // 非 a 开头也当英文
+```
+
+它调 `tts.generate()`，所以受 `_validate_voice` 限制。
+
+### 5. 但中文**是可行的**（实测打通）
+
+关键：tokenizer 的词表里有**声调箭头** `↓→↗↘`，这正是 misaki（Kokoro 官方 G2P）
+用来编码声调的符号。词表里没有任何数字 —— 因为声调用箭头而不是数字。
+
+misaki 的中文 G2P（`misaki/zh.py` + `misaki/transcription.py`，MIT）
+是**纯查表**，不依赖 espeak：
+
+```python
+TONE_MAPPING = {1:'˥', 2:'˧˥', 3:'˧˩˧', 4:'˥˩', 5:''}
+def retone(p):
+    p = p.replace('˧˩˧','↓').replace('˧˥','↗').replace('˥˩','↘').replace('˥','→')
+```
+
+实测结论（全部在 Node 里跑通）：
+
+1. 用 pypinyin 枚举出 **1549 个音节**，misaki 算法**零失败**转换。
+2. 归一化后得到 **426 个标准音节**（去重、0 冲突），
+   生成 `音节 → 带 0 占位符的 IPA 模板` 表，**JSON 只有 7,304 字节**。
+3. 完整链路：`汉字 → pinyin-pro → 查表 → 声调替换 → retone → tokenizer`，
+   5 个测试句全部产出合法 IPA，**声调箭头全部被 tokenizer 保留**。
+
+样例：
+
+| 汉字 | IPA |
+|---|---|
+| 你好世界。 | `ni↓ xau̯↓ ʂɻ̩↘ ʨje↘` |
+| 这是一段中文测试。 | `ꭧɤ↘ ʂɻ̩↘ i↗ twa↘n ꭧʊ→ŋ wə↗n ʦʰɤ↘ ʂɻ̩↘` |
+| 今天天气很好，我们去公园散步吧。 | `ʨi→n tʰjɛ→n tʰjɛ→n ʨʰi↘ xə↓n xau̯↓ wo↓ mən ʨʰy↘ kʊ→ŋ ɥɛ↗n sa↘n pu↘ pa` |
+
+平均每句 43 tokens（远低于 510 上限）。
+
+**依赖成本**：`pinyin-pro` 1.1MB + 7KB 表。**不需要 espeak-ng，不需要 18MB wasm。**
+
+（对比：`espeak-ng` npm 包有完整语言数据含 `cmn`，18MB，但它的 cmn 期望**拼音输入**，
+汉字会回退英文；且它的输出是数字声调，会被 tokenizer 剥掉。所以 espeak 这条路**更差**。）
+
+### 6. 音色与语言的真实清单（ModelScope API，权威）
+
+仓库 `voices/` 下 **55 个条目**（54 个音色 + 1 个遗留的合并文件 `af.bin`），合计 28.7MB：
+
+| 前缀 | 数量 | 语言 |
+|---|---|---|
+| af | 11 | en-US 女 |
+| am | 9 | en-US 男 |
+| bf | 4 | en-GB 女 |
+| bm | 4 | en-GB 男 |
+| ef / em | 1 / 2 | es-ES |
+| ff | 1 | fr-FR |
+| hf / hm | 2 / 2 | hi-IN |
+| if / im | 1 / 1 | it-IT |
+| jf / jm | 4 / 1 | ja-JP |
+| pf / pm | 1 / 2 | pt-BR |
+| **zf / zm** | **4 / 4** | **zh-CN** |
+
+中文 8 个：`zf_xiaobei` `zf_xiaoni` `zf_xiaoxiao` `zf_xiaoyi`
+`zm_yunjian` `zm_yunxi` `zm_yunxia` `zm_yunyang`。
+
+**但 kokoro-js 只认其中 28 个英文的。** 其余 26 个（含 8 个中文）必须走
+`generate_from_ids()` 绕道 + 自备音素化。
+
+### 7. 各档位文件的真实体积（ModelScope API）
+
+| 文件 | 体积 |
+|---|---|
+| `model_q8f16.onnx` | 86.03 MB（**任何 dtype 都选不到**） |
+| `model_quantized.onnx` (q8) | **92.36 MB** |
+| `model_uint8f16.onnx` | 114.21 MB |
+| `model_q4f16.onnx` | 154.59 MB |
+| `model_fp16.onnx` (fp16) | **163.23 MB** |
+| `model_uint8.onnx` | 177.46 MB |
+| `model_q4.onnx` | 305.22 MB |
+| `model.onnx` (fp32) | **325.53 MB** |
+
+`int8` / `bnb4` 的文件**不存在**（会 404）。`q4` / `q4f16` 存在但比 q8 还大（反直觉）。
+
+**根目录只有 4 个必需文件**：`config.json`(44B)、`tokenizer.json`(3497B)、
+`tokenizer_config.json`(113B)，加 `onnx/` 和 `voices/` 两个目录。
+
+---
+
+## 依赖体积（实测）
+
+| 包 | 解包体积 | 说明 |
+|---|---|---|
+| `onnxruntime-web` wasm（经 transformers.js 转出） | **21.0 MB** | 单个文件同时覆盖 WebGPU + WASM |
+| `@huggingface/transformers` web 构建 | 1.78 MB | |
+| `kokoro-js` | 12 KB（dist/kokoro.js） | 实际被打包的那个 |
+| `phonemizer` | 1.32 MB | wasm 内联；**英文专用** |
+| `pinyin-pro` | 1.1 MB | 中文路径需要 |
+| misaki 音节表（生成物） | 7 KB | 中文路径需要 |
+
+英文专用方案：约 +24 MB。
+加中文：+1.1 MB（pinyin-pro）+ 7 KB。
+
+---
+
+## 待验证
+
+- **V15**：offscreen 文档里有没有 `navigator.gpu`，WebGPU 能否真正推理
+- **V17**：ORT 在 `numThreads=1` 且无交叉隔离时能否初始化；wasm 在扩展内的实际路径
+- **V20**：真实模型的首次加载耗时与每句合成耗时
+- **V16**：ModelScope 在国内真实网络下的速度（**测试机走代理，无法验证**）
+
+---
+
+## V15 — offscreen 文档里的 WebGPU ✅ 通过（结果比预期好）
+
+最小 MV3 扩展（`chrome.offscreen.createDocument({ reasons: ['AUDIO_PLAYBACK'] })`），
+在真机 Chromium 里读 offscreen 文档的探测结果：
+
+```json
+{
+  "context": "offscreen",
+  "hasNavigatorGpu": "object",
+  "hasRequestAdapter": "function",
+  "adapterAvailable": true,
+  "adapterInfo": { "vendor": "apple", "architecture": "metal-3", "description": "" },
+  "deviceCreated": true,
+  "hasShaderF16": true,
+  "crossOriginIsolated": false,
+  "hasSharedArrayBuffer": "function",
+  "hardwareConcurrency": 10,
+  "isSecureContext": true,
+  "hasChromeStorage": "undefined",
+  "hasChromePermissions": "undefined",
+  "hasChromeI18n": "undefined"
+}
+```
+
+**结论**：offscreen 文档有**完整可用的 WebGPU**，能拿到 adapter、创建设备、支持 `shader-f16`。
+不需要任何特殊启动参数。同时**再次确认** P3 的发现：offscreen 里
+`chrome.storage` / `permissions` / `i18n` 全是 `undefined`。
+
+---
+
+## V17 — ORT 在 numThreads=1 且无交叉隔离时 ✅ 通过
+
+同一个实验里加载 `onnxruntime-web@1.22.0-dev` 的 `ort.webgpu.min.js`，
+`wasmPaths = chrome.runtime.getURL('ort/')`，`numThreads = 1`，`crossOriginIsolated: false`：
+
+```
+ortWasmInit: "ok (wasm up; model parse failed as expected)"
+ortError:    "Error: Can't create a session. ERROR_CODE: 7, ERROR_MESSAGE:
+              Failed to load model because protobuf parsing failed."
+```
+
+故意喂垃圾 buffer：错误是**模型解析失败**而不是 wasm 加载失败，证明
+**wasm 后端已经成功初始化**。
+
+**结论**：
+- **不需要 COOP/COEP**，不需要 `SharedArrayBuffer` 交叉隔离。
+  于是 §3.14「先不启用 COOP/COEP」的决定成立，**不需要改全局 manifest**，
+  也就**不需要回归六家云端 provider**。
+- `wasmPaths` 指向扩展内路径**有效**（`chrome.runtime.getURL('ort/')`）。
+- MV3 CSP 需要 `'wasm-unsafe-eval'`（实验里已加，wasm 才起来）。
+
+---
+
+## V20 — 真实模型的加载与合成耗时 ⚠️ 可用但偏慢
+
+真机实测（Apple M 系列，10 核，q8 档 92.36MB，从 ModelScope 下载）：
+
+| 项 | WebGPU | WASM |
+|---|---|---|
+| 下载 92.36MB | （已缓存） | （已缓存） |
+| **session 建立** | **12,090–12,243 ms** | **13,557 ms** |
+| 稳态合成 RTF | **1.44–1.45** | **1.45** |
+| 每句绝对耗时（稳态） | 4,935–5,578 ms | ~4,935 ms |
+
+逐句明细（WebGPU）：
+
+| 句子 | 耗时 | 音频时长 | RTF |
+|---|---|---|---|
+| Hello world.（首次） | 3,179 ms | 1.45 s | 2.19 |
+| This is a test. | 2,102 ms | 1.27 s | 1.65 |
+| Life is like a box of chocolates. | 4,183 ms | 2.85 s | 1.47 |
+| You never know what you are gonna get. | 4,351 ms | 2.98 s | 1.46 |
+| 长句（8.8s 音频） | 12,191 ms | 8.80 s | 1.39 |
+
+**结论**：
+
+1. **合成比实时慢约 1.45 倍**（RTF ≈ 1.45）。这意味着「边播边合成」会持续落后：
+   10 秒的句子要 14.5 秒合成，播放只能覆盖 10 秒。**必须靠预取 + 缓存**，
+   且首次听某个句子时可能等。
+2. **session 建立要 12–13.5 秒**（模型已下载的情况下）。用户点播放后
+   **要等十几秒才出声**，UI 必须显示进度，不能假装立刻可用。
+3. **WebGPU 与 WASM 的 RTF 几乎一样**（1.44 vs 1.45）。ORT 日志显示
+   WebGPU 确实是首选 EP，但「Some nodes were not assigned to the preferred
+   execution providers」——部分算子回退到 CPU，所以差距被抹平。
+   **在低端机器上 WASM 会明显更慢**，WebGPU 的价值主要在那些机器上。
+4. 以上是 **Apple M 系列**的数字。低端 Windows 笔记本会差很多，
+   首次加载与每句延迟都可能翻倍。
+
+**对 spec 的影响**：§3.12 的 `concurrency: 1` 是对的，但需要补充
+「预取是必需品而非优化」；§4 的 UI 需要「正在准备模型…（首次约十几秒）」
+这类诚实提示；§6 的退路（标注很慢 / 标为实验性）要升级为**默认行为的一部分**。
+
+---
+
+## 🔴 需要用户决策：中文是否在 P4 范围内
+
+实测结论：**kokoro-js 走标准路径只能出英文**。中文要么不做，要么自建管线。
+
+| | 方案 A：只做英文 | 方案 B：英文 + 中文 |
+|---|---|---|
+| 音色 | 28 个（en-US / en-GB） | +8 个中文 |
+| 实现 | `tts.generate()` 直接用 | 中文走 `generate_from_ids()` 绕道 |
+| 额外依赖 | 无 | `pinyin-pro` 1.1MB + 7KB 音节表 |
+| 额外工作量 | — | 约 1 天（已实测打通，风险低） |
+| 音质 | 官方支持，有保证 | **未经试听验证**（无法在无音频输出的环境判断） |
+| 风险 | 低 | 中：管线通了，但中文自然度未知 |

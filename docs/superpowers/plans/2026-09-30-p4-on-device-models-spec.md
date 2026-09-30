@@ -13,14 +13,20 @@
 
 给 SayLoud 加**端侧语音**：模型在用户机器上跑，文字不出本机、不需要自建服务器、下好之后完全离线。
 
-这一轮做两件事：
+这一轮做三件事：
 
 1. **通用的模型管理器**——注册表驱动的模型列表，管理每个模型的下载源、下载、删除、进度、占用和许可。**结构上支持多个模型族，但只接 Kokoro 一个引擎。**
 2. **模型标签页**——全局设置新增第三个标签页，管模型的下载和删除。
+3. **中文与英文两条音素化路径**——英文走 `kokoro-js` 官方路径，
+   中文走自建管线（§3.11）。**只覆盖 zh/en**，其余语言 P4 不做。
+
+**性能预期（实测，见 §6 V20）**：session 建立 12–13.5 秒，
+合成 RTF ≈ 1.45。这不是「秒出」的功能，UI 必须诚实（§4.3.1）。
 
 ### 0.2 不包含
 
 - ❌ 第二个模型族的引擎实现（Kitten / Piper / MMS 见 §10，结构已留好）
+- ❌ **日 / 西 / 法 / 印地 / 意 / 葡的 18 个音色**（需要各自的 G2P，见 §3.11.6）
 - ❌ 词级高亮（Kokoro 不给时间戳，见 §3.12）
 - ❌ 声音克隆、微调、多说话人对话
 - ❌ 云端 provider 的任何改动（P2 已完成）
@@ -35,7 +41,7 @@
 
 | 模型 | 参数 | 体积 | 中文 | 英文 | 许可 | 运行时 | 形态 |
 |---|---|---|---|---|---|---|---|
-| **Kokoro 82M** | 82M | 92–325MB | ✅ 8 音色 | ✅ | Apache-2.0 | kokoro-js（自写） | A |
+| **Kokoro 82M** | 82M | 92–325MB | ⚠️ 8 音色，需自建音素化 | ✅ 28 音色 | Apache-2.0 | kokoro-js + 自写中文管线 | A |
 | Kitten TTS nano 0.8 | 15M | **24MB** | ❌ | ✅ 8 音色 | Apache-2.0 | 自写（StyleTTS2） | A |
 | Piper zh_CN huayan x_low | — | **20.6MB** | ✅ | ✅ | MIT 系 | piper-tts-web（espeak） | B |
 | Piper zh_CN huayan medium | — | 63.2MB | ✅ | ✅ | MIT 系 | piper-tts-web（espeak） | B |
@@ -53,9 +59,40 @@
 
 **结论**：形态 A 和 B 的**文件管理**是同构的（都是「一组文件 + 体积 + 许可 + 语言」），差别只在「文件集怎么分组」。所以管理器可以通用，但 UI 要能表达两种分组方式（档位 / 音色目录）。P4 只实现形态 A（Kokoro）。
 
+### 1.1.1 ⚠️ Kokoro 的「中文 ✅」需要修正（2026-09-30 实测）
+
+上表的「中文 8 音色」指的是**仓库里有 8 个中文音色文件**，这没错（§1.3 已核）。
+但**标准运行时路径出不了中文**，四条独立证据：
+
+1. **`kokoro-js@1.2.1` 的 `VOICES` 元数据只有 28 个音色，全是英文**（`en-us` / `en-gb`）。
+   实测 `generate()` 传 `zf_xiaobei` 直接抛：
+   `Voice "zf_xiaobei" not found. Should be one of: af_heart, ...`。
+   三个 dist 文件（`kokoro.js` / `kokoro.web.js` / `kokoro.cjs`）**都不含** `zf_xiaobei`。
+2. **依赖的 `phonemizer@1.2.1` 是英文专用的 espeak-ng 构建**。
+   实测 `phonemize('你好世界', 'cmn')` 抛
+   `Invalid language identifier: "cmn". Should be one of: en, en-029, en-gb, ...`
+   ——语言列表来自 wasm 模块本身，即该构建**真的只有英文语音数据**。
+3. **官方模型卡声明英文专用**：`onnx-community/Kokoro-82M-v1.0-ONNX` 的 frontmatter 是 `language: [en]`。
+4. **参考实现 `catm` 也是英文专用**（MIT、已上架 CWS）：`VoiceId` 只有 4 个英文音色，
+   且 `const lang = voice.charAt(0) === "a" ? "en-us" : "en"` —— 非 `a` 开头也当英文处理。
+
+**但中文是可行的**，且已实测打通（§3.11）。关键证据：**tokenizer 词表里有声调箭头 `↓→↗↘`**，
+这正是 misaki（Kokoro 官方 G2P）编码声调用的符号；词表里**没有任何数字**——
+因为声调用箭头而不是数字。词表同时包含中文 IPA 全部字符（`ʦ ʨ ꭧ ɕ ʂ ɻ ɥ ɤ ɚ` 等）。
+
+**结论**：P4 分两条路 ——
+- **英文 28 音色**：走 `kokoro-js` 官方 `generate()`，音质有保证。
+- **中文 8 音色**：绕道 `generate_from_ids()`（它**不做音色校验**）+ 自建音素化（§3.11）。
+
+其余 18 个音色（日/西/法/印地/意/葡，共 18 个）需要各自的 G2P，**P4 不做**，
+注册表按语言过滤掉，UI 不展示。
+
 ### 1.2 依赖内部的三个硬事实
 
 读 `kokoro-js@1.2.1` 的打包产物确认，直接决定实现方式：
+
+> **验证状态（2026-09-30）**：以下三条均已用真机/真依赖实测确认，
+> 结论见 `docs/superpowers/plans/2026-09-30-p4-risk-verification.md`（V18/V19）。
 
 **(a) transformers.js 的路径模板可配**
 
@@ -77,6 +114,10 @@ const r = await fetch(url); … cache.put(url, …)
 
 **后果**：模型从 ModelScope 下好了，第一个音色仍会请求 HF，国内直接失败。必须用 fetch patch 兜住（§3.5）。
 
+**实测确认（V19）**：原文如上，缓存桶 `kokoro-voices`，key 就是那个硬编码的 HF URL。
+另外：**音色是 `generate()` 时才加载的，模块顶层不发请求**，所以 fetch patch 的时机不是问题。
+`generate_from_ids()` 不校验音色，可以直接用任意音色 id。
+
 **(c) dtype 到文件名的映射**
 
 ```js
@@ -85,7 +126,23 @@ suffix: { fp32:"", fp16:"_fp16", int8:"_int8", uint8:"_uint8", q8:"_quantized", 
 DEFAULT_DEVICE_DTYPE_MAPPING = { wasm: "q8" }
 ```
 
-**`q8f16` 不是合法 dtype**，86MB 的 `model_q8f16.onnx` 选不到。可选档只有 `q8`(92.4MB) / `fp16`(163.2MB) / `fp32`(325.5MB)。`int8`、`bnb4` 在该仓库没有文件，会 404。
+**`q8f16` 不是合法 dtype**，86MB 的 `model_q8f16.onnx` 选不到。
+
+**实测（V18）各 dtype 实际请求的文件**：
+
+| dtype | 请求的文件 | 仓库里存在？ |
+|---|---|---|
+| `q8` | `onnx/model_quantized.onnx` | ✅ 92.36 MB |
+| `fp16` | `onnx/model_fp16.onnx` | ✅ 163.23 MB |
+| `fp32` | `onnx/model.onnx` | ✅ 325.53 MB |
+| `q4` | `onnx/model_q4.onnx` | ✅ 305.22 MB（**比 q8 还大**） |
+| `q4f16` | `onnx/model_q4f16.onnx` | ✅ 154.59 MB（**比 q8 还大**） |
+| `int8` | `onnx/model_int8.onnx` | ❌ 不存在，会 404 |
+| `bnb4` | `onnx/model_bnb4.onnx` | ❌ 不存在，会 404 |
+
+**所以可用档只有 `q8`(92.4MB) / `fp16`(163.2MB) / `fp32`(325.5MB)**。
+`q4` / `q4f16` 虽然文件存在，但体积比 q8 大，作为「更小的档位」毫无意义，排除。
+（仓库里还有个 86MB 的 `model_q8f16.onnx`，但没有任何合法 dtype 能选到它。）
 
 ### 1.3 下载源实测
 
@@ -98,7 +155,7 @@ DEFAULT_DEVICE_DTYPE_MAPPING = { wasm: "q8" }
 | `cdn-lfs.huggingface.co` | 不可达 | `code=000` |
 | **`modelscope.cn`** | **完整镜像，推荐** | 见下 |
 
-ModelScope 的 `onnx-community/Kokoro-82M-v1.0-ONNX` 是完整镜像，71 个条目，字节数与 HF 一致：8 个量化档全在、55 个音色 `.bin` 全在、`config.json`/`tokenizer.json`/`tokenizer_config.json` 全在，**不需要 token**。
+ModelScope 的 `onnx-community/Kokoro-82M-v1.0-ONNX` 是完整镜像，71 个条目，字节数与 HF 一致：8 个量化档全在、54 个音色 `.bin` 全在（加 1 个遗留的 `af.bin`）、`config.json`/`tokenizer.json`/`tokenizer_config.json` 全在，**不需要 token**。
 
 URL 结构与 HF 只差前缀和分支名：`https://modelscope.cn/models/{model}/resolve/master/{file}`。实测 Range：
 
@@ -113,34 +170,82 @@ CDN 稳定性：3 次连测全 `206`，0.40–0.42s。
 
 **结论**：`hf-mirror.com` 这条常见方案在这里是错的，排除；ModelScope 作国内源。
 
+**文件清单与体积的权威来源**（写档位 `bytes` 时用这个，不要手量）：
+
+```
+https://modelscope.cn/api/v1/models/{repo}/repo/files?Revision=master&Root={dir}
+```
+
+返回 `Data.Files[].{Name, Size}`。`Root` 留空给根目录，`Root=onnx` 给档位文件，
+`Root=voices` 给音色。HF 的等价接口是 `https://huggingface.co/api/models/{repo}/tree/main/{dir}`。
+
+实测该仓库结构（2026-09-30）：
+
+- **根目录只有 4 个必需文件**：`config.json`(44B)、`tokenizer.json`(3497B)、
+  `tokenizer_config.json`(113B)，加 `onnx/`、`voices/` 两个目录。
+- `onnx/` 下 8 个 `.onnx` 文件（体积见 §1.2 表）。
+- `voices/` 下 **55 个条目**（54 个音色 + 1 个遗留的合并文件 `af.bin`），合计 28.7MB。
+
 ### 1.4 体积代价
 
-**只有 20.6MB 的 wasm 进包。** transformers.js 包里只带一个 `dist/ort-wasm-simd-threaded.jsep.wasm`（20.60MB），它**同时覆盖 WebGPU 和 WASM 两个执行后端**，不需要第二个文件。
+**只有 21.0MB 的 wasm 进包。** transformers.js 包里只带一个
+`dist/ort-wasm-simd-threaded.jsep.wasm`（21,596,019 字节 = 21.0MB），
+它**同时覆盖 WebGPU 和 WASM 两个执行后端**，不需要第二个文件。
 
-| 项 | 体积 |
-|---|---|
-| `ort-wasm-simd-threaded.jsep.wasm` | 20.60MB |
-| transformers.js + kokoro-js + phonemizer JS | ~4.7MB |
-| **包体增量** | **~23–25MB** |
+**实测各包解包体积**（不是估计值）：
 
-扩展包从 ~0.6MB 变成 **~25MB**。模型权重不进包，运行时下载。
+| 包 | 体积 | 说明 |
+|---|---|---|
+| `onnxruntime-web` 的 jsep wasm | **21.0 MB** | 单个文件，两个后端共用 |
+| `@huggingface/transformers`（web 构建） | 1.78 MB | |
+| `kokoro-js` | **12 KB** | 打包器实际选中的是 `dist/kokoro.js`，**不是** 2.0MB 的 `kokoro.web.js` |
+| `phonemizer` | 1.32 MB | wasm 内联；**英文专用** |
+| `pinyin-pro` | 1.1 MB | 中文路径需要 |
+| misaki 音节表（生成物） | 7 KB | 中文路径需要 |
+| **包体增量合计** | **约 25–26 MB** | 含中文路径 |
 
-（`kokoro-js` npm 包解包 30.4MB，其中约 29MB 是 55 个音色 `.bin`。运行时走网络 + `kokoro-voices` 缓存，**不该打进包**——构建时要确认 Vite 没把它们当 asset 收进去。）
+扩展包从 ~0.6MB 变成 **~26MB**。模型权重（92MB）不进包，运行时下载。
+
+**关键陷阱**：打包器解析 `kokoro-js` 时会选中 `dist/kokoro.js`（12KB 的 Node 构建），
+因为它 `package.json` 的 `exports` **只有 `node` 和 `default`，没有 `browser` 字段**。
+该文件顶层 `import s from "path"; import i from "fs/promises"` ——
+靠 `"browser": { "path": false, "fs/promises": false }` 把这两个模块 stub 成空对象。
+空对象没有 `readFile`，于是 `if (i && Object.hasOwn(i, "readFile"))` 为假，走网络分支。
+
+**Vite 是否遵守这个 `browser` 字段必须在 T3 实测确认**（V21，见 §6）——
+若不遵守，需要显式 alias 到 stub。
+
+（`kokoro-js` npm 包解包 30.4MB，其中约 28.7MB 是 54 个音色 `.bin`。
+运行时走网络 + `kokoro-voices` 缓存，**不该打进包**——构建时要确认 Vite 没把它们当 asset 收进去。）
 
 ---
 
 ## 2. 评估
 
+**风险已实测（2026-09-30）**：V15/V17/V18/V19 **全部通过**，V20 得到具体数字。
+完整记录见 `docs/superpowers/plans/2026-09-30-p4-risk-verification.md`。
+
 | 项 | 工作量 | 风险 |
 |---|---|---|
 | 通用模型注册表 + 管理器（下载/删除/进度/占用/源） | 1 天 | 低 |
-| canonical 缓存键 + fetch patch（含音色硬编码） | 1 天 | 中：必须逐字符匹配依赖实际请求的 URL（V18/V19） |
-| Kokoro 引擎（worker、ORT 配置、WAV、510 切分、音色表） | 1 天 | **高**：offscreen 里有没有 WebGPU（V15） |
+| canonical 缓存键 + fetch patch（含音色硬编码） | 1 天 | **低**（V18/V19 已验，模板逐字符正确） |
+| Kokoro 引擎（worker、ORT 配置、WAV、510 切分、音色表） | 1 天 | **低**（V15/V17 已验：offscreen 有 WebGPU，ORT 无需 COOP/COEP） |
+| **中文音素化管线**（pinyin-pro + 音节表 + 绕道 `generate_from_ids`） | 1 天 | **中**：管线已实测打通，但**中文自然度未经试听验证** |
 | 模型标签页 UI + provider 接线 | 1 天 | 低 |
-| 打包（CSP、wasm 进包、体积断言） | 0.5 天 | 中：wasm 路径（V17） |
+| 打包（CSP、wasm 进包、体积断言） | 0.5 天 | **中**：Vite 是否遵守 `browser` 字段未验（V21） |
 | 测试 + 手动验收 | 0.5 天 | 中：CI 下不了 92MB，必须靠可注入假引擎 |
 
-合计约 5 天。**最大单点风险是 V15**：若 offscreen 文档里没有 WebGPU，只剩单线程 WASM（`numThreads=1` 是 MV3 硬限制），大概率慢到不可用。**这个必须先验证再动手。**
+合计约 **5–6 天**。
+
+**最大的剩余风险不再是「能不能跑」，而是「够不够快」**。V20 实测：
+合成 RTF ≈ **1.45**，session 建立 **12–13.5 秒**（模型已下载）。
+这意味着：
+
+- 用户点播放后**要等十几秒才出声** → UI 必须诚实显示进度（§4.3）。
+- 「边播边合成」会持续落后 → **预取从优化升级为必需品**（§3.12）。
+- 低端机器会明显更差（实测机是 Apple M 系列）。
+
+用户已拍板：**照做，但 UI 诚实提示**（不标为实验性、不缩小范围）。
 
 ---
 
@@ -202,21 +307,29 @@ export function modelById(id: string): OnDeviceModel | undefined;
   shape: 'model+voices',
   repo: 'onnx-community/Kokoro-82M-v1.0-ONNX',
   license: { name: 'Apache-2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' },
-  languages: ['en-US','en-GB','ja-JP','zh-CN','es-ES','fr-FR','hi-IN','pt-BR'],
-  voiceCount: 55,
+  // 只列 P4 真正能出的语言：英文走官方路径，中文走自建管线。
+  // 日/西/法/印地/意/葡的 18 个音色需要各自的 G2P，P4 不做，不写在这里。
+  languages: ['en-US','en-GB','zh-CN'],
+  voiceCount: 36,          // 28 英文 + 8 中文
   tiers: [
-    { id:'q8',   labelKey:'model.tier.light',  engineArg:'q8',   bytes: 92_400_000,
+    { id:'q8',   labelKey:'model.tier.light',    engineArg:'q8',   bytes: 92_360_000,
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model_quantized.onnx'] },
-    { id:'fp16', labelKey:'model.tier.standard', engineArg:'fp16', bytes:163_200_000,
+    { id:'fp16', labelKey:'model.tier.standard', engineArg:'fp16', bytes:163_230_000,
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model_fp16.onnx'] },
-    { id:'fp32', labelKey:'model.tier.hifi',   engineArg:'fp32', bytes:325_500_000,
+    { id:'fp32', labelKey:'model.tier.hifi',     engineArg:'fp32', bytes:325_530_000,
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model.onnx'] },
   ],
   voiceFile: (id) => `voices/${id}.bin`,
 }
 ```
 
-`bytes` 用实测值写死（不用 `Content-Length` 探测），因为 UI 要在下载**前**显示体积。
+注意 `files` 只含**共享文件 + 该档的 onnx**；音色文件不属于任何档位，
+由音色列表单独管（§3.6）。三个档的 `config.json` / `tokenizer*.json` 是同一份，
+缓存 key 相同，**换档不会重下它们**。
+
+`bytes` 用**实测值写死**（不用 `Content-Length` 探测），因为 UI 要在下载**前**显示体积。
+数值来源：ModelScope 文件列表 API（§1.3），HF 的等价接口可交叉核对。
+**不要手量**——写档位时直接读那个 API。
 
 ### 3.2 provider 身份：`local` + `modelId`
 
@@ -247,6 +360,9 @@ export interface LocalConfig {
 - 标签：`本地语音（浏览器内运行）`；摘要：`浏览器内运行，文字不出本机。首次使用需要下载模型。`
 - `listVoices()` 按 `modelId` 分派到该族的音色表。
 - `capabilities()` 按 `modelId` 查注册表（形态 A 的 `timings` 都是 `'none'`）。
+- **`lang` 是必须的，不是可选的**：中文与英文的**音素化路径完全不同**（§3.11），
+  引擎必须知道用哪条。默认值按音色 id 的前缀推导（`af`/`am`/`bf`/`bm` → 英文，
+  `zf`/`zm` → 中文），而不是让用户手填。
 
 ### 3.3 运行位置
 
@@ -258,7 +374,30 @@ export interface LocalConfig {
 
 新增 `entrypoints/offscreen/local.worker.ts`（WXT 的 worker 打包方式实现时确认产物里有独立 chunk）。
 
-**设备选择**：`device: 'auto'` → `'gpu' in navigator` 为真则 `webgpu`，否则 `wasm`。实测到的设备要能上报到 UI（§4.2 的「运行设备」）。
+**设备选择**：`device: 'auto'` → `'gpu' in navigator` 为真则 `webgpu`，否则 `wasm`。
+实测到的设备要能上报到 UI（§4.2 的「运行设备」）。
+
+**V15 已实测通过（2026-09-30）**：offscreen 文档里有**完整可用的 WebGPU**：
+
+```json
+{
+  "hasNavigatorGpu": "object",
+  "adapterAvailable": true,
+  "adapterInfo": { "vendor": "apple", "architecture": "metal-3" },
+  "deviceCreated": true,
+  "hasShaderF16": true,
+  "crossOriginIsolated": false,
+  "hardwareConcurrency": 10
+}
+```
+
+不需要任何特殊启动参数。
+
+**但 V20 发现 WebGPU 与 WASM 的合成速度几乎一样**（RTF 1.44 vs 1.45）：
+ORT 日志显示 WebGPU 确实是首选 EP，但「Some nodes were not assigned to the
+expected execution providers」——部分算子回退到 CPU，把差距抹平了。
+**在低端机器上 WASM 会明显更慢**，所以保留设备选择仍然有意义，
+但不要向用户承诺「WebGPU 会快很多」。
 
 ### 3.4 下载源（用户可选）
 
@@ -319,7 +458,16 @@ globalThis.fetch = async (input, init) => {
   - transformers.js 自己的 `useBrowserCache` 直接可用，不需要手写缓存层。
   - 删除/统计按 `transformers-cache` 里规范 URL 前缀过滤即可。
 
-**校验点 V18/V19**：把 transformers.js 和 kokoro-js 实际请求的 URL 打日志，与我们的规范模板逐字符核对。
+**校验点 V18/V19 已实测通过（2026-09-30）**：
+
+- **V18 ✅**：用 fetch 拦截实测，transformers.js 请求的 URL 逐字符符合模板：
+  `https://model-cache.sayloud.invalid/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/tokenizer.json`。
+  各 dtype 请求的文件名见 §1.2。**模板无需修正。**
+- **V19 ✅**：音色 URL 确实硬编码，缓存桶 `kokoro-voices`，key = 那个 HF URL。
+  但**音色是 `generate()` 时才加载的，模块顶层不发请求**，
+  所以「patch 必须在 import 之前装好」这个担心**不成立**——
+  只要在调用 `generate()` 之前装好即可。worker 顶层装就行。
+- `config.json` 只在第一次请求，之后走缓存（因为 `useBrowserCache`）。
 
 ### 3.6 下载器
 
@@ -327,9 +475,18 @@ globalThis.fetch = async (input, init) => {
 
 - 普通 `fetch` + `ReadableStream` 读进度（已下载 / 总字节），`AbortController` 取消。
 - 写进 Cache Storage 的**规范 URL** key（模型）和 **HF 硬编码 URL** key（音色，写进 `kokoro-voices` bucket）。
-- 音色默认**按需下载**（每个 522KB），另提供「下载全部音色（约 29MB）」和「删除全部音色」。
+- **音色的 key 必须与 kokoro-js 的硬编码 URL 逐字符一致**（V19 已抄下原文）：
+  `https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/{id}.bin`。
+  这个 key **故意不用规范主机**——因为 kokoro-js 读的就是它。
+- 音色默认**按需下载**（每个 522KB，实测），另提供「下载全部音色（约 29MB）」和「删除全部音色」。
+  - 按需下载要**可被播放阻塞**：用户选了一个未下载的音色，
+    第一句必须等它下完（522KB，很快），不能静默失败。
+  - 下载失败要能重试，且不能把失败状态当成「已下载」。
 - 删除：按规范前缀删模型文件；按 URL 前缀删 `kokoro-voices`。
 - 占用统计：两个 bucket 分别求和。
+- **下载器与 fetch patch 必须共用同一个 URL 生成器**（`lib/models/urls.ts` 的导出），
+  不允许各自拼字符串——否则换源后缓存 key 不一致，会变成「下载了但用不到」，
+  而且这种 bug 在单测里很难发现。
 
 **为什么不用 transformers.js 自己的 `from_pretrained` 下载**：那会把 20.6MB 的 ORT wasm 加载进侧边栏（要建 ONNX session），而侧边栏只是设置页。手写下载器约 100 行，还顺便拿到进度和取消。
 
@@ -340,11 +497,18 @@ globalThis.fetch = async (input, init) => {
 | 档位 | dtype | 文件 | 体积 | 说明 |
 |---|---|---|---|---|
 | 轻量（默认） | `q8` | `model_quantized.onnx` | 92.4MB | WASM 和 WebGPU 都能跑；`DEFAULT_DEVICE_DTYPE_MAPPING.wasm` 就是 `q8` |
-| 标准 | `fp16` | `model_fp16.onnx` | 163.2MB | WebGPU 需要 `shader-f16` 特性 |
+| 标准 | `fp16` | `model_fp16.onnx` | 163.2MB | WebGPU 需要 `shader-f16` 特性（实测 Apple M 系列支持） |
 | 高保真 | `fp32` | `model.onnx` | 325.5MB | catm 的默认值，最重 |
+
+**为什么不提供 q4 / q4f16**：这两个文件在仓库里**确实存在**，但体积是
+305.22MB / 154.59MB —— **比 q8 的 92.36MB 还大**。
+把它们当作「更小的档位」是错的。仓库里那个 86MB 的 `model_q8f16.onnx`
+虽然最小，但**没有任何合法 dtype 能选到它**（§1.2c）。
 
 - **换档不删旧档**：各档是不同的缓存 key，模型 tab 按档位分别显示状态，旧档由用户自己删，避免换档时意外重下。
 - `fp16` 在无 `shader-f16` 的 WebGPU 上要能自动退回 `q8` 或 `wasm`，并在 UI 说明原因。
+- **共享文件不重复算体积**：`config.json` / `tokenizer*.json` 三个档共用，
+  「占用空间」只算一次。
 
 ### 3.8 引擎接口（一族一适配器）
 
@@ -360,8 +524,13 @@ export interface OnDeviceEngine {
   readonly family: OnDeviceFamily;
   /** 加载某个档位；重复调用同一个档位应复用 session。 */
   load(model: OnDeviceModel, tier: ModelTier, device: 'webgpu' | 'wasm'): Promise<DeviceInfo>;
+  /**
+   * `lang` 是 BCP-47，**不是可选的**：中文与英文走完全不同的音素化路径
+   * （§3.11）。调用方从 `LocalConfig.lang` 传下来，
+   * 缺省时按音色 id 前缀推导（`zf_`/`zm_` → `zh-CN`，其余 → `en-US`）。
+   */
   synthesize(
-    text: string, voiceId: string, signal: AbortSignal
+    text: string, voiceId: string, lang: string, signal: AbortSignal
   ): Promise<{ pcm: Float32Array; sampleRate: number }>;
   dispose(): void;
 }
@@ -370,27 +539,164 @@ export interface OnDeviceEngine {
 - P4 只实现 `KokoroEngine`（在 worker 里，通过消息协议与 `WorkerLocalEngine` 通信）。
 - 加族 = 加一个 `OnDeviceEngine` 实现 + 注册表加一项，**不改管理器、不改 UI、不改 provider**。
 
+### 3.8.1 音素化接缝（必须可注入）
+
+音素化是两条路，必须分开且可注入，否则 CI 测不了：
+
+```ts
+export interface Phonemizer {
+  /** 文本 → IPA 字符串（已含声调标记）。 */
+  phonemize(text: string, lang: string): string;
+}
+```
+
+- 英文：用 `phonemizer` 包（espeak-ng 英文），与 `kokoro-js` 内部一致。
+- 中文：用自建的 `ChinesePhonemizer`（§3.11）。
+- 测试：`FakePhonemizer`（返回固定 IPA），让单测与 e2e 不需要真 wasm。
+- **注入点与 `FakeLocalEngine` 一致**（§3.16）。
+
 ### 3.9 输出格式：PCM → WAV
 
 - Kokoro 输出 Float32 PCM @ 24kHz 单声道 → 转 **16-bit PCM WAV**，让既有的 `<audio>` / TimelinePlayer 路径零改动。
 - `durationMs = samples / 24000 * 1000`；`mime = 'audio/wav'`；**不返回 `timings`**。
 - 10 秒句子 ≈ 480KB WAV，进 L2 音频缓存没问题。
 - 不采用 catm 的 24k→48k 上采样 + AAC/HLS：那是为了流式播放和 OPFS 持久化；SayLoud 是「一句一合成、按需播放 + 缓存」，WAV 更简单。
+- **两条音素化路径产出同一形状**：`generate()`（英文）与 `generate_from_ids()`（中文）
+  都返回 `RawAudio`，`audio` 是 `Float32Array`、`sampling_rate` 是 24000。
+  所以 PCM→WAV 这一步**只需一份实现**，与语言无关。
 
 ### 3.10 510 token 上限切分
 
 - 一句超过上限时在**子句边界**再切，分别合成后拼接 PCM（同采样率直接 concat）。
-- 量长度用 `phonemize(text, lang)` + `tokenizer(phonemes).input_ids.dims.at(-1)`，与 catm 一致。
+- 量长度用音素化结果 + `tokenizer(phonemes).input_ids.dims.at(-1)`，与 catm 一致。
 - 阈值取 catm 的值：目标 175–250 token，绝对上限 450（都低于 510）。
-- 切分**不改变 SayLoud 的句子粒度**——高亮仍按引擎给的句子走，切分只在适配器内部。
+- 切分**不改变 SayLoud 的句子粒度**：高亮按 `text-utils.ts` 的 `segmentSentences`
+  切出的句子走（那是 SayLoud 自己的句子定义，与引擎无关），
+  510 切分只在适配器内部，对高亮层完全透明。
+- 实测参考：中文每句约 43 tokens（§3.11），英文短句 15–40 tokens，
+  所以 510 上限**日常很少触发**，主要在超长段落上。
 
-### 3.11 音色表
+### 3.11 音素化：两条完全不同的路
 
-- Kokoro 的 55 个音色静态写在 `lib/providers/kokoro-voices.ts`（照 `volcengine-voices.ts` 的做法，`listVoices()` 动态 import），**不发网络请求**。
-- 语言分布（实测）：`af` 12 / `am` 9 / `bf` 4 / `bm` 4 / `jf` 4 / `jm` 1 / `zf` 4 / `zm` 4 / `ef` 1 / `em` 2 / `ff` 1 / `hf` 2 / `hm` 2 / `if` 1 / `im` 1 / `pf` 1 / `pm` 2。
-- **中文 8 个**：`zf_xiaobei` / `zf_xiaoni` / `zf_xiaoxiao` / `zf_xiaoyi` / `zm_yunjian` / `zm_yunxi` / `zm_yunxia` / `zm_yunyang`。
-- 默认音色按页面语言选（中文页 → 一个 `zf_*`，英文页 → `af_heart`）。
-- 名称/语言/gender 从 kokoro-js 自带的 `VOICES` 元数据一次性生成到静态表，避免运行时依赖。
+这是 P4 **技术含量最高、也最容易搞错**的一节。
+
+#### 3.11.1 为什么必须分两条路
+
+`kokoro-js` 的公开 API 只能出英文（§1.1.1）。它的 `generate()` 内部是：
+
+```
+generate(text, {voice}) → _validate_voice(voice)   // 只认 28 个英文音色，否则抛错
+                        → phonemize(text, voice[0] === 'a' ? 'en-us' : 'en')   // 永远是英文
+                        → tokenizer → generate_from_ids
+```
+
+所以：
+
+- **英文**：直接用 `tts.generate(text, { voice })`。省事且与官方行为一致。
+- **中文**：必须**绕开 `generate()`**，自己做前三步，然后调 `tts.generate_from_ids()`
+  （它**不做音色校验**，接受任意音色 id）。
+
+#### 3.11.2 中文管线（已实测打通）
+
+```
+汉字文本
+  → pinyin-pro（toneType:'num'）
+  → 查音节表（426 条，带声调占位符）
+  → 声调替换 + retone（声调曲线 → 箭头 ↓↗↘→）
+  → IPA 字符串
+  → tts.tokenizer(ipa)
+  → tts.generate_from_ids(input_ids, { voice })
+```
+
+**为什么是这套**：这是 misaki（Kokoro 官方 G2P，`hexgrad/misaki`）的中文做法。
+`misaki/zh.py` + `misaki/transcription.py`（MIT，改编自 `stefantaubert/pinyin-to-ipa`）
+是**纯查表**，不依赖 espeak：
+
+```python
+TONE_MAPPING = {1:'˥', 2:'˧˥', 3:'˧˩˧', 4:'˥˩', 5:''}
+def retone(p):
+    p = p.replace('˧˩˧','↓').replace('˧˥','↗').replace('˥˩','↘').replace('˥','→')
+```
+
+**关键证据：tokenizer 词表里有 `↓→↗↘`**，且**没有任何数字**。
+声调就是靠箭头编码的——这也解释了为什么 espeak 的数字声调会被剥掉。
+词表同时包含中文 IPA 全部字符（`ʦ ʨ ꭧ ɕ ʂ ɻ ɥ ɤ ɚ ɹ ʐ` 等）。
+
+#### 3.11.3 音节表怎么生成（不要手写）
+
+生成一次，把产物当静态数据提交：
+
+1. 用 pypinyin 枚举出所有合法音节（实测 **1549 个**）。
+2. 用**真正的 misaki 算法**（直接 import 官方的 `transcription.py`）转换，实测 **零失败**。
+3. 归一化去重后得到 **426 个标准音节**（实测 **0 冲突**）。
+4. 输出 `音节 → 带 0 占位符的 IPA 模板`，**JSON 实测只有 7,304 字节**。
+
+样例（实测）：
+
+| 音节 | 模板 | 说明 |
+|---|---|---|
+| `ni` | `ni0` | |
+| `hao` | `xau̯0` | h → x |
+| `shi` | `ʂɻ̩0` | sh 后的 i 是 ɻ̩ |
+| `qu` | `ʨʰy0` | ü → y |
+| `yue` | `ɥe0` | |
+| `liu` | `ljou̯0` | iu → iou |
+| `shui` | `ʂwei̯0` | ui → uei |
+| `wen` | `wə0n` | uen |
+| `er` | `ɚ0` | |
+
+**不要自己写声母/韵母切分**：pypinyin 的 `to_finals(strict=True)` 做了大量归一化
+（y/w 非严格声母、`iu`→`iou`、`ui`→`uei`、`un`→`uen`/`ün`），
+手写必错。实测 `pinyin-pro` 的 `pattern:'final'` **不直接可用**：
+它给 `wen`→`en`（丢了介音 w）、`yue`→`ue`（应为 `üe`）、`liu`→`iu`（应为 `iou`）。
+所以**表用 pypinyin 生成**，运行时只用 `pinyin-pro` 拿音节与声调。
+
+#### 3.11.4 实测验证结果（5 句全过）
+
+| 汉字 | IPA | tokens |
+|---|---|---|
+| 你好世界。 | `ni↓ xau̯↓ ʂɻ̩↘ ʨje↘` | 19 |
+| 这是一段中文测试。 | `ꭧɤ↘ ʂɻ̩↘ i↗ twa↘n ꭧʊ→ŋ wə↗n ʦʰɤ↘ ʂɻ̩↘` | 37 |
+| 今天天气很好，我们去公园散步吧。 | `ʨi→n tʰjɛ→n tʰjɛ→n ʨʰi↘ xə↓n xau̯↓ wo↓ mən ʨʰy↘ kʊ→ŋ ɥɛ↗n sa↘n pu↘ pa` | 70 |
+| 他说：“我明天要去北京。” | `tʰa→ ʂwo→ wo↓ mi↗ŋ tʰjɛ→n jau̯↘ ʨʰy↘ pei̯↓ ʨi→ŋ` | 47 |
+
+平均每句 **43 tokens**，**声调箭头全部被 tokenizer 保留**。
+
+**已知缺口**：
+- 两个组合符号（`̯` U+032F、`̩` U+0329）不在词表里，会被 normalizer 剥掉，
+  得到 `au↓` 而非 `au̯↓`。因为训练用的也是同一个 tokenizer，**这应该无害**，
+  但无法在无音频输出的环境证实。
+- 数字会被 `pinyin-pro` 的 `nonZh:'removed'` 丢掉，必须靠 SayLoud 既有的
+  文本归一化（把数字读成词）在**上游**处理。
+- **中文自然度未经试听验证**——这是 P4 唯一无法靠单测确认的假设，
+  必须列入 §9 手动验收。
+
+#### 3.11.5 依赖
+
+- `pinyin-pro` 1.1MB（运行时拿音节 + 声调）
+- 生成的音节表 7KB（静态数据）
+- **不需要 espeak-ng，不需要 18MB 的 wasm**
+
+（曾考虑用 `espeak-ng` npm 包，它有完整语言数据含 `cmn`，18MB。
+实测**更差**：它的 `cmn` 期望**拼音输入**，汉字会回退英文；
+而且它输出的是**数字声调**，会被 tokenizer 剥掉。放弃。）
+
+#### 3.11.6 音色表
+
+- Kokoro 的**可用音色**静态写在 `lib/providers/kokoro-voices.ts`
+  （照 `volcengine-voices.ts` 的做法，`listVoices()` 动态 import），**不发网络请求**。
+- **只写 P4 能真正出声的 36 个**（28 英文 + 8 中文）。
+  仓库里另外 18 个（日/西/法/印地/意/葡）需要各自的 G2P，
+  **不写进表**——写了也只会抛错。
+- **中文 8 个**：`zf_xiaobei` / `zf_xiaoni` / `zf_xiaoxiao` / `zf_xiaoyi` /
+  `zm_yunjian` / `zm_yunxi` / `zm_yunxia` / `zm_yunyang`。
+- **英文 28 个**：从 kokoro-js 的 `VOICES` 元数据生成（`af` 11 / `am` 9 / `bf` 4 / `bm` 4）。
+  这份元数据自带 name / language / gender，一次生成到静态表，避免运行时依赖。
+- 中文音色的 name / gender 需要自己填（kokoro-js 的元数据里没有它们）。
+- **默认音色按语言选**：中文页 → 一个 `zf_*`（如 `zf_xiaoxiao`），
+  英文页 → `af_heart`（catm 也用这个）。
+- 音色 id 前缀就是语言的可靠标志（`af/am/bf/bm` = 英文，`zf/zm` = 中文），
+  所以 `LocalConfig.lang` 可以缺省推导（§3.8）。
 
 ### 3.12 能力与高亮
 
@@ -399,8 +705,36 @@ capabilities() { return { timings: 'none', maxChars: 2000, concurrency: 1 }; }
 ```
 
 - **只有句级高亮**。Kokoro 不返回时间戳，SayLoud 的规则是不估算，所以词层永远为空。
-- `concurrency: 1`：单机推理，并发只会互相抢 CPU/GPU。预取仍有意义（缓存下一句），但要串行。
+- `concurrency: 1`：单机推理，并发只会互相抢 CPU/GPU。
 - 设置页能力标签显示「仅句级高亮」。
+
+#### 3.12.1 预取是必需品，不是优化（V20 实测结论）
+
+V20 实测：合成 **RTF ≈ 1.45**（比实时慢 45%）。这意味着
+「边播边合成」会**持续落后**：
+
+- 10 秒的句子要 **14.5 秒**合成，而播放只覆盖 10 秒 → 每句落后 4.5 秒。
+- 所以**必须**在播当前句时就预取下一句。P2 的预取机制已存在，
+  但那时云端 provider 的 RTF 远小于 1，预取只是优化；**这里它是必需品**。
+- `concurrency: 1` 意味着预取与当前句合成**串行**。
+  引擎必须把队列管好：当前句优先，预取排在后面且可被取消（seek 时）。
+- **音频缓存（L2）在这里尤其重要**：重听已缓存的句子是瞬时的，
+  而没缓存就要等十几秒。
+
+**给 UI 的含义**：不能假设「点播放就出声」。
+第一次听某句时可能等十几秒，必须显示进度（§4.3）。
+
+#### 3.12.2 首次准备的耗时（V20）
+
+| 阶段 | 实测（Apple M 系列） |
+|---|---|
+| 下载 92.36MB | 取决于网络 |
+| session 建立（模型已下载） | **12,090–13,557 ms** |
+| 首次合成（含 shader 编译） | 3,179 ms（1.45s 音频） |
+| 稳态每句 | 2,102–12,191 ms（取决于句长） |
+
+低端 Windows 机器会明显更差。UI 必须把「准备中」与「合成中」分开显示，
+不能用一个笼统的 spinner 掩盖十几秒。
 
 ### 3.13 音频缓存键
 
@@ -416,12 +750,28 @@ case 'local':
 ### 3.14 打包、CSP、ORT 配置
 
 - `wxt.config.ts`：`content_security_policy.extension_pages` 加 `'wasm-unsafe-eval'`（现有值保留）。
-- **先不启用 COOP/COEP**。catm 加它是为了 SharedArrayBuffer，但 `numThreads = 1` 时不需要 SAB。不加就避免一次全局 manifest 改动，也就避免对六家云端 provider 的 CORS 请求、content script 注入、侧边栏的未知影响。若实测 ORT 在无交叉隔离时报错，再加（V17）。
+  **实验已证实必需**：不加 wasm 起不来。
+- **不启用 COOP/COEP** —— V17 已实测确认：ORT wasm 在
+  `crossOriginIsolated: false` + `numThreads = 1` 下**能正常初始化**
+  （故意喂垃圾 buffer，错误是「protobuf 解析失败」而不是 wasm 加载失败，
+  证明 wasm 已起来）。
+  于是**不需要改全局 manifest，也就不需要回归六家云端 provider** ——
+  这是本轮省下的最大一块风险。
 - ORT 的 `wasmPaths` 指向扩展内的绝对路径（`chrome.runtime.getURL('ort/')`），**不能用 jsDelivr**（默认值指向 CDN，且 MV3 挡远程脚本）。
+  **实测有效**。
+- **打包器必须正确解析 `kokoro-js` 的 `browser` 字段**（把 `path` / `fs/promises` stub 成空对象）。
+  Vite 是否遵守**未验**（V21）——实验里是靠 import map 手动 stub 的。
+  若不遵守，需要显式 alias。**这是 T3 的第一个要验的点**，
+  因为失败症状很隐蔽（运行时才报 `Failed to resolve module specifier "path"`）。
 - `onnxruntime-web`、`kokoro-js`、`@huggingface/transformers`、`phonemizer` **只能出现在 offscreen worker 的 chunk 里**：
   - 不能进 SW bundle（`background.js` 现在 24.7kB，加进来会爆）。
   - 不能进侧边栏 bundle（下载器不需要 ORT）。
   - 用动态 `import()` 包住，并加构建产物体积断言测试。
+  - `pinyin-pro`（1.1MB）也在这一侧，但**不需要 ORT**，
+    所以如果将来把它挪到侧边栏也能工作。
+- **确认 54 个音色 `.bin` 没被打进包**：`kokoro-js` 包里有 28.7MB 的
+  `voices/*.bin`，它们是**运行时下载的**，不是 asset。
+  构建后断言产物里没有 `.bin`。
 - `host_permissions` 保持为空（HF 和 ModelScope 都是 CORS `*`）。`check-manifest.mjs` 必须继续通过。
 
 ### 3.15 错误码
@@ -438,12 +788,15 @@ case 'local':
 
 ### 3.16 可注入的引擎接缝（测试用）
 
-CI 不可能下 92MB 模型，引擎必须可替换：
+CI 不可能下 92MB 模型，引擎与音素化**都必须可替换**：
 
-- 真实：`WorkerLocalEngine`（与 `local.worker.ts` 通信）。
-- 测试：`FakeLocalEngine`（按文本长度生成可解码的静音 PCM）。
-- 注入沿用 `createApp` 的既有模式（`AudioWorker` 的 providers 映射已经可注入，P4 再加一个引擎注入点）。
-- e2e 用假引擎跑通**整条链路**：provider → WAV → TimelinePlayer → 播放 → 句级高亮 → 音频缓存命中。真实引擎留给手动验收。
+- 引擎：真实 `WorkerLocalEngine`（与 `local.worker.ts` 通信）；
+  测试 `FakeLocalEngine`（按文本长度生成可解码的静音 PCM）。
+- 音素化：真实 `EnglishPhonemizer` / `ChinesePhonemizer`；
+  测试 `FakePhonemizer`（返回固定 IPA）。
+- 注入沿用 `createApp` 的既有模式（`AudioWorker` 的 providers 映射已经可注入，P4 再加两个注入点）。
+- e2e 用假引擎 + 假音素化跑通**整条链路**：provider → WAV → TimelinePlayer → 播放 → 句级高亮 → 音频缓存命中。
+- 真实引擎与真中文管线留给手动验收（§9）。
 
 ### 3.17 本地导入（兜底）
 
@@ -480,7 +833,7 @@ P3 spec §8.1 把标签写死在 `SidePanel.tsx` 里，**要改成数据驱动�
 ├────────────────────────────────────────┤
 │ ┌────────────────────────────────────┐ │
 │ │ Kokoro 82M              使用中      │ │
-│ │ 中/英/日等 8 语言 · 55 音色 · 句级高亮│ │
+│ │ 中/英 2 语言 · 36 音色 · 句级高亮  │ │
 │ │ Apache-2.0                          │ │
 │ ├────────────────────────────────────┤ │
 │ │ 轻量 q8 · 92 MB          已下载      │ │
@@ -514,6 +867,21 @@ P3 spec §8.1 把标签写死在 `SidePanel.tsx` 里，**要改成数据驱动�
 - 源选 `custom` 时下方出现 URL 输入框（`placeholder: https://example.com/models`）+ 校验（必须 https、必须完整 URL）。
 - 模型未下载时，provider 行（设置标签页）显示「模型未下载 · 去模型标签页 ›」，点了跳过去。
 
+#### 4.3.1 播放侧的诚实提示（V20 实测驱动）
+
+实测：session 建立 **12–13.5 秒**，合成 **RTF ≈ 1.45**。
+所以**不能**把端侧语音当成「点一下就出声」，必须把等待暴露出来：
+
+- **首次准备**：模型已下载但 session 未建立时，竖条与页面浮标显示
+  「正在准备本地模型…（首次约十几秒）」+ 进度，**不是**笼统的 spinner。
+- **首次准备要可取消**：用户不想等了应该能退回云端或浏览器语音。
+- **合成中**：如果当前句还没合成好，显示「正在生成…」而
+  不是让播放器假装在缓冲。不要用假的进度条。
+- **预取状态可见**（可选但推荐）：让用户知道后台在提前生成，
+  这样“等一下就好了”是可预期的。
+- **不要承诺速度**：文案不写「秒级」「实时」之类。
+- 设置页的能力行在本地 provider 下多一行「本地合成约需实时时长的 1.5 倍」。
+
 ### 4.4 多模型的呈现（结构上要支持，P4 只渲染一项）
 
 - 模型列表按注册表遍历渲染，**不写死 Kokoro**。
@@ -528,29 +896,52 @@ P3 spec §8.1 把标签写死在 `SidePanel.tsx` 里，**要改成数据驱动�
 
 ---
 
-## 5. 对 P3 spec 的改动
+## 5. P3 已完成的铺垫（原 spec 的前提已过时）
 
-P3 的 T4（界面重设计）**还没执行**，现在改成本最低：
+> **修正（2026-09-30）**：本节原文写「P3 的 T4 还没执行」，
+> 但 **P3 已全部完成**，四项铺垫**已经就位**。下面是核对后的实际状态。
 
-1. `SidePanel.tsx` 的标签列表改成**数据驱动**，视图切换支持任意数量标签（加一项不改渲染逻辑）。
-2. P3 spec §8.1 线框图加一句：标签为「朗读 / 设置」，第三个「模型」标签在 P4 加入。
-3. P3 spec §8.4 的 smoke 断言写成「遍历标签」的形式，而不是写死两个标签。
-4. P3 spec §3.3 的缓存卡片文案明确写「音频缓存」，避免与模型管理混淆。
+| 原计划要改的 | 实际状态 |
+|---|---|
+| 1. `SidePanel.tsx` 标签列表改成数据驱动 | ✅ **已做**。`TABS` 是个 `readonly {id, labelKey}[]`，渲染时 `TABS.map()`，注释里明写「加一个标签只需加一行 `TABS` + 一个组件，没有 `if`」 |
+| 2. 线框图标注第三个标签来自 P4 | ✅ 已补进 P3 spec |
+| 3. smoke 断言改成「遍历标签」 | ✅ **已做**。smoke 用 `getByRole('tab')` 全取 + 逐个点击 + `#panel-${tab.id}` 校验，subagent 当时还**临时加了第三个标签跑过全绿**才撤回 |
+| 4. 缓存卡片文案写明「音频缓存」 | ✅ **已做**。文案是 `Audio only. On-device models are stored separately.`，smoke 有断言 |
+
+**所以 P4 在标签上只需做三件事**：
+
+1. `TABS` 加一项 `{ id: 'models', labelKey: 'panel.tab-models' }`。
+2. 写 `ModelsTab.tsx`。
+3. 两个字典各加对应键（`messages.zh.ts` 的类型约束会在漏翻译时让 `typecheck` 报错）。
+
+**smoke 不用改** —— 它已经是遍历式的。但要注意：smoke 会断言标签数量与
+`#panel-*` 容器存在，所以 `ModelsTab` 必须真的渲染出 `id="panel-models"`。
 
 ---
 
 ## 6. 验证点
 
+**已全部实测（2026-09-30），完整记录见
+`docs/superpowers/plans/2026-09-30-p4-risk-verification.md`。**
+
+| 编号 | 结论 | 结果 |
+|---|---|---|
+| **V15** | offscreen 文档里有**完整可用的 WebGPU**（Apple/metal-3、`shader-f16` ✓、设备创建成功） | ✅ **通过** |
+| **V16** | ModelScope 在国内真实网络下的速度与稳定性（关掉代理测） | ⏳ **未能验证**（测试机走代理，fake-IP 模式）——留给用户手动验收 §9 |
+| **V17** | ORT 在 `numThreads=1` 且无交叉隔离时**能初始化**；`wasmPaths` 指向扩展内路径有效 | ✅ **通过** |
+| **V18** | transformers.js 实际请求的 URL 与 canonical 模板**逐字符一致** | ✅ **通过** |
+| **V19** | 音色 URL 硬编码已抄下原文；缓存桶 `kokoro-voices`，key = 该 URL；**模块顶层不发请求** | ✅ **通过** |
+| **V20** | session 建立 **12–13.5s**；稳态 RTF **≈ 1.45**；WebGPU 与 WASM 几乎同速（算子回退 CPU） | ⚠️ **可用但偏慢**，用户已拍板照做 + 诚实提示 |
+
+### 新增验证点
+
 | 编号 | 待验证 | 影响 | 退路 |
 |---|---|---|---|
-| **V15** | **offscreen 文档里 `navigator.gpu` 是否存在、WebGPU 能否真正推理** | 决定这个 provider 是否可用（无 WebGPU 只剩单线程 WASM） | 若 WASM 太慢：UI 标注「这台机器上本地语音会很慢」，或把 provider 标为实验性 |
-| **V16** | ModelScope 在国内真实网络下的速度与稳定性（关掉代理测） | 国内用户能否用 | 已保留 `custom` 源 + 本地导入 |
-| **V17** | ORT 在 `numThreads=1` 且**无交叉隔离**时能否初始化；wasm 二进制在扩展内的实际路径 | 能否避免 COOP/COEP 全局改动 | 必须加 COOP/COEP，并回归六家云端 provider |
-| **V18** | transformers.js 实际请求的 URL 与 canonical 模板逐字符一致 | 缓存命中 | 用请求日志核对后修正模板 |
-| **V19** | `kokoro-voices` 的 key 与 kokoro-js 硬编码 URL 一致 | 音色离线 | 不一致就靠 fetch patch 兜底 |
-| **V20** | 首次加载耗时（92MB + session 建立）与每句合成耗时 | 体验 | 调整档位建议或加载提示 |
+| **V21** | **Vite 是否遵守 `kokoro-js` 的 `browser` 字段**（把 `path`/`fs/promises` stub 成空对象） | 决定打包能不能直接跑；失败症状隐蔽（运行时才报 `Failed to resolve module specifier "path"`） | 显式 alias 到 stub |
+| **V22** | **中文音频实际听感**（自然度、声调是否正确、无杂音） | 决定中文能不能对外宣称可用 | 若明显不对：只发英文，中文标为实验性或暂不提供 |
 
-**V15 是动手前必须先做的实验。**
+**V21 必须在 T3 的第一个小时就验**（它决定整个打包路径）。
+**V22 只能由用户听**（无音频输出的环境无法判断）。
 
 ---
 
@@ -560,68 +951,97 @@ P3 的 T4（界面重设计）**还没执行**，现在改成本最低：
 |---|---|
 | 单元 | 注册表：每个模型必填 license/repo/tiers；档位 `bytes` 与 `files` 一致；dtype↔文件名映射（防止再出现 `q8f16` 这种不存在的 dtype） |
 | 单元 | canonical URL 生成与解析（HF/ModelScope/custom × main/master 互换）；音色 URL 改写；非规范 URL 放行 |
-| 单元 | 下载器：进度计算、取消、失败、源选择（auto 探测、last-good、手动不自动切换）；删除只删自己那档；占用统计只算模型与音色 |
-| 单元 | PCM→WAV（头字段、字节长度、时长）；510 切分（超长句、中文、无标点）；音色表（55 个、8 个中文、BCP-47）；`capabilities()`；`audioIdentity()` 含模型与档位；错误码映射 |
-| E2E | 假引擎整链路：配置 → 播放 → 句级高亮 → 音频缓存命中 |
+| 单元 | 下载器：进度计算、取消、失败、源选择（auto 探测、last-good、手动不自动切换）；删除只删自己那档；占用统计只算模型与音色（**共享文件只算一次**） |
+| 单元 | **音色按需下载**：首次用某音色会触发下载；下载失败可重试且不被当成已下载；删除后再次使用会重下 |
+| 单元 | **中文音素化**（新增，重点）：426 个音节能全部命中表；声调 1–4 + 轻声都能映射到箭头；标点/数字被剥掉；未知音节报明确错误而不是静默产出空串；音节表与 tokenizer 词表的兼容性断言（表里出现的字符必须在词表里或属于已知被剥的组合符） |
+| 单元 | **两条路径的分派**：英文音色走 `generate()`，中文音色走 `generate_from_ids()`；音色 id 前缀 → `lang` 的推导 |
+| 单元 | PCM→WAV（头字段、字节长度、时长）；510 切分（超长句、中文、无标点）；音色表（**36 个**、8 个中文、BCP-47）；`capabilities()`；`audioIdentity()` 含模型与档位；错误码映射 |
+| E2E | 假引擎 + 假音素化整链路：配置 → 播放 → 句级高亮 → 音频缓存命中 |
 | E2E | 模型未下载 → `model-missing` → 错误卡片 → 跳模型 tab；模型 tab 三态渲染、下载进度、取消、删除确认 |
-| E2E | 构建产物断言：`background.js` 不含 ORT；侧边栏 chunk 不含 ORT；`.wasm` 在包里；包体积在预期范围 |
-| 手动 | 真实模型：V15/V20 的设备与耗时；断网后继续朗读；换源后不重新下载 |
+| E2E | **「准备中」提示真的会出现**（用一个慢的假引擎，断言文案出现后消失），而不是只在快路径下测通过 |
+| E2E | 构建产物断言：`background.js` 不含 ORT；侧边栏 chunk 不含 ORT；`.wasm` 在包里；**产物里没有 `.bin` 音色文件**；包体积在预期范围 |
+| 手动 | 真实模型：V16（国内网络）/ V22（中文听感）；断网后继续朗读；换源后不重新下载 |
 
 ---
 
 ## 8. 任务分解
 
-### T1 — 先验 V15（实验，不做功能）
-
-在 offscreen 文档里放一个最小 ONNX 推理（几 KB 的小模型即可），验证 `navigator.gpu` 是否存在、WebGPU 能否推理、WASM 回退能否初始化、耗时多少。**把实测结论写回本文件 §6 与 commit message。** 产出是结论，不是功能。
-
-**若结论是「无 WebGPU 且 WASM 慢到不可用」，停下来报告，不要继续后面的任务。**
+> **T1 已完成**（2026-09-30）：V15/V17/V18/V19 全部通过，V20 拿到具体数字，
+> 并额外发现「kokoro-js 只能出英文」这个阻塞性问题。
+> 结论已写回 §1.1.1 / §3.11 / §6 与 `2026-09-30-p4-risk-verification.md`。
+> 原 T1 的产出（结论）已交付，**从 T2 开始**。
 
 ### T2 — 通用模型注册表 + 管理器
 
 - `lib/models/registry.ts`（`OnDeviceModel`、`KOKORO_82M`、`modelById`）。
 - `lib/models/urls.ts`（canonical 键、HF/ModelScope/custom 解析、音色 URL 改写）。
+  **下载器与 fetch patch 必须共用它。**
 - `lib/models/downloader.ts`（清单、进度、取消、失败）。
-- `lib/models/store.ts`（下载/删除/占用统计/音色/源选择/last-good）。
-- 全套单测。
+- `lib/models/store.ts`（下载/删除/占用统计/音色按需下载/源选择/last-good）。
+- 全套单测（含音色按需下载）。
 
-### T3 — Kokoro 引擎 + fetch patch
+### T3 — 音素化 + Kokoro 引擎 + fetch patch
 
+**顺序很重要**：先把 V21（Vite 的 `browser` 字段）验了再写正式逻辑，
+因为它决定打包路径能不能跑。
+
+- **`lib/models/phonemize/`**（新增，两条路 + 接缝）：
+  - `types.ts`（`Phonemizer` 接口）+ `FakePhonemizer`。
+  - `english.ts`（包 `phonemizer`）。
+  - `chinese.ts`（`pinyin-pro` + 音节表）。
+  - `pinyin-table.json`（**426 条，7KB，生成物**）——
+    生成脚本放 `scripts/gen-pinyin-table.py`，用 pypinyin + **官方 misaki 的
+    `transcription.py`**（两者都固定版本，写进脚本注释）。
+  - 单测：每个音节能命中；四种声调 + 轻声 → 箭头；标点/数字被剥；未知音节报错。
 - `lib/models/engine.ts`（接口）+ `FakeLocalEngine` + `WorkerLocalEngine`。
-- `entrypoints/offscreen/local.worker.ts`（ORT 配置、dtype、510 切分、PCM）。
+- `entrypoints/offscreen/local.worker.ts`（ORT 配置、dtype、510 切分、PCM、
+  **两条合成路径的分派**）。
 - fetch patch（worker 侧，规范主机 + 音色 URL）。
-- `lib/providers/kokoro-voices.ts`（静态音色表）+ `lib/providers/local.ts`（适配器）。
+- `lib/providers/kokoro-voices.ts`（**36 个音色的静态表**）+ `lib/providers/local.ts`（适配器）。
 - PCM→WAV、`capabilities`、`audioIdentity`、错误码。
-- 单测；V18/V19 的 URL 核对结论写回 §6。
 
 ### T4 — 模型标签页 + provider 接线 + 打包
 
-- `SidePanel.tsx` 标签数据驱动（顺带完成 §5 对 P3 的改动）。
-- 模型 tab 全部 UI（§4）。
+- `SidePanel.tsx` 的 `TABS` 加一项（§5 已确认其余铺垫已就位）。
+- 模型 tab 全部 UI（§4，含 §4.3.1 的诚实提示）。
 - `config-schema.ts` 的 `local` 字段 + `FieldSpec.hidden`（模型相关的字段由模型 tab 渲染，不在通用表单里重复）。
-- `wxt.config.ts`：CSP、wasm 进包、ORT 路径。
-- 构建产物体积断言。
-- e2e：模型 tab 三态、下载/取消/删除、`model-missing` 路径、假引擎整链路。
+- `wxt.config.ts`：CSP（`wasm-unsafe-eval`）、wasm 进包、ORT 路径。
+- 构建产物体积断言（含「产物里没有 `.bin`」）。
+- e2e：模型 tab 三态、下载/取消/删除、`model-missing` 路径、
+  假引擎 + 假音素化整链路、「准备中」提示真的会出现。
 
 ### T5 — 收尾
 
 - 版本号 0.3.0 → 0.4.0。
-- 回填 V16/V17/V20 的实测结论。
+- 回填 V16/V21/V22 的结论。
 - 用户手动验收（§9）。
 
 ---
 
 ## 9. 用户手动验收清单
 
-1. 关掉代理、真实国内网络：模型 tab 选「自动」→ 下载成功（走 ModelScope）；进度正常；断网后仍能朗读。
-2. 手动切到 Hugging Face → 看到失败提示与「改用另一个源重试」。
-3. **换源后不重新下载**（验证 §3.5 的 canonical 缓存）。
-4. 删除当前档位 → 播放报「模型未下载」→ 跳模型 tab；重下后恢复。
-5. 下载全部音色 → 断网 → 切换音色仍能朗读（验证 §3.5 的音色改写）。
-6. 英文页 + 中文页各读一段：音色自动选择合理；高亮是句级且正确。
-7. 「运行设备」显示实际是 WebGPU 还是 WASM；记录首次加载耗时和每句延迟。
-8. 设置 → 缓存卡片清空音频缓存，不影响模型；模型 tab 删模型，不影响音频缓存。
-9. 六家云端 provider 全部回归一遍（确认 CSP/wasm 改动没破坏它们）。
+> V15/V17/V18/V19 已自动验过，不在清单里。
+> **V16（国内网络）与 V22（中文听感）只能由你在真机上做**，是最关键的两项。
+
+1. **V16**：关掉代理、真实国内网络：模型 tab 选「自动」→ 下载成功（走 ModelScope）；
+   进度正常；断网后仍能朗读。**记下实际下载速度。**
+2. **V22（最重要）**：中文页读三段不同类型的中文
+   （短句 / 长句 / 含数字与英文混排），**听**：
+   - 声调是否正确（不是平淡的机器人调）
+   - 是否漏字、多字、串行
+   - 是否可接受（以你愿意日常用为准）
+   若明显不对，告诉我，我们把中文改成实验性或暂不提供。
+3. 手动切到 Hugging Face → 看到失败提示与「改用另一个源重试」。
+4. **换源后不重新下载**（验证 §3.5 的 canonical 缓存）。
+5. 删除当前档位 → 播放报「模型未下载」→ 跳模型 tab；重下后恢复。
+6. 下载全部音色 → 断网 → 切换音色仍能朗读（验证 §3.5 的音色改写）。
+7. 英文页读一段：音色自动选择合理；高亮是句级且正确。
+8. 「运行设备」显示实际是 WebGPU 还是 WASM；
+   **对照我在 Apple M 系列上的数字（session 12–13.5s、RTF ≈ 1.45）**，
+   看你这台机器差多少。
+9. **首次播放的等待体验**：点播放到出声实际等多久？提示是否诚实、可取消？
+10. 设置 → 缓存卡片清空音频缓存，不影响模型；模型 tab 删模型，不影响音频缓存。
+11. 六家云端 provider 全部回归一遍（确认 CSP 改动没破坏它们）。
 
 ---
 
@@ -637,6 +1057,10 @@ P3 的 T4（界面重设计）**还没执行**，现在改成本最低：
 具体候选的成本（调研结论）：
 
 - **Kitten TTS nano（24MB，Apache-2.0，英文）**：形态 A，但 StyleTTS2 不在 transformers.js 原生支持里（`vits` 有、StyleTTS2 没有），要自写推理。模型只有一个 onnx + `voices.npz`，代码量不大。
-- **Piper（中文 20.6MB 起）**：形态 B。模型是 VITS，transformers.js 认，但**文本前端要 espeak-ng 的对应语言数据**；且音色许可不一，要逐个核。
+- **Piper（中文 20.6MB 起）**：形态 B。模型是 VITS，transformers.js 认，但**文本前端要 espeak-ng 的对应语言数据**。
+  **P4 实测的教训**：这里的坑比想象深——espeak-ng 的 `cmn` 期望**拼音输入**，
+  汉字会回退英文；而且它输出**数字声调**，会被 Kokoro 的 tokenizer 剥掉。
+  所以「用 espeak-ng 解决多语言」这条路要先实测再估工作量。
+  音色许可也不一，要逐个核。
 - **MMS-TTS**：transformers.js 原生，代码最少，但**没有中文**且是 **CC-BY-NC-4.0**。
 - **SpeechT5**：transformers.js 原生，但 340MB+ 且只有英文。

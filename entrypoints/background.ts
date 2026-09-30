@@ -1,6 +1,7 @@
 import { type Browser, browser } from 'wxt/browser';
 import { CONFIG_KEY, SELECTED_VOICES_KEY } from '~/lib/config-store';
 import { createApp } from '~/lib/container';
+import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
 
@@ -48,6 +49,15 @@ export default defineBackground(() => {
 
   browser.action.onClicked.addListener((tab) => {
     void activate(tab.id);
+  });
+
+  // The reader's gear. `sidePanel.open()` is called before anything is awaited
+  // so the click's transient activation is still live — see `open-settings.ts`.
+  browser.runtime.onMessage.addListener((message, sender) => {
+    if (!isOpenSettingsMessage(message)) return;
+    const tabId = sender.tab?.id;
+    if (tabId === undefined) return;
+    openSettingsFor(tabId, { sidePanel: browser.sidePanel, options: browser.runtime });
   });
 
   browser.runtime.onConnect.addListener((port) => {

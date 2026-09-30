@@ -15,6 +15,15 @@ export interface PlayerController {
 
 export interface SidePlayerProps {
   controller: PlayerController;
+  /**
+   * Show the settings panel.
+   *
+   * Injected rather than called here because a content script cannot reach
+   * `chrome.sidePanel` at all; the reader passes a function that sends the
+   * request on to the service worker. It must not await anything before
+   * sending — see `lib/open-settings.ts`.
+   */
+  onOpenSettings: () => void;
 }
 
 /** Speeds the reader can step through, slow to fast. */
@@ -55,7 +64,7 @@ export const HINTS: Record<ReaderError, { title: string; message: string }> = {
  * spec fixes the controls to remaining time, play/pause, previous, next and
  * speed, with the voice picker and settings deferred to P3.
  */
-export function SidePlayer({ controller }: SidePlayerProps) {
+export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
   const [state, setState] = useState<ReaderState>(() => controller.getState());
   const [dismissed, setDismissed] = useState<ReaderError | null>(null);
   const [showRemaining, setShowRemaining] = useState(false);
@@ -172,25 +181,7 @@ export function SidePlayer({ controller }: SidePlayerProps) {
         {formatRate(status?.rate ?? 1)}
       </button>
 
-      <button
-        type="button"
-        class="control"
-        aria-label="Settings"
-        onClick={() => {
-          // Open side panel. Chrome 114+ supports sidePanel.open.
-          // This must be called synchronously in the click handler.
-          // WXT's browser polyfill doesn't have sidePanel, so we access it via globalThis.
-          const g = globalThis as typeof globalThis & {
-            chrome?: {
-              sidePanel?: { open: (opts: { windowId: number }) => void };
-              windows: { WINDOW_ID_CURRENT: number };
-            };
-          };
-          if (g.chrome?.sidePanel?.open && g.chrome.windows) {
-            g.chrome.sidePanel.open({ windowId: g.chrome.windows.WINDOW_ID_CURRENT });
-          }
-        }}
-      >
+      <button type="button" class="control" aria-label="Settings" onClick={onOpenSettings}>
         <GearIcon />
       </button>
 

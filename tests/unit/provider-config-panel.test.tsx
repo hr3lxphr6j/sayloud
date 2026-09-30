@@ -75,7 +75,7 @@ describe('ProviderConfigPanel', () => {
     await renderPanel(store);
 
     pick('dashscope');
-    fireEvent.change(apiKeyField(), { target: { value: 'sk-typed' } });
+    fireEvent.input(apiKeyField(), { target: { value: 'sk-typed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByText('Saved.');
     await waitFor(async () =>
@@ -86,6 +86,23 @@ describe('ProviderConfigPanel', () => {
     pick('browser');
     pick('dashscope');
     expect(apiKeyField().value).toBe('sk-typed');
+  });
+
+  it('updates the form on every keystroke, not only when the field loses focus', async () => {
+    const store = new ConfigStore(memoryArea());
+    await renderPanel(store);
+
+    pick('openai-compat');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('Base URL is required.')).toBeTruthy();
+
+    // Typing fires `input`; `change` on a text field waits for blur in the
+    // DOM, and Preact does not paper over that the way React does.
+    fireEvent.input(screen.getByLabelText(/Base URL/), {
+      target: { value: 'http://127.0.0.1:8880/v1' },
+    });
+
+    expect(screen.queryByText('Base URL is required.')).toBeNull();
   });
 
   it('fills in each provider from its own saved config when switching', async () => {
@@ -158,7 +175,6 @@ describe('SidePanel settings state', () => {
     await screen.findByLabelText('Provider');
     pick('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-new' } });
-    fireEvent.change(apiKeyField(), { target: { value: 'sk-new' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByText('Saved.');
 

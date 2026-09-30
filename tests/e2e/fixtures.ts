@@ -41,7 +41,11 @@ export const test = base.extend<Fixtures>({
       // these specs are written in English. Pinned so the language a spec runs
       // in does not depend on the machine it runs on.
       locale: 'en-US',
-      args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
+      args: [
+        `--disable-extensions-except=${EXTENSION_PATH}`,
+        `--load-extension=${EXTENSION_PATH}`,
+        '--mute-audio',
+      ],
     });
     await use(context);
     await context.close();

@@ -4,8 +4,8 @@
  * Loads the production build in Chromium, opens sidepanel.html, and exercises
  * what static checks cannot see: that the panel renders, that each provider
  * gets its own form, that validation blocks a bad config, that leaving a field
- * saves and persists across a reload, and that Test Connection and Load Voices
- * work against a local stub.
+ * saves and persists across a reload, and that Test Connection and the voice
+ * search (which fetches on focus) work against a local stub.
  *
  * The tab list is walked rather than named: P4 adds a model tab, and this
  * script should not have to be rewritten for it. The two tabs it does drive by
@@ -212,9 +212,9 @@ await checkEventually(
 await page.locator('#field-headers').fill('X-Gateway: abc');
 
 await page.locator('#field-baseUrl').fill('');
-await page.getByRole('button', { name: 'Load Voices' }).click();
+await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
 check(
-  'Load Voices refuses an incomplete form',
+  'focusing the voice search with an incomplete form explains itself',
   (await page.getByText('Fill in the required fields above first.').count()) === 1
 );
 
@@ -327,7 +327,7 @@ check(
 );
 await settings();
 
-// --- Test Connection + Load Voices against a local stub --------------------
+// --- Test Connection + the voice search against a local stub ----------------
 const server = createServer((request, response) => {
   // Extension pages fetch cross-origin, and the real Kokoro answers `*` (V7).
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
@@ -357,10 +357,10 @@ const server = createServer((request, response) => {
 });
 await new Promise((resolve) => server.listen(8899, '127.0.0.1', resolve));
 
-await page.getByRole('button', { name: 'Load Voices' }).click();
+await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
 await page.waitForSelector('.voice-list li', { timeout: 8000 }).catch(() => {});
 const voiceRows = await page.locator('.voice-list li').allTextContents();
-checkEqual('Load Voices lists the voices the server returned', voiceRows, [
+checkEqual('focusing the voice search lists the voices the server returned', voiceRows, [
   'af_bellaaf_bella',
   'am_adamam_adam',
 ]);
@@ -395,7 +395,7 @@ checkEqual(
 // --- timings badges, from a provider that advertises them -------------------
 await providerToggle('dashscope').click();
 await page.locator('#field-apiKey').fill('sk-test');
-await page.getByRole('button', { name: 'Load Voices' }).click();
+await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
 await page.waitForSelector('.voice-list li', { timeout: 8000 }).catch(() => {});
 const diagnostics = await page.evaluate(() => ({
   provider: document
@@ -422,7 +422,7 @@ check(
   'the capability note follows the model',
   (await page.getByText('reports no word timings').count()) === 1
 );
-await page.getByRole('button', { name: 'Load Voices' }).click();
+await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
 await page.waitForTimeout(400);
 check(
   'and the voices stop being badged',

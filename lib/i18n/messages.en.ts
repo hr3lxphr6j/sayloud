@@ -191,9 +191,10 @@ export const en = {
   'voice.section': 'Voice',
   'voice.browser-note':
     'The browser voice is the one Chrome has installed. There is nothing to choose here.',
-  'voice.load': 'Load Voices',
+  'voice.search': 'Search voices',
+  'voice.search-needs-form': 'Fill in the fields above to fetch the list.',
   'voice.loading': 'Loading…',
-  'voice.load-hint': 'Fetch the voice list from this service to pick one from it.',
+  'voice.load-failed': 'Could not fetch the voice list: {detail}',
   'voice.selected': 'Selected:',
   // Two keys rather than a plural rule: English inflects, Chinese does not, and
   // the count is always known at the call site.
@@ -207,7 +208,10 @@ export const en = {
   'voice.saved': 'Voice saved: {voice}',
   'voice.save-failed': 'Could not save the voice: {detail}',
   'voice.filter-label': 'Filter voices',
-  'voice.filter-placeholder': 'Filter {count} voices by name, id or language',
+  // Two keys for the same reason the counts above have two: English inflects and
+  // Chinese does not, and the count is known here.
+  'voice.filter-one': 'Filter the voice by name, id or language',
+  'voice.filter-many': 'Filter {count} voices by name, id or language',
   'voice.no-match': 'No voice matches “{query}”.',
   'voice.badge-timings': 'word timings',
 

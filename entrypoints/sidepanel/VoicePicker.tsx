@@ -15,7 +15,7 @@
  * panel of voices with the heading left to the page header above it.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ConfigStore } from '~/lib/config-store';
+import type { ConfigStore, VoiceNames } from '~/lib/config-store';
 import { useT } from '~/lib/i18n';
 import { PROVIDER_SCHEMAS, type ProviderSchema } from '~/lib/providers/config-schema';
 import { errorMessage, formatProviderError, providerErrorSummary } from '~/lib/providers/errors';
@@ -67,6 +67,8 @@ export function VoicePicker({
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [typedId, setTypedId] = useState('');
+  /** The names voices were listed under, so a chosen id can be shown as one. */
+  const [names, setNames] = useState<VoiceNames>({});
   const inFlight = useRef<Deadline | null>(null);
 
   useEffect(() => {
@@ -79,10 +81,35 @@ export function VoicePicker({
       .catch((error: unknown) => {
         console.error('[SayLoud] cannot read the selected voice', error);
       });
+    store
+      .getVoiceNames()
+      .then((loaded) => {
+        if (active) setNames(loaded);
+      })
+      .catch((error: unknown) => {
+        console.error('[SayLoud] cannot read the voice names', error);
+      });
     return () => {
       active = false;
     };
   }, [store, schema.id]);
+
+  /**
+   * A stable stand-in for the config, which the parent rebuilds on every render.
+   *
+   * The list belongs to the config it was fetched for — another model has other
+   * voices — so a fetch is only reusable while this key is unchanged.
+   */
+  const configKey = config === null ? '' : JSON.stringify(config);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    // A quiet line describes the config it was produced for. Once that config
+    // is edited the line is no longer about anything, so it goes — this is what
+    // keeps "fill in the fields above" from outliving the fields being filled
+    // in.
+    setStatus((current) => (current.kind === 'quiet' ? { kind: 'idle' } : current));
+  }, [configKey]);
 
   useEffect(() => () => inFlight.current?.cancel(), []);
 
@@ -98,9 +125,10 @@ export function VoicePicker({
     try {
       const listed = await provider.listVoices(config, deadline.signal);
       setVoices(listed);
+      setLoadedKey(configKey);
       setStatus(
         listed.length === 0
-          ? { kind: 'error', message: t('voice.none-returned') }
+          ? { kind: 'quiet', message: t('voice.none-returned') }
           : {
               kind: 'ok',
               message: t(listed.length === 1 ? 'voice.count-one' : 'voice.count-many', {
@@ -109,18 +137,48 @@ export function VoicePicker({
             }
       );
     } catch (error) {
+      // Quiet on purpose. A list that could not be fetched is not something the
+      // reader has to act on, and the manual id box below still works — while a
+      // red failure would fire every time someone opens a row whose key is not
+      // filled in yet, which is most of the time on first run.
       if (deadline.timedOut()) {
         setStatus({
-          kind: 'error',
-          message: t('error.no-response', { seconds: LOAD_TIMEOUT_MS / 1000 }),
+          kind: 'quiet',
+          message: t('voice.load-failed', {
+            detail: t('error.no-response', { seconds: LOAD_TIMEOUT_MS / 1000 }),
+          }),
         });
       } else if (!deadline.signal.aborted) {
-        setStatus({ kind: 'error', message: formatProviderError(providerErrorSummary(error), t) });
+        setStatus({
+          kind: 'quiet',
+          message: t('voice.load-failed', {
+            detail: formatProviderError(providerErrorSummary(error), t),
+          }),
+        });
       }
     } finally {
       deadline.dispose();
       if (inFlight.current === deadline) inFlight.current = null;
     }
+  };
+
+  /**
+   * Fetch the list when the search box is focused.
+   *
+   * Focus rather than a button: the box is where someone who wants a voice
+   * looks anyway, and it lets the section read as "type here" instead of
+   * "press that". An attempt that failed is retried on the next focus, because
+   * the fix for most failures is editing the config above and coming back.
+   */
+  const onSearchFocus = () => {
+    if (status.kind === 'running') return;
+    if (config === null) {
+      setStatus({ kind: 'quiet', message: t('voice.search-needs-form') });
+      return;
+    }
+    // Fetch when there is nothing to show, and again when what is on screen was
+    // fetched for a config that has since been edited.
+    if (voices === null || loadedKey !== configKey) void onLoad();
   };
 
   const onSelect = async (voiceId: string, name?: string) => {
@@ -132,7 +190,15 @@ export function VoicePicker({
       // has one and an id typed into the box does not. Remembering it here is
       // what lets the summaries say "Vivi 2.0" without fetching the catalogue
       // again — the id stays the choice, the name is how it was listed.
-      if (name !== undefined) await store.saveVoiceName(schema.id, voiceId, name);
+      if (name !== undefined) {
+        await store.saveVoiceName(schema.id, voiceId, name);
+        // Keep the copy in step so the line above does not fall back to the id
+        // for a voice the user just picked out of the list.
+        setNames((current) => ({
+          ...current,
+          [schema.id]: { ...current[schema.id], [voiceId]: name },
+        }));
+      }
       setStatus({ kind: 'ok', message: t('voice.saved', { voice: voiceId }) });
       onSaved?.();
     } catch (error) {
@@ -144,33 +210,34 @@ export function VoicePicker({
   };
 
   const shown = voices === null ? [] : filterVoices(voices, query);
+  const listed = voices !== null && voices.length > 0;
+  const selectedName = selected === null ? null : (names[schema.id]?.[selected] ?? null);
 
   return (
-    <section class="section">
-      <div class="section-header">
-        {heading && <h2>{t('voice.section')}</h2>}
-        <button
-          type="button"
-          class="button"
-          disabled={disabled || status.kind === 'running'}
-          onClick={() => void onLoad()}
-        >
-          {status.kind === 'running' ? t('voice.loading') : t('voice.load')}
-        </button>
-      </div>
+    <section class="section voice-section">
+      {heading && (
+        <div class="section-header">
+          <h2>{t('voice.section')}</h2>
+        </div>
+      )}
 
       {selected && (
         <p class="muted">
-          {t('voice.selected')} <code>{selected}</code>
+          {t('voice.selected')}{' '}
+          {/*
+            The name when the catalogue gave one, the id otherwise. A name is
+            only known for a voice picked out of a list, so the id stays the
+            honest fallback rather than something invented from it.
+          */}
+          {selectedName ? (
+            <span class="voice-name" title={selected}>
+              {selectedName}
+            </span>
+          ) : (
+            <code>{selected}</code>
+          )}
         </p>
       )}
-
-      {/*
-        Before the list has been fetched the page is otherwise just a button
-        and an id box, which reads as broken rather than as empty. The line goes
-        where the search box will appear, so fetching replaces it in place.
-      */}
-      {voices === null && status.kind === 'idle' && <p class="muted">{t('voice.load-hint')}</p>}
 
       {config === null && showFormErrors && (
         <p class="result error" role="alert">
@@ -178,17 +245,31 @@ export function VoicePicker({
         </p>
       )}
 
-      {voices !== null && voices.length > 0 && (
-        <input
-          type="search"
-          aria-label={t('voice.filter-label')}
-          placeholder={t('voice.filter-placeholder', { count: voices.length })}
-          value={query}
-          onInput={(event) => setQuery(event.currentTarget.value)}
-        />
-      )}
+      {/*
+        Always present, because focusing it is the only way in: the button that
+        used to fetch the list sat in the header and read as a section-level
+        action rather than as the way to see the section's contents.
+      */}
+      <input
+        type="search"
+        aria-label={t('voice.filter-label')}
+        placeholder={
+          listed
+            ? t(voices.length === 1 ? 'voice.filter-one' : 'voice.filter-many', {
+                count: voices.length,
+              })
+            : t('voice.search')
+        }
+        value={query}
+        onFocus={onSearchFocus}
+        onInput={(event) => setQuery(event.currentTarget.value)}
+      />
 
-      <StatusLine status={status} />
+      {status.kind === 'running' ? (
+        <p class="muted">{t('voice.loading')}</p>
+      ) : (
+        <StatusLine status={status} />
+      )}
 
       {voices !== null && voices.length > 0 && shown.length === 0 && (
         <p class="muted">{t('voice.no-match', { query: query.trim() })}</p>

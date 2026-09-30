@@ -152,9 +152,10 @@ export const zh: Record<MessageKey, string> = {
   // --- the voice picker -----------------------------------------------------
   'voice.section': '音色',
   'voice.browser-note': '浏览器语音由 Chrome 提供，无需选择。',
-  'voice.load': '加载音色',
+  'voice.search': '搜索音色',
+  'voice.search-needs-form': '填好上面的配置后才能获取音色列表。',
   'voice.loading': '加载中…',
-  'voice.load-hint': '从服务获取音色列表后即可挑选。',
+  'voice.load-failed': '没能获取音色列表：{detail}',
   'voice.selected': '已选：',
   'voice.count-one': '{count} 个音色。',
   'voice.count-many': '{count} 个音色。',
@@ -166,7 +167,8 @@ export const zh: Record<MessageKey, string> = {
   'voice.saved': '已保存音色：{voice}',
   'voice.save-failed': '保存音色失败：{detail}',
   'voice.filter-label': '筛选音色',
-  'voice.filter-placeholder': '按名称、ID 或语言筛选 {count} 个音色',
+  'voice.filter-one': '按名称、ID 或语言筛选',
+  'voice.filter-many': '按名称、ID 或语言筛选 {count} 个音色',
   'voice.no-match': '没有匹配「{query}」的音色。',
   'voice.badge-timings': '词级时间戳',
 

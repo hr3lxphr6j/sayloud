@@ -168,6 +168,7 @@ h2 {
 input[type='text'],
 input[type='password'],
 input[type='url'],
+input[type='search'],
 select,
 textarea {
   box-sizing: border-box;
@@ -277,6 +278,22 @@ code {
 .facts dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.voice-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voice-custom .inline {
+  display: flex;
+  gap: 6px;
+}
+
+.voice-custom input {
+  flex: 1;
+  min-width: 0;
 }
 
 .voice-list {

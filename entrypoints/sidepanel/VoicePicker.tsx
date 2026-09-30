@@ -5,6 +5,10 @@
  * preference from the credentials, and a user who has just listened to a voice
  * should not have to also press Save. It is stored per provider, so switching
  * services and switching back keeps the voice that was chosen for each.
+ *
+ * A voice can also be typed in by id: a cloned voice, one the provider added
+ * after the catalogue was taken, or one a server does not list. The list can
+ * run to hundreds of entries (Volcengine 2.0 has 445), so it is filterable.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ConfigStore } from '~/lib/config-store';
@@ -48,6 +52,8 @@ export function VoicePicker({
   const [voices, setVoices] = useState<Voice[] | null>(null);
   const [status, setStatus] = useState<AsyncStatus>({ kind: 'idle' });
   const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [typedId, setTypedId] = useState('');
   const inFlight = useRef<Deadline | null>(null);
 
   useEffect(() => {
@@ -100,6 +106,7 @@ export function VoicePicker({
   };
 
   const onSelect = async (voiceId: string) => {
+    if (voiceId.length === 0) return;
     setSelected(voiceId);
     try {
       await store.saveSelectedVoice(schema.id, voiceId);
@@ -108,6 +115,8 @@ export function VoicePicker({
       setStatus({ kind: 'error', message: `Could not save the voice: ${errorMessage(error)}` });
     }
   };
+
+  const shown = voices === null ? [] : filterVoices(voices, query);
 
   return (
     <section class="section">
@@ -135,11 +144,52 @@ export function VoicePicker({
         </p>
       )}
 
+      <form
+        class="voice-custom"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSelect(typedId.trim());
+        }}
+      >
+        <label class="field-label" for={`voice-id-${schema.id}`}>
+          Voice id
+        </label>
+        <div class="inline">
+          <input
+            id={`voice-id-${schema.id}`}
+            type="text"
+            placeholder="Any voice id the service accepts"
+            spellcheck={false}
+            autocomplete="off"
+            value={typedId}
+            disabled={disabled}
+            onInput={(event) => setTypedId(event.currentTarget.value)}
+          />
+          <button type="submit" class="button" disabled={disabled || typedId.trim() === ''}>
+            Use this id
+          </button>
+        </div>
+      </form>
+
       <StatusLine status={status} />
 
       {voices !== null && voices.length > 0 && (
+        <input
+          type="search"
+          aria-label="Filter voices"
+          placeholder={`Filter ${voices.length} voices by name, id or language`}
+          value={query}
+          onInput={(event) => setQuery(event.currentTarget.value)}
+        />
+      )}
+
+      {voices !== null && voices.length > 0 && shown.length === 0 && (
+        <p class="muted">No voice matches “{query.trim()}”.</p>
+      )}
+
+      {shown.length > 0 && (
         <ul class="voice-list">
-          {voices.map((voice) => (
+          {shown.map((voice) => (
             <li key={voice.id}>
               <label class="voice">
                 <input
@@ -163,5 +213,14 @@ export function VoicePicker({
         </ul>
       )}
     </section>
+  );
+}
+
+/** Voices whose name, id or language contains `query`, ignoring case. */
+export function filterVoices(voices: readonly Voice[], query: string): Voice[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === '') return [...voices];
+  return voices.filter((voice) =>
+    [voice.name, voice.id, voice.lang ?? ''].some((text) => text.toLowerCase().includes(needle))
   );
 }

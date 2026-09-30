@@ -68,17 +68,11 @@ const MAX_CHARS = 1000;
 
 const CONCURRENCY = 2;
 
-const DEFAULT_VOICE = 'zh_female_shuangkuaisisi_moon_bigtts';
-
 /**
- * A sample of the voices the big-model TTS service ships with.
- *
- * These are the 1.0 voices the spike verified, including 爽快思思 and 温暖阿虎
- * (spec §6 V9). The 2.0 catalogue is deliberately not guessed at here: Phase 4
- * still has to verify which voices the `seed-tts-2.0` resource accepts, so
- * until then every resource is offered this same list.
+ * The 1.0 voices, including 爽快思思 and 温暖阿虎, which the spike verified
+ * against `seed-tts-1.0` (spec §6 V9).
  */
-const VOICES: Voice[] = [
+const VOICES_1_0: Voice[] = [
   { id: 'zh_female_shuangkuaisisi_moon_bigtts', name: '爽快思思', lang: 'zh-CN', gender: 'female' },
   { id: 'zh_male_wennuanahu_moon_bigtts', name: '温暖阿虎', lang: 'zh-CN', gender: 'male' },
   { id: 'zh_male_shaonianzixin_moon_bigtts', name: '少年梓辛', lang: 'zh-CN', gender: 'male' },
@@ -88,6 +82,68 @@ const VOICES: Voice[] = [
   { id: 'en_female_amanda_moon_bigtts', name: 'Amanda', lang: 'en-US', gender: 'female' },
   { id: 'en_male_jackson_moon_bigtts', name: 'Jackson', lang: 'en-US', gender: 'male' },
 ];
+
+/**
+ * The 2.0 voices (`*_uranus_bigtts`).
+ *
+ * A voice only works on its own resource: a 1.0 voice on `seed-tts-2.0` is
+ * rejected with 55000000 (spec §6 V9, and confirmed on a live key). assumed:
+ * this list comes from a public voice table, not from the spike; VV 2.0 is the
+ * one the probe uses.
+ */
+const VOICES_2_0: Voice[] = [
+  { id: 'zh_female_vv_uranus_bigtts', name: 'VV 2.0', lang: 'zh-CN', gender: 'female' },
+  { id: 'zh_female_xiaohe_uranus_bigtts', name: '小何 2.0', lang: 'zh-CN', gender: 'female' },
+  {
+    id: 'zh_female_shuangkuaisisi_uranus_bigtts',
+    name: '爽快思思 2.0',
+    lang: 'zh-CN',
+    gender: 'female',
+  },
+  {
+    id: 'zh_female_qingxinnvsheng_uranus_bigtts',
+    name: '清新女声 2.0',
+    lang: 'zh-CN',
+    gender: 'female',
+  },
+  {
+    id: 'zh_female_tianmeitaozi_uranus_bigtts',
+    name: '甜美桃子 2.0',
+    lang: 'zh-CN',
+    gender: 'female',
+  },
+  {
+    id: 'zh_female_zhixingjiejie_uranus_bigtts',
+    name: '知性姐姐 2.0',
+    lang: 'zh-CN',
+    gender: 'female',
+  },
+  { id: 'zh_male_yunzhou_uranus_bigtts', name: '云舟 2.0', lang: 'zh-CN', gender: 'male' },
+  { id: 'zh_male_xiaotian_uranus_bigtts', name: '小天 2.0', lang: 'zh-CN', gender: 'male' },
+  { id: 'zh_male_liufei_uranus_bigtts', name: '刘飞 2.0', lang: 'zh-CN', gender: 'male' },
+  {
+    id: 'zh_male_shaonianzixin_uranus_bigtts',
+    name: '少年梓辛 2.0',
+    lang: 'zh-CN',
+    gender: 'male',
+  },
+];
+
+/**
+ * The voices each resource accepts, the first being the one `validate()` probes.
+ *
+ * `seed-icl-2.0` has no system voices: it speaks cloned voices, whose ids are
+ * the user's own, so it offers the 2.0 list and leaves the rest to the console.
+ */
+const VOICES_BY_RESOURCE: Record<VolcengineResourceId, Voice[]> = {
+  'seed-tts-1.0': VOICES_1_0,
+  'seed-tts-2.0': VOICES_2_0,
+  'seed-icl-2.0': VOICES_2_0,
+};
+
+function defaultVoice(resourceId: VolcengineResourceId): string {
+  return (VOICES_BY_RESOURCE[resourceId][0] as Voice).id;
+}
 
 /**
  * Volcengine's error vocabulary.
@@ -105,7 +161,7 @@ const ERROR_CODES: Record<number, ProviderErrorCode> = {
   3004: 'no-quota',
   3005: 'rate-limit',
   3006: 'service-unavailable',
-  45000030: 'service-unavailable',
+  45000030: 'not-activated',
   55000000: 'voice-mismatch',
 };
 
@@ -132,7 +188,7 @@ export function mapErrorCode(code: number): ProviderErrorCode | undefined {
  * code over the HTTP status when the body carries one.
  */
 export function mapVolcengineError(status: number, body: string): ProviderError {
-  const message = messageFromBody(body, `HTTP ${status}`);
+  const message = readHeaderMessage(body) ?? messageFromBody(body, `HTTP ${status}`);
   const code = readErrorCode(body);
   const details = { status, code, body };
 
@@ -144,12 +200,33 @@ export function mapVolcengineError(status: number, body: string): ProviderError 
   return errorFromStatus(status, message, details);
 }
 
+/**
+ * Where a Volcengine error body keeps its code and message.
+ *
+ * Non-2xx answers wrap them in `header` (`{header: {reqid, code, message}}`,
+ * seen live for 45000030); stream frames keep them at the root.
+ */
+function errorRecord(parsed: Record<string, unknown>): Record<string, unknown> {
+  return readRecord(parsed, 'header') ?? parsed;
+}
+
+function readHeaderMessage(body: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (!isRecord(parsed)) return undefined;
+    const header = readRecord(parsed, 'header');
+    return header ? readFirstString(header, ['message', 'Message']) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Read a numeric `code` out of a Volcengine body. */
 function readErrorCode(body: string): number | undefined {
   try {
     const parsed: unknown = JSON.parse(body);
     if (!isRecord(parsed)) return undefined;
-    return readFirstNumber(parsed, ['code', 'status_code', 'StatusCode']);
+    return readFirstNumber(errorRecord(parsed), ['code', 'status_code', 'StatusCode']);
   } catch {
     return undefined;
   }
@@ -183,14 +260,17 @@ export class VolcengineProvider implements Provider {
 
   /** Verify the credentials by synthesizing two characters. */
   async validate(config: ProviderConfig, signal: AbortSignal): Promise<void> {
-    await this.synthesize({ text: '你好', voiceId: DEFAULT_VOICE, signal }, config);
+    // The probe voice has to belong to the resource, or a valid key would be
+    // reported as a voice mismatch.
+    const { resourceId = DEFAULT_RESOURCE_ID } = requireConfig(config, 'volcengine');
+    await this.synthesize({ text: '你好', voiceId: defaultVoice(resourceId), signal }, config);
   }
 
   async listVoices(config: ProviderConfig, _signal: AbortSignal): Promise<Voice[]> {
     const { resourceId = DEFAULT_RESOURCE_ID } = requireConfig(config, 'volcengine');
     const timings = supportsTimings(resourceId);
 
-    return VOICES.map((voice) => ({ ...voice, supportsTimings: timings }));
+    return VOICES_BY_RESOURCE[resourceId].map((voice) => ({ ...voice, supportsTimings: timings }));
   }
 
   async synthesize(request: SynthesizeRequest, config: ProviderConfig): Promise<SynthesisResult> {
@@ -220,7 +300,7 @@ export class VolcengineProvider implements Provider {
         user: { uid: 'sayloud' },
         req_params: {
           text: request.text,
-          speaker: request.voiceId || DEFAULT_VOICE,
+          speaker: request.voiceId || defaultVoice(resourceId),
           audio_params: { format: AUDIO_FORMAT, sample_rate: SAMPLE_RATE },
           // Only 1.0 can answer with timings, so asking the other resources for
           // them would only add a frame that carries nothing.

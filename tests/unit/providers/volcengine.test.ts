@@ -87,7 +87,7 @@ describe('protocol helpers', () => {
   });
 
   it('maps the documented codes', () => {
-    expect(mapErrorCode(45000030)).toBe('service-unavailable');
+    expect(mapErrorCode(45000030)).toBe('not-activated');
     expect(mapErrorCode(55000000)).toBe('voice-mismatch');
     expect(mapErrorCode(3003)).toBe('invalid-key');
     expect(mapErrorCode(3004)).toBe('no-quota');
@@ -394,7 +394,7 @@ describe('error mapping', () => {
   it.each([
     [401, undefined, 'invalid-key'],
     [403, undefined, 'invalid-key'],
-    [400, 45000030, 'service-unavailable'],
+    [400, 45000030, 'not-activated'],
     [400, 55000000, 'voice-mismatch'],
     [500, 3006, 'service-unavailable'],
     [429, 3005, 'rate-limit'],
@@ -421,10 +421,36 @@ describe('error mapping', () => {
     ).rejects.toMatchObject({ code: 'service-unavailable' });
   });
 
+  it('reads a code and message nested under header', async () => {
+    // The live service answers an ungranted resource with a 403 whose code
+    // sits under `header`; reading only the top level reported a bad key.
+    server.use(
+      http.post(ENDPOINT, () =>
+        HttpResponse.json(
+          {
+            header: {
+              reqid: 'r-1',
+              code: 45000030,
+              message: '[resource_id=volc.seedicl.default] requested resource not granted',
+            },
+          },
+          { status: 403 }
+        )
+      )
+    );
+
+    await expect(
+      provider.synthesize({ text: '你好', voiceId: 'voice-1', signal }, config())
+    ).rejects.toMatchObject({
+      code: 'not-activated',
+      message: '[resource_id=volc.seedicl.default] requested resource not granted',
+    });
+  });
+
   it('reads the legacy StatusCode field', () => {
     const error = mapVolcengineError(400, '{"StatusCode":45000030,"Message":"not activated"}');
 
-    expect(error.code).toBe('service-unavailable');
+    expect(error.code).toBe('not-activated');
     expect(error.message).toBe('not activated');
     expect(error.details).toMatchObject({ status: 400, code: 45000030 });
   });
@@ -462,7 +488,7 @@ describe('error mapping', () => {
 
     await expect(
       provider.synthesize({ text: '你好', voiceId: 'voice-1', signal }, config())
-    ).rejects.toMatchObject({ code: 'service-unavailable', message: 'service not activated' });
+    ).rejects.toMatchObject({ code: 'not-activated', message: 'service not activated' });
   });
 
   it('reports an unrecognized in-stream code as unknown', async () => {
@@ -483,6 +509,24 @@ describe('error mapping', () => {
 });
 
 describe('validate', () => {
+  it.each([
+    ['seed-tts-1.0', /_moon_bigtts$/],
+    ['seed-tts-2.0', /_uranus_bigtts$/],
+  ] as const)('probes %s with a voice from that resource', async (resourceId, pattern) => {
+    let speaker: unknown;
+    server.use(
+      http.post(ENDPOINT, async ({ request }) => {
+        speaker = ((await request.json()) as { req_params: { speaker: unknown } }).req_params
+          .speaker;
+        return HttpResponse.text(ndjson(audio('AUDIO'), end()));
+      })
+    );
+
+    await provider.validate(config({ resourceId }), signal);
+
+    expect(speaker).toMatch(pattern);
+  });
+
   it('resolves when a probe synthesis succeeds', async () => {
     server.use(http.post(ENDPOINT, () => HttpResponse.text(ndjson(audio('AUDIO'), end()))));
 
@@ -506,6 +550,20 @@ describe('listVoices', () => {
     expect(voices[0]).toMatchObject({ lang: 'zh-CN', supportsTimings: true });
     expect(voices.map((voice) => voice.id)).toContain('zh_female_shuangkuaisisi_moon_bigtts');
     expect(voices.map((voice) => voice.id)).toContain('zh_male_wennuanahu_moon_bigtts');
+  });
+
+  it('offers 2.0 voices, not 1.0 ones, for the 2.0 resource', async () => {
+    // A 1.0 voice on the 2.0 resource is rejected with 55000000.
+    const voices = await provider.listVoices(config({ resourceId: 'seed-tts-2.0' }), signal);
+
+    expect(voices.length).toBeGreaterThan(0);
+    expect(voices.every((voice) => voice.id.endsWith('_uranus_bigtts'))).toBe(true);
+  });
+
+  it('offers only 1.0 voices for the 1.0 resource', async () => {
+    const voices = await provider.listVoices(config({ resourceId: 'seed-tts-1.0' }), signal);
+
+    expect(voices.some((voice) => voice.id.endsWith('_uranus_bigtts'))).toBe(false);
   });
 
   it('marks voices as timing-less for the 2.0 resources', async () => {

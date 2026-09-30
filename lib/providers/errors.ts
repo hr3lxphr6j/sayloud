@@ -7,6 +7,7 @@
  */
 export type ProviderErrorCode =
   | 'invalid-key'
+  | 'not-activated'
   | 'service-unavailable'
   | 'voice-mismatch'
   | 'rate-limit'
@@ -71,6 +72,8 @@ export function networkError(cause: unknown): ProviderError {
  */
 const CODE_MESSAGES: Record<ProviderErrorCode, string> = {
   'invalid-key': 'The API key was rejected. Check that it was copied in full.',
+  'not-activated':
+    'This key has not been granted the selected model or resource. Enable it in the provider console, or pick one that is.',
   'service-unavailable': 'The service is unavailable right now. Try again in a moment.',
   'voice-mismatch':
     'The chosen voice does not belong to the selected resource id. The two have to match — pick a voice from this resource.',

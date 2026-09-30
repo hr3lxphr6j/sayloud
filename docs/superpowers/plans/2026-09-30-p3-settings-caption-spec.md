@@ -165,10 +165,12 @@ sidepanel 滑块 ──写──► settings.volume ──onChanged──► SW
 
 ### 4.2 设置如何到达 offscreen
 
-offscreen 文档是扩展页面，**可以直接用 `browser.storage.local`**。所以：
+> ⚠️ **实测修正（2026-09-30，T3）**：原稿写「offscreen 文档是扩展页面，**可以直接用 `browser.storage.local`**」是**错的**。真机 Chromium 实测（在 offscreen 文档里发一条探针消息给 SW）：`hasStorage: 'undefined'`、`hasPermissions: 'undefined'`、`hasI18n: 'undefined'`，只有 `chrome.runtime` 与 `chrome.offscreen` 可用。所以缓存策略**必须走消息**，offscreen 自己读不到 settings。
 
-- `entrypoints/offscreen/main.ts` 启动时读一次 settings，把 `cache.persist` / `cache.maxBytes` 应用到 `CacheManager`；并订阅 `storage.onChanged`，变了就重新应用。
-- 不通过 `synthesize` 命令传缓存策略——命令应该只携带「这一句话」需要的东西。
+- `entrypoints/offscreen/main.ts` 启动时发一条 `CACHE_POLICY_REQUEST`，SW 回 `{ type: 'cache-policy', cache: { persist, maxBytes } }`（`pullCachePolicy`），文档拿到后应用；settings 变化时 SW 用 `pushCachePolicy` 把新策略推给**活着的**文档（没有接收方时静默成功）。
+- 两种消息都**不是** `OffscreenCommand`：它们不从执行器状态机的角度讲「这一句话」，命令通道仍然只携带一句话需要的东西。
+- 为什么是「文档主动问」而不是「SW 记得推」：Chrome 在静音 30s 后回收 offscreen 文档，新文档启动时先问一次，不依赖任何人在它不存在时还记得发消息。`CACHE_POLICY_REQUEST` 也会在 SW 冷启动后被应答（监听器在顶层注册）。
+- V14 已用真机脚本验证：offscreen 持有连接时，sidepanel 打开同一个 IndexedDB **不出现 `blocked`**；把 `persist` 改成 `false` 后 offscreen 确实清空了 store（1 → 0），改回 `true` 后新写入落盘（0 → 1）。
 
 ### 4.3 UI 侧（sidepanel）
 
@@ -516,7 +518,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:manifest &&
 ### T3 — 缓存管理（后端 + 数据层）
 
 - `lib/cache-manager.ts` 扩展（§4.1）。
-- `entrypoints/offscreen/main.ts`：读 settings 应用 cache 配置 + 订阅变化；处理 `cache-cleared` 广播（清 L1 + 重新 measure）。
+- `entrypoints/offscreen/main.ts`：向 SW 要一次 cache 策略并应用（见 §4.2 修正）；处理 `cache-cleared` 广播（清 L1 + 重新 measure）。
 - 新增 `lib/cache-admin.ts`（sidepanel 侧读/清）。
 - `lib/settings-store.ts` 若缺 cache 字段则补齐（T1 应已建好）。
 - 验收：单测覆盖 setMaxBytes / usage / expire / persist=false / 广播；**暂不做 UI**（T4 做），但 `cache-admin` 要有单测。

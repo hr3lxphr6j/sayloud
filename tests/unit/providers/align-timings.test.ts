@@ -272,23 +272,52 @@ describe('alignTimings', () => {
       ]);
     });
 
-    it('rejects the whole set when a word is not a verbatim substring', () => {
-      // The provider normalized "5" to "five"; its offsets no longer describe
-      // this sentence, so nothing from this response can be trusted.
-      expect(
-        alignTimings(
-          'It costs 5 dollars.',
-          {
-            kind: 'sequential-words',
-            words: [
-              { text: 'It', startMs: 0, endMs: 100 },
-              { text: 'costs', startMs: 100, endMs: 300 },
-              { text: 'five', startMs: 300, endMs: 500 },
-            ],
-          },
-          800
-        )
-      ).toBe(undefined);
+    it('skips a word the provider normalized instead of rejecting the sentence', () => {
+      // Volcengine and CosyVoice read "5" as "five", so its offsets no longer
+      // describe this sentence. Spec §2.1 / V9: skip it, keep the rest —
+      // rejecting the whole set would cost word highlight on every sentence
+      // containing a number.
+      const timings = alignTimings(
+        'It costs 5 dollars.',
+        {
+          kind: 'sequential-words',
+          words: [
+            { text: 'It', startMs: 0, endMs: 100 },
+            { text: 'costs', startMs: 100, endMs: 300 },
+            { text: 'five', startMs: 300, endMs: 500 },
+            { text: 'dollars.', startMs: 500, endMs: 800 },
+          ],
+        },
+        800
+      );
+
+      // "It" [0,2), "costs" [3,8), "dollars." [11,19); "five" is dropped and
+      // never guessed at, so "5" simply stays unhighlighted.
+      expect(timings?.map(({ charStart, charEnd }) => [charStart, charEnd])).toEqual([
+        [0, 2],
+        [3, 8],
+        [11, 19],
+      ]);
+    });
+
+    it('still reports nothing when no word can be placed', () => {
+      // Every word normalized away: there is no partial highlight to give, so
+      // the caller must fall back to the sentence.
+      const timings = alignTimings(
+        '1.27',
+        {
+          kind: 'sequential-words',
+          words: [
+            { text: '一', startMs: 0, endMs: 100 },
+            { text: '点', startMs: 100, endMs: 200 },
+            { text: '二', startMs: 200, endMs: 300 },
+            { text: '七', startMs: 300, endMs: 400 },
+          ],
+        },
+        400
+      );
+
+      expect(timings).toBe(undefined);
     });
 
     it('rejects no words or an empty word', () => {
@@ -379,15 +408,25 @@ describe('alignTimings', () => {
       ]);
     });
 
-    it('rejects normalized text whose words do not appear in the sentence', () => {
-      // ElevenLabs aligns against normalized text: "5" is spoken as "five".
+    it('skips normalized characters and keeps the words that do line up', () => {
+      // ElevenLabs aligns against normalized text: "5" is spoken as "five",
+      // so the character clock covers more characters than the sentence has.
+      // The words either side of it still align (spec §2.1 / V9).
       const timings = alignTimings(
         'It costs 5 dollars.',
         { kind: 'chars', chars: perChar('It costs five dollars.') },
         2400
       );
 
-      expect(timings).toBe(undefined);
+      // "It" [0,2), "costs" [3,8), "dollars" [11,18). The segmenter drops the
+      // trailing period, so the last span ends one character earlier than in
+      // the `sequential-words` case above.
+      expect(timings).toBeDefined();
+      expect(timings?.map(({ charStart, charEnd }) => [charStart, charEnd])).toEqual([
+        [0, 2],
+        [3, 8],
+        [11, 18],
+      ]);
     });
 
     it('covers a CJK sentence contiguously', () => {

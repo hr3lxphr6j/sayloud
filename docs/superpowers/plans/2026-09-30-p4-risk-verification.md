@@ -497,3 +497,87 @@ RTF 逐句（同一组 5 句）：
 - 生成脚本：`/tmp/p4verify/piper/gen-piper.mjs`、`/tmp/p4verify/gen-kokoro.mjs`
 
 **待用户听完后决定选型。**
+
+---
+
+# 🔴 重大修正：WebGPU 加速完全可用，V20 的结论是错的（2026-10-01）
+
+## 起因
+
+用户问「webgl webgpu 加速不能用吗」。回查 catm 的 CI 注释发现：
+
+> `macos-14` … the only free-tier runner where Chromium's Metal-via-ANGLE WebGPU path
+> actually works — synth completes in ~10s here. Ubuntu + Mesa lavapipe … too slow.
+> **Without real GPU, Kokoro falls back to WASM which is 10-30× slower than WebGPU.**
+
+catm 实测 WebGPU 比 WASM 快 10–30 倍，而我测出 1.44 vs 1.45（几乎相同）——
+说明我的测试有问题。
+
+## 根因：我用了 `q8`，而 catm 默认 `fp32`
+
+`q8` 量化模型在 ORT WebGPU 上需要反量化算子，那些算子**回退 CPU**，
+把 GPU 加速全部吃掉。ORT 的日志一直在提示这件事：
+`Some nodes were not assigned to the preferred execution providers`。
+
+## 实测矩阵（真机 Apple M 系列，同一组 5 句）
+
+| dtype | 后端 | 平均 RTF | 逐句耗时（ms） | 体积 |
+|---|---|---|---|---|
+| `q8` | wasm | 1.454 | 4251 / 3758 / 10193 / 3958 / 4294 | 92.4MB |
+| `q8` | webgpu | 1.433 | 4354 / 3924 / 12293 / 3291 / 4765 | 92.4MB |
+| `fp16` | wasm | 1.136 | 3173 / 3022 / 8083 / 3162 / 3401 | 163.2MB |
+| **`fp16`** | **webgpu** | **0.15–0.26** | **469 / 373 / 989 / 462 / 417** | 163.2MB |
+| `fp32` | wasm | 1.138 | 3311 / 3017 / 8069 / 3085 / 3384 | 325.5MB |
+| **`fp32`** | **webgpu** | **0.158–0.178** | **487 / 435 / 1061 / 382 / 498** | 325.5MB |
+
+**三条结论**：
+
+1. **`q8` + WebGPU 毫无收益**（1.433 vs wasm 1.454）。这是最初搞错的原因。
+2. **WebGPU 只在 fp16/fp32 下有效**，效果 **6–8 倍**，且**比实时快 5–6 倍**。
+3. **没有 WebGPU 时三种 dtype 差不多**（1.14–1.45）——那才是真的慢。
+
+**首句没有冷启动惩罚**：webgpu/fp32 首句 487ms、稳态 382–498ms（shader 编译
+在 session 建立时完成）。对比 wasm 首句 3,311ms —— **快 6.8 倍**。
+
+## offscreen 文档里复测（真实上下文）
+
+用扩展 + offscreen 文档（`reasons: ['AUDIO_PLAYBACK']`）+ 本地 HTTP 喂模型：
+
+```json
+{
+  "context": "offscreen",
+  "adapter": "apple/metal-3",
+  "shaderF16": true,
+  "crossOriginIsolated": false,
+  "wasm/fp32":   { "rtf": 1.119, "runs": [3260, 2977] },
+  "webgpu/fp32": { "rtf": 0.178, "runs": [594, 403] }
+}
+```
+
+**WebGPU 在 offscreen 里快 6.3 倍。** 所以修正后的结论在真实上下文成立。
+
+## ⚠️ 附带发现：offscreen 文档 30 秒被回收
+
+实测时间线：`9s 创建 → 18s 存活 → 27s 存活 → 30s 消失`。
+
+`AUDIO_PLAYBACK` 理由下，**无音频播放 30 秒整被回收**（与 P3 记录一致）。
+第一版探测要拉 325MB 再跑 20 次推理，被杀在途中，所以一直拿不到结果。
+
+**对 P4 的含义**：
+- 真实设计里 offscreen 只做「从缓存读模型 + 建 session + 合成」= 1–2 秒，安全。
+- **但若模型没下好，offscreen 会去下载（几分钟）→ 中途被杀。**
+  这是 §3.6「下载器跑在侧边栏」的实测依据。
+- 实验里保活手法：offscreen 里跑一个 `gain = 0.0001` 的振荡器（几乎无声）。
+
+## 用户界定的范围
+
+**模型下载不计入启动时间**——下载是「模型」标签页里的独立步骤，
+用户先做好。播放路径可以假设模型已就绪。
+（我早期把下载与启动混在一起叙述，框架是错的。）
+
+## 教训
+
+**dtype 与执行后端是耦合的，固定一个测另一个会得出错误结论。**
+只测了 `q8`（唯一一个 WebGPU 无效的档）就写下了「WebGPU 与 WASM 几乎同速」
+和「预取是必需品」——两条都错了。
+**性能结论必须把「体积/精度档位」当作测试变量，不能当常数。**

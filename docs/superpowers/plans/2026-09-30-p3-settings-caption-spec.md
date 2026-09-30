@@ -321,6 +321,7 @@ export interface CaptionState {
 
 - 用 Preact 渲染进 `pipWindow.document.body`（PiP 窗口与打开它的页面同源，可以直接写 DOM）。
 - 样式注入：优先 `pipWindow.document.adoptedStyleSheets = [sheet]`（constructable stylesheet），失败时退回插入 `<style>` 元素。原因：PiP 文档会继承打开页面的 CSP，严格 CSP 站点可能挡掉 inline style（见 V12）。
+  - ⚠️ **实测修正（2026-09-30，T5）**：stylesheet **必须用 PiP 窗口自己的构造函数建**（`new pipWindow.CSSStyleSheet()`）。用 content script 自己那份 `CSSStyleSheet` 建再赋给 `pipWindow.document.adoptedStyleSheets` 会抛 `NotAllowedError: … Sharing constructed stylesheets in multiple documents is not allowed`（CSP 与否都抛）。细节见 §9 V12。
 - `pipWindow.addEventListener('pagehide', …)` → 标记为已关闭，通知 controller 更新状态（按钮回到「未打开」）。
 - `ReaderController` 需要把当前词的位置暴露到 `ReaderState`：新增 `word: { index: number; charStart: number; charEnd: number } | null`，在 `onWord` 里更新、句子切换时清空。句子的文本从已有的 `doc.sentences[status.index]` 取（content script 本来就持有整份句子列表）。
 
@@ -470,6 +471,20 @@ export interface CaptionState {
 | **V14** | sidepanel 打开 IndexedDB 读取占用时，offscreen 已持有连接，不出现 `blocked` / 版本冲突 | 缓存 UI | 改由 SW 转发统计 |
 
 V10–V12 由**执行 T5 的 subagent 先做一个小实验**（e2e 里加一个临时 spec，或直接手写一个最小页面验证），把结论写回本文件；V13/V14 用 e2e 覆盖。**结论必须在提交里体现**（spec 补实测结论 + commit message 说明）。
+
+> ✅ **V10 实测通过（2026-09-30，T5）**：content script（隔离世界）**能**打开并操作 PiP 文档，字幕悬浮窗可按 §7.4 实现。
+> - 手法：临时 Playwright spec（headless Chromium 153.0.8010.12）里用 CDP 找到扩展**自己的** content script 世界（`Runtime.executionContextCreated` 报告 `{ origin: 'chrome-extension://<id>', name: 'SayLoud', auxData: { isDefault: false, type: 'isolated' } }`），在该世界内装一个探针，再由 `page.click` 派发**真实**点击（用户手势是文档级的，与哪个世界收到事件无关）。
+> - 结果：`{ supported: 'object', calledSynchronously: true, opened: true, readBack: 'hello', canWrite: true, hasClose: 'function', hasAdopted: 'object' }` —— `requestWindow()` 在点击处理里同步调用即被接受，返回的 `pipWindow.document` 是可读写的同源文档。同样的探针在一个普通（非扩展）隔离世界里也通过。
+> - 附带发现：Playwright 把 PiP 窗口暴露成 `context.pages()` 里的**第二个 page**（URL `about:blank`），且能在其中 `evaluate`/`locator`。所以字幕窗口的 e2e 可以断言真实内容，而不只是「按钮出现了」。
+>
+> ⚠️ **V12 实测修正（2026-09-30，T5）**：PiP 文档**确实继承**打开页面的 CSP，且**只有** constructable stylesheet 能穿过严格 CSP；`<style>` 是被挡的那条路。
+> - 页面用 `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'">`，用户点击打开 PiP 后：
+>   - 内联 `<style>`：**被挡**。`document.styleSheets.length === 0`，元素的 `color` 仍是 `rgb(0, 0, 0)`，并触发两条 `securitypolicyviolation`（`style-src-elem` / blockedURI `inline`）。
+>   - `adoptedStyleSheets` + `new pipWindow.CSSStyleSheet()`：**生效**，背景色应用成功，无违规、无异常。
+>   - 坑：用**打开页面那份** `CSSStyleSheet` 建的表加不进去 —— `NotAllowedError: Failed to set the 'adoptedStyleSheets' property on 'Document': Sharing constructed stylesheets in multiple documents is not allowed`（该报错与 CSP 无关，普通页面同样复现）。
+> - 对照（同页面去掉 CSP meta）：内联 `<style>` 生效（`rgb(1, 2, 3)`，`styleSheets.length === 1`），adopted 也生效。
+> - 结论：主路径 = 在 PiP 窗口的 realm 里建 constructable sheet；`<style>` 只作为老引擎的兜底。严格 CSP 站点 + 没有 constructable stylesheet 的引擎才会真的没样式，而 Document PiP 本身要求 Chrome 116+，两者同时缺失不存在。
+> - 顺带确认：`documentPictureInPicture` 在扩展的边栏页面里也存在（`typeof === 'object'`），所以 §7.2 那条「设置里提示当前浏览器不支持」的开关提示可以按同一判断来做 —— 它只在 API 真的不存在（Chrome < 116）时才显示。
 
 ---
 

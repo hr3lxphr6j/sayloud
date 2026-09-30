@@ -182,6 +182,8 @@ offscreen 文档是扩展页面，**可以直接用 `browser.storage.local`**。
 
 设置标签页新增「缓存」卡片：持久化开关、上限下拉、`已用 12.4 MB · 86 段`、清除按钮（二次确认用行内「确认清除 / 取消」，不用 `window.confirm`）。关掉持久化开关时，卡片下方出现一行说明：「关闭会清除已保存的音频。」
 
+措辞上要写明这是**音频缓存**（L2 IndexedDB），**不含端侧模型**——端侧模型是 Cache Storage 里的另一份数据，由 P4 的「模型」标签页管理。两处各自显示自己的占用，不合并，免得用户以为清音频缓存能腾出模型的空间。
+
 ---
 
 ## 5. i18n
@@ -327,7 +329,7 @@ export interface CaptionState {
 
 ```
 ┌────────────────────────────────────────┐
-│ SayLoud                    [朗读][设置] │
+│ SayLoud                    [朗读][设置] │  ← 第三个「模型」标签在 P4 加入
 ├────────────────────────────────────────┤
 │  (标签页内容)                           │
 └────────────────────────────────────────┘
@@ -448,6 +450,7 @@ export interface CaptionState {
 ### 8.4 测试影响
 
 - `.smoke/sidepanel-smoke.mjs` 现在用 `#provider-select` / `#provider-select option` 选服务商，改成点 `[data-provider=…]` 行。**34 项检查都要保留**（语义等价改写），并新增：缓存卡片可见 + 已用数字出现、语言下拉可切到中文、音量滑块存在且能改、悬浮窗开关存在。
+- 标签相关的断言要**遍历标签列表**，不要写死「朗读」「设置」两个名字——P4 会加第三个「模型」标签，届时 smoke 不该重写。
 - `tests/unit/provider-config-panel.test.tsx`：选择器与断言同步更新。
 - `tests/e2e/settings.spec.ts` 只依赖竖条上的齿轮，预期不受影响（跑一遍确认）。
 
@@ -520,7 +523,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:manifest &&
 ### T4 — 设置界面重设计
 
 - `styles.css` token + `entrypoints/sidepanel/ui/*` 原语组件。
-- `SidePanel.tsx`：头部 + 分段标签 + 视图切换（标签页 / 音色选择页）。
+- `SidePanel.tsx`：头部 + 分段标签 + 视图切换（标签页 / 音色选择页）。**标签列表必须数据驱动**（`TABS` 数组 + 遍历渲染），加一个标签不改渲染逻辑——P4 会加第三个「模型」标签。
 - `ReadingTab.tsx`：音色卡片、音量滑块、语速滑块、悬浮窗开关、会话进度（按 §8.1 线框）。
 - 语速行为接线：SW 订阅 `settings.rate` 变化 → `engine.dispatch({ type: 'setRate' })`（idle 时忽略）；content script 用 `settings.rate` 作为 `load` 的初始语速。
 - 新增 `SettingsTab.tsx`：服务商列表（行展开）、缓存卡片、界面语言、关于。

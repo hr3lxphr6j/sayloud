@@ -426,6 +426,8 @@ export interface CaptionState {
 - 服务商列表每行两个控件（P3 收尾补丁）：行首是**启用开关** —— 真正的 `<input type="radio" name="sayloud-provider">` 包在 `<label class="provider-select">` 里（圆点只负责画，命中区域是 24px 的 label），整个列表是 `role="radiogroup"`，可访问名 `Use {service}`；右侧 `<button class="provider-toggle" aria-expanded>` 只负责原地展开表单。同一时间只展开一行。行首状态点：已保存（且当前生效）→ 实心绿 + 外环 + 「使用中」徽章；已保存未生效 → 空心绿；未配置 → 灰且 radio `disabled`（没有可启用的配置）。**不做红点**（要持久化「上次测试结果」，本轮不做）。
 - **保存 ≠ 启用**：表单里的 `Save` 只写 `sayloud:provider-configs`（`saveConfig`），不碰 `sayloud:provider-config`；保存后若该服务不是当前使用的，状态行明说「已保存，但尚未启用。点击名称前的圆圈即可切换。」。若保存的正是当前使用的服务，则同时用 `setActiveConfig` 把 `sayloud:provider-config` 重新指向刚保存的值 —— 用户没有换服务，不该让引擎继续用旧值。浏览器语音没有自身配置，故其表单不渲染 `Save`，只用圆圈启用。`setActiveConfig` 对未保存的服务返回 false 且不写入，不会凭空造一份空配置。
 - 行摘要：已配置显示「已配置 · 音色 <name>」；未配置显示 schema 的 `summary`。
+- **音色名字从哪来（收尾补丁）**：新存储键 `sayloud:voice-names`，形状 `Record<ProviderId, Record<voiceId, name>>`，**只在用户从加载出来的列表里选中音色时写入**（那时手上有 `Voice.name`）。手动输入的音色 ID 不存名字。朗读页的音色卡片和服务商行摘要优先显示名字，没有就退回 ID。**不改 `selected-voices` 的形状**，避免迁移存量数据。已知且可接受的边界：手填 ID 的、以及从没从列表挑过的，仍显示 ID。不做查表解析（火山有静态音色表，但要动态 import 那个 48kB chunk，不值）也不发网络请求。
+- **圈必须画成控件而不是列表符号（收尾补丁）**：初版用 8px 的状态点，命中区虽然做到了 24px，但外观读起来是 bullet 不是选择控件（用户反馈「ui 上需要让他明显点」）。现在圆点 12px + 2px 环 = **16px**，正是 Chrome 原生 radio 的尺寸；24px 的 label 仍是命中区，选中态的 3px 光晕正好落在里面。教训：**命中区大 ≠ 看起来能点**，可点击性要画出来，不能只靠 hover 才显现。
 - 展开的表单里按钮文案保持 `Test Connection` / `Save` / `Forget saved key`（英文键不变，仅翻译），`id="field-<key>"` 的约定保留，smoke 脚本好改。
 - 表单字段仍然由 `config-schema.ts` 驱动，只是 label/help 换成键。
 - 语速与音量滑块：拖动时只更新本地显示（`onInput`），松手时写 settings（`onChange`，range 的 change 在松手时触发），避免拖动过程狂写 storage。

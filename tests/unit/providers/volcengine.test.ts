@@ -6,6 +6,7 @@ import type { ProviderConfig, VolcengineConfig } from '~/lib/providers/types';
 import {
   DEFAULT_BASE_URL,
   DEFAULT_RESOURCE_ID,
+  defaultVoice,
   END_CODE,
   mapErrorCode,
   mapVolcengineError,
@@ -548,18 +549,51 @@ describe('listVoices', () => {
     expect(voices.map((voice) => voice.id)).toContain('zh_male_wennuanahu_moon_bigtts');
   });
 
+  it('lists the console catalogue for each resource', async () => {
+    const v1 = await provider.listVoices(config({ resourceId: 'seed-tts-1.0' }), signal);
+    const v2 = await provider.listVoices(config({ resourceId: 'seed-tts-2.0' }), signal);
+
+    // The 2026-09-30 ListSpeakers snapshot: 119 personas over 103 ids, and 445.
+    expect(v1).toHaveLength(103);
+    expect(v2).toHaveLength(445);
+    for (const voices of [v1, v2]) {
+      expect(new Set(voices.map((voice) => voice.id)).size).toBe(voices.length);
+    }
+  });
+
+  it('merges the personas that share one voice id', async () => {
+    const voices = await provider.listVoices(config({ resourceId: 'seed-tts-1.0' }), signal);
+
+    expect(voices.find((voice) => voice.id === 'zh_female_cancan_mars_bigtts')).toMatchObject({
+      name: '灿灿 / Shiny',
+      lang: 'zh-CN',
+      gender: 'female',
+    });
+  });
+
+  it.each(['seed-tts-1.0', 'seed-tts-2.0'] as const)(
+    'defaults %s to the first voice of its list',
+    async (resourceId) => {
+      const voices = await provider.listVoices(config({ resourceId }), signal);
+
+      expect(defaultVoice(resourceId)).toBe(voices[0]?.id);
+    }
+  );
+
   it('offers 2.0 voices, not 1.0 ones, for the 2.0 resource', async () => {
     // A 1.0 voice on the 2.0 resource is rejected with 55000000.
     const voices = await provider.listVoices(config({ resourceId: 'seed-tts-2.0' }), signal);
 
     expect(voices.length).toBeGreaterThan(0);
-    expect(voices.every((voice) => voice.id.endsWith('_uranus_bigtts'))).toBe(true);
+    // Every 2.0 id is a *_uranus_* one: plain ones end in _uranus_bigtts, and
+    // the ICL_uranus_*_tob ones are the console's 2.0 customer-service set.
+    expect(voices.every((voice) => voice.id.includes('uranus'))).toBe(true);
   });
 
   it('offers only 1.0 voices for the 1.0 resource', async () => {
     const voices = await provider.listVoices(config({ resourceId: 'seed-tts-1.0' }), signal);
 
-    expect(voices.some((voice) => voice.id.endsWith('_uranus_bigtts'))).toBe(false);
+    expect(voices.some((voice) => voice.id.includes('uranus'))).toBe(false);
   });
 
   it('marks voices as timing-less for the 2.0 resources', async () => {

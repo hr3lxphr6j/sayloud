@@ -19,6 +19,7 @@ function setup(overrides: Partial<VoicePickerProps> = {}) {
       saved.push(voiceId);
       return Promise.resolve();
     }),
+    saveVoiceName: vi.fn(() => Promise.resolve()),
   } as unknown as ConfigStore;
   const provider = {
     listVoices: vi.fn(() => Promise.resolve(VOICES)),
@@ -104,5 +105,35 @@ describe('VoicePicker', () => {
       const checked = screen.getAllByRole('radio').filter((r) => (r as HTMLInputElement).checked);
       expect(checked).toHaveLength(1);
     });
+  });
+
+  it('remembers the name a voice was listed under', async () => {
+    const { store } = setup();
+    await loadVoices();
+
+    fireEvent.click(screen.getAllByRole('radio')[1] as HTMLInputElement);
+
+    await waitFor(() =>
+      expect(store.saveVoiceName).toHaveBeenCalledWith(
+        'volcengine',
+        'zh_male_yunzhou_uranus_bigtts',
+        '云舟 2.0'
+      )
+    );
+  });
+
+  it('remembers nothing for an id typed by hand, which was never listed', async () => {
+    const { store, saved } = setup();
+    await loadVoices();
+
+    fireEvent.input(screen.getByRole('textbox', { name: 'Voice id' }), {
+      target: { value: 'S_my_cloned_voice' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this id' }));
+
+    await waitFor(() => expect(saved).toEqual(['S_my_cloned_voice']));
+    // There is no name to remember, and inventing one from the id would be a
+    // lie the summaries then repeat.
+    expect(store.saveVoiceName).not.toHaveBeenCalled();
   });
 });

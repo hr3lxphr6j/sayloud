@@ -5,6 +5,7 @@ import {
   type LocalStorageArea,
   PROVIDER_CONFIGS_KEY,
   SELECTED_VOICES_KEY,
+  VOICE_NAMES_KEY,
 } from '~/lib/config-store';
 import type { ProviderConfig } from '~/lib/providers/types';
 
@@ -49,20 +50,62 @@ describe('ConfigStore', () => {
     expect(await store.getConfig()).toBeNull();
   });
 
-  it('round-trips a config', async () => {
+  it('saves a config without activating it', async () => {
     await store.saveConfig(DASHSCOPE);
 
+    expect(await store.getSavedConfigs()).toEqual({ dashscope: DASHSCOPE });
+    expect(fake.data.get(PROVIDER_CONFIGS_KEY)).toEqual({ dashscope: DASHSCOPE });
+    // Saving credentials is not choosing which service to read with: the dot
+    // in the provider list is, and it is the only thing that writes this key.
+    expect(await store.getConfig()).toBeNull();
+    expect(fake.data.has(CONFIG_KEY)).toBe(false);
+  });
+
+  it('activates a provider from the config it was saved with', async () => {
+    await store.saveConfig(DASHSCOPE);
+
+    expect(await store.setActiveConfig('dashscope')).toBe(true);
     expect(await store.getConfig()).toEqual(DASHSCOPE);
-    expect(fake.data.get(CONFIG_KEY)).toEqual(DASHSCOPE);
+  });
+
+  it('refuses to activate a provider that has nothing saved', async () => {
+    expect(await store.setActiveConfig('dashscope')).toBe(false);
+
+    // Refused, not invented: an empty config would only fail later, mid-read.
+    expect(await store.getConfig()).toBeNull();
+    expect(fake.data.has(CONFIG_KEY)).toBe(false);
+  });
+
+  it('activates the browser voice, which has nothing to save', async () => {
+    await store.saveConfig(DASHSCOPE);
+
+    expect(await store.setActiveConfig('browser')).toBe(true);
+    expect(await store.getConfig()).toEqual({ provider: 'browser' });
+    expect((await store.getSavedConfigs()).dashscope).toEqual(DASHSCOPE);
+  });
+
+  it('activates what was saved last, not what was saved first', async () => {
+    await store.saveConfig(DASHSCOPE);
+    await store.saveConfig({ ...DASHSCOPE, apiKey: 'sk-2' });
+
+    await store.setActiveConfig('dashscope');
+
+    expect(await store.getConfig()).toMatchObject({ apiKey: 'sk-2' });
   });
 
   it('switches the active provider without dropping the previous one', async () => {
     await store.saveConfig(DASHSCOPE);
     await store.saveConfig(VOLCENGINE);
-    await store.saveConfig({ provider: 'browser' });
 
-    expect(await store.getConfig()).toEqual({ provider: 'browser' });
+    await store.setActiveConfig('dashscope');
+    expect(await store.getConfig()).toEqual(DASHSCOPE);
+
+    await store.setActiveConfig('volcengine');
+    expect(await store.getConfig()).toEqual(VOLCENGINE);
+
     // Switching back must not mean typing the key in again.
+    await store.setActiveConfig('dashscope');
+    expect(await store.getConfig()).toEqual(DASHSCOPE);
     expect(await store.getSavedConfigs()).toEqual({
       dashscope: DASHSCOPE,
       volcengine: VOLCENGINE,
@@ -95,6 +138,7 @@ describe('ConfigStore', () => {
   it('forgets one provider and leaves the others', async () => {
     await store.saveConfig(DASHSCOPE);
     await store.saveConfig(VOLCENGINE);
+    await store.setActiveConfig('volcengine');
 
     await store.forgetConfig('dashscope');
 
@@ -104,6 +148,7 @@ describe('ConfigStore', () => {
 
   it('falls back to the browser voice when the active provider is forgotten', async () => {
     await store.saveConfig(DASHSCOPE);
+    await store.setActiveConfig('dashscope');
 
     await store.forgetConfig('dashscope');
 
@@ -174,5 +219,54 @@ describe('ConfigStore', () => {
       dashscope: 'longxiaochun',
       azure: 'zh-CN-XiaoxiaoNeural',
     });
+  });
+
+  it('reports no remembered voice names before any voice was picked from a list', async () => {
+    expect(await store.getVoiceNames()).toEqual({});
+  });
+
+  it('remembers the name a voice was listed under', async () => {
+    await store.saveVoiceName('dashscope', 'longxiaochun_v2', '龙小春 2.0');
+
+    expect(await store.getVoiceNames()).toEqual({ dashscope: { longxiaochun_v2: '龙小春 2.0' } });
+    expect(fake.data.get(VOICE_NAMES_KEY)).toEqual({
+      dashscope: { longxiaochun_v2: '龙小春 2.0' },
+    });
+  });
+
+  it('keeps a name per voice, so picking another does not lose the first', async () => {
+    await store.saveVoiceName('dashscope', 'a', 'A');
+    await store.saveVoiceName('dashscope', 'b', 'B');
+    await store.saveVoiceName('elevenlabs', 'c', 'C');
+
+    expect(await store.getVoiceNames()).toEqual({
+      dashscope: { a: 'A', b: 'B' },
+      elevenlabs: { c: 'C' },
+    });
+  });
+
+  it('overwrites a name the catalogue has since changed', async () => {
+    await store.saveVoiceName('dashscope', 'a', 'Old');
+    await store.saveVoiceName('dashscope', 'a', 'New');
+
+    expect((await store.getVoiceNames()).dashscope).toEqual({ a: 'New' });
+  });
+
+  it('stores nothing for a voice with a blank id or a blank name', async () => {
+    await store.saveVoiceName('dashscope', '', 'Named');
+    await store.saveVoiceName('dashscope', 'a', '');
+
+    expect(await store.getVoiceNames()).toEqual({});
+    expect(fake.data.has(VOICE_NAMES_KEY)).toBe(false);
+  });
+
+  it('ignores stored voice names that are not usable strings', async () => {
+    fake.data.set(VOICE_NAMES_KEY, {
+      dashscope: { a: 42, b: 'Kept' },
+      volcengine: 'not a map',
+      azure: ['not a map either'],
+    });
+
+    expect(await store.getVoiceNames()).toEqual({ dashscope: { b: 'Kept' } });
   });
 });

@@ -26,6 +26,10 @@ export const en = {
 
   // --- the Reading tab ------------------------------------------------------
   'panel.no-provider': 'No provider is configured. Open Settings to choose one.',
+  // Choosing the browser voice is an action, so it gets its own words: the line
+  // above would read as if the choice had not taken effect.
+  'panel.browser-voice':
+    'No cloud service is configured. SayLoud is reading with the browser voice.',
   'panel.configure': 'Configure a service',
   'panel.voice.change': 'Change',
   'panel.default-voice': 'Default voice',
@@ -79,11 +83,17 @@ export const en = {
 
   // --- the provider list and its form ---------------------------------------
   'provider.section.title': 'Voice services',
+  // The list is a single choice, and the circle is how it is made; the row's own
+  // button only opens a form. Both are said out loud here because a dot nobody
+  // understands is a dot nobody presses.
+  'provider.list.label': 'Which service SayLoud reads with',
+  'provider.list.hint': 'The circle beside a service picks which one SayLoud reads with.',
+  'provider.use': 'Use {service}',
   'provider.active': 'Active',
   'provider.configured': 'Configured · {voice}',
   'provider.console-link': 'Open the {name} console',
   'provider.browser-notice':
-    'SayLoud will use the voices Chrome already has installed. Keys saved for other providers are kept.',
+    'SayLoud reads with the browser voice while its circle is selected. Keys saved for other providers are kept.',
   'provider.test': 'Test Connection',
   'provider.testing': 'Testing…',
   'provider.save': 'Save',
@@ -91,6 +101,10 @@ export const en = {
   'provider.forget': 'Forget saved key',
   'provider.test-succeeded': 'Connection succeeded.',
   'provider.saved': 'Saved.',
+  // Save does not switch providers, and saying only "Saved." would leave the
+  // user waiting for something to happen.
+  'provider.saved-not-active':
+    'Saved, but not in use. Use the circle beside the name to switch to it.',
   'provider.forgotten': 'Saved key removed.',
   'provider.save-failed': 'Could not save: {detail}',
   'provider.forget-failed': 'Could not remove: {detail}',

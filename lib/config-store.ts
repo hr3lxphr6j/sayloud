@@ -17,6 +17,14 @@ export const CONFIG_KEY = `${NAMESPACE}provider-config`;
 /** The last config saved for each cloud provider, active or not. */
 export const PROVIDER_CONFIGS_KEY = `${NAMESPACE}provider-configs`;
 export const SELECTED_VOICES_KEY = `${NAMESPACE}selected-voices`;
+/**
+ * The readable name of a voice the user has picked from a list, by provider.
+ *
+ * A separate key from `SELECTED_VOICES_KEY` on purpose: the id is the choice,
+ * the name is decoration, and adding decoration must not need the stored choice
+ * to be migrated.
+ */
+export const VOICE_NAMES_KEY = `${NAMESPACE}voice-names`;
 
 /**
  * The slice of `chrome.storage.local` this module needs.
@@ -33,6 +41,9 @@ export interface LocalStorageArea {
 /** Saved configs by provider; the browser voice has nothing to save. */
 export type SavedConfigs = Partial<Record<ProviderId, ProviderConfig>>;
 
+/** Voices the user picked from a list, provider → voice id → the listed name. */
+export type VoiceNames = Record<string, Record<string, string>>;
+
 /** The provider configuration and the voice chosen for each provider. */
 export class ConfigStore {
   constructor(private readonly area: LocalStorageArea) {}
@@ -44,16 +55,38 @@ export class ConfigStore {
   }
 
   /**
-   * Make `config` the active one, and remember it for its provider.
+   * Remember `config` for its provider, without changing what is in use.
    *
    * Every provider keeps its own last-saved config, key included, so switching
    * to another provider and back does not mean typing the key in again. A key
-   * is dropped with `forgetConfig`, not by switching away.
+   * is dropped with `forgetConfig`, not by switching away. Which provider is
+   * *used* is a separate choice (`setActiveConfig`), so pressing Save on a
+   * provider the user is not reading with cannot change what they hear.
    */
   async saveConfig(config: ProviderConfig): Promise<void> {
     const saved = await this.getSavedConfigs();
     if (config.provider !== 'browser') saved[config.provider] = config;
-    await this.area.set({ [CONFIG_KEY]: config, [PROVIDER_CONFIGS_KEY]: saved });
+    await this.area.set({ [PROVIDER_CONFIGS_KEY]: saved });
+  }
+
+  /**
+   * Make one provider the active one, from the config it was last saved with.
+   *
+   * Returns false, and writes nothing, when that provider has nothing saved:
+   * the browser voice is the only one that can be activated without a config,
+   * and inventing an empty one for the others would only fail later, mid-read.
+   */
+  async setActiveConfig(provider: ProviderId): Promise<boolean> {
+    if (provider === 'browser') {
+      await this.area.set({ [CONFIG_KEY]: { provider: 'browser' } });
+      return true;
+    }
+
+    const config = (await this.getSavedConfigs())[provider];
+    if (!config) return false;
+
+    await this.area.set({ [CONFIG_KEY]: config });
+    return true;
   }
 
   /**
@@ -126,6 +159,39 @@ export class ConfigStore {
     const voices = await this.readSelectedVoices();
     voices[provider] = voiceId;
     await this.area.set({ [SELECTED_VOICES_KEY]: voices });
+  }
+
+  /**
+   * The names of voices the user has picked from a list, by provider.
+   *
+   * Picked, not looked up: a provider's catalogue costs a network call, and the
+   * row summary and the voice card have to render without one. A voice typed in
+   * by id was never listed, so it has no name here and shows its id instead.
+   */
+  async getVoiceNames(): Promise<VoiceNames> {
+    const stored = await this.area.get(VOICE_NAMES_KEY);
+    const raw = stored[VOICE_NAMES_KEY];
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+
+    const names: VoiceNames = {};
+    for (const [provider, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+      const voices: Record<string, string> = {};
+      for (const [voiceId, name] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof name === 'string' && name !== '') voices[voiceId] = name;
+      }
+      if (Object.keys(voices).length > 0) names[provider] = voices;
+    }
+    return names;
+  }
+
+  /** Remember what one voice was called in the list it was picked from. */
+  async saveVoiceName(provider: ProviderId, voiceId: string, name: string): Promise<void> {
+    if (voiceId === '' || name === '') return;
+
+    const names = await this.getVoiceNames();
+    names[provider] = { ...names[provider], [voiceId]: name };
+    await this.area.set({ [VOICE_NAMES_KEY]: names });
   }
 
   /** The voice map, with anything that is not a non-empty string discarded. */

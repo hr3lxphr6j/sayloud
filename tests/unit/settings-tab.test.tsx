@@ -71,6 +71,7 @@ function renderTab({
       config={null}
       savedConfigs={{}}
       voices={{}}
+      voiceNames={{}}
       settings={store}
       uiLang="auto"
       onUiLang={() => {}}

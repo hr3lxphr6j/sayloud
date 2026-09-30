@@ -73,12 +73,18 @@ await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
 
 const readingTab = page.locator('#tab-reading');
 const settingsTab = page.locator('#tab-settings');
-const providerRow = (id) => page.locator(`[data-provider="${id}"]`);
+const providerEntry = (id) => page.locator(`[data-provider="${id}"]`);
+/** The circle that chooses the service; a radio, so `check()` is the click. */
+const providerDot = (id) => providerEntry(id).locator('.provider-radio');
+/** The button that opens that service's form. */
+const providerToggle = (id) => providerEntry(id).locator('.provider-toggle');
 const settings = () => settingsTab.click();
 
 /** The provider whose row is open, which is the form the checks type into. */
 const openProvider = () =>
-  page.locator('.provider-row[aria-expanded="true"]').getAttribute('data-provider');
+  page
+    .locator('.provider-toggle[aria-expanded="true"]')
+    .evaluate((node) => node.closest('[data-provider]')?.getAttribute('data-provider'));
 
 // --- tabs -------------------------------------------------------------------
 // The list, not the names: a third tab must need no change here beyond what
@@ -130,17 +136,23 @@ checkEqual(
 );
 check(
   'the browser voice is the active row, and opens first',
-  (await providerRow('browser').getAttribute('data-active')) === 'true' &&
-    (await providerRow('browser').getAttribute('aria-expanded')) === 'true'
+  (await providerEntry('browser').getAttribute('data-active')) === 'true' &&
+    (await providerToggle('browser').getAttribute('aria-expanded')) === 'true'
 );
 check(
   'browser voice shows a notice and no form fields',
-  (await page.getByText('SayLoud will use the voices Chrome already has installed.').count()) ===
-    1 && (await page.locator('.form').count()) === 0
+  (await page.getByText('SayLoud reads with the browser voice while its circle is selected.')
+    .count()) === 1 && (await page.locator('.form').count()) === 0
 );
 check(
   'browser voice has no Test Connection button',
   (await page.getByRole('button', { name: 'Test Connection' }).count()) === 0
+);
+check(
+  'a provider with nothing saved cannot be chosen',
+  (await providerDot('elevenlabs').isDisabled()) === true &&
+    (await providerDot('dashscope').isDisabled()) === true &&
+    (await providerDot('browser').isDisabled()) === false
 );
 
 // --- settings: every provider renders its own fields ------------------------
@@ -153,8 +165,8 @@ const expectedFields = {
 };
 
 for (const [id, fields] of Object.entries(expectedFields)) {
-  // Clicking a row opens it and closes whichever row was open: one at a time.
-  await providerRow(id).click();
+  // Opening a row closes whichever row was open: one at a time.
+  await providerToggle(id).click();
   const rendered = await page
     .locator('.form .field')
     .evaluateAll((nodes) =>
@@ -168,7 +180,7 @@ check(
 );
 
 // --- validation -------------------------------------------------------------
-await providerRow('openai-compat').click();
+await providerToggle('openai-compat').click();
 
 await page.getByRole('button', { name: 'Save' }).click();
 check(
@@ -214,20 +226,34 @@ await page.locator('#field-model').fill('kokoro');
 await page.locator('#field-captionedSpeech').check();
 await page.locator('#field-headers').fill('X-Gateway: abc\nX-Second: def');
 await page.getByRole('button', { name: 'Save' }).click();
-check('save reports success', (await page.getByText('Saved.').count()) === 1);
+check(
+  'save says the config is stored but not yet in use',
+  (await page
+    .getByText('Saved, but not in use. Use the circle beside the name to switch to it.')
+    .count()) === 1
+);
 
 const stored = await worker.evaluate(() => chrome.storage.local.get(null));
-checkEqual('the config lands in namespaced storage.local', stored['sayloud:provider-config'], {
-  provider: 'openai-compat',
-  baseUrl: 'http://127.0.0.1:8899/v1',
-  apiKey: 'test-key-123',
-  model: 'kokoro',
-  captionedSpeech: true,
-  headers: { 'X-Gateway': 'abc', 'X-Second': 'def' },
+checkEqual('the config lands in namespaced storage.local', stored['sayloud:provider-configs'], {
+  'openai-compat': {
+    provider: 'openai-compat',
+    baseUrl: 'http://127.0.0.1:8899/v1',
+    apiKey: 'test-key-123',
+    model: 'kokoro',
+    captionedSpeech: true,
+    headers: { 'X-Gateway': 'abc', 'X-Second': 'def' },
+  },
 });
+check(
+  'saving does not change which provider is in use',
+  stored['sayloud:provider-config'] === undefined
+);
 
 await page.reload();
 await settings();
+// The reload opens the row for the service in use — still the browser voice,
+// since a save is not a switch — so the saved form has to be opened again.
+await providerToggle('openai-compat').click();
 checkEqual(
   'the form is refilled from storage after a reload',
   [
@@ -240,9 +266,16 @@ checkEqual(
   ['http://127.0.0.1:8899/v1', 'test-key-123', 'kokoro', true, 'X-Gateway: abc\nX-Second: def']
 );
 
+// Switching what is in use is its own action, and it is the circle.
+await providerDot('openai-compat').check();
+check(
+  'the circle marks the provider in use',
+  (await providerEntry('openai-compat').getAttribute('data-active')) === 'true' &&
+    (await providerEntry('browser').getAttribute('data-active')) === 'false'
+);
 await readingTab.click();
 check(
-  'the Reading tab reflects the saved provider and its timings',
+  'the Reading tab reflects the activated provider and its timings',
   (await page.getByText('OpenAI-compatible').count()) === 1 &&
     (await page.getByText('Word by word').count()) === 1
 );
@@ -318,12 +351,15 @@ checkEqual(
 );
 
 // --- timings badges, from a provider that advertises them -------------------
-await providerRow('dashscope').click();
+await providerToggle('dashscope').click();
 await page.locator('#field-apiKey').fill('sk-test');
 await page.getByRole('button', { name: 'Load Voices' }).click();
 await page.waitForSelector('.voice-list li', { timeout: 8000 }).catch(() => {});
 const diagnostics = await page.evaluate(() => ({
-  provider: document.querySelector('.provider-row[aria-expanded="true"]')?.dataset.provider,
+  provider: document
+    .querySelector('.provider-toggle[aria-expanded="true"]')
+    ?.closest('[data-provider]')
+    ?.getAttribute('data-provider'),
   apiKey: document.querySelector('#field-apiKey')?.value,
   fields: [...document.querySelectorAll('.form [id^=field-]')].map((n) => n.id),
   voiceItems: document.querySelectorAll('.voice-list li').length,
@@ -354,7 +390,7 @@ check(
 check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 // A failing service must surface readable copy, not a stack trace.
-await providerRow('openai-compat').click();
+await providerToggle('openai-compat').click();
 await page.getByRole('button', { name: 'Test Connection' }).click();
 await page.waitForTimeout(3000);
 server.close();
@@ -372,7 +408,7 @@ await readingTab.click();
 await settings();
 check(
   'switching tabs keeps the saved provider selected',
-  (await providerRow('openai-compat').getAttribute('data-active')) === 'true' &&
+  (await providerEntry('openai-compat').getAttribute('data-active')) === 'true' &&
     (await openProvider()) === 'openai-compat'
 );
 

@@ -12,9 +12,15 @@
  * config is passed in rather than read here, so the panel is the only place that
  * talks to storage for the config; this component owns the draft (which row is
  * open, and the values typed so far).
+ *
+ * Each row carries two controls, which are two different jobs: the circle (a
+ * radio, since one of N is in use) says which service SayLoud reads with, and
+ * the row's own button opens the form that configures it. They are siblings on
+ * purpose — a button cannot hold another — and because saving a config must not
+ * be the thing that starts using it.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
+import type { ConfigStore, SavedConfigs, VoiceNames } from '~/lib/config-store';
 import { type Translator, useT } from '~/lib/i18n';
 import { type PermissionsApi, requestProviderAccess } from '~/lib/provider-origins';
 import {
@@ -65,6 +71,11 @@ export interface ProviderConfigPanelProps {
   /** The voice chosen for each provider, for the row summaries. */
   voices?: Record<string, string>;
   /**
+   * What those voices were called in the list they were picked from, so a row
+   * can say "Vivi 2.0" where it would otherwise spell out an id.
+   */
+  voiceNames?: VoiceNames;
+  /**
    * Called after anything was written — a save or a forget — so the owner can
    * re-read the store. The store is the one source of truth; this panel keeps
    * no copy of what it holds.
@@ -82,6 +93,7 @@ export function ProviderConfigPanel({
   saved,
   savedConfigs,
   voices = {},
+  voiceNames = {},
   onChanged,
   onVoiceSaved,
   permissions,
@@ -92,66 +104,107 @@ export function ProviderConfigPanel({
   const [open, setOpen] = useState<ProviderId | null>(() => saved?.provider ?? 'browser');
   const active = saved?.provider ?? 'browser';
 
+  /**
+   * Choose which service is in use. Separate from the form's Save on purpose.
+   *
+   * `setActiveConfig` refuses a provider with nothing saved — the control is
+   * disabled in that case, and this is the backstop — so a refusal only has to
+   * leave the list as it was.
+   */
+  const activate = async (provider: ProviderId) => {
+    if (await store.setActiveConfig(provider)) onChanged();
+  };
+
   return (
-    <div class="provider-list">
-      {PROVIDER_IDS.map((id) => {
-        const schema = PROVIDER_SCHEMAS[id];
-        const config = id === 'browser' ? null : (savedConfigs[id] ?? null);
-        const expanded = open === id;
-        const inUse = active === id;
-        const voice = voices[id];
+    <>
+      <p class="muted small">{t('provider.list.hint')}</p>
+      <div class="provider-list" role="radiogroup" aria-label={t('provider.list.label')}>
+        {PROVIDER_IDS.map((id) => {
+          const schema = PROVIDER_SCHEMAS[id];
+          const config = id === 'browser' ? null : (savedConfigs[id] ?? null);
+          const expanded = open === id;
+          const inUse = active === id;
+          const voice = voices[id];
+          // The browser voice needs no config, so it can always be chosen; a
+          // service with nothing saved has nothing to switch to.
+          const activatable = id === 'browser' || config !== null;
 
-        return (
-          <div class="provider-entry" key={id}>
-            <button
-              type="button"
-              class="provider-row"
-              data-provider={id}
-              data-active={inUse}
-              aria-expanded={expanded}
-              aria-controls={expanded ? `provider-form-${id}` : undefined}
-              onClick={() => setOpen(expanded ? null : id)}
-            >
-              <StatusDot state={inUse ? 'active' : config ? 'configured' : 'empty'} />
-              <span class="provider-row-text">
-                <span class="provider-name">{t(schema.labelKey)}</span>
-                <span class="provider-summary">
-                  {config
-                    ? t('provider.configured', {
-                        voice: voice ?? t('panel.default-voice'),
-                      })
-                    : t(schema.summaryKey)}
-                </span>
-              </span>
-              {inUse && <span class="pill active">{t('provider.active')}</span>}
-              <span class="provider-chevron">
-                <ChevronRight />
-              </span>
-            </button>
-
-            {/*
-              Keyed by provider so opening another row starts from a clean form:
-              the values, the inline errors and any test result all belong to one
-              provider.
-            */}
-            {expanded && (
-              <div class="provider-form" id={`provider-form-${id}`}>
-                <ProviderForm
-                  key={id}
-                  schema={schema}
-                  provider={id === 'browser' ? null : providers[id]}
-                  saved={config}
-                  store={store}
-                  onChanged={onChanged}
-                  onVoiceSaved={onVoiceSaved}
-                  permissions={permissions}
-                />
+          return (
+            <div class="provider-entry" key={id} data-provider={id} data-active={inUse}>
+              <div class="provider-row">
+                {/*
+                  A real radio, not a button wearing the role: the circle is
+                  one of N, and the browser's own grouping is what gives arrow
+                  keys, the checked state and the disabled state for free. The
+                  input is invisible and stretched over the label, which draws
+                  the dot — so the hit target is the label, not the dot.
+                */}
+                <label class="provider-select">
+                  <input
+                    type="radio"
+                    class="provider-radio"
+                    name="sayloud-provider"
+                    checked={inUse}
+                    disabled={!activatable}
+                    aria-label={t('provider.use', { service: t(schema.labelKey) })}
+                    onChange={() => void activate(id)}
+                  />
+                  <StatusDot state={inUse ? 'active' : config ? 'configured' : 'empty'} />
+                </label>
+                <button
+                  type="button"
+                  class="provider-toggle"
+                  aria-expanded={expanded}
+                  aria-controls={expanded ? `provider-form-${id}` : undefined}
+                  onClick={() => setOpen(expanded ? null : id)}
+                >
+                  <span class="provider-row-text">
+                    <span class="provider-name">{t(schema.labelKey)}</span>
+                    <span class="provider-summary">
+                      {config
+                        ? t('provider.configured', {
+                            // The id is what is stored; the name is how the list
+                            // the user picked it from wrote it. Unknown voices —
+                            // typed in by id — keep the id, which is all we know.
+                            voice: voice
+                              ? (voiceNames[id]?.[voice] ?? voice)
+                              : t('panel.default-voice'),
+                          })
+                        : t(schema.summaryKey)}
+                    </span>
+                  </span>
+                  {inUse && <span class="pill active">{t('provider.active')}</span>}
+                  <span class="provider-chevron">
+                    <ChevronRight />
+                  </span>
+                </button>
               </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+
+              {/*
+                Keyed by provider so opening another row starts from a clean
+                form: the values, the inline errors and any test result all
+                belong to one provider.
+              */}
+              {expanded && (
+                <div class="provider-form" id={`provider-form-${id}`}>
+                  <ProviderForm
+                    key={id}
+                    schema={schema}
+                    provider={id === 'browser' ? null : providers[id]}
+                    saved={config}
+                    active={inUse}
+                    store={store}
+                    onChanged={onChanged}
+                    onVoiceSaved={onVoiceSaved}
+                    permissions={permissions}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -160,6 +213,8 @@ interface ProviderFormProps {
   /** Null for the browser voice, which has nothing to check or list. */
   provider: Provider | null;
   saved: ProviderConfig | null;
+  /** Whether this provider is the one in use; it decides what Save reports. */
+  active: boolean;
   store: ConfigStore;
   onChanged: () => void;
   onVoiceSaved: (() => void) | undefined;
@@ -170,6 +225,7 @@ function ProviderForm({
   schema,
   provider,
   saved,
+  active,
   store,
   onChanged,
   onVoiceSaved,
@@ -248,7 +304,12 @@ function ProviderForm({
         return;
       }
       await store.saveConfig(draft);
-      setSave({ kind: 'ok', message: t('provider.saved') });
+      // Saving is not switching, and this row was already the one in use — so
+      // re-point the active config at what was just saved. Leaving the old
+      // values there would mean the panel shows one key while the engine reads
+      // with another until the user thinks to press the circle again.
+      if (active) await store.setActiveConfig(schema.id);
+      setSave({ kind: 'ok', message: t(active ? 'provider.saved' : 'provider.saved-not-active') });
       onChanged();
     } catch (error) {
       setSave({
@@ -302,21 +363,33 @@ function ProviderForm({
         </a>
       )}
 
-      <div class="actions">
-        {provider && (
-          <button type="button" class="button" disabled={busy} onClick={() => void onTest()}>
-            {test.kind === 'running' ? t('provider.testing') : t('provider.test')}
+      {/*
+        No actions at all for the browser voice: there is no config of its own
+        to store, and a Save that reports success without writing anything is
+        worse than no button. The circle is what chooses it.
+      */}
+      {schema.id !== 'browser' && (
+        <div class="actions">
+          {provider && (
+            <button type="button" class="button" disabled={busy} onClick={() => void onTest()}>
+              {test.kind === 'running' ? t('provider.testing') : t('provider.test')}
+            </button>
+          )}
+          <button
+            type="button"
+            class="button primary"
+            disabled={busy}
+            onClick={() => void onSave()}
+          >
+            {save.kind === 'running' ? t('provider.saving') : t('provider.save')}
           </button>
-        )}
-        <button type="button" class="button primary" disabled={busy} onClick={() => void onSave()}>
-          {save.kind === 'running' ? t('provider.saving') : t('provider.save')}
-        </button>
-        {saved && schema.id !== 'browser' && (
-          <button type="button" class="button" disabled={busy} onClick={() => void onForget()}>
-            {t('provider.forget')}
-          </button>
-        )}
-      </div>
+          {saved && (
+            <button type="button" class="button" disabled={busy} onClick={() => void onForget()}>
+              {t('provider.forget')}
+            </button>
+          )}
+        </div>
+      )}
 
       <div class="form-results">
         <StatusLine status={test} />

@@ -32,9 +32,6 @@ function setup(overrides: Partial<VoicePickerProps> = {}) {
       provider={provider}
       config={{ provider: 'volcengine', apiKey: 'k' }}
       store={store}
-      disabled={false}
-      onAttempt={() => {}}
-      showFormErrors={false}
       {...overrides}
     />
   );

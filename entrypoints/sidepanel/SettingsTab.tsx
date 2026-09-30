@@ -75,9 +75,6 @@ export function SettingsTab({
           voices={voices}
           voiceNames={voiceNames}
           onChanged={onChanged}
-          // A voice is saved on click, not with the form, and the Reading tab
-          // shows the same choice: re-reading the store covers both.
-          onVoiceSaved={onChanged}
           {...(permissions ? { permissions } : {})}
         />
       </Card>

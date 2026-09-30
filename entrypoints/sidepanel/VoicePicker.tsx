@@ -30,37 +30,18 @@ const LOAD_TIMEOUT_MS = 15_000;
 export interface VoicePickerProps {
   schema: ProviderSchema;
   provider: Provider;
-  /** Null while the form is incomplete; there is nothing to ask the provider yet. */
-  config: ProviderConfig | null;
-  store: ConfigStore;
-  disabled: boolean;
-  /** Draws its own `voice.section` heading; off on the full-page picker. */
-  heading?: boolean;
-  /** Lets the form show its own field errors when this is pressed too early. */
-  onAttempt?: () => void;
   /**
-   * Whether the form is showing its errors, i.e. the user has tried something.
-   *
-   * The "fill the form in first" complaint is derived from this rather than
-   * kept in `status`, so it cannot outlive the form being filled in: it is
-   * simply no longer true, and re-rendering drops it.
+   * The saved config to list voices from. Not nullable: this picker is only
+   * reachable for the service already in use, and an unsaved config has no
+   * catalogue to ask for — the panel says so instead of showing this.
    */
-  showFormErrors?: boolean;
+  config: ProviderConfig;
+  store: ConfigStore;
   /** A voice was saved, so a reader looking at the same setting can catch up. */
   onSaved?: () => void;
 }
 
-export function VoicePicker({
-  schema,
-  provider,
-  config,
-  store,
-  disabled,
-  heading = true,
-  onAttempt,
-  showFormErrors = false,
-  onSaved,
-}: VoicePickerProps) {
+export function VoicePicker({ schema, provider, config, store, onSaved }: VoicePickerProps) {
   const t = useT();
   const [voices, setVoices] = useState<Voice[] | null>(null);
   const [status, setStatus] = useState<AsyncStatus>({ kind: 'idle' });
@@ -114,9 +95,6 @@ export function VoicePicker({
   useEffect(() => () => inFlight.current?.cancel(), []);
 
   const onLoad = async () => {
-    onAttempt?.();
-    if (!config) return;
-
     const deadline = startDeadline(LOAD_TIMEOUT_MS);
     inFlight.current?.cancel();
     inFlight.current = deadline;
@@ -172,10 +150,6 @@ export function VoicePicker({
    */
   const onSearchFocus = () => {
     if (status.kind === 'running') return;
-    if (config === null) {
-      setStatus({ kind: 'quiet', message: t('voice.search-needs-form') });
-      return;
-    }
     // Fetch when there is nothing to show, and again when what is on screen was
     // fetched for a config that has since been edited.
     if (voices === null || loadedKey !== configKey) void onLoad();
@@ -215,12 +189,6 @@ export function VoicePicker({
 
   return (
     <section class="section voice-section">
-      {heading && (
-        <div class="section-header">
-          <h2>{t('voice.section')}</h2>
-        </div>
-      )}
-
       {selected && (
         <p class="muted">
           {t('voice.selected')}{' '}
@@ -236,12 +204,6 @@ export function VoicePicker({
           ) : (
             <code>{selected}</code>
           )}
-        </p>
-      )}
-
-      {config === null && showFormErrors && (
-        <p class="result error" role="alert">
-          {t('voice.fill-form-first')}
         </p>
       )}
 
@@ -284,7 +246,6 @@ export function VoicePicker({
                   type="radio"
                   name={`voice-${schema.id}`}
                   checked={selected === voice.id}
-                  disabled={disabled}
                   onChange={() => void onSelect(voice.id, voice.name)}
                 />
                 <span class="voice-name">{voice.name}</span>
@@ -325,10 +286,9 @@ export function VoicePicker({
             spellcheck={false}
             autocomplete="off"
             value={typedId}
-            disabled={disabled}
             onInput={(event) => setTypedId(event.currentTarget.value)}
           />
-          <button type="submit" class="button" disabled={disabled || typedId.trim() === ''}>
+          <button type="submit" class="button" disabled={typedId.trim() === ''}>
             {t('voice.use-id')}
           </button>
         </div>
@@ -363,8 +323,6 @@ export function VoicePickerPage({ store, providers, config, onSaved }: VoicePick
       provider={providers[config.provider]}
       config={config}
       store={store}
-      disabled={false}
-      heading={false}
       onSaved={onSaved}
     />
   );

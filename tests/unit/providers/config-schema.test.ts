@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { en, type MessageKey } from '~/lib/i18n/messages.en';
+import { MODELS } from '~/lib/models/registry';
 import {
   configToFormValues,
   type FormValues,
@@ -586,5 +587,71 @@ describe('parseStoredConfig', () => {
 
   it('accepts the browser voice, which has no fields to check', () => {
     expect(parseStoredConfig({ provider: 'browser', extra: 1 })).toEqual({ provider: 'browser' });
+  });
+});
+
+/**
+ * The on-device provider's fields are all hidden, which makes them the one part
+ * of the table the form never exercises — so they are checked directly here.
+ */
+describe('the on-device provider', () => {
+  const local = PROVIDER_SCHEMAS.local;
+
+  it('declares the three choices the Models tab owns, and hides every one', () => {
+    expect(local.fields.map((field) => field.key)).toEqual(['modelId', 'tier', 'device']);
+    expect(local.fields.every((field) => field.hidden === true)).toBe(true);
+  });
+
+  it('says where those choices are made, since the form draws nothing', () => {
+    expect(text(local.formNoticeKey)).toMatch(/Models tab/);
+  });
+
+  it('keeps the model, tier and device through a round trip', () => {
+    // The bug this guards: `parseStoredConfig` keeps only the keys a field
+    // claims, so a hidden field missing from the table would make the Models
+    // tab's own writes vanish the next time anything read the config back.
+    const saved = {
+      provider: 'local',
+      modelId: 'kokoro-82m',
+      tier: 'fp16',
+      device: 'webgpu',
+    };
+
+    expect(parseStoredConfig(saved)).toEqual(saved);
+  });
+
+  it('round-trips through the form values the panel seeds itself with', () => {
+    const config: ProviderConfig = {
+      provider: 'local',
+      modelId: 'kokoro-82m',
+      tier: 'fp32',
+      device: 'wasm',
+    };
+
+    expect(formValuesToConfig(local, configToFormValues(local, config))).toEqual(config);
+  });
+
+  it('drops a tier or a device this build does not have', () => {
+    expect(parseStoredConfig({ provider: 'local', tier: 'q4', device: 'tpu' })).toEqual({
+      provider: 'local',
+    });
+  });
+
+  it('accepts every model and tier the registry offers', () => {
+    for (const model of MODELS) {
+      for (const tier of model.tiers ?? []) {
+        const config: ProviderConfig = { provider: 'local', modelId: model.id, tier: tier.id };
+        const values = configToFormValues(local, config);
+
+        expect(validateFormValues(local, values)).toEqual({});
+        expect(formValuesToConfig(local, values)).toEqual(config);
+      }
+    }
+  });
+
+  it('never rejects a hidden field, which would block a save it cannot explain', () => {
+    // A hidden field's complaint is drawn nowhere, so an error here would show
+    // as "fix the highlighted fields" with nothing highlighted.
+    expect(validateFormValues(local, configToFormValues(local, null))).toEqual({});
   });
 });

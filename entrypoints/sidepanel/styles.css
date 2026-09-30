@@ -888,3 +888,110 @@ code {
   color: var(--muted);
   font-size: 11px;
 }
+
+/* --- the models tab ------------------------------------------------------- */
+
+/* The model's name and what it speaks, with the state pill pushed to the end. */
+.model-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.model-head-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.model-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.model-meta {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Tiers as a list with hairlines rather than a card each: they are alternative
+ * sizes of one download, and boxing them separately would read as three
+ * unrelated things.
+ */
+.tiers {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tier,
+.tier-download {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.tier {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tier + .tier,
+.tier-download + .tier,
+.tier + .tier-download,
+.tier-download + .tier-download {
+  border-top: 1px solid var(--border);
+}
+
+.tier-download-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.tier-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.tier-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.tier-size {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* The recommendation is advice, not a state: quieter than the tier's own name. */
+.tier-hint {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.tier-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A value at the end of a row: quieter than its label, and allowed to wrap. */
+.row-value {
+  color: var(--muted);
+  text-align: right;
+  overflow-wrap: anywhere;
+}

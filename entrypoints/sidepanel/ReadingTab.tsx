@@ -31,6 +31,7 @@ import { SpeakerGlyph } from './ui/icons';
 import { Row } from './ui/Row';
 import { Slider } from './ui/Slider';
 import { Switch } from './ui/Switch';
+import { type ModelAdmin, useDevice, useLocalReadiness } from './use-models';
 import { useSettings } from './use-settings';
 
 /** One step of the volume slider: 5%, which is 30 steps across 0–150%. */
@@ -54,6 +55,13 @@ export interface ReadingTabProps {
   settings?: SettingsStore;
   /** Opens the Settings tab, where a service is configured. */
   onOpenSettings: () => void;
+  /** Opens the Models tab, where an on-device model is downloaded. */
+  onOpenModels?: () => void;
+  /**
+   * The machine probe, for the no-GPU notice. Absent in tests and in any build
+   * without a model manager, which then says nothing about the device.
+   */
+  models?: ModelAdmin | undefined;
   /** Switches the panel to the full-page voice picker. */
   onChangeVoice: () => void;
 }
@@ -66,11 +74,20 @@ export function ReadingTab({
   session,
   settings,
   onOpenSettings,
+  onOpenModels,
+  models,
   onChangeVoice,
 }: ReadingTabProps) {
   const t = useT();
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
   const { settings: saved, update } = useSettings(settings);
+
+  const isLocal = config?.provider === 'local';
+  const devicePreference = config?.provider === 'local' ? (config.device ?? 'auto') : 'auto';
+  // Whether the on-device model could actually speak right now, asked of the
+  // provider itself so the panel and the engine cannot disagree about it.
+  const readiness = useLocalReadiness(config, providers);
+  const device = useDevice(models, devicePreference);
 
   /**
    * What the sliders show while a handle is being dragged.
@@ -120,6 +137,29 @@ export function ReadingTab({
 
   return (
     <div class="stack">
+      {/*
+        A model that has not been downloaded is the one thing on this tab that
+        stops reading outright, so it leads: the alternative is a play button
+        that spins and a reader that silently falls back to the browser voice.
+      */}
+      {readiness === 'missing' && (
+        <div class="notice">
+          <p class="muted">{t('panel.model-missing')}</p>
+          {onOpenModels && (
+            <button type="button" class="button disclosure" id="open-models" onClick={onOpenModels}>
+              {t('panel.model-missing.action')}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/*
+        Without a GPU the wait is real (measured RTF ≈ 1.1–1.45 against ≈ 0.15
+        with one), and the honest place to say so is next to the voice, before
+        playback starts. Not an error, and not a reason to hide the setting.
+      */}
+      {isLocal && device?.device === 'wasm' && <p class="notice muted">{t('panel.local-slow')}</p>}
+
       {cloudConfig ? (
         <section class="section">
           <h2>{t('voice.section')}</h2>

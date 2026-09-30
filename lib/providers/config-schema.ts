@@ -23,6 +23,7 @@
  * and from tests, neither of which has a language.
  */
 import type { MessageKey } from '../i18n/messages.en';
+import { MODELS } from '../models/registry';
 import type { ProviderConfig, ProviderConfigMap, ProviderId } from './types';
 
 /** How a field is edited, which decides both the widget and the validation. */
@@ -51,6 +52,17 @@ export interface FieldSpec<K extends string = string> {
    * `boolean`: a checkbox is never empty, so it has nothing to fall back to.
    */
   readonly defaultValue?: string;
+  /**
+   * A field that is validated and saved but never drawn.
+   *
+   * For settings another part of the panel owns: the on-device model and its
+   * tier are chosen in the Models tab, where they can show download progress,
+   * and drawing them again in the generic form would give one setting two
+   * places to be wrong. Declaring them here is what keeps them alive —
+   * `parseStoredConfig` only preserves keys some field claims, so a key with no
+   * spec is dropped the next time anything is read back.
+   */
+  readonly hidden?: boolean;
   /** The allowed values, for `kind: 'select'`. */
   readonly options?: readonly FieldOption[];
   /**
@@ -92,6 +104,15 @@ export interface ProviderSchema {
   readonly summaryKey: MessageKey;
   /** Where the user creates credentials, when the provider has such a page. */
   readonly consoleUrl?: string;
+  /**
+   * What to show where the form would be, for a provider with no visible
+   * fields.
+   *
+   * Defaults to the browser voice's notice, which was the only provider
+   * without fields until the on-device one arrived with three that another tab
+   * owns.
+   */
+  readonly formNoticeKey?: MessageKey;
   readonly fields: readonly FieldSpec[];
   readonly passthrough?: readonly PassthroughSpec[];
 }
@@ -110,6 +131,7 @@ interface SchemaSpec<K extends ProviderId> {
   readonly labelKey: MessageKey;
   readonly summaryKey: MessageKey;
   readonly consoleUrl?: string;
+  readonly formNoticeKey?: MessageKey;
   readonly fields: readonly FieldSpec<ConfigKey<K>>[];
   readonly passthrough?: readonly PassthroughSpec<ConfigKey<K>>[];
 }
@@ -127,6 +149,36 @@ const DEFAULT_BASE_URLS = {
   volcengine: 'https://openspeech.bytedance.com',
   elevenlabs: 'https://api.elevenlabs.io',
 } as const;
+
+/**
+ * The model ids the form will accept, straight from the registry.
+ *
+ * Taken from the registry rather than listed here so a model added there
+ * becomes selectable, and a model removed there stops being accepted, without
+ * a second edit — the same reasoning the picker's own order follows. They are
+ * hidden fields, so this is validation rather than a menu.
+ */
+const MODEL_ID_OPTIONS: readonly FieldOption[] = MODELS.map((model) => ({
+  value: model.id,
+  labelKey: model.labelKey,
+}));
+
+/**
+ * Every tier id any model offers.
+ *
+ * A union rather than a per-model list because a field spec cannot see which
+ * model is selected; a tier that belongs to another model is rejected by the
+ * provider, which does know. Ids repeat across families by design — `q8` means
+ * the same thing to every engine — so duplicates are collapsed.
+ */
+const TIER_OPTIONS: readonly FieldOption[] = [
+  ...new Map(
+    MODELS.flatMap((model) => model.tiers ?? []).map((tier) => [
+      tier.id,
+      { value: tier.id, labelKey: tier.labelKey } satisfies FieldOption,
+    ])
+  ).values(),
+];
 
 /**
  * The schema table.
@@ -359,16 +411,47 @@ const SCHEMAS = {
   // Last, so it reads as the alternative to the services above rather than as
   // another one of them.
   //
-  // No fields yet, and deliberately so: the model, tier and device pickers live
-  // in the Models tab, where they can show download state, and repeating them
-  // as a generic form here would give the same setting two places to be wrong.
-  // The row exists so the provider can be selected and so its label and summary
-  // come from the same table as every other provider's.
+  // Every field is hidden: the model, its tier and the device are chosen in the
+  // Models tab, where they can show download state, and repeating them as a
+  // generic form here would give the same setting two places to be wrong. The
+  // row exists so the provider can be selected, so its label and summary come
+  // from the same table as every other provider's, and so the three choices
+  // survive being read back out of storage.
   local: {
     id: 'local',
     labelKey: 'provider.local.label',
     summaryKey: 'provider.local.summary',
-    fields: [],
+    formNoticeKey: 'provider.local.notice',
+    fields: [
+      {
+        key: 'modelId',
+        labelKey: 'field.model-id',
+        kind: 'select',
+        hidden: true,
+        options: MODEL_ID_OPTIONS,
+      },
+      {
+        key: 'tier',
+        labelKey: 'field.tier',
+        kind: 'select',
+        hidden: true,
+        options: TIER_OPTIONS,
+      },
+      // A closed union, so a `select`: anything else would be passed to
+      // `resolveDevice`, which reads an unknown value as `auto` — a silent
+      // fallback where the schema's job is to reject.
+      {
+        key: 'device',
+        labelKey: 'field.device',
+        kind: 'select',
+        hidden: true,
+        options: [
+          { value: 'auto', labelKey: 'provider.local.device.auto' },
+          { value: 'webgpu', labelKey: 'provider.local.device.webgpu' },
+          { value: 'wasm', labelKey: 'provider.local.device.wasm' },
+        ],
+      },
+    ],
   },
 } satisfies { [K in ProviderId]: SchemaSpec<K> };
 

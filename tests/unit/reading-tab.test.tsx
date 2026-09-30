@@ -9,7 +9,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { describe, expect, it, vi } from 'vitest';
 import { ReadingTab } from '~/entrypoints/sidepanel/ReadingTab';
+import type { ModelAdmin } from '~/entrypoints/sidepanel/use-models';
 import type { LocalStorageArea } from '~/lib/config-store';
+import { ProviderError } from '~/lib/providers/errors';
 import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
@@ -63,6 +65,10 @@ interface RenderOptions {
   voiceNames?: Record<string, Record<string, string>>;
   stored?: Partial<Settings>;
   session?: SessionWatch;
+  /** Overridden when the provider's own answer is what is under test. */
+  providers?: Record<AdapterProviderId, Provider>;
+  models?: ModelAdmin;
+  onOpenModels?: () => void;
 }
 
 async function renderTab({
@@ -71,6 +77,9 @@ async function renderTab({
   voiceNames = {},
   stored = {},
   session = IDLE_SESSION,
+  providers: registry = providers,
+  models,
+  onOpenModels,
 }: RenderOptions = {}) {
   const { area } = fakeArea({ [SETTINGS_KEY]: stored });
   const store = new SettingsStore(area);
@@ -81,11 +90,13 @@ async function renderTab({
       config={config}
       voice={voice}
       voiceNames={voiceNames}
-      providers={providers}
+      providers={registry}
       session={session}
       settings={store}
       onOpenSettings={onOpenSettings}
       onChangeVoice={onChangeVoice}
+      {...(models === undefined ? {} : { models })}
+      {...(onOpenModels === undefined ? {} : { onOpenModels })}
     />
   );
   // The settings read lands a tick later; waiting for it keeps the slider
@@ -244,5 +255,84 @@ describe('the caption switch', () => {
 
     expect(control.getAttribute('aria-checked')).toBe('true');
     await waitFor(async () => expect((await store.load()).captionWindow).toBe(true));
+  });
+});
+
+/**
+ * The on-device provider's two notices.
+ *
+ * Both are driven by a question the provider answers, not by a copy of its
+ * logic: `validate()` is the check the engine runs before it synthesizes, so
+ * the panel cannot end up disagreeing with playback about whether the model is
+ * ready.
+ */
+describe('the on-device notices', () => {
+  const LOCAL: ProviderConfig = { provider: 'local', tier: 'q8' };
+
+  function providerThat(validate: () => Promise<void>): Record<AdapterProviderId, Provider> {
+    return { ...providers, local: { ...fakeProvider(), validate: vi.fn(validate) } as Provider };
+  }
+
+  it('offers the Models tab when the tier has not been downloaded', async () => {
+    const onOpenModels = vi.fn();
+    await renderTab({
+      config: LOCAL,
+      providers: providerThat(() => Promise.reject(new ProviderError('model-missing', 'absent'))),
+      onOpenModels,
+    });
+
+    expect(await screen.findByText('Model not downloaded yet')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Go to model settings ›' }));
+
+    expect(onOpenModels).toHaveBeenCalledTimes(1);
+  });
+
+  it('says nothing once the model is there', async () => {
+    await renderTab({
+      config: LOCAL,
+      providers: providerThat(() => Promise.resolve()),
+    });
+
+    await waitFor(() => expect(screen.getByLabelText('Volume')).toBeTruthy());
+    expect(screen.queryByText('Model not downloaded yet')).toBeNull();
+  });
+
+  it('stays quiet for a provider that is not the on-device one', async () => {
+    await renderTab({
+      config: DASHSCOPE,
+      providers: providerThat(() => Promise.reject(new ProviderError('model-missing', 'absent'))),
+    });
+
+    expect(providers.local.validate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Model not downloaded yet')).toBeNull();
+  });
+
+  it('warns that a machine without a GPU will be slower', async () => {
+    // `probeDevice` reads `navigator.gpu`, which happy-dom does not implement,
+    // so the probe honestly reports the WASM-only machine this test wants.
+    await renderTab({
+      config: LOCAL,
+      providers: providerThat(() => Promise.resolve()),
+      models: {
+        store: {} as never,
+        probe: () => Promise.resolve({ caps: { webgpu: false, shaderF16: false } }),
+      },
+    });
+
+    expect(await screen.findByText(/no GPU acceleration/)).toBeTruthy();
+  });
+
+  it('does not warn once WebGPU is available', async () => {
+    await renderTab({
+      config: LOCAL,
+      providers: providerThat(() => Promise.resolve()),
+      models: {
+        store: {} as never,
+        probe: () => Promise.resolve({ caps: { webgpu: true, shaderF16: true } }),
+      },
+    });
+
+    await waitFor(() => expect(screen.getByLabelText('Volume')).toBeTruthy());
+    expect(screen.queryByText(/no GPU acceleration/)).toBeNull();
   });
 });

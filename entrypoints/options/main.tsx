@@ -12,6 +12,8 @@
 import { render } from 'preact';
 import { browser } from 'wxt/browser';
 import { ConfigStore } from '~/lib/config-store';
+import { probeDevice } from '~/lib/models/device';
+import { ModelStore } from '~/lib/models/store';
 import { createProviders } from '~/lib/providers/registry';
 import { SessionWatch } from '~/lib/session-watch';
 import { SettingsStore } from '~/lib/settings-store';
@@ -28,6 +30,12 @@ render(
     providers={createProviders()}
     permissions={browser.permissions}
     settings={new SettingsStore(browser.storage.local, browser.storage.onChanged)}
+    models={{
+      // Same panel as the side panel, so it gets the same collaborators: the
+      // full-page fallback must be able to download a model too.
+      store: new ModelStore({ storage: browser.storage.local }),
+      probe: () => probeDevice(navigator.gpu),
+    }}
     session={
       new SessionWatch(new SnapshotStore(browser.storage.session), browser.storage.onChanged)
     }

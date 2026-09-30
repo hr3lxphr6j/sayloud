@@ -20,6 +20,7 @@ export const en = {
   'panel.sections': 'SayLoud sections',
   'panel.tab.reading': 'Reading',
   'panel.tab.settings': 'Settings',
+  'panel.tab-models': 'Models',
   'panel.loading': 'Loading…',
   // The <h1> of the full-page voice picker, next to its back arrow.
   'panel.back': 'Back',
@@ -42,6 +43,15 @@ export const en = {
   'panel.highlight.words': 'Word by word',
   'panel.highlight.sentences': 'Sentence by sentence',
   'panel.highlight.unknown': 'Unknown',
+  // Shown when the on-device model has not been downloaded, which is the one
+  // configuration where pressing play cannot work at all. It leads the tab and
+  // takes the reader straight to the download rather than explaining it twice.
+  'panel.model-missing': 'Model not downloaded yet',
+  'panel.model-missing.action': 'Go to model settings ›',
+  // Measured: ≈1.1–1.45× real time without a GPU against ≈0.15 with one. Says
+  // what will happen rather than promising a number the machine may not hit.
+  'panel.local-slow':
+    'This device has no GPU acceleration, so local voices will be slower. A cloud service or the browser voice will be quicker.',
 
   // --- the settings rows ----------------------------------------------------
   // Volume, rate and the caption switch are preferences like the language, so
@@ -126,6 +136,10 @@ export const en = {
   'provider.local.label': 'On this device',
   'provider.local.summary':
     'Runs in the browser, so the text never leaves your machine. Needs a one-time model download.',
+  // The form for this provider has no fields on purpose: what it configures is
+  // a download, and the Models tab is where download state can be shown.
+  'provider.local.notice':
+    'The model, its tier and the device it runs on are chosen in the Models tab.',
   'provider.dashscope.label': 'DashScope (阿里云百炼)',
   'provider.dashscope.summary':
     'Alibaba Cloud Model Studio. CosyVoice v3 and later report word timings.',
@@ -146,6 +160,9 @@ export const en = {
   'field.api-key': 'API key',
   'field.base-url': 'Base URL',
   'field.model': 'Model',
+  'field.model-id': 'On-device model',
+  'field.tier': 'Model tier',
+  'field.device': 'Device',
   'field.region': 'Region',
   'field.workspace-id': 'Workspace id',
   'field.resource-id': 'Resource id',
@@ -189,6 +206,9 @@ export const en = {
   'provider.azure.output-format.option.ogg_16khz_opus': 'OGG 16 kHz Opus',
   'provider.azure.language-hint.help':
     'Used to list voices when the voice id does not imply a language.',
+  'provider.local.device.auto': 'Automatic',
+  'provider.local.device.webgpu': 'WebGPU',
+  'provider.local.device.wasm': 'WASM (CPU)',
 
   // --- the voice picker -----------------------------------------------------
   'voice.section': 'Voice',
@@ -287,6 +307,57 @@ export const en = {
   'model.tier.light': 'Light',
   'model.tier.standard': 'Standard',
   'model.tier.hifi': 'High fidelity',
+
+  // --- the Models tab -------------------------------------------------------
+  // The tab manages files rather than preferences, so every line here is about
+  // state — what is downloaded, where from, and what it costs in space.
+  'model.source.title': 'Download source',
+  'model.source.label': 'Download source',
+  'model.source.help': 'Auto will pick a reachable mirror and remember it.',
+  'model.source.auto': 'Auto (recommended)',
+  'model.source.huggingface': 'Hugging Face',
+  'model.source.modelscope': 'ModelScope',
+  'model.source.custom': 'Custom mirror',
+  'model.source.custom-label': 'Mirror URL',
+  'model.source.custom-invalid': 'Enter a complete https:// URL.',
+  'model.source.saved': 'Source saved.',
+  'model.source.save-failed': 'Could not save the source: {detail}',
+
+  'model.in-use': 'In use',
+  'model.set-active': 'Set as active',
+  'model.download': 'Download',
+  'model.cancel': 'Cancel',
+  'model.delete': 'Delete',
+  'model.delete-confirm': 'Delete anyway',
+  'model.delete-warning': "After deleting, you'll need to download again to read aloud.",
+  'model.downloading': 'Downloading {tier} · {percent}%',
+  'model.download-failed': 'Failed to download. Check your connection.',
+  'model.download-cancelled': 'Download cancelled.',
+  'model.read-failed': 'The downloaded models could not be read.',
+  // Two keys rather than one "Recommended": what is recommended depends on the
+  // machine, and a badge that does not say which machine is a badge that means
+  // nothing when the user reads it on the other one.
+  'model.recommended': 'Recommended for WebGPU',
+  'model.recommended-cpu': 'Recommended without a GPU',
+  'model.license': 'Licence: {name}',
+  'model.voice-count': '{count} voices',
+  'model.timings': 'Sentence highlighting',
+
+  'model.storage.title': 'Device and space',
+  'model.storage.label': 'Storage used',
+  // Says what is *not* counted, for the same reason the audio cache's note does
+  // (spec §4.5): the two numbers are separate on purpose.
+  'model.storage.note': 'Models and voices. The audio cache is counted on the Settings tab.',
+  // Voices are fetched one at a time, when a voice is first used; there is no
+  // "download them all" control yet, and a line saying so beats a dead button.
+  'model.voices.note': 'Voices are downloaded on demand, the first time each one is used.',
+  'model.device.not-loaded': 'Not loaded',
+  'model.device.wasm': 'WASM (no GPU)',
+  'model.device.webgpu': 'WebGPU',
+  'model.device.webgpu-named': 'WebGPU · {adapter}',
+  // What the line means, so "WebGPU" before anything has been loaded does not
+  // read as a claim that a model is already running there.
+  'model.device.help': 'Used the next time the model loads.',
 } as const;
 
 /** Every message the UI can ask for. */

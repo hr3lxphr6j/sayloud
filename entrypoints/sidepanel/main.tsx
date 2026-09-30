@@ -9,6 +9,8 @@ import { render } from 'preact';
 import { browser } from 'wxt/browser';
 import { clearCache, readCacheUsage } from '~/lib/cache-admin';
 import { ConfigStore } from '~/lib/config-store';
+import { probeDevice } from '~/lib/models/device';
+import { ModelStore } from '~/lib/models/store';
 import { createProviders } from '~/lib/providers/registry';
 import { SessionWatch } from '~/lib/session-watch';
 import { SettingsStore } from '~/lib/settings-store';
@@ -31,6 +33,12 @@ render(
       clear: () => clearCache(browser.runtime),
     }}
     version={browser.runtime.getManifest().version}
+    models={{
+      // The model tab downloads and deletes; it never runs the model, so this
+      // is the only on-device collaborator the panel is given.
+      store: new ModelStore({ storage: browser.storage.local }),
+      probe: () => probeDevice(navigator.gpu),
+    }}
     session={
       new SessionWatch(new SnapshotStore(browser.storage.session), browser.storage.onChanged)
     }

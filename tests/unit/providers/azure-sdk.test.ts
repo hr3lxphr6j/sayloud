@@ -13,8 +13,15 @@ interface ConfigState {
   properties: Array<{ name: unknown; value: string }>;
 }
 
+interface AudioSink {
+  write(dataBuffer: ArrayBuffer): void;
+  close(): void;
+}
+
 interface SynthesizerState {
   constructed: boolean;
+  /** The AudioConfig handed to the constructor; undefined means default speaker. */
+  audioConfig: { sink: AudioSink } | undefined;
   speakText: string | undefined;
   locale: string | undefined;
   closes: number;
@@ -35,6 +42,7 @@ const fake = vi.hoisted(() => {
   };
   const synth: SynthesizerState = {
     constructed: false,
+    audioConfig: undefined,
     speakText: undefined,
     locale: undefined,
     closes: 0,
@@ -90,8 +98,12 @@ const fake = vi.hoisted(() => {
   class SpeechSynthesizer {
     private handler: ((sender: unknown, event: unknown) => void) | undefined;
 
-    constructor(readonly speechConfig: SpeechConfig) {
+    constructor(
+      readonly speechConfig: SpeechConfig,
+      audioConfig?: { sink: AudioSink }
+    ) {
       synth.constructed = true;
+      synth.audioConfig = audioConfig;
     }
 
     // azure-sdk assigns this on the instance, so mirror it into the shared
@@ -125,12 +137,30 @@ const fake = vi.hoisted(() => {
     }
   }
 
-  return { config, synth, SpeechConfig, SpeechSynthesizer };
+  abstract class PushAudioOutputStreamCallback {
+    abstract write(dataBuffer: ArrayBuffer): void;
+    abstract close(): void;
+  }
+
+  const AudioConfig = {
+    fromStreamOutput: (sink: AudioSink) => ({ sink }),
+  };
+
+  return {
+    config,
+    synth,
+    SpeechConfig,
+    SpeechSynthesizer,
+    AudioConfig,
+    PushAudioOutputStreamCallback,
+  };
 });
 
 vi.mock('microsoft-cognitiveservices-speech-sdk', () => ({
   SpeechConfig: fake.SpeechConfig,
   SpeechSynthesizer: fake.SpeechSynthesizer,
+  AudioConfig: fake.AudioConfig,
+  PushAudioOutputStreamCallback: fake.PushAudioOutputStreamCallback,
   PropertyId: {
     SpeechServiceResponse_RequestWordBoundary: 45,
     SpeechServiceResponse_RequestPunctuationBoundary: 46,
@@ -185,6 +215,7 @@ beforeEach(() => {
   fake.config.properties = [];
 
   fake.synth.constructed = false;
+  fake.synth.audioConfig = undefined;
   fake.synth.speakText = undefined;
   fake.synth.locale = undefined;
   fake.synth.closes = 0;
@@ -248,6 +279,14 @@ describe('createSynthesizer', () => {
     ]);
   });
 
+  it('routes the audio to a stream instead of the default speaker', async () => {
+    await createAzureSpeechSdk().createSynthesizer(options);
+
+    // Without an AudioConfig the SDK plays through the speaker itself, on top
+    // of the offscreen <audio> element — two voices, and pause stops only one.
+    expect(fake.synth.audioConfig?.sink).toBeDefined();
+  });
+
   it.each(FORMAT_CASES)('maps %s to SDK format %i', async (outputFormat, expected) => {
     await createAzureSpeechSdk().createSynthesizer({ ...options, outputFormat });
 
@@ -266,6 +305,35 @@ describe('speak', () => {
     const result = await pending;
     expect(Array.from(new Uint8Array(result.audio))).toEqual([1, 2, 3]);
     expect(result.durationMs).toBe(900);
+  });
+
+  it('returns the bytes written to the stream when there are any', async () => {
+    const synthesizer = await createAzureSpeechSdk().createSynthesizer(options);
+    const pending = synthesizer.speak('你好', () => {}, new AbortController().signal);
+
+    const sink = fake.synth.audioConfig?.sink;
+    sink?.write(new Uint8Array([1, 2]).buffer);
+    sink?.write(new Uint8Array([3]).buffer);
+    completeWith(new Uint8Array([9, 9, 9]).buffer, 100 * TICKS_PER_MS);
+
+    const result = await pending;
+    expect(Array.from(new Uint8Array(result.audio))).toEqual([1, 2, 3]);
+  });
+
+  it('does not carry stream bytes from one utterance into the next', async () => {
+    const synthesizer = await createAzureSpeechSdk().createSynthesizer(options);
+    const sink = fake.synth.audioConfig?.sink;
+
+    const first = synthesizer.speak('一', () => {}, new AbortController().signal);
+    sink?.write(new Uint8Array([1]).buffer);
+    completeWith(new ArrayBuffer(0), 0);
+    await first;
+
+    const second = synthesizer.speak('二', () => {}, new AbortController().signal);
+    sink?.write(new Uint8Array([2]).buffer);
+    completeWith(new ArrayBuffer(0), 0);
+
+    expect(Array.from(new Uint8Array((await second).audio))).toEqual([2]);
   });
 
   it('converts boundary ticks to milliseconds', async () => {

@@ -11,8 +11,10 @@
  * cannot run before `./azure` has finished evaluating.
  */
 import {
+  AudioConfig,
   CancellationDetails,
   PropertyId,
+  PushAudioOutputStreamCallback,
   ResultReason,
   SpeechConfig,
   SpeechSynthesisBoundaryType,
@@ -29,6 +31,7 @@ import type {
   AzureWordBoundary,
 } from './azure';
 import { mapCancellationError } from './azure';
+import { concatChunks } from './http';
 import type { Voice } from './types';
 
 /**
@@ -46,6 +49,32 @@ const OUTPUT_FORMATS: Record<AzureOutputFormat, SpeechSynthesisOutputFormat> = {
 
 /** The SDK measures audio positions in 100-nanosecond ticks. */
 const TICKS_PER_MS = 10_000;
+
+/**
+ * Receives the synthesized audio in place of a speaker.
+ *
+ * Without an `AudioConfig` the SDK plays through the default speaker while
+ * also handing the bytes back in `result.audioData`. SayLoud plays the audio
+ * itself in the offscreen document, so the default produced two voices at
+ * once — and pausing stopped only ours, since `speakTextAsync` cannot be
+ * paused.
+ */
+class AudioSink extends PushAudioOutputStreamCallback {
+  private chunks: ArrayBuffer[] = [];
+
+  write(dataBuffer: ArrayBuffer): void {
+    this.chunks.push(dataBuffer);
+  }
+
+  close(): void {}
+
+  /** Everything written since the last call. */
+  take(): ArrayBuffer[] {
+    const chunks = this.chunks;
+    this.chunks = [];
+    return chunks;
+  }
+}
 
 /** Create the real SDK binding. */
 export function createAzureSpeechSdk(): AzureSpeechSdk {
@@ -67,8 +96,9 @@ export function createAzureSpeechSdk(): AzureSpeechSdk {
         'false'
       );
 
-      // No AudioConfig: the audio is delivered in `result.audioData`.
-      return new SdkSynthesizer(new SpeechSynthesizer(speechConfig));
+      const sink = new AudioSink();
+      const audioConfig = AudioConfig.fromStreamOutput(sink);
+      return new SdkSynthesizer(new SpeechSynthesizer(speechConfig, audioConfig), sink);
     },
   };
 }
@@ -76,7 +106,10 @@ export function createAzureSpeechSdk(): AzureSpeechSdk {
 class SdkSynthesizer implements AzureSynthesizer {
   private closed = false;
 
-  constructor(private readonly synthesizer: SpeechSynthesizer) {}
+  constructor(
+    private readonly synthesizer: SpeechSynthesizer,
+    private readonly sink: AudioSink
+  ) {}
 
   speak(
     text: string,
@@ -108,6 +141,9 @@ class SdkSynthesizer implements AzureSynthesizer {
       }
       signal.addEventListener('abort', onAbort, { once: true });
 
+      // Drop anything a previous, abandoned utterance left behind.
+      this.sink.take();
+
       this.synthesizer.wordBoundary = (_sender, event) => {
         // Punctuation boundaries are disabled above; filtering again keeps a
         // service-side change from injecting non-words into the timeline.
@@ -124,9 +160,13 @@ class SdkSynthesizer implements AzureSynthesizer {
         text,
         (result) => {
           if (result.reason === ResultReason.SynthesizingAudioCompleted) {
+            // Prefer the stream: the SDK is not documented to also fill
+            // `audioData` when an output stream is configured.
+            const streamed = this.sink.take();
+            const audio = streamed.length > 0 ? concatChunks(streamed) : result.audioData;
             settle(() =>
               resolve({
-                audio: result.audioData,
+                audio,
                 durationMs: ticksToMs(result.audioDuration),
               })
             );

@@ -37,6 +37,10 @@ describe('BrowserSpeaker', () => {
     speaker = new BrowserSpeaker(fake.tts);
   });
 
+  it('has no prefetch, so the engine has nothing to warm', () => {
+    expect('prefetch' in speaker).toBe(false);
+  });
+
   it('passes the sentence and speech options to chrome.tts', () => {
     speaker.speak({ text: 'Hello world.', voice: 'Samantha', rate: 1.5, lang: 'en-US' });
 

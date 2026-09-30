@@ -1,6 +1,11 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type AudioCache, type AudioTimeline, AudioWorker } from '~/lib/audio-worker';
+import {
+  type AudioCache,
+  type AudioTimeline,
+  AudioWorker,
+  prefetchConcurrency,
+} from '~/lib/audio-worker';
 import { CacheManager } from '~/lib/cache-manager';
 import type { OffscreenCommand, OffscreenEvent } from '~/lib/offscreen-protocol';
 import { ProviderError } from '~/lib/providers/errors';
@@ -59,9 +64,15 @@ function fakeProvider(overrides: Partial<Provider> = {}): Provider {
 }
 
 /** Everything the worker talks to, with the spies the assertions need. */
-function harness(options: { provider?: Provider; player?: Partial<AudioTimeline> } = {}) {
+function harness(
+  options: {
+    provider?: Provider;
+    player?: Partial<AudioTimeline>;
+    providers?: Map<ProviderId, Provider>;
+  } = {}
+) {
   const provider = options.provider ?? fakeProvider();
-  const providers = new Map<ProviderId, Provider>([['dashscope', provider]]);
+  const providers = options.providers ?? new Map<ProviderId, Provider>([['dashscope', provider]]);
 
   const cache: AudioCache = {
     computeKey: vi.fn(async () => 'key'),
@@ -413,6 +424,225 @@ describe('AudioWorker', () => {
       expect(events).toEqual([]);
     });
   });
+
+  describe('prefetch', () => {
+    function prefetch(
+      items: Array<{ text: string; voiceId: string }>,
+      config: ProviderConfig = CONFIG
+    ) {
+      return { type: 'prefetch' as const, items, config };
+    }
+
+    /** A provider that holds every synthesis until the test releases it. */
+    function deferredProvider() {
+      const pending: Array<{
+        text: string;
+        signal: AbortSignal;
+        resolve: (result: SynthesisResult) => void;
+      }> = [];
+      const provider = fakeProvider({
+        synthesize: vi.fn(
+          (request) =>
+            new Promise<SynthesisResult>((resolve, reject) => {
+              pending.push({ text: request.text, signal: request.signal, resolve });
+              request.signal.addEventListener('abort', () => reject(abortError()));
+            })
+        ),
+      });
+      return { provider, pending };
+    }
+
+    it('does not stop the player or abort the synthesis in flight', async () => {
+      const { provider, pending } = deferredProvider();
+      const { worker, player } = harness({ provider });
+
+      const playback = worker.handleCommand(synthesize('s1'));
+      await tick();
+      const stopsBefore = vi.mocked(player.stop).mock.calls.length;
+
+      await worker.handleCommand(prefetch([{ text: 'next', voiceId: 'v1' }]));
+      await tick();
+
+      // The prefetch did run: it asked the provider for the next sentence.
+      expect(pending.map((call) => call.text)).toEqual(['hello', 'next']);
+      expect(pending[0]?.signal.aborted).toBe(false);
+      expect(player.stop).toHaveBeenCalledTimes(stopsBefore);
+
+      pending[0]?.resolve(result());
+      await playback;
+      pending[1]?.resolve(result());
+      await tick();
+    });
+
+    it('stays silent when a prefetch fails', async () => {
+      const provider = fakeProvider({
+        synthesize: vi.fn(async () => {
+          throw new ProviderError('rate-limit', 'too many requests');
+        }),
+      });
+      const { worker, events } = harness({ provider });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await worker.handleCommand(prefetch([{ text: 'next', voiceId: 'v1' }]));
+      await tick();
+
+      // An `error` event would make the engine fall back to the browser voice
+      // for a sentence the user never asked to hear yet.
+      expect(events).toEqual([]);
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('cancels outstanding prefetches when the session stops', async () => {
+      const { provider, pending } = deferredProvider();
+      const { worker, cache } = harness({ provider });
+      vi.mocked(cache.computeKey).mockImplementation(async (identity) => identity.text);
+
+      await worker.handleCommand(prefetch([{ text: 'next', voiceId: 'v1' }]));
+      await tick();
+      expect(pending).toHaveLength(1);
+
+      await worker.handleCommand({ type: 'stop' });
+
+      expect(pending[0]?.signal.aborted).toBe(true);
+      expect(cache.put).not.toHaveBeenCalled();
+    });
+
+    it('cancels outstanding prefetches when a seek supersedes them', async () => {
+      const { provider, pending } = deferredProvider();
+      const { worker, cache } = harness({ provider });
+      vi.mocked(cache.computeKey).mockImplementation(async (identity) => identity.text);
+
+      await worker.handleCommand(prefetch([{ text: 'next', voiceId: 'v1' }]));
+      await tick();
+
+      const playback = worker.handleCommand(synthesize('s2'));
+      await tick();
+
+      expect(pending[0]?.signal.aborted).toBe(true);
+      // The cancelled prefetch never reached the cache.
+      expect(cache.put).not.toHaveBeenCalledWith('next', expect.anything());
+
+      pending[1]?.resolve(result());
+      await playback;
+    });
+
+    it('runs two prefetches at a time for a cloud provider', async () => {
+      const { provider, pending } = deferredProvider();
+      const { worker } = harness({ provider });
+
+      await worker.handleCommand(
+        prefetch([
+          { text: 'a', voiceId: 'v1' },
+          { text: 'b', voiceId: 'v1' },
+          { text: 'c', voiceId: 'v1' },
+        ])
+      );
+      await tick();
+      expect(pending).toHaveLength(2);
+
+      pending[0]?.resolve(result());
+      await until(() => pending.length === 3);
+      expect(pending[2]?.text).toBe('c');
+
+      pending[1]?.resolve(result());
+      pending[2]?.resolve(result());
+      await tick();
+    });
+
+    it('runs one prefetch at a time for a local endpoint', async () => {
+      const { provider, pending } = deferredProvider();
+      const providers = new Map<ProviderId, Provider>([['openai-compat', provider]]);
+      const { worker } = harness({ providers });
+      const local: ProviderConfig = {
+        provider: 'openai-compat',
+        baseUrl: 'http://localhost:8880/v1',
+      };
+
+      await worker.handleCommand(
+        prefetch(
+          [
+            { text: 'a', voiceId: 'v1' },
+            { text: 'b', voiceId: 'v1' },
+          ],
+          local
+        )
+      );
+      await tick();
+      expect(pending).toHaveLength(1);
+
+      pending[0]?.resolve(result());
+      await until(() => pending.length === 2);
+      pending[1]?.resolve(result());
+      await tick();
+    });
+
+    it('caps the queue so a huge document cannot pin memory', async () => {
+      const provider = fakeProvider();
+      const { worker } = harness({ provider });
+      const items = Array.from({ length: 20 }, (_, index) => ({
+        text: `s${index}`,
+        voiceId: 'v1',
+      }));
+
+      await worker.handleCommand(prefetch(items));
+      await until(() => vi.mocked(provider.synthesize).mock.calls.length === 8);
+      await tick();
+
+      expect(provider.synthesize).toHaveBeenCalledTimes(8);
+    });
+
+    it('serves a prefetched sentence from the cache without asking the provider again', async () => {
+      const provider = fakeProvider();
+      const { worker, cache } = harness({ provider });
+      const store = new Map<string, SynthesisResult>();
+      vi.mocked(cache.computeKey).mockImplementation(async (identity) => identity.text);
+      vi.mocked(cache.get).mockImplementation(async (key) => store.get(key));
+      vi.mocked(cache.put).mockImplementation(async (key, result) => {
+        store.set(key, result);
+      });
+
+      await worker.handleCommand(prefetch([{ text: 'next', voiceId: 'v1' }]));
+      await until(() => store.has('next'));
+      expect(provider.synthesize).toHaveBeenCalledTimes(1);
+
+      const reply = await worker.handleCommand(synthesize('s2', { text: 'next' }));
+
+      expect(provider.synthesize).toHaveBeenCalledTimes(1);
+      expect(reply).toEqual({ durationMs: 1234, hasTimings: true });
+    });
+
+    it('does not re-synthesize a sentence that is already cached', async () => {
+      const provider = fakeProvider();
+      const { worker, cache } = harness({ provider });
+      const cached = result(4);
+      vi.mocked(cache.computeKey).mockImplementation(async (identity) => identity.text);
+      vi.mocked(cache.get).mockImplementation(async (key) => (key === 'next' ? cached : undefined));
+
+      await worker.handleCommand(prefetch([{ text: 'next', voiceId: 'v1' }]));
+      await tick();
+
+      expect(provider.synthesize).not.toHaveBeenCalled();
+      expect(cache.put).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('prefetchConcurrency', () => {
+    it.each<[string, ProviderConfig, number]>([
+      ['a cloud provider', CONFIG, 2],
+      [
+        'a remote openai-compatible endpoint',
+        { provider: 'openai-compat', baseUrl: 'https://api.example.com/v1' },
+        2,
+      ],
+      ['localhost', { provider: 'openai-compat', baseUrl: 'http://localhost:8880/v1' }, 1],
+      ['127.0.0.1', { provider: 'openai-compat', baseUrl: 'http://127.0.0.1:8880/v1' }, 1],
+      ['IPv6 loopback', { provider: 'openai-compat', baseUrl: 'http://[::1]:8880/v1' }, 1],
+      ['an unparsable url', { provider: 'openai-compat', baseUrl: 'not a url' }, 2],
+    ])('is %s', (_label, config, expected) => {
+      expect(prefetchConcurrency(config)).toBe(expected);
+    });
+  });
 });
 
 describe('AudioWorker over the real cache and player', () => {
@@ -490,6 +720,25 @@ describe('AudioWorker over the real cache and player', () => {
     next.onloadedmetadata?.();
 
     expect(await second).toEqual({ durationMs: 1500, hasTimings: true });
+    expect(provider.synthesize).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves a sentence the prefetcher already warmed', async () => {
+    await worker.handleCommand({
+      type: 'prefetch',
+      items: [{ text: 'next sentence', voiceId: 'v1' }],
+      config: CONFIG,
+    });
+    await until(() => cache.stats().l2Entries > 0);
+
+    const pending = worker.handleCommand(synthesize('s2', { text: 'next sentence' }));
+    await until(() => audios.length > 0);
+    const audio = audios.at(0);
+    if (!audio) throw new Error('no audio was created');
+    audio.duration = 1.5;
+    audio.onloadedmetadata?.();
+    await pending;
+
     expect(provider.synthesize).toHaveBeenCalledTimes(1);
   });
 

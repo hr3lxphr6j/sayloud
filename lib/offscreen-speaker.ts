@@ -22,7 +22,7 @@ import {
 } from './offscreen-protocol';
 import { errorMessage } from './providers/errors';
 import type { ProviderConfig } from './providers/types';
-import type { Speaker, SpeakerEvents, SpeakRequest, WordSpan } from './speaker';
+import type { PrefetchRequest, Speaker, SpeakerEvents, SpeakRequest, WordSpan } from './speaker';
 
 /** The slice of `chrome.runtime.onMessage` this module uses. */
 export interface RuntimeEventSource {
@@ -80,6 +80,33 @@ export class OffscreenSpeaker implements Speaker {
     void this.manager.sendCommand({ type: 'stop' }, { create: false }).catch((error: unknown) => {
       console.warn('[SayLoud] could not stop the cloud voice', error);
     });
+  }
+
+  /**
+   * Warm the cache for sentences expected to play soon.
+   *
+   * Fire and forget, and never with `create: true`: warming a document that
+   * does not exist would cost a document and a provider call for audio nobody
+   * has asked for yet. `generation` and `activeId` are deliberately untouched —
+   * a prefetch must not supersede the sentence that is playing.
+   */
+  prefetch(requests: readonly PrefetchRequest[]): void {
+    if (requests.length === 0) return;
+    void this.manager
+      .sendCommand(
+        {
+          type: 'prefetch',
+          items: requests.map((request) => ({
+            text: request.text,
+            voiceId: request.voice ?? '',
+          })),
+          config: this.config,
+        },
+        { create: false }
+      )
+      .catch((error: unknown) => {
+        console.warn('[SayLoud] could not prefetch audio', error);
+      });
   }
 
   on<K extends keyof SpeakerEvents>(

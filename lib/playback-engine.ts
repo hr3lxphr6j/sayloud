@@ -6,7 +6,7 @@ import type {
   EngineStatus,
   SessionSnapshot,
 } from './protocol';
-import type { Speaker } from './speaker';
+import type { PrefetchRequest, Speaker } from './speaker';
 
 export type EngineError = NonNullable<EngineStatus['error']>;
 
@@ -31,6 +31,18 @@ const MIN_RATE = 0.5;
 const MAX_RATE = 3;
 /** Below this, a rate sample is too noisy to publish. */
 const RATE_SAMPLE_MS = 250;
+
+/**
+ * Base prefetch horizon, in estimated milliseconds of audio.
+ *
+ * The spec widens it with the rate: a faster rate burns through the queue
+ * faster, so more audio has to be ready ahead of the cursor.
+ */
+const PREFETCH_HORIZON_MS = 12_000;
+/** Reading speeds the horizon estimator assumes, in characters per second. */
+const CJK_CHARS_PER_SEC = 5;
+const OTHER_CHARS_PER_SEC = 15;
+const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 
 /**
  * Session state machine for one tab.
@@ -315,6 +327,39 @@ export class PlaybackEngine {
     this.emitStatus();
   }
 
+  /**
+   * Warm the cache for the sentences that will play next (spec §5.3).
+   *
+   * Called when a sentence starts, which is the one moment the ordering is
+   * safe: the speaker has already been asked to synthesize the current
+   * sentence, so a prefetch cannot supersede it. A `Speaker` without `prefetch`
+   * — the browser voice — ignores this entirely.
+   */
+  private prefetchUpcoming(): void {
+    // Only while audio is actually flowing. A paused session would warm a
+    // queue that nothing is about to consume.
+    if (this.phase !== 'playing') return;
+
+    const horizonMs = PREFETCH_HORIZON_MS * (1 + this.rate * 0.5);
+    const requests: PrefetchRequest[] = [];
+    let estimatedMs = 0;
+
+    for (let index = this.index + 1; index < this.sentences.length; index++) {
+      if (estimatedMs >= horizonMs) break;
+
+      const sentence = this.sentences[index];
+      if (!sentence || sentence.text.length === 0) continue;
+
+      const voice = this.resolveVoice(sentence.lang);
+      if (voice === undefined) continue;
+
+      requests.push({ text: sentence.text, voice });
+      estimatedMs += estimateSpeechMs(sentence.text);
+    }
+
+    if (requests.length > 0) this.speaker.prefetch?.(requests);
+  }
+
   private speakCurrent(): void {
     for (let index = this.index; index < this.sentences.length; index++) {
       const sentence = this.sentences[index];
@@ -421,7 +466,10 @@ export class PlaybackEngine {
 
   private bindSpeakerEvents(): void {
     this.speakerSubscriptions.push(
-      this.speaker.on('start', () => this.setPhase('playing')),
+      this.speaker.on('start', () => {
+        this.setPhase('playing');
+        this.prefetchUpcoming();
+      }),
       this.speaker.on('word', (span) => this.onWord(span)),
       this.speaker.on('end', () => this.onEnd()),
       this.speaker.on('error', () => this.fail('tts-error'))
@@ -470,6 +518,19 @@ export class PlaybackEngine {
     if (elapsed < RATE_SAMPLE_MS || this.charsRead <= 0) return 0;
     return this.charsRead / (elapsed / 1000);
   }
+}
+
+/**
+ * A rough duration for a sentence, in milliseconds.
+ *
+ * Used only to decide how far ahead to prefetch. The authoritative duration is
+ * the media element's — several providers report `durationMs: 0` — so this
+ * estimate never reaches the UI.
+ */
+function estimateSpeechMs(text: string): number {
+  const cjk = text.match(CJK_PATTERN)?.length ?? 0;
+  const other = text.length - cjk;
+  return (cjk / CJK_CHARS_PER_SEC + other / OTHER_CHARS_PER_SEC) * 1000;
 }
 
 function clampRate(rate: number): number {

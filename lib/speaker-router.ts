@@ -19,7 +19,7 @@
  * reading in the browser's voice.
  */
 import type { ProviderConfig, ProviderId } from './providers/types';
-import type { Speaker, SpeakerEvents, SpeakRequest } from './speaker';
+import type { PrefetchRequest, Speaker, SpeakerEvents, SpeakRequest } from './speaker';
 
 type Handler = (payload: never) => void;
 
@@ -146,6 +146,16 @@ export class SpeakerRouter implements Speaker {
 
   speak(request: SpeakRequest): void {
     this.active.speak(request);
+  }
+
+  /**
+   * Warm the cache on whichever speaker is active.
+   *
+   * A no-op when that speaker has no prefetch — the browser voice — which is
+   * exactly what the engine's optional call expects.
+   */
+  prefetch(requests: readonly PrefetchRequest[]): void {
+    this.active.prefetch?.(requests);
   }
 
   stop(): void {

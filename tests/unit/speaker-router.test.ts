@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderConfig, ProviderId } from '~/lib/providers/types';
-import type { Speaker, SpeakerEvents, SpeakRequest } from '~/lib/speaker';
+import type { PrefetchRequest, Speaker, SpeakerEvents, SpeakRequest } from '~/lib/speaker';
 import { type ConfigSource, SpeakerRouter } from '~/lib/speaker-router';
 
 const DASHSCOPE: ProviderConfig = { provider: 'dashscope', apiKey: 'k', model: 'cosyvoice-v3' };
@@ -9,13 +9,21 @@ const ELEVEN: ProviderConfig = { provider: 'elevenlabs', apiKey: 'k' };
 const REQUEST: SpeakRequest = { text: 'hello', voice: 'v1', rate: 1, lang: 'en-US' };
 
 /** A speaker that records what it was asked to say and can be told to speak. */
-function fakeSpeaker(name: string) {
+function fakeSpeaker(name: string, options: { prefetch?: boolean } = {}) {
   const requests: SpeakRequest[] = [];
+  const prefetches: PrefetchRequest[][] = [];
   const listeners = new Map<keyof SpeakerEvents, Set<(payload: never) => void>>();
   const speaker: Speaker = {
     speak(request) {
       requests.push(request);
     },
+    ...(options.prefetch
+      ? {
+          prefetch(batch: readonly PrefetchRequest[]) {
+            prefetches.push([...batch]);
+          },
+        }
+      : {}),
     stop: vi.fn(),
     on(event, handler) {
       let handlers = listeners.get(event);
@@ -35,6 +43,7 @@ function fakeSpeaker(name: string) {
     name,
     speaker,
     requests,
+    prefetches,
     stop: speaker.stop as ReturnType<typeof vi.fn>,
     dispose: speaker.dispose as ReturnType<typeof vi.fn>,
     deliver(event: keyof SpeakerEvents, payload: unknown): void {
@@ -96,7 +105,7 @@ describe('SpeakerRouter', () => {
 
   beforeEach(() => {
     browser = fakeSpeaker('browser');
-    cloud = fakeSpeaker('cloud');
+    cloud = fakeSpeaker('cloud', { prefetch: true });
     created = [];
     router = new SpeakerRouter({
       browser: browser.speaker,
@@ -494,6 +503,46 @@ describe('SpeakerRouter', () => {
       await routed.refresh();
 
       expect(seen).toEqual(['start']);
+    });
+  });
+
+  describe('prefetch', () => {
+    it('forwards to the cloud speaker that is active', async () => {
+      router = new SpeakerRouter({
+        browser: browser.speaker,
+        config: fakeConfig(DASHSCOPE, { dashscope: 'longxiaochun' }),
+        createCloud: () => cloud.speaker,
+        resolveBrowserVoice: (lang) => `browser:${lang}`,
+      });
+      await router.refresh();
+
+      router.prefetch([{ text: 'next', voice: 'longxiaochun' }]);
+
+      expect(cloud.prefetches).toEqual([[{ text: 'next', voice: 'longxiaochun' }]]);
+      expect(browser.prefetches).toEqual([]);
+    });
+
+    it('is a no-op while the browser voice is active', () => {
+      expect(() => router.prefetch([{ text: 'next', voice: 'Samantha' }])).not.toThrow();
+
+      expect(browser.prefetches).toEqual([]);
+      expect(cloud.prefetches).toEqual([]);
+    });
+
+    it('follows the active speaker across a switch', async () => {
+      const { state, source } = mutableConfig(DASHSCOPE, { dashscope: 'longxiaochun' });
+      const ownBrowser = fakeSpeaker('browser');
+      const ownCloud = fakeSpeaker('cloud', { prefetch: true });
+      const routed = routerOver(source, ownBrowser, ownCloud);
+      await routed.refresh();
+
+      routed.prefetch([{ text: 'one', voice: 'v' }]);
+      state.config = null;
+      await routed.refresh();
+      routed.prefetch([{ text: 'two', voice: 'v' }]);
+
+      // The browser voice has no prefetch, so the second call goes nowhere.
+      expect(ownCloud.prefetches).toEqual([[{ text: 'one', voice: 'v' }]]);
     });
   });
 

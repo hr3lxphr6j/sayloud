@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PlaybackEngine } from '~/lib/playback-engine';
-import type { SessionSnapshot } from '~/lib/protocol';
-import { SessionRouter } from '~/lib/router';
+import type { EngineCommand, EngineEvent, SessionSnapshot } from '~/lib/protocol';
+import { type RouterPort, SessionRouter } from '~/lib/router';
 import { type SessionStorageArea, SNAPSHOT_KEY, SnapshotStore } from '~/lib/snapshot-store';
 import type { Speaker, TtsApi, TtsVoiceLike } from '~/lib/speaker';
 import { VoiceCache } from '~/lib/voice-cache';
@@ -56,6 +56,30 @@ function fakeSpeaker(): Speaker {
   };
 }
 
+/** A port the router can talk to, and that a test can send commands through. */
+function fakePort(tabId: number) {
+  const sent: EngineEvent[] = [];
+  let onMessage: ((message: unknown) => void) | null = null;
+  const port: RouterPort = {
+    senderTabId: tabId,
+    postMessage: (message) => sent.push(message),
+    onMessage: (handler) => {
+      onMessage = handler;
+    },
+    onDisconnect: () => {},
+  };
+  return {
+    port,
+    sent,
+    send: (message: EngineCommand): void => onMessage?.(message),
+  };
+}
+
+/** Commands reach the engine in a microtask; the tests wait for that turn. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /** The whole graph over fakes, wired the way `createApp` wires it. */
 function build(initial: Record<string, unknown> = {}) {
   const tts = fakeTts();
@@ -103,5 +127,40 @@ describe('SessionRouter.start', () => {
     await router.start();
 
     expect(engine.getStatus().phase).toBe('idle');
+  });
+});
+
+describe('SessionRouter.handleTabActivated', () => {
+  /** A router with a session already loading in tab 1. */
+  async function reading(tabId = 1) {
+    const { engine, router } = build();
+    const port = fakePort(tabId);
+    router.handlePort(port.port);
+    port.send({
+      type: 'load',
+      sentences: [{ text: 'Hello world.', lang: 'en' }],
+      startIndex: 0,
+      rate: 1,
+    });
+    await tick();
+    return { engine, router };
+  }
+
+  it('pauses the session when the user switches to another tab', async () => {
+    const { engine, router } = await reading();
+
+    router.handleTabActivated(2);
+
+    expect(engine.getStatus().phase).toBe('paused');
+  });
+
+  it('leaves the session alone when the setting says to keep playing', async () => {
+    const { engine, router } = await reading();
+
+    router.handleTabActivated(2, true);
+
+    // The fake speaker never reports `start`, so the session sits in `loading`:
+    // what matters is that switching tabs did not pause it.
+    expect(engine.getStatus().phase).toBe('loading');
   });
 });

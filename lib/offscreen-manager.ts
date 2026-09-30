@@ -133,11 +133,30 @@ export class OffscreenManager {
  * True for the error Chrome throws when a message has no listener yet.
  *
  * There is no error code to test, only this message, and the message is not
- * localised.
+ * localised. Exported because sending anything to the offscreen document has
+ * to recognise it: a document that is not running is not a delivery failure.
  */
-function isMissingReceiver(error: unknown): boolean {
+export function isMissingReceiver(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return /receiving end does not exist|could not establish connection/i.test(error.message);
+}
+
+/**
+ * Send a message only a live offscreen document can care about.
+ *
+ * Resolves both when it was delivered and when there was nothing to deliver it
+ * to, because a document Chrome has already reclaimed is the normal case rather
+ * than a failure. Nothing is created to receive it either: this is for keeping
+ * up with a document that is already running, not for starting one.
+ */
+export async function sendToOffscreen(runtime: RuntimeApi, message: unknown): Promise<void> {
+  try {
+    await runtime.sendMessage(message);
+  } catch (error) {
+    if (!isMissingReceiver(error)) {
+      console.warn('[SayLoud] the offscreen document could not be reached', error);
+    }
+  }
 }
 
 /**

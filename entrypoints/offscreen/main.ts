@@ -13,7 +13,13 @@
 import { browser } from 'wxt/browser';
 import { AudioWorker } from '~/lib/audio-worker';
 import { CacheManager } from '~/lib/cache-manager';
-import { isOffscreenCommand, type OffscreenEvent } from '~/lib/offscreen-protocol';
+import { CachePolicy, pullCachePolicy } from '~/lib/cache-policy';
+import {
+  isCacheCleared,
+  isCachePolicyMessage,
+  isOffscreenCommand,
+  type OffscreenEvent,
+} from '~/lib/offscreen-protocol';
 import { createProviders } from '~/lib/providers/registry';
 import type { Provider, ProviderId } from '~/lib/providers/types';
 import { TimelinePlayer } from '~/lib/timeline-player';
@@ -39,6 +45,7 @@ function providerMap(): Map<ProviderId, Provider> {
 const cache = new CacheManager();
 const player = new TimelinePlayer({ emit });
 const worker = new AudioWorker({ providers: providerMap(), cache, player, emit });
+const policy = new CachePolicy(cache);
 
 // Open the database before the first sentence needs it, so the first synthesis
 // does not wait on an upgrade. A failure only costs the cache, never playback.
@@ -46,7 +53,32 @@ void cache.init().catch((error: unknown) => {
   console.warn('[SayLoud] the audio cache is unavailable', error);
 });
 
+// Chrome gives an offscreen document `runtime` and not much else — no
+// `storage` — so the cache policy is asked for rather than read. Asking at
+// startup is also what survives this document: Chrome closes it after ~30
+// seconds without audio, and the next one asks again before it synthesizes.
+void pullCachePolicy(browser.runtime, policy).catch((error: unknown) => {
+  console.warn('[SayLoud] cannot apply the saved cache settings', error);
+});
+
 browser.runtime.onMessage.addListener((message: unknown) => {
+  // Both of these come from the extension rather than from the executor's
+  // state machine, so they are answered before the command filter — which
+  // would reject them as unknown types.
+  if (isCachePolicyMessage(message)) {
+    void policy.apply(message.cache).catch((error: unknown) => {
+      console.warn('[SayLoud] cannot apply the cache settings', error);
+    });
+    return undefined;
+  }
+
+  if (isCacheCleared(message)) {
+    void policy.onCleared().catch((error: unknown) => {
+      console.warn('[SayLoud] cannot drop the cleared audio cache', error);
+    });
+    return undefined;
+  }
+
   // The runtime is not a trusted channel: anything in the extension can post to
   // it, so a message that is not a command is ignored rather than acted on.
   if (!isOffscreenCommand(message)) return undefined;

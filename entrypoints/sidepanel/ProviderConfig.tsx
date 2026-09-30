@@ -399,7 +399,9 @@ function Field({ field, value, error, disabled, onChange }: FieldProps) {
           placeholder={field.placeholder}
           spellcheck={false}
           value={text}
-          onChange={(event) => onChange(field.key, event.currentTarget.value)}
+          // `input`, not `change`: Preact maps onChange to the DOM event, which
+          // fires on blur, so the form would lag one edit behind what is typed.
+          onInput={(event) => onChange(field.key, event.currentTarget.value)}
         />
       ) : (
         <input
@@ -409,7 +411,7 @@ function Field({ field, value, error, disabled, onChange }: FieldProps) {
           spellcheck={false}
           autocomplete="off"
           value={text}
-          onChange={(event) => onChange(field.key, event.currentTarget.value)}
+          onInput={(event) => onChange(field.key, event.currentTarget.value)}
         />
       )}
       {help}

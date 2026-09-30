@@ -445,6 +445,25 @@ describe('the provider list', () => {
     expect(screen.queryByText('Save')).toBeNull();
   });
 
+  it('draws nothing for the on-device provider, and says where its settings are', async () => {
+    // Every field it has is hidden: the model, the tier and the device belong
+    // to the Models tab, which can show download state next to them. A form
+    // here would be a second control for one setting.
+    await renderPanel(new ConfigStore(memoryArea()));
+
+    open('local');
+
+    expect(document.querySelectorAll('.form .field')).toHaveLength(0);
+    expect(
+      screen.getByText(
+        'The model, its tier and the device it runs on are chosen in the Models tab.'
+      )
+    ).toBeTruthy();
+    // The browser voice's notice is about reading with the browser voice, and
+    // would be wrong here.
+    expect(screen.queryByText(/reads with the browser voice/)).toBeNull();
+  });
+
   it('points the open row at its form', async () => {
     await renderPanel(new ConfigStore(memoryArea()));
 

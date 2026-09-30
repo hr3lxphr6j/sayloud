@@ -19,17 +19,20 @@ import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
 import type { SettingsStore, UiLang } from '~/lib/settings-store';
+import { ModelsTab } from './ModelsTab';
 import { ReadingTab } from './ReadingTab';
 import { SettingsTab } from './SettingsTab';
 import { ChevronLeft } from './ui/icons';
+import { type ModelAdmin, type ModelStoreView, useModelStore } from './use-models';
 import { VoicePickerPage } from './VoicePicker';
 
-export type TabId = 'reading' | 'settings';
+export type TabId = 'reading' | 'settings' | 'models';
 
 /** Tab order, left to right. Reading leads: it is the everyday view. */
 const TABS: readonly { id: TabId; labelKey: MessageKey }[] = [
   { id: 'reading', labelKey: 'panel.tab.reading' },
   { id: 'settings', labelKey: 'panel.tab.settings' },
+  { id: 'models', labelKey: 'panel.tab-models' },
 ];
 
 /**
@@ -42,6 +45,7 @@ const TABS: readonly { id: TabId; labelKey: MessageKey }[] = [
 const TAB_PAGES: Record<TabId, ComponentType<TabPageProps>> = {
   reading: ReadingTab,
   settings: SettingsTab,
+  models: ModelsTab,
 };
 
 /** What the shell hands to a tab page. Each page takes the part it needs. */
@@ -54,6 +58,10 @@ export interface TabPageProps {
   permissions?: PermissionsApi;
   /** Reading the cache's usage and emptying it; absent in tests. */
   cache?: CacheAdmin;
+  /** The on-device model manager and the machine probe; absent in tests. */
+  models?: ModelAdmin;
+  /** Downloads, owned by the shell so a tab switch cannot cancel one. */
+  downloads: ModelStoreView;
   /** For the about line; absent in tests. */
   version?: string;
   config: ProviderConfig | null;
@@ -70,6 +78,8 @@ export interface TabPageProps {
   onChanged: () => void;
   /** The Reading tab's shortcut into the settings. */
   onOpenSettings: () => void;
+  /** The Reading tab's shortcut into the model settings. */
+  onOpenModels: () => void;
   /** The Reading tab's voice card: switch to the voice picker page. */
   onChangeVoice: () => void;
 }
@@ -88,6 +98,8 @@ export interface SidePanelProps {
   /** `chrome.permissions`, for providers that need a host grant. */
   permissions?: PermissionsApi;
   cache?: CacheAdmin;
+  /** The model store and the machine probe, for the Models tab. */
+  models?: ModelAdmin;
   version?: string;
 }
 
@@ -105,6 +117,7 @@ export function SidePanel({
   permissions,
   settings,
   cache,
+  models,
   version,
 }: SidePanelProps) {
   const { uiLang, lang, setUiLang } = useUiLanguage(settings);
@@ -118,6 +131,7 @@ export function SidePanel({
         permissions={permissions}
         settings={settings}
         cache={cache}
+        models={models}
         version={version}
         uiLang={uiLang}
         onUiLang={setUiLang}
@@ -138,6 +152,7 @@ function SidePanelView({
   permissions,
   settings,
   cache,
+  models,
   version,
   uiLang,
   onUiLang,
@@ -150,6 +165,15 @@ function SidePanelView({
   const [voices, setVoices] = useState<Record<string, string>>({});
   const [voiceNames, setVoiceNames] = useState<VoiceNames>({});
   const [loading, setLoading] = useState(true);
+
+  /**
+   * Downloads live here, not in the Models page.
+   *
+   * The page is unmounted by a tab switch, and a `fetch` cannot be handed to
+   * the next one: keeping the controllers on the shell is what makes "switching
+   * tabs does not cancel a download" true rather than nearly true.
+   */
+  const downloads = useModelStore(models);
 
   /** Re-read the store: the only copy of the saved configs is the store's. */
   const reload = useCallback(async () => {
@@ -209,6 +233,8 @@ function SidePanelView({
     settings,
     permissions,
     cache,
+    models,
+    downloads,
     version,
     config,
     savedConfigs,
@@ -219,6 +245,7 @@ function SidePanelView({
     onUiLang,
     onChanged: () => void reload(),
     onOpenSettings: () => setTab('settings'),
+    onOpenModels: () => setTab('models'),
     onChangeVoice: () => setPickingVoice(true),
   };
 

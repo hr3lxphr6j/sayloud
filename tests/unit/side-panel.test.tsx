@@ -172,9 +172,12 @@ describe('the tab list', () => {
   it('renders a tab per entry, in order', async () => {
     renderPanel();
 
+    // The order is the contract, and the models tab is last because it is the
+    // one nobody needs until the on-device provider is chosen.
     expect(screen.getAllByRole('tab').map((tab) => tab.id)).toEqual([
       'tab-reading',
       'tab-settings',
+      'tab-models',
     ]);
   });
 

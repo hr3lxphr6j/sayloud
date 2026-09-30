@@ -260,6 +260,14 @@ function ProviderForm({
   const valid = Object.keys(errors).length === 0;
   const draft = valid ? formValuesToConfig(schema, values, saved) : null;
   /**
+   * The fields this form draws.
+   *
+   * Hidden ones are left out entirely: they are validated and saved like any
+   * other, but the Models tab is where the user changes them, and a second
+   * control for the same setting is a second thing that can disagree.
+   */
+  const visibleFields = schema.fields.filter((field) => !field.hidden);
+  /**
    * A running Test Connection owns the form: its result is about what is on
    * screen, so the fields must not change under it.
    *
@@ -429,8 +437,8 @@ function ProviderForm({
 
   return (
     <div class="stack">
-      {schema.fields.length === 0 ? (
-        <p class="notice">{t('provider.browser-notice')}</p>
+      {visibleFields.length === 0 ? (
+        <p class="notice">{t(schema.formNoticeKey ?? 'provider.browser-notice')}</p>
       ) : (
         /*
           The listener sits on the container, not on each field: `blur` does not
@@ -439,7 +447,7 @@ function ProviderForm({
           including the one that closes this form.
         */
         <div class="form" onFocusOut={autoSave}>
-          {schema.fields.map((field) => (
+          {visibleFields.map((field) => (
             <Field
               key={field.key}
               field={field}

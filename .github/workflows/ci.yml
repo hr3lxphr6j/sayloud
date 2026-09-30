@@ -17,3 +17,5 @@ jobs:
       - run: pnpm test:e2e
       - run: pnpm build
       - run: pnpm check:manifest
+      # Drives the production build's side panel; it rotted once while nothing ran it.
+      - run: pnpm smoke:sidepanel

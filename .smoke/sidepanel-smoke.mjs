@@ -1,5 +1,5 @@
 /**
- * Throwaway smoke check for the side panel (not part of the test suite).
+ * Smoke check for the side panel, run in CI by `pnpm smoke:sidepanel`.
  *
  * Loads the production build in Chromium, opens sidepanel.html, and exercises
  * what static checks cannot see: that the panel renders, that each provider
@@ -99,7 +99,7 @@ check(
 // --- settings: every provider renders its own fields ------------------------
 const expectedFields = {
   dashscope: ['apiKey', 'workspaceId', 'region', 'model', 'baseUrl'],
-  volcengine: ['appId', 'accessToken', 'resourceId', 'model', 'baseUrl'],
+  volcengine: ['apiKey', 'resourceId', 'baseUrl'],
   'openai-compat': ['baseUrl', 'apiKey', 'model', 'captionedSpeech', 'headers'],
   elevenlabs: ['apiKey', 'model', 'outputFormat', 'baseUrl'],
   azure: ['subscriptionKey', 'region', 'outputFormat', 'lang'],
@@ -198,8 +198,14 @@ await settings();
 
 // --- Test Connection + Load Voices against a local stub --------------------
 const server = createServer((request, response) => {
+  // Extension pages fetch cross-origin, and the real Kokoro answers `*` (V7).
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204, cors).end();
+    return;
+  }
   const json = (body) => {
-    response.writeHead(200, { 'content-type': 'application/json' });
+    response.writeHead(200, { ...cors, 'content-type': 'application/json' });
     response.end(JSON.stringify(body));
   };
 
@@ -211,7 +217,7 @@ const server = createServer((request, response) => {
     json({ audio: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAIA+AAABAAgAZGF0YQAAAAA=', audio_format: 'audio/wav', timestamps: [] });
     return;
   }
-  response.writeHead(404, { 'content-type': 'application/json' });
+  response.writeHead(404, { ...cors, 'content-type': 'application/json' });
   response.end(JSON.stringify({ error: { message: 'not found' } }));
 });
 await new Promise((resolve) => server.listen(8899, '127.0.0.1', resolve));

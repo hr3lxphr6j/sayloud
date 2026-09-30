@@ -1,6 +1,8 @@
 import { type Browser, browser } from 'wxt/browser';
+import { cachePolicyChanged, cachePolicyMessage, pushCachePolicy } from '~/lib/cache-policy';
 import { CONFIG_KEY, SELECTED_VOICES_KEY } from '~/lib/config-store';
 import { createApp } from '~/lib/container';
+import { isCachePolicyRequest } from '~/lib/offscreen-protocol';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
@@ -34,8 +36,15 @@ export default defineBackground(() => {
   // Until the first read lands, the defaults are what a tab switch sees.
   let settings: Settings = DEFAULT_SETTINGS;
   const applySettings = (next: Settings): void => {
+    const previous = settings;
     settings = next;
     app.engine.setVolume(next.volume);
+    // An offscreen document cannot read `storage`, so a cache change has to be
+    // pushed to it. The same subscription carries every other preference, and
+    // those are no reason to disturb a document that is playing audio.
+    if (cachePolicyChanged(previous, next)) {
+      void pushCachePolicy(browser.runtime, next.cache);
+    }
   };
   app.settings.subscribe(applySettings);
   void app.settings
@@ -78,6 +87,17 @@ export default defineBackground(() => {
     const tabId = sender.tab?.id;
     if (tabId === undefined) return;
     openSettingsFor(tabId, { sidePanel: browser.sidePanel, options: browser.runtime });
+  });
+
+  // The cache policy for an offscreen document that is starting up.
+  //
+  // It cannot read the settings itself: Chrome exposes `runtime` and `offscreen`
+  // to an offscreen document, and not `storage`. Answering the request means the
+  // document has the policy before its first sentence, however many times Chrome
+  // has closed it in between.
+  browser.runtime.onMessage.addListener((message) => {
+    if (!isCachePolicyRequest(message)) return;
+    return Promise.resolve(cachePolicyMessage(settings.cache));
   });
 
   browser.runtime.onConnect.addListener((port) => {

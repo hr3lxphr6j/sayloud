@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CACHE_CLEARED,
+  CACHE_POLICY_REQUEST,
+  isCacheCleared,
+  isCachePolicyMessage,
+  isCachePolicyRequest,
   isOffscreenCommand,
   isOffscreenEvent,
   type OffscreenCommand,
 } from '~/lib/offscreen-protocol';
 
 const CONFIG = { provider: 'browser' } as const;
+const POLICY = { persist: true, maxBytes: 200 * 1024 * 1024 };
 
 describe('isOffscreenCommand', () => {
   const valid: OffscreenCommand[] = [
@@ -91,5 +97,68 @@ describe('isOffscreenEvent', () => {
 
   it('rejects a command, so the two channels cannot be confused', () => {
     expect(isOffscreenEvent({ type: 'play', id: 'a', startTimeMs: 0 })).toBe(false);
+  });
+});
+
+describe('CACHE_CLEARED', () => {
+  it('is the broadcast the settings panel sends', () => {
+    expect(CACHE_CLEARED).toEqual({ type: 'cache-cleared' });
+  });
+
+  it('recognises the broadcast', () => {
+    expect(isCacheCleared(CACHE_CLEARED)).toBe(true);
+    expect(isCacheCleared({ ...CACHE_CLEARED })).toBe(true);
+  });
+
+  it.each([
+    ['null', null],
+    ['a string', 'cache-cleared'],
+    ['an array', []],
+    ['another type', { type: 'stop' }],
+    ['no type', { cache: 'cleared' }],
+  ])('does not recognise %s', (_label, value) => {
+    expect(isCacheCleared(value)).toBe(false);
+  });
+
+  it('is not a command, so the executor never handles it', () => {
+    expect(isOffscreenCommand(CACHE_CLEARED)).toBe(false);
+  });
+});
+
+describe('the cache policy messages', () => {
+  it('recognises the boot request', () => {
+    expect(CACHE_POLICY_REQUEST).toEqual({ type: 'cache-policy-request' });
+    expect(isCachePolicyRequest(CACHE_POLICY_REQUEST)).toBe(true);
+  });
+
+  it('recognises a policy', () => {
+    expect(isCachePolicyMessage({ type: 'cache-policy', cache: POLICY })).toBe(true);
+  });
+
+  it.each([
+    ['a request where a policy belongs', CACHE_POLICY_REQUEST],
+    ['a policy with no cache', { type: 'cache-policy' }],
+    ['a cache that is not an object', { type: 'cache-policy', cache: 'all of it' }],
+    ['a missing persist flag', { type: 'cache-policy', cache: { maxBytes: 8 } }],
+    [
+      'a budget that is not a size',
+      { type: 'cache-policy', cache: { persist: true, maxBytes: 'big' } },
+    ],
+    ['a budget of zero', { type: 'cache-policy', cache: { persist: true, maxBytes: 0 } }],
+  ])('rejects %s', (_label, value) => {
+    expect(isCachePolicyMessage(value)).toBe(false);
+  });
+
+  it.each([
+    ['null', null],
+    ['an array', []],
+    ['another type', { type: 'cache-cleared' }],
+  ])('does not mistake %s for a boot request', (_label, value) => {
+    expect(isCachePolicyRequest(value)).toBe(false);
+  });
+
+  it('is not a command, so the executor never handles it', () => {
+    expect(isOffscreenCommand({ type: 'cache-policy', cache: POLICY })).toBe(false);
+    expect(isOffscreenCommand(CACHE_POLICY_REQUEST)).toBe(false);
   });
 });

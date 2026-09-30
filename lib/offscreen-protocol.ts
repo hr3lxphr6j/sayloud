@@ -15,6 +15,7 @@
  */
 import type { ProviderErrorCode } from './providers/errors';
 import type { ProviderConfig } from './providers/types';
+import type { CacheSettings } from './settings-store';
 
 /** Service worker → offscreen document. */
 export type OffscreenCommand =
@@ -68,6 +69,70 @@ export type OffscreenEvent =
  * extension.
  */
 export type OffscreenErrorCode = ProviderErrorCode | 'audio-error' | 'unknown';
+
+/**
+ * The settings panel telling a running offscreen document to drop its half of
+ * the cache.
+ *
+ * Deliberately not an `OffscreenCommand`: it is addressed to whatever document
+ * happens to be alive rather than to the executor's state machine, and the
+ * common case is that there is no document at all — a broadcast nobody receives
+ * is the successful outcome, not a failed command.
+ */
+export const CACHE_CLEARED = { type: 'cache-cleared' } as const;
+
+export type CacheClearedMessage = typeof CACHE_CLEARED;
+
+/** True for the cache-cleared broadcast. */
+export function isCacheCleared(value: unknown): value is CacheClearedMessage {
+  return typeOf(value) === CACHE_CLEARED.type;
+}
+
+/**
+ * The offscreen document's cache policy.
+ *
+ * It travels as a message in both directions — the worker sends it, and sends
+ * it again when it changes — because an offscreen document is not given
+ * `chrome.storage`. Chrome exposes `runtime` and `offscreen` there and nothing
+ * else, so the policy cannot be read where it is used and has to be told.
+ */
+export interface CachePolicyMessage {
+  type: typeof CACHE_POLICY;
+  cache: CacheSettings;
+}
+
+/** The offscreen document asking the service worker for the policy at startup. */
+export const CACHE_POLICY_REQUEST = { type: 'cache-policy-request' } as const;
+
+export type CachePolicyRequest = typeof CACHE_POLICY_REQUEST;
+
+const CACHE_POLICY = 'cache-policy';
+
+/** True for the offscreen document's request for the current cache policy. */
+export function isCachePolicyRequest(value: unknown): value is CachePolicyRequest {
+  return typeOf(value) === CACHE_POLICY_REQUEST.type;
+}
+
+/**
+ * True for a well-formed cache policy.
+ *
+ * Both fields are checked rather than trusted: the reply to the request above
+ * crosses a context boundary, and a policy of the wrong shape must leave the
+ * cache as it was instead of prising the store down to a budget that is not a
+ * number.
+ */
+export function isCachePolicyMessage(value: unknown): value is CachePolicyMessage {
+  if (typeOf(value) !== CACHE_POLICY) return false;
+  const cache = (value as { cache?: unknown }).cache;
+  if (typeof cache !== 'object' || cache === null) return false;
+  const { persist, maxBytes } = cache as { persist?: unknown; maxBytes?: unknown };
+  return (
+    typeof persist === 'boolean' &&
+    typeof maxBytes === 'number' &&
+    Number.isFinite(maxBytes) &&
+    maxBytes > 0
+  );
+}
 
 /** The reason string `chrome.offscreen` requires; nothing else uses the API. */
 export const OFFSCREEN_REASON = 'AUDIO_PLAYBACK';

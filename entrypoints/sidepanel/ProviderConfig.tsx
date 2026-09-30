@@ -10,7 +10,7 @@
  * (the provider being edited, and the values typed so far).
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ConfigStore } from '~/lib/config-store';
+import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
 import { type PermissionsApi, requestProviderAccess } from '~/lib/provider-origins';
 import {
   configToFormValues,
@@ -43,8 +43,10 @@ const ACCESS_DECLINED =
 export interface ProviderConfigPanelProps {
   store: ConfigStore;
   providers: Record<CloudProviderId, Provider>;
-  /** The saved config, used to seed the form. Null when nothing is saved. */
+  /** The active config, which decides the provider shown first. */
   saved: ProviderConfig | null;
+  /** The last config saved for each provider, used to seed its form. */
+  savedConfigs: SavedConfigs;
   /** Called after a successful save so the panel can refresh what it shows. */
   onSaved: (config: ProviderConfig) => void;
   /** `chrome.permissions`; absent in tests, where no host grant is asked for. */
@@ -55,10 +57,13 @@ export function ProviderConfigPanel({
   store,
   providers,
   saved,
+  savedConfigs: initialSaved,
   onSaved,
   permissions,
 }: ProviderConfigPanelProps) {
   const [selected, setSelected] = useState<ProviderId>(() => saved?.provider ?? 'browser');
+  // Owned here so a save or a forget shows up when switching back.
+  const [savedConfigs, setSavedConfigs] = useState<SavedConfigs>(initialSaved);
   const schema = PROVIDER_SCHEMAS[selected];
   const provider = selected === 'browser' ? null : providers[selected];
 
@@ -95,9 +100,21 @@ export function ProviderConfigPanel({
         key={selected}
         schema={schema}
         provider={provider}
-        saved={saved?.provider === selected ? saved : null}
+        saved={savedConfigs[selected] ?? null}
         store={store}
-        onSaved={onSaved}
+        onSaved={(config) => {
+          if (config.provider !== 'browser') {
+            setSavedConfigs((current) => ({ ...current, [config.provider]: config }));
+          }
+          onSaved(config);
+        }}
+        onForgotten={(provider) => {
+          setSavedConfigs((current) => {
+            const next = { ...current };
+            delete next[provider];
+            return next;
+          });
+        }}
         permissions={permissions}
       />
     </div>
@@ -111,10 +128,19 @@ interface ProviderFormProps {
   saved: ProviderConfig | null;
   store: ConfigStore;
   onSaved: (config: ProviderConfig) => void;
+  onForgotten: (provider: ProviderId) => void;
   permissions: PermissionsApi | undefined;
 }
 
-function ProviderForm({ schema, provider, saved, store, onSaved, permissions }: ProviderFormProps) {
+function ProviderForm({
+  schema,
+  provider,
+  saved,
+  store,
+  onSaved,
+  onForgotten,
+  permissions,
+}: ProviderFormProps) {
   const [values, setValues] = useState<FormValues>(() => configToFormValues(schema, saved));
   /** Errors appear only once the user has tried to do something with the form. */
   const [submitted, setSubmitted] = useState(false);
@@ -191,12 +217,28 @@ function ProviderForm({ schema, provider, saved, store, onSaved, permissions }: 
     }
   };
 
+  const onForget = async () => {
+    setSave({ kind: 'running' });
+    try {
+      await store.forgetConfig(schema.id);
+      setValues(configToFormValues(schema, null));
+      setTest({ kind: 'idle' });
+      setSave({ kind: 'ok', message: 'Saved key removed.' });
+      onForgotten(schema.id);
+      // Forgetting the active provider hands playback to the browser voice.
+      const active = await store.getConfig();
+      if (active) onSaved(active);
+    } catch (error) {
+      setSave({ kind: 'error', message: `Could not remove: ${errorMessage(error)}` });
+    }
+  };
+
   return (
     <div class="stack">
       {schema.fields.length === 0 ? (
         <p class="notice">
-          SayLoud will use the voices Chrome already has installed. Saving this replaces any stored
-          API key.
+          SayLoud will use the voices Chrome already has installed. Keys saved for other providers
+          are kept.
         </p>
       ) : (
         <div class="form">
@@ -224,6 +266,11 @@ function ProviderForm({ schema, provider, saved, store, onSaved, permissions }: 
         <button type="button" class="button primary" disabled={busy} onClick={() => void onSave()}>
           {save.kind === 'running' ? 'Saving…' : 'Save'}
         </button>
+        {saved && schema.id !== 'browser' && (
+          <button type="button" class="button" disabled={busy} onClick={() => void onForget()}>
+            Forget saved key
+          </button>
+        )}
       </div>
 
       <div class="form-results">

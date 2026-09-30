@@ -6,7 +6,7 @@
  * is visible in the other immediately, without a second storage read.
  */
 import { useCallback, useEffect, useState } from 'preact/hooks';
-import type { ConfigStore } from '~/lib/config-store';
+import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
 import type { PermissionsApi } from '~/lib/provider-origins';
 import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
@@ -33,15 +33,17 @@ export interface SidePanelProps {
 export function SidePanel({ store, providers, session, permissions }: SidePanelProps) {
   const [tab, setTab] = useState<TabId>('reading');
   const [config, setConfig] = useState<ProviderConfig | null>(null);
+  const [savedConfigs, setSavedConfigs] = useState<SavedConfigs>({});
   const [voice, setVoice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    store
-      .getConfig()
-      .then((loaded) => {
-        if (active) setConfig(loaded);
+    Promise.all([store.getConfig(), store.getSavedConfigs()])
+      .then(([loaded, saved]) => {
+        if (!active) return;
+        setConfig(loaded);
+        setSavedConfigs(saved);
       })
       .catch((error: unknown) => {
         // An unreadable config reads as "not configured": the user can always
@@ -120,6 +122,7 @@ export function SidePanel({ store, providers, session, permissions }: SidePanelP
               store={store}
               providers={providers}
               saved={config}
+              savedConfigs={savedConfigs}
               onSaved={onSaved}
               {...(permissions ? { permissions } : {})}
             />

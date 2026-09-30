@@ -28,6 +28,18 @@ export default defineConfig({
     // CORS preflight rejects the extension need it (see provider-origins.ts).
     optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: {},
+    // `wasm-unsafe-eval` is what lets ONNX Runtime compile its wasm module.
+    // Measured: without it the wasm backend does not start at all.
+    //
+    // COOP/COEP are deliberately **not** enabled, which is the larger decision
+    // here. Cross-origin isolation would allow a threaded wasm build, but it
+    // also changes how every cross-origin request behaves — and the extension
+    // talks to six cloud TTS services. Measured (V17): with `numThreads: 1` the
+    // wasm backend initialises fine without it, so the global manifest change
+    // and the six-provider regression it would require are both avoidable.
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+    },
     ...(mode === 'e2e' && { host_permissions: e2eHostPermissions() }),
   }),
   outDir: process.env.SAYLOUD_E2E ? '.output-e2e' : '.output',

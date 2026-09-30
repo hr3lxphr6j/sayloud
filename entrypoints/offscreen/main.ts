@@ -14,12 +14,15 @@ import { browser } from 'wxt/browser';
 import { AudioWorker } from '~/lib/audio-worker';
 import { CacheManager } from '~/lib/cache-manager';
 import { CachePolicy, pullCachePolicy } from '~/lib/cache-policy';
+import { pullModelSource } from '~/lib/models/source-channel';
+import { createLocalWorker, WorkerLocalEngine } from '~/lib/models/worker-engine';
 import {
   isCacheCleared,
   isCachePolicyMessage,
   isOffscreenCommand,
   type OffscreenEvent,
 } from '~/lib/offscreen-protocol';
+import { LocalProvider } from '~/lib/providers/local';
 import { createProviders } from '~/lib/providers/registry';
 import type { Provider, ProviderId } from '~/lib/providers/types';
 import { TimelinePlayer } from '~/lib/timeline-player';
@@ -36,10 +39,33 @@ function emit(event: OffscreenEvent): void {
 /** Every cloud adapter, keyed the way a config names its provider. */
 function providerMap(): Map<ProviderId, Provider> {
   const providers = new Map<ProviderId, Provider>();
-  for (const [id, provider] of Object.entries(createProviders())) {
+  for (const [id, provider] of Object.entries(createProviders({ local: localProvider() }))) {
     providers.set(id as ProviderId, provider);
   }
   return providers;
+}
+
+/**
+ * The on-device provider, with the engine this context alone can supply.
+ *
+ * This is the only place a `WorkerLocalEngine` is ever built. The side panel
+ * constructs the same provider registry to render its settings form and gets
+ * the default `LocalProvider`, whose engine factory is absent — which is what
+ * keeps ONNX Runtime's chunk out of the side panel's reach rather than merely
+ * out of its bundle.
+ *
+ * The engine is created lazily, on the first sentence, because the download
+ * source has to be fetched from the service worker first and nothing should
+ * wait on that at document startup.
+ */
+function localProvider(): LocalProvider {
+  return new LocalProvider({
+    resolveSource: () => pullModelSource(browser.runtime),
+    createEngine: (source, allowFallback) =>
+      Promise.resolve(
+        new WorkerLocalEngine({ worker: createLocalWorker(), source, allowFallback })
+      ),
+  });
 }
 
 const cache = new CacheManager();

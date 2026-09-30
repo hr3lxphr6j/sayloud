@@ -21,6 +21,7 @@ render(
   <SidePanel
     store={new ConfigStore(browser.storage.local)}
     providers={createProviders()}
+    permissions={browser.permissions}
     session={
       new SessionWatch(new SnapshotStore(browser.storage.session), browser.storage.onChanged)
     }

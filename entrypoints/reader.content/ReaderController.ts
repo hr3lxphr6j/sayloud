@@ -2,12 +2,22 @@ import { type Browser, browser } from 'wxt/browser';
 import { needsReveal, SCROLL_PAUSE_MS, ScrollSuspension } from '~/lib/autoscroll';
 import { extractBlocks } from '~/lib/extractor';
 import { Highlighter, installHighlightStyles } from '~/lib/highlighter';
+import { createTranslator, resolveLang, type Translator } from '~/lib/i18n';
 import { PORT_NAME } from '~/lib/port';
 import type { EngineCommand, EngineEvent, EngineStatus } from '~/lib/protocol';
 import { buildReadingDoc, type ReadingDoc } from '~/lib/reading-doc';
+import type { Settings, SettingsStore } from '~/lib/settings-store';
+import { type CaptionState, CaptionWindow } from './CaptionWindow';
 
 /** Reasons the reader cannot read, each with its own bubble card. */
 export type ReaderError = 'no-content' | 'no-voice' | 'tts-error';
+
+/** The word being spoken, as offsets into the sentence's own text. */
+export interface WordPosition {
+  index: number;
+  charStart: number;
+  charEnd: number;
+}
 
 export interface ReaderState {
   /** Null until the service worker reports a session. */
@@ -16,6 +26,17 @@ export interface ReaderState {
   error: ReaderError | null;
   /** The reader scrolled away from the sentence being read. */
   scrolledAway: boolean;
+  /**
+   * The word being spoken, or null before the first word event of a sentence.
+   *
+   * Null is also what a provider without word timings leaves behind, which the
+   * caption window reads the same way the page highlight does: no estimate.
+   */
+  word: WordPosition | null;
+  /** Whether the settings ask the bar to offer the caption window. */
+  captionEnabled: boolean;
+  /** Whether the caption window is open. */
+  captionOpen: boolean;
 }
 
 /** The starting rate, for a reader built without a saved preference. */
@@ -40,6 +61,14 @@ export interface ReaderControllerOptions {
    * worker takes a rate change from storage for every later one.
    */
   initialRate?: number;
+  /**
+   * The saved preferences, for the caption window's switch and language.
+   *
+   * Subscribed to rather than read once: turning the switch off must close a
+   * window that is already open, and the caption window's text follows the
+   * interface language.
+   */
+  settings?: SettingsStore;
 }
 
 /**
@@ -63,6 +92,10 @@ export class ReaderController {
 
   private state: ReaderState;
   private readonly initialRate: number;
+  private readonly caption = new CaptionWindow((open) => this.setCaptionOpen(open));
+  private unsubscribeSettings: (() => void) | null = null;
+  /** The language the caption window's own line is written in. */
+  private t: Translator = createTranslator('en');
   private port: Port | null = null;
   private reconnects = 0;
   private reconnectTimer: number | null = null;
@@ -87,7 +120,21 @@ export class ReaderController {
       hasContent: this.doc !== null,
       error: this.doc ? null : 'no-content',
       scrolledAway: false,
+      word: null,
+      captionEnabled: false,
+      captionOpen: false,
     };
+
+    const settings = options.settings;
+    if (settings) {
+      void settings
+        .load()
+        .then((loaded) => this.applySettings(loaded))
+        .catch((error: unknown) => {
+          console.error('[SayLoud] cannot read the saved settings', error);
+        });
+      this.unsubscribeSettings = settings.subscribe((loaded) => this.applySettings(loaded));
+    }
 
     window.addEventListener('scroll', this.onScroll, { passive: true });
     document.addEventListener('click', this.onClick, true);
@@ -156,6 +203,21 @@ export class ReaderController {
     this.post(command);
   }
 
+  /**
+   * Open the caption window, or close it when it is already open.
+   *
+   * Called straight from the button's click and deliberately synchronous all
+   * the way down: `requestWindow()` needs that click's transient user
+   * activation, which the first `await` would spend.
+   */
+  toggleCaption(): void {
+    if (this.caption.isOpen) {
+      this.caption.close();
+      return;
+    }
+    this.caption.open(this.captionState());
+  }
+
   /** Bring the sentence being read back into view and re-enable auto-scrolling. */
   returnToPosition(): void {
     this.suspension.resume();
@@ -166,6 +228,9 @@ export class ReaderController {
 
   dispose(): void {
     this.disposed = true;
+    this.caption.close();
+    this.unsubscribeSettings?.();
+    this.unsubscribeSettings = null;
     window.removeEventListener('scroll', this.onScroll);
     document.removeEventListener('click', this.onClick, true);
     this.clearScrollTimer();
@@ -220,11 +285,16 @@ export class ReaderController {
 
   private onStatus(status: EngineStatus): void {
     const error = errorFor(status);
-    this.setState({ ...this.state, status, error });
+    // A new sentence invalidates the previous word: the next `word` event
+    // belongs to it, and a stale one would mark the wrong text in the caption.
+    const word =
+      this.state.word !== null && this.state.word.index !== status.index ? null : this.state.word;
+    this.setState({ ...this.state, status, error, word });
 
     if (status.phase === 'idle' || status.phase === 'ended') {
       this.highlighter.clear();
       this.highlighted = -1;
+      this.syncCaption();
       return;
     }
 
@@ -233,7 +303,10 @@ export class ReaderController {
     this.highlighter.clearWord();
 
     const changed = status.index !== this.highlighted;
-    if (!changed && status.phase === 'error') return;
+    if (!changed && status.phase === 'error') {
+      this.syncCaption();
+      return;
+    }
 
     const range = this.doc?.rangeForSentence(status.index) ?? null;
     // The page may have replaced the nodes we extracted (SPA navigation);
@@ -242,11 +315,60 @@ export class ReaderController {
     this.highlighted = status.index;
 
     if (changed) this.reveal(status.index);
+
+    this.syncCaption();
   }
 
   private onWord(index: number, charStart: number, charEnd: number): void {
+    this.setState({ ...this.state, word: { index, charStart, charEnd } });
+
     const range = this.doc?.rangeForWord(index, charStart, charEnd) ?? null;
     this.highlighter.setWord(range?.startContainer.isConnected ? range : null);
+
+    this.syncCaption();
+  }
+
+  /** What the caption window should be showing right now. */
+  private captionState(): CaptionState {
+    const status = this.state.status;
+    const index = status?.index ?? 0;
+    const total = status?.total ?? 0;
+    const word = this.state.word;
+
+    return {
+      // The sentence list is the reader's own, so the text comes from there
+      // rather than from the engine's status.
+      text: this.doc?.getSentence(index)?.text ?? '',
+      charStart: word ? word.charStart : -1,
+      charEnd: word ? word.charEnd : -1,
+      index,
+      total,
+      counter: this.t('caption.counter', { index: index + 1, total }),
+    };
+  }
+
+  /** Redraw the caption window with the current state; a no-op when closed. */
+  private syncCaption(): void {
+    this.caption.update(this.captionState());
+  }
+
+  private setCaptionOpen(open: boolean): void {
+    if (open === this.state.captionOpen) return;
+    this.setState({ ...this.state, captionOpen: open });
+  }
+
+  /** Take a settings change: the switch, and the language the window reads in. */
+  private applySettings(settings: Settings): void {
+    this.t = createTranslator(resolveLang(settings.uiLang, navigator.language));
+
+    if (settings.captionWindow !== this.state.captionEnabled) {
+      this.setState({ ...this.state, captionEnabled: settings.captionWindow });
+    }
+
+    // Turning the switch off closes a window that is already open, which the
+    // reader expects to happen the moment the switch moves.
+    if (settings.captionWindow) this.syncCaption();
+    else this.caption.close();
   }
 
   /**

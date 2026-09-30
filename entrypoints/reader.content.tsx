@@ -42,7 +42,7 @@ export default defineContentScript({
       onMount: (container, _shadow, shadowHost) => {
         shadowHost.id = HOST_ID;
 
-        const controller = new ReaderController(shadowHost, { initialRate });
+        const controller = new ReaderController(shadowHost, { initialRate, settings });
         controller.connect();
         render(
           <ReaderPanel

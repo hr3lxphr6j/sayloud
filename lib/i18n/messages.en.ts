@@ -49,6 +49,7 @@ export const en = {
   'settings.rate.label': 'Speed',
   'settings.caption.label': 'Caption window',
   'settings.caption.help': 'Turn it on here, then open it from the bar on the page.',
+  'settings.caption.unsupported': 'This browser cannot show a caption window.',
   'settings.language.label': 'Interface language',
   'settings.language.auto': 'Follow the browser',
   'settings.language.en': 'English',
@@ -224,6 +225,7 @@ export const en = {
   'sideplayer.previous': 'Previous sentence',
   'sideplayer.next': 'Next sentence',
   'sideplayer.rate': 'Playback speed {rate}',
+  'sideplayer.caption': 'Caption window',
   'sideplayer.settings': 'Settings',
   'sideplayer.progress': 'Reading progress {percent} percent',
   'sideplayer.progress-remaining': 'Reading progress {percent} percent, {remaining}',
@@ -233,6 +235,9 @@ export const en = {
   'sideplayer.hint.no-voice.message': 'Chrome has no voice installed for this page.',
   'sideplayer.hint.tts-error.title': 'Voice failed',
   'sideplayer.hint.tts-error.message': 'Chrome could not speak this page.',
+
+  // --- the caption window ---------------------------------------------------
+  'caption.counter': 'Sentence {index} of {total}',
 
   // --- the bubble card ------------------------------------------------------
   'bubble.scrolled-away': 'You scrolled away from the sentence being read.',

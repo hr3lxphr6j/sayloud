@@ -15,6 +15,7 @@ function setup(overrides: Partial<VoicePickerProps> = {}) {
   const saved: string[] = [];
   const store = {
     getSelectedVoice: vi.fn(() => Promise.resolve(null)),
+    getVoiceNames: vi.fn(() => Promise.resolve({})),
     saveSelectedVoice: vi.fn((_provider: string, voiceId: string) => {
       saved.push(voiceId);
       return Promise.resolve();
@@ -41,7 +42,7 @@ function setup(overrides: Partial<VoicePickerProps> = {}) {
 }
 
 async function loadVoices(): Promise<void> {
-  fireEvent.click(screen.getByRole('button', { name: 'Load Voices' }));
+  fireEvent.focus(screen.getByRole('searchbox', { name: 'Filter voices' }));
   await screen.findByText('3 voices.');
 }
 

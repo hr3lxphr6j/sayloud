@@ -3,6 +3,12 @@ export type AsyncStatus =
   | { kind: 'idle' }
   | { kind: 'running' }
   | { kind: 'ok'; message: string }
+  /**
+   * Information the user did not ask for and does not have to act on: a voice
+   * list that could not be fetched, say, where the manual id box still works.
+   * Kept apart from `error` so it does not read as a failure with a next step.
+   */
+  | { kind: 'quiet'; message: string }
   | { kind: 'error'; message: string };
 
 export interface StatusLineProps {
@@ -23,6 +29,9 @@ export function StatusLine({ status }: StatusLineProps) {
         {status.message}
       </p>
     );
+  }
+  if (status.kind === 'quiet') {
+    return <p class="muted">{status.message}</p>;
   }
   if (status.kind === 'error') {
     return (

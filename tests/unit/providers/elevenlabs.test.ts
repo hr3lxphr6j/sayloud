@@ -291,7 +291,7 @@ describe('error mapping', () => {
     [429, 'rate_limit_exceeded', 'rate-limit'],
     [429, 'concurrent_limit_exceeded', 'rate-limit'],
     [400, 'quota_exceeded', 'no-quota'],
-    [403, 'paid_plan_required', 'service-unavailable'],
+    [403, 'paid_plan_required', 'not-activated'],
     [422, 'voice_not_found', 'unknown'],
     [500, undefined, 'service-unavailable'],
     [402, undefined, 'no-quota'],

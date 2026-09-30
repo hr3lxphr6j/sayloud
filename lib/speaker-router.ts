@@ -182,10 +182,8 @@ export class SpeakerRouter implements Speaker {
     this.speaking = false;
     this.active.stop();
 
-    // The engine disposes the speaker it is leaving and then asks this router
-    // to resolve the voice for the sentence it replays on the fallback. With
-    // the cloud selection dropped, that answer is a browser voice name — which
-    // is the only kind of name the browser speaker can use.
+    // Only the engine's own teardown disposes the router; degrading to the
+    // fallback just stops it, so the cloud selection is still there to retry.
     const cloud = this.cloud;
     this.cloud = null;
 

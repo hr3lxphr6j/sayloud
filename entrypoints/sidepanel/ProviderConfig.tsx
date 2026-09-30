@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ConfigStore } from '~/lib/config-store';
+import { type PermissionsApi, requestProviderAccess } from '~/lib/provider-origins';
 import {
   configToFormValues,
   type FieldSpec,
@@ -36,6 +37,9 @@ import { VoicePicker } from './VoicePicker';
  */
 const VALIDATE_TIMEOUT_MS = 20_000;
 
+const ACCESS_DECLINED =
+  'SayLoud needs access to this host to reach the service. Allow it in the prompt to continue.';
+
 export interface ProviderConfigPanelProps {
   store: ConfigStore;
   providers: Record<CloudProviderId, Provider>;
@@ -43,6 +47,8 @@ export interface ProviderConfigPanelProps {
   saved: ProviderConfig | null;
   /** Called after a successful save so the panel can refresh what it shows. */
   onSaved: (config: ProviderConfig) => void;
+  /** `chrome.permissions`; absent in tests, where no host grant is asked for. */
+  permissions?: PermissionsApi;
 }
 
 export function ProviderConfigPanel({
@@ -50,6 +56,7 @@ export function ProviderConfigPanel({
   providers,
   saved,
   onSaved,
+  permissions,
 }: ProviderConfigPanelProps) {
   const [selected, setSelected] = useState<ProviderId>(() => saved?.provider ?? 'browser');
   const schema = PROVIDER_SCHEMAS[selected];
@@ -91,6 +98,7 @@ export function ProviderConfigPanel({
         saved={saved?.provider === selected ? saved : null}
         store={store}
         onSaved={onSaved}
+        permissions={permissions}
       />
     </div>
   );
@@ -103,9 +111,10 @@ interface ProviderFormProps {
   saved: ProviderConfig | null;
   store: ConfigStore;
   onSaved: (config: ProviderConfig) => void;
+  permissions: PermissionsApi | undefined;
 }
 
-function ProviderForm({ schema, provider, saved, store, onSaved }: ProviderFormProps) {
+function ProviderForm({ schema, provider, saved, store, onSaved, permissions }: ProviderFormProps) {
   const [values, setValues] = useState<FormValues>(() => configToFormValues(schema, saved));
   /** Errors appear only once the user has tried to do something with the form. */
   const [submitted, setSubmitted] = useState(false);
@@ -131,12 +140,19 @@ function ProviderForm({ schema, provider, saved, store, onSaved }: ProviderFormP
     setSubmitted(true);
     if (!provider || !draft) return;
 
+    // Before any await: the prompt needs the click's user gesture.
+    const access = requestProviderAccess(draft, permissions);
+
     const deadline = startDeadline(VALIDATE_TIMEOUT_MS);
     inFlight.current?.cancel();
     inFlight.current = deadline;
     setTest({ kind: 'running' });
 
     try {
+      if (!(await access)) {
+        setTest({ kind: 'error', message: ACCESS_DECLINED });
+        return;
+      }
       await provider.validate(draft, deadline.signal);
       setTest({ kind: 'ok', message: 'Connection succeeded.' });
     } catch (error) {
@@ -157,8 +173,16 @@ function ProviderForm({ schema, provider, saved, store, onSaved }: ProviderFormP
     setSubmitted(true);
     if (!draft) return;
 
+    // Before any await: the prompt needs the click's user gesture.
+    const access = requestProviderAccess(draft, permissions);
+
     setSave({ kind: 'running' });
     try {
+      // A config the extension cannot reach would only fail later, mid-read.
+      if (!(await access)) {
+        setSave({ kind: 'error', message: ACCESS_DECLINED });
+        return;
+      }
       await store.saveConfig(draft);
       setSave({ kind: 'ok', message: 'Saved.' });
       onSaved(draft);

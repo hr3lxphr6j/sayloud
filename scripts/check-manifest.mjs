@@ -59,6 +59,16 @@ if (manifest.host_permissions?.length) {
   );
 }
 
+// Only declared: granted per host from the settings panel, never on install.
+const EXPECTED_OPTIONAL_HOSTS = ['http://*/*', 'https://*/*'];
+const optionalHosts = [...(manifest.optional_host_permissions ?? [])].sort();
+if (JSON.stringify(optionalHosts) !== JSON.stringify(EXPECTED_OPTIONAL_HOSTS)) {
+  problems.push(
+    `optional_host_permissions are ${JSON.stringify(optionalHosts)}, ` +
+      `expected ${JSON.stringify(EXPECTED_OPTIONAL_HOSTS)}`
+  );
+}
+
 if (manifest.content_scripts?.length) {
   problems.push('content_scripts must be empty: the reader is injected at runtime');
 }

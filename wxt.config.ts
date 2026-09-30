@@ -23,6 +23,10 @@ export default defineConfig({
     // lets the service worker own an audio document, which is the only place
     // cloud audio can be decoded and played.
     permissions: ['activeTab', 'scripting', 'storage', 'tts', 'offscreen'],
+    // Declared, never granted on install. The settings panel asks for the one
+    // host a provider needs when it is tested or saved — only services whose
+    // CORS preflight rejects the extension need it (see provider-origins.ts).
+    optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: {},
     ...(mode === 'e2e' && { host_permissions: e2eHostPermissions() }),
   }),

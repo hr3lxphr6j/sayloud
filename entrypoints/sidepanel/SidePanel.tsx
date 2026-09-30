@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { ConfigStore } from '~/lib/config-store';
+import type { PermissionsApi } from '~/lib/provider-origins';
 import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
@@ -25,9 +26,11 @@ export interface SidePanelProps {
   store: ConfigStore;
   providers: Record<CloudProviderId, Provider>;
   session: SessionWatch;
+  /** `chrome.permissions`, for providers that need a host grant. */
+  permissions?: PermissionsApi;
 }
 
-export function SidePanel({ store, providers, session }: SidePanelProps) {
+export function SidePanel({ store, providers, session, permissions }: SidePanelProps) {
   const [tab, setTab] = useState<TabId>('reading');
   const [config, setConfig] = useState<ProviderConfig | null>(null);
   const [voice, setVoice] = useState<string | null>(null);
@@ -118,6 +121,7 @@ export function SidePanel({ store, providers, session }: SidePanelProps) {
               providers={providers}
               saved={config}
               onSaved={onSaved}
+              {...(permissions ? { permissions } : {})}
             />
           )
         )}

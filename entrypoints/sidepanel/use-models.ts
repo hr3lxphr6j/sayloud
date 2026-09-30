@@ -194,7 +194,6 @@ export interface ModelStoreView {
   start(model: OnDeviceModel, tier: ModelTier): void;
   cancel(model: OnDeviceModel, tier: ModelTier): void;
   remove(model: OnDeviceModel, tier: ModelTier): Promise<void>;
-  refresh(): void;
 }
 
 /**
@@ -339,7 +338,7 @@ export function useModelStore(models: ModelAdmin | undefined): ModelStoreView {
     [store, readUsage]
   );
 
-  return { statuses, usage, failed, start, cancel, remove, refresh: () => void refresh() };
+  return { statuses, usage, failed, start, cancel, remove };
 }
 
 /** The tiers that are completely present, merged over what was already known. */

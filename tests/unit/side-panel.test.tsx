@@ -236,6 +236,6 @@ describe('the settings tab', () => {
     fireEvent.click(
       document.querySelector('[data-provider="dashscope"] .provider-toggle') as HTMLElement
     );
-    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+    expect(screen.getByLabelText(/API key/)).toBeTruthy();
   });
 });

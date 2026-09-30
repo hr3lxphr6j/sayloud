@@ -95,8 +95,10 @@ export const DEFAULT_SETTINGS: Settings = {
 - `createApp` 里构造 `SettingsStore`，`ready` 等它和 `speakers.refresh()` 都完成。
 - 启动时把 `settings.volume`、`settings.rate` 应用到引擎。
 - 订阅设置变化：`volume` 变 → `engine.setVolume(v)`；`rate` 变且会话非 idle → `engine.dispatch({ type: 'setRate', rate })`。
-- `tabs.onActivated` 监听器：**只有 `keepPlayingInBackground === false` 时**才调 `router.handleTabActivated(tabId)`。`SessionRouter` 本身不改（少改一处状态机，少一处测试要动）。
+- `SessionRouter.handleTabActivated(tabId, continueInBackground = false)`：加第二个参数，为 `true` 时直接返回（不暂停）。**默认 `false` 保持既有行为**，既有 router 测试不用改；新增两条测试覆盖 `true` / `false`。这样门控逻辑落在可单测的 router 里，而不是只存在于没有单测的 `background.ts`。
+- `tabs.onActivated` 监听器改为：`router.handleTabActivated(tabId, settings.keepPlayingInBackground)`。
   - 语义澄清：单会话规则不变——在另一个标签页点朗读，仍然停掉当前会话；变的只是「切过去看一眼不会暂停」。
+- `settings.rate` 字段在 T1 只进 schema（含归一化与单测），**行为接线留到 T4**：语速滑块的 UI 在 T4 出现，届时再由 SW 订阅 rate 变化并 `engine.dispatch({ type: 'setRate' })`、content script 用 `settings.rate` 作为 `load` 的初始语速。
 
 ---
 
@@ -491,8 +493,10 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:manifest &&
 
 - 新增 `lib/settings-store.ts` + `tests/unit/settings-store.test.ts`。
 - 音量管道：`lib/speaker.ts`（`SpeakRequest.volume`、`Speaker.setVolume?`、`TtsSpeakOptions.volume`、`BrowserSpeaker` 夹到 1）、`lib/speaker-router.ts`（转发）、`lib/playback-engine.ts`（`setVolume` + speak 带 volume）、`lib/offscreen-protocol.ts`（`setVolume` 命令）、`lib/offscreen-speaker.ts`、`lib/audio-worker.ts`、`lib/timeline-player.ts`（AudioContext + GainNode + 降级）。
-- `lib/container.ts` 构造 `SettingsStore`，`ready` 等设置加载；`entrypoints/background.ts` 应用 volume/rate 并订阅变化；`tabs.onActivated` 按 `keepPlayingInBackground` 条件暂停。
-- 验收：单测覆盖上面每一项；`pnpm test:e2e` 里加一条「切标签页仍在播放」的用例（或放到 T4 之后补）。
+- `lib/container.ts` 构造 `SettingsStore`，`ready` 等设置加载；`entrypoints/background.ts` 应用 volume 并订阅变化；`tabs.onActivated` 把 `keepPlayingInBackground` 传给 router。
+- `lib/router.ts`：`handleTabActivated(tabId, continueInBackground = false)` + 两条新单测。
+- **不做**：语速行为接线、任何 UI（T4）。
+- 验收：单测覆盖上面每一项；`pnpm test:e2e` 里加一条「切标签页仍在播放」的用例（用 `page.bringToFront()` 切到第二个页面，断言竖条仍是 Pause 状态；若 fixture 下不好写，可留到 T4 并在 commit 里说明）。
 - 产出：`docs/superpowers/plans/` 不动；commit message 里写清 V11/V13 的实测结论（若在 e2e 里验过）。
 
 ### T2 — i18n 基础设施 + 全量字符串迁移
@@ -518,6 +522,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:manifest &&
 - `styles.css` token + `entrypoints/sidepanel/ui/*` 原语组件。
 - `SidePanel.tsx`：头部 + 分段标签 + 视图切换（标签页 / 音色选择页）。
 - `ReadingTab.tsx`：音色卡片、音量滑块、语速滑块、悬浮窗开关、会话进度（按 §8.1 线框）。
+- 语速行为接线：SW 订阅 `settings.rate` 变化 → `engine.dispatch({ type: 'setRate' })`（idle 时忽略）；content script 用 `settings.rate` 作为 `load` 的初始语速。
 - 新增 `SettingsTab.tsx`：服务商列表（行展开）、缓存卡片、界面语言、关于。
 - `ProviderConfig.tsx` 改为「行内展开表单」（保留全部现有行为与测试语义）；`VoicePicker.tsx` 重排视觉。
 - 更新 `.smoke/sidepanel-smoke.mjs`（34 项等价 + 4 项新增）与 `tests/unit/provider-config-panel.test.tsx`。

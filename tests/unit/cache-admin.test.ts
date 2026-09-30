@@ -43,6 +43,19 @@ describe('readCacheUsage', () => {
   it('reports a store that is not there yet', async () => {
     expect(await readCacheUsage(options(new IDBFactory()))).toEqual({ bytes: 0, entries: 0 });
   });
+
+  it('reuses the measurement init() took instead of scanning the store again', async () => {
+    const factory = new IDBFactory();
+    const offscreen = new L2Cache(options(factory));
+    await offscreen.put('a', result(8));
+    offscreen.close();
+
+    // A second pass over every record is what makes the settings panel slow on
+    // a full cache, so this pins the cheap path rather than the number alone.
+    const usage = vi.spyOn(L2Cache.prototype, 'usage');
+    expect(await readCacheUsage(options(factory))).toEqual({ bytes: 8, entries: 1 });
+    expect(usage).not.toHaveBeenCalled();
+  });
 });
 
 describe('clearCache', () => {

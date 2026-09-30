@@ -24,8 +24,12 @@ export interface CacheUsage {
 export async function readCacheUsage(options: L2CacheOptions = {}): Promise<CacheUsage> {
   const cache = new L2Cache(options);
   try {
+    // `init()` measures the store on the way in; `counters()` then reports that
+    // measurement. Calling `usage()` here instead would walk every record a
+    // second time, and with a full cache that is the difference between a panel
+    // that opens and one that hangs.
     await cache.init();
-    return await cache.usage();
+    return cache.counters();
   } finally {
     cache.close();
   }

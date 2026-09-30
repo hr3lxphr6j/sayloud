@@ -270,6 +270,18 @@ export class L2Cache {
   }
 
   /**
+   * The counters as they stand, without walking the store.
+   *
+   * `init()` has already measured, and every later mutation keeps these true, so
+   * a caller that only wants to show a number does not pay for a second pass
+   * over every record — which, with a full cache, means re-reading hundreds of
+   * megabytes of audio.
+   */
+  counters(): { bytes: number; entries: number } {
+    return { bytes: this.bytes, entries: this.keys.size };
+  }
+
+  /**
    * Drop every entry last touched more than `olderThanMs` ago.
    *
    * The timestamp index is ordered, so the scan stops at the first entry that

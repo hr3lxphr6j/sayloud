@@ -4,6 +4,7 @@ import { remainingMessage } from '~/lib/format-time';
 import { type MessageKey, useT } from '~/lib/i18n';
 import type { EngineCommand } from '~/lib/protocol';
 import { BubbleCard } from './BubbleCard';
+import { CaptionWindow } from './CaptionWindow';
 import { ProgressRing } from './ProgressRing';
 import type { ReaderError, ReaderState } from './ReaderController';
 
@@ -13,6 +14,14 @@ export interface PlayerController {
   subscribe(listener: (state: ReaderState) => void): () => void;
   sendCommand(command: EngineCommand): void;
   returnToPosition(): void;
+  /**
+   * Open the caption window, or close it when it is already open.
+   *
+   * The controller owns the window, but the click has to reach it from here:
+   * opening one needs the click's own user activation, so the call travels
+   * straight down from this button's handler with no `await` in between.
+   */
+  toggleCaption(): void;
 }
 
 export interface SidePlayerProps {
@@ -185,6 +194,18 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
         {formatRate(status?.rate ?? 1)}
       </button>
 
+      {state.captionEnabled && CaptionWindow.isSupported() && (
+        <button
+          type="button"
+          class="control"
+          aria-label={t('sideplayer.caption')}
+          aria-pressed={state.captionOpen}
+          onClick={() => controller.toggleCaption()}
+        >
+          <CaptionIcon />
+        </button>
+      )}
+
       <button
         type="button"
         class="control"
@@ -252,6 +273,25 @@ function NextIcon() {
     <svg viewBox="0 0 16 16" width={ICON_SIZE} height={ICON_SIZE} aria-hidden="true">
       <path d="M3.5 3 11 8l-7.5 5Z" fill="currentColor" />
       <rect x="11" y="3" width="2" height="10" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function CaptionIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width={ICON_SIZE} height={ICON_SIZE} aria-hidden="true">
+      <rect
+        x="1.5"
+        y="3"
+        width="13"
+        height="10"
+        rx="2"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      />
+      <rect x="4" y="8.5" width="5" height="1.5" rx="0.75" fill="currentColor" />
+      <rect x="10" y="8.5" width="2" height="1.5" rx="0.75" fill="currentColor" />
     </svg>
   );
 }

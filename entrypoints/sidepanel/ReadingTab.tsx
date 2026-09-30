@@ -11,6 +11,7 @@
  * settings once, when the handle is released.
  */
 import { useEffect, useState } from 'preact/hooks';
+import { supportsPictureInPicture } from '~/lib/document-pip';
 import { formatRate } from '~/lib/format-rate';
 import { type MessageKey, useT } from '~/lib/i18n';
 import type { SessionSnapshot } from '~/lib/protocol';
@@ -169,7 +170,16 @@ export function ReadingTab({
             }}
           />
 
-          <Row label={t('settings.caption.label')} help={t('settings.caption.help')}>
+          <Row
+            label={t('settings.caption.label')}
+            // The window is opened from the page's bar, never from here: Chrome
+            // refuses `requestWindow()` in a side panel. So the help says where
+            // the button is — and when the browser has no such API at all, it
+            // says that instead of pointing at a button that will not appear.
+            help={t(
+              supportsPictureInPicture() ? 'settings.caption.help' : 'settings.caption.unsupported'
+            )}
+          >
             <Switch
               id="caption-switch"
               label={t('settings.caption.label')}

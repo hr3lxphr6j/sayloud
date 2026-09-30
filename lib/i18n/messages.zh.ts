@@ -43,6 +43,7 @@ export const zh: Record<MessageKey, string> = {
   'settings.rate.label': '语速',
   'settings.caption.label': '悬浮窗字幕',
   'settings.caption.help': '在这里打开，然后在网页竖条上点字幕按钮。',
+  'settings.caption.unsupported': '当前浏览器不支持悬浮窗字幕。',
   'settings.language.label': '界面语言',
   'settings.language.auto': '跟随浏览器',
   'settings.language.en': 'English',
@@ -187,6 +188,7 @@ export const zh: Record<MessageKey, string> = {
   'sideplayer.previous': '上一句',
   'sideplayer.next': '下一句',
   'sideplayer.rate': '播放速度 {rate}',
+  'sideplayer.caption': '悬浮窗字幕',
   'sideplayer.settings': '设置',
   'sideplayer.progress': '朗读进度 {percent}%',
   'sideplayer.progress-remaining': '朗读进度 {percent}%，{remaining}',
@@ -196,6 +198,9 @@ export const zh: Record<MessageKey, string> = {
   'sideplayer.hint.no-voice.message': 'Chrome 没有安装适用于这个页面的语音。',
   'sideplayer.hint.tts-error.title': '语音失败',
   'sideplayer.hint.tts-error.message': 'Chrome 无法朗读这个页面。',
+
+  // --- the caption window ---------------------------------------------------
+  'caption.counter': '第 {index} / {total} 句',
 
   // --- the bubble card ------------------------------------------------------
   'bubble.scrolled-away': '已经滚动到当前朗读句子之外了。',

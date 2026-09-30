@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReaderState } from '~/entrypoints/reader.content/ReaderController';
 import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import {
@@ -36,6 +36,9 @@ function stateOf(overrides: Partial<ReaderState> = {}): ReaderState {
     hasContent: true,
     error: null,
     scrolledAway: false,
+    word: null,
+    captionEnabled: false,
+    captionOpen: false,
     ...overrides,
   };
 }
@@ -44,6 +47,7 @@ function stateOf(overrides: Partial<ReaderState> = {}): ReaderState {
 function fakeController(initial: ReaderState) {
   const commands: EngineCommand[] = [];
   const returnToPosition = vi.fn();
+  const toggleCaption = vi.fn();
   let current = initial;
   let listener: ((state: ReaderState) => void) | null = null;
 
@@ -59,12 +63,14 @@ function fakeController(initial: ReaderState) {
       commands.push(command);
     },
     returnToPosition,
+    toggleCaption,
   };
 
   return {
     controller,
     commands,
     returnToPosition,
+    toggleCaption,
     push: (state: ReaderState) => {
       current = state;
       // Preact batches renders, so a pushed state needs act() to reach the DOM.
@@ -80,6 +86,19 @@ function renderPlayer(state: ReaderState = stateOf()) {
     <SidePlayer controller={fake.controller} onOpenSettings={onOpenSettings} />
   );
   return { ...fake, ...result, onOpenSettings };
+}
+
+/**
+ * The API the caption button asks for before showing itself.
+ *
+ * Only its presence matters here — the bar never calls it; the click travels
+ * to the controller, which owns the window.
+ */
+function installPictureInPicture(): void {
+  Object.defineProperty(window, 'documentPictureInPicture', {
+    value: { requestWindow: vi.fn() },
+    configurable: true,
+  });
 }
 
 describe('nextRate', () => {
@@ -250,6 +269,52 @@ describe('SidePlayer', () => {
     const { commands } = renderPlayer();
     fireEvent.click(screen.getByRole('button', { name: 'Playback speed 1×' }));
     expect(commands).toEqual([{ type: 'setRate', rate: 1.25 }]);
+  });
+
+  describe('the caption button', () => {
+    afterEach(() => {
+      Reflect.deleteProperty(window, 'documentPictureInPicture');
+    });
+
+    it('is absent while the settings leave the caption window off', () => {
+      installPictureInPicture();
+      renderPlayer(stateOf({ captionEnabled: false }));
+
+      expect(screen.queryByRole('button', { name: 'Caption window' })).toBeNull();
+    });
+
+    it('is absent in a browser that cannot open the window at all', () => {
+      renderPlayer(stateOf({ captionEnabled: true }));
+
+      expect(screen.queryByRole('button', { name: 'Caption window' })).toBeNull();
+    });
+
+    it('sits between the speed control and the settings gear', () => {
+      installPictureInPicture();
+      renderPlayer(stateOf({ captionEnabled: true }));
+
+      const labels = screen
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label'));
+      expect(labels.indexOf('Settings')).toBe(labels.indexOf('Caption window') + 1);
+      expect(labels.indexOf('Caption window')).toBe(labels.indexOf('Playback speed 1×') + 1);
+    });
+
+    it('toggles the window and shows whether it is open', () => {
+      installPictureInPicture();
+      const { push, toggleCaption } = renderPlayer(stateOf({ captionEnabled: true }));
+
+      const button = screen.getByRole('button', { name: 'Caption window' });
+      expect(button.getAttribute('aria-pressed')).toBe('false');
+
+      fireEvent.click(button);
+      expect(toggleCaption).toHaveBeenCalledTimes(1);
+
+      push(stateOf({ captionEnabled: true, captionOpen: true }));
+      expect(
+        screen.getByRole('button', { name: 'Caption window' }).getAttribute('aria-pressed')
+      ).toBe('true');
+    });
   });
 
   it('reports the progress ring for screen readers', () => {

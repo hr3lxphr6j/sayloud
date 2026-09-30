@@ -93,6 +93,9 @@ export function createApp(deps: AppDeps): AppContainer {
     // that dropped — degrades to the browser voice rather than stopping.
     fallbackSpeaker,
     resolveVoice: (lang) => speakers.resolveVoice(lang),
+    // The router answers with a cloud voice id while a provider is selected,
+    // which the browser speaker cannot use.
+    resolveFallbackVoice: (lang) => voices.resolve(lang),
   });
 
   const router = new SessionRouter({ engine, snapshots, voices });

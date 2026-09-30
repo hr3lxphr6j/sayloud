@@ -98,13 +98,105 @@ describe('PlaybackEngine fallback speaker', () => {
     primary.fire.start();
     primary.fire.error('voice not found');
 
-    expect(primary.speaker.dispose).toHaveBeenCalled();
+    // Stopped, not disposed: the primary is retried on the next session.
+    expect(primary.speaker.dispose).not.toHaveBeenCalled();
 
     // A late `end` from the utterance Chrome was still tearing down must not
     // advance the session past the sentence the fallback is now speaking.
     primary.fire.end();
     expect(engine.getStatus().index).toBe(0);
     expect(engine.getStatus().phase).not.toBe('ended');
+  });
+
+  it('asks the fallback voice resolver while the fallback speaks', () => {
+    const primary = fakeSpeaker();
+    const fallback = fakeSpeaker();
+    const engine = new PlaybackEngine({
+      speaker: primary.speaker,
+      fallbackSpeaker: fallback.speaker,
+      // A cloud voice id; the browser speaker cannot use it.
+      resolveVoice: () => 'zh-CN-XiaoxiaoNeural',
+      resolveFallbackVoice: () => 'Samantha',
+    });
+
+    engine.dispatch({ type: 'load', sentences: [SENTENCE], startIndex: 0, rate: 1 });
+    primary.fire.error('audio-error');
+
+    expect(fallback.requests[0]?.voice).toBe('Samantha');
+  });
+
+  it('returns to the primary for the next session', () => {
+    const primary = fakeSpeaker();
+    const fallback = fakeSpeaker();
+    const engine = new PlaybackEngine({
+      speaker: primary.speaker,
+      fallbackSpeaker: fallback.speaker,
+      resolveVoice: () => 'Samantha',
+    });
+
+    engine.dispatch({ type: 'load', sentences: [SENTENCE], startIndex: 0, rate: 1 });
+    primary.fire.error('audio-error');
+    expect(fallback.requests).toHaveLength(1);
+
+    // A page reload starts a new session: a transient failure must not pin
+    // the browser voice until the extension is reloaded.
+    engine.dispatch({ type: 'load', sentences: [SENTENCE], startIndex: 0, rate: 1 });
+    expect(primary.requests).toHaveLength(2);
+    expect(fallback.requests).toHaveLength(1);
+
+    primary.fire.start();
+    primary.fire.end();
+    expect(engine.getStatus().phase).toBe('ended');
+  });
+
+  it('retries the primary mid-session and replays the current sentence', () => {
+    const primary = fakeSpeaker();
+    const fallback = fakeSpeaker();
+    const engine = new PlaybackEngine({
+      speaker: primary.speaker,
+      fallbackSpeaker: fallback.speaker,
+      resolveVoice: () => 'Samantha',
+    });
+
+    engine.dispatch({
+      type: 'load',
+      sentences: [SENTENCE, { text: 'Second.', lang: 'en' }],
+      startIndex: 0,
+      rate: 1,
+    });
+    primary.fire.error('audio-error');
+    fallback.fire.start();
+
+    engine.retryPrimary();
+
+    expect(primary.requests).toHaveLength(2);
+    expect(primary.requests[1]?.text).toBe('Hello world.');
+    // The fallback was stopped, so its utterance can no longer move the cursor.
+    fallback.fire.end();
+    expect(engine.getStatus().index).toBe(0);
+  });
+
+  it('keeps a paused session paused when the primary is retried', () => {
+    const primary = fakeSpeaker();
+    const fallback = fakeSpeaker();
+    const engine = new PlaybackEngine({
+      speaker: primary.speaker,
+      fallbackSpeaker: fallback.speaker,
+      resolveVoice: () => 'Samantha',
+    });
+
+    engine.dispatch({ type: 'load', sentences: [SENTENCE], startIndex: 0, rate: 1 });
+    primary.fire.error('audio-error');
+    fallback.fire.start();
+    engine.dispatch({ type: 'pause' });
+
+    engine.retryPrimary();
+
+    expect(primary.requests).toHaveLength(1);
+    expect(engine.getStatus().phase).toBe('paused');
+
+    engine.dispatch({ type: 'play' });
+    expect(primary.requests).toHaveLength(2);
   });
 
   it('does not retry when the fallback fails too', () => {

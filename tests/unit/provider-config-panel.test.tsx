@@ -42,17 +42,23 @@ const VOLCENGINE: ProviderConfig = {
   resourceId: 'seed-tts-2.0',
 };
 
-async function renderPanel(store: ConfigStore, onSaved = vi.fn()) {
-  render(
-    <ProviderConfigPanel
-      store={store}
-      providers={providers}
-      saved={await store.getConfig()}
-      savedConfigs={await store.getSavedConfigs()}
-      onSaved={onSaved}
-    />
-  );
-  return onSaved;
+/**
+ * The panel the way SidePanel mounts it: re-rendered from the store whenever
+ * it reports a change.
+ */
+async function renderPanel(store: ConfigStore) {
+  const onChanged = vi.fn();
+  const props = async () => ({
+    store,
+    providers,
+    saved: await store.getConfig(),
+    savedConfigs: await store.getSavedConfigs(),
+  });
+  const view = render(<ProviderConfigPanel {...(await props())} onChanged={onChanged} />);
+  onChanged.mockImplementation(async () => {
+    view.rerender(<ProviderConfigPanel {...(await props())} onChanged={onChanged} />);
+  });
+  return onChanged;
 }
 
 function pick(provider: string): void {
@@ -64,6 +70,24 @@ function apiKeyField(): HTMLInputElement {
 }
 
 describe('ProviderConfigPanel', () => {
+  it('shows a key saved in this panel after switching away and back', async () => {
+    const store = new ConfigStore(memoryArea());
+    await renderPanel(store);
+
+    pick('dashscope');
+    fireEvent.change(apiKeyField(), { target: { value: 'sk-typed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByText('Saved.');
+    await waitFor(async () =>
+      expect((await store.getSavedConfigs()).dashscope).toMatchObject({ apiKey: 'sk-typed' })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    pick('browser');
+    pick('dashscope');
+    expect(apiKeyField().value).toBe('sk-typed');
+  });
+
   it('fills in each provider from its own saved config when switching', async () => {
     const store = new ConfigStore(memoryArea());
     await store.saveConfig(DASHSCOPE);
@@ -96,13 +120,13 @@ describe('ProviderConfigPanel', () => {
   it('forgets a saved key on request and clears the form', async () => {
     const store = new ConfigStore(memoryArea());
     await store.saveConfig(DASHSCOPE);
-    const onSaved = await renderPanel(store);
+    const onChanged = await renderPanel(store);
 
     fireEvent.click(screen.getByRole('button', { name: 'Forget saved key' }));
 
     await waitFor(async () => expect(await store.getSavedConfigs()).toEqual({}));
     expect(await store.getConfig()).toEqual({ provider: 'browser' });
-    expect(onSaved).toHaveBeenCalledWith({ provider: 'browser' });
+    expect(onChanged).toHaveBeenCalled();
     await waitFor(() => expect(apiKeyField().value).toBe(''));
   });
 
@@ -113,5 +137,38 @@ describe('ProviderConfigPanel', () => {
     pick('dashscope');
 
     expect(screen.queryByRole('button', { name: 'Forget saved key' })).toBeNull();
+  });
+});
+
+describe('SidePanel settings state', () => {
+  it('shows a key saved earlier in the panel after leaving the Settings tab', async () => {
+    const { SidePanel } = await import('~/entrypoints/sidepanel/SidePanel');
+    const store = new ConfigStore(memoryArea());
+    const session = { subscribe: () => () => {}, load: async () => null };
+
+    render(
+      <SidePanel
+        store={store}
+        providers={providers}
+        session={session as unknown as import('~/lib/session-watch').SessionWatch}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
+    await screen.findByLabelText('Provider');
+    pick('dashscope');
+    fireEvent.input(apiKeyField(), { target: { value: 'sk-new' } });
+    fireEvent.change(apiKeyField(), { target: { value: 'sk-new' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByText('Saved.');
+
+    // The Settings panel remounts when its tab comes back.
+    fireEvent.click(screen.getByRole('tab', { name: 'Reading' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Settings' }));
+    await screen.findByLabelText('Provider');
+    pick('browser');
+    pick('dashscope');
+
+    expect(apiKeyField().value).toBe('sk-new');
   });
 });

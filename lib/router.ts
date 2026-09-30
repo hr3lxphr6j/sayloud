@@ -83,8 +83,16 @@ export class SessionRouter {
     if (this.activeTabId === tabId) this.endSession();
   }
 
-  /** Only one tab plays at a time, so leaving the playing tab pauses it. */
-  handleTabActivated(tabId: number): void {
+  /**
+   * Only one tab plays at a time, so leaving the playing tab pauses it.
+   *
+   * `continueInBackground` is the user's choice to be read to while looking at
+   * something else. It gates the pause and nothing else: the single-session
+   * rule still holds — starting playback in another tab stops this one — and a
+   * closed or navigated tab still ends the session.
+   */
+  handleTabActivated(tabId: number, continueInBackground = false): void {
+    if (continueInBackground) return;
     if (this.activeTabId === null || this.activeTabId === tabId) return;
     if (this.engine.getStatus().phase === 'idle') return;
     this.engine.pause();

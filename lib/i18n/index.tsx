@@ -63,6 +63,16 @@ const LanguageContext = createContext<Lang>('en');
 export interface I18nProviderProps {
   lang: Lang;
   children: ComponentChildren;
+  /**
+   * The element to tag with the language.
+   *
+   * The document by default, which is right wherever the document is ours —
+   * the side panel and the options page. The content script passes its shadow
+   * host instead: the page's own `<html lang>` belongs to the page being read,
+   * and rewriting it would restyle third-party content and tell a screen
+   * reader the wrong thing about text that is not ours.
+   */
+  langElement?: HTMLElement;
 }
 
 /**
@@ -72,11 +82,11 @@ export interface I18nProviderProps {
  * provider — every unit test written before i18n existed — keeps the English
  * copy it asserts on, and no component is ever left without a language.
  */
-export function I18nProvider({ lang, children }: I18nProviderProps) {
+export function I18nProvider({ lang, langElement, children }: I18nProviderProps) {
   useEffect(() => {
-    // Screen readers and the browser's own spellchecking read this.
-    document.documentElement.lang = lang;
-  }, [lang]);
+    // Screen readers and the browser's own spellchecking read this attribute.
+    (langElement ?? document.documentElement).lang = lang;
+  }, [lang, langElement]);
 
   return <LanguageContext.Provider value={lang}>{children}</LanguageContext.Provider>;
 }

@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from '@testing-library/preact';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { describe, expect, it, vi } from 'vitest';
 import type { ReaderState } from '~/entrypoints/reader.content/ReaderController';
+import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import {
   formatRate,
   HINTS,
@@ -9,7 +10,11 @@ import {
   SidePlayer,
   type SidePlayerProps,
 } from '~/entrypoints/reader.content/SidePlayer';
+import type { LocalStorageArea } from '~/lib/config-store';
+import { I18nProvider } from '~/lib/i18n';
+import { en } from '~/lib/i18n/messages.en';
 import type { EngineCommand, EngineStatus } from '~/lib/protocol';
+import { SETTINGS_KEY, SettingsStore, type StorageChangeApi } from '~/lib/settings-store';
 
 function statusOf(overrides: Partial<EngineStatus> = {}): EngineStatus {
   return {
@@ -102,6 +107,99 @@ describe('formatRate', () => {
   });
 });
 
+function fakeArea(initial: Record<string, unknown> = {}) {
+  const data = new Map<string, unknown>(Object.entries(initial));
+  const area: LocalStorageArea = {
+    async get(keys) {
+      const wanted = Array.isArray(keys) ? keys : [keys];
+      const result: Record<string, unknown> = {};
+      for (const key of wanted) result[key] = data.get(key);
+      return result;
+    },
+    async set(items) {
+      for (const [key, value] of Object.entries(items)) data.set(key, value);
+    },
+  };
+  return { area };
+}
+
+/** A `storage.onChanged` a test can fire, standing in for the panel's write. */
+function fakeChanges() {
+  const listeners = new Set<(changes: Record<string, unknown>, areaName: string) => void>();
+  const api: StorageChangeApi = {
+    addListener: (listener) => {
+      listeners.add(listener);
+    },
+    removeListener: (listener) => {
+      listeners.delete(listener);
+    },
+  };
+  return {
+    api,
+    fire: (settings: unknown): void => {
+      for (const listener of [...listeners]) {
+        listener({ [SETTINGS_KEY]: { newValue: settings } }, 'local');
+      }
+    },
+  };
+}
+
+describe('ReaderPanel', () => {
+  /** A stand-in for the shadow host the player is mounted in. */
+  function fakeHost(): HTMLDivElement {
+    const host = document.createElement('div');
+    document.body.append(host);
+    return host;
+  }
+
+  it('renders the bar in the saved language', async () => {
+    const settings = new SettingsStore(fakeArea({ [SETTINGS_KEY]: { uiLang: 'zh-CN' } }).area);
+    const fake = fakeController(stateOf());
+    const host = fakeHost();
+
+    render(
+      <ReaderPanel
+        controller={fake.controller}
+        settings={settings}
+        host={host}
+        onOpenSettings={() => {}}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '暂停' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '上一句' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
+    // The page being read keeps its own language; only our host is tagged.
+    // Effects are deferred here: the update came from a storage read rather
+    // than from inside `act`, so the DOM renders a tick before the effect runs.
+    await waitFor(() => expect(host.lang).toBe('zh-CN'));
+    expect(document.documentElement.lang).not.toBe('zh-CN');
+
+    host.remove();
+  });
+
+  it('switches language when the setting changes elsewhere', async () => {
+    const changes = fakeChanges();
+    const settings = new SettingsStore(fakeArea().area, changes.api);
+    const fake = fakeController(stateOf());
+    const host = fakeHost();
+    render(
+      <ReaderPanel
+        controller={fake.controller}
+        settings={settings}
+        host={host}
+        onOpenSettings={() => {}}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeDefined();
+
+    act(() => changes.fire({ uiLang: 'zh-CN' }));
+
+    expect(await screen.findByRole('button', { name: '暂停' })).toBeDefined();
+    host.remove();
+  });
+});
+
 describe('SidePlayer', () => {
   it('renders the bar with a control for each action', () => {
     renderPlayer(stateOf({ status: statusOf({ index: 1 }) }));
@@ -167,14 +265,14 @@ describe('SidePlayer', () => {
     );
 
     expect(screen.getByRole('img', { name: /Reading progress/ })).toBeDefined();
-    expect(screen.getByRole('status').textContent).toContain(HINTS['no-voice'].title);
-    expect(screen.getByRole('status').textContent).toContain(HINTS['no-voice'].message);
+    expect(screen.getByRole('status').textContent).toContain(en[HINTS['no-voice'].titleKey]);
+    expect(screen.getByRole('status').textContent).toContain(en[HINTS['no-voice'].messageKey]);
   });
 
   it('explains an unreadable page even before the engine answers', () => {
     renderPlayer(stateOf({ status: null, hasContent: false, error: 'no-content' }));
 
-    expect(screen.getByRole('status').textContent).toContain(HINTS['no-content'].message);
+    expect(screen.getByRole('status').textContent).toContain(en[HINTS['no-content'].messageKey]);
     // Nothing is playing, so the control offers to start rather than pause.
     expect(screen.getByRole('button', { name: 'Play' }).hasAttribute('disabled')).toBe(true);
   });
@@ -236,5 +334,18 @@ describe('SidePlayer', () => {
     renderPlayer(stateOf({ status: statusOf({ total: 0 }) }));
 
     expect(screen.getByRole('button', { name: 'Settings' })).toBeDefined();
+  });
+
+  it('renders its controls and hints in the reader’s language', () => {
+    const fake = fakeController(stateOf({ status: null, error: 'no-content' }));
+    render(
+      <I18nProvider lang="zh-CN">
+        <SidePlayer controller={fake.controller} onOpenSettings={() => {}} />
+      </I18nProvider>
+    );
+
+    expect(screen.getByRole('button', { name: '设置' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '播放' })).toBeDefined();
+    expect(screen.getByRole('status').textContent).toContain('没有可读内容');
   });
 });

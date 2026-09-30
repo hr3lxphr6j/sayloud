@@ -37,6 +37,10 @@ export const test = base.extend<Fixtures>({
   context: async ({}, use) => {
     const context = await chromium.launchPersistentContext('', {
       channel: 'chromium',
+      // The UI follows the browser's language when the setting is `auto`, and
+      // these specs are written in English. Pinned so the language a spec runs
+      // in does not depend on the machine it runs on.
+      locale: 'en-US',
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
     });
     await use(context);

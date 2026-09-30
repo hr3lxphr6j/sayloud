@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { formatRemaining } from '~/lib/format-time';
+import { remainingMessage } from '~/lib/format-time';
+import { type MessageKey, useT } from '~/lib/i18n';
 import type { EngineCommand } from '~/lib/protocol';
 import { BubbleCard } from './BubbleCard';
 import { ProgressRing } from './ProgressRing';
@@ -41,18 +42,18 @@ export function formatRate(rate: number): string {
   return `${rate.toFixed(2).replace(/\.?0+$/, '')}×`;
 }
 
-export const HINTS: Record<ReaderError, { title: string; message: string }> = {
+export const HINTS: Record<ReaderError, { titleKey: MessageKey; messageKey: MessageKey }> = {
   'no-content': {
-    title: 'Nothing to read',
-    message: 'SayLoud found no readable text on this page.',
+    titleKey: 'sideplayer.hint.no-content.title',
+    messageKey: 'sideplayer.hint.no-content.message',
   },
   'no-voice': {
-    title: 'No browser voice',
-    message: 'Chrome has no voice installed for this page.',
+    titleKey: 'sideplayer.hint.no-voice.title',
+    messageKey: 'sideplayer.hint.no-voice.message',
   },
   'tts-error': {
-    title: 'Voice failed',
-    message: 'Chrome could not speak this page.',
+    titleKey: 'sideplayer.hint.tts-error.title',
+    messageKey: 'sideplayer.hint.tts-error.message',
   },
 };
 
@@ -65,6 +66,7 @@ export const HINTS: Record<ReaderError, { title: string; message: string }> = {
  * speed, with the voice picker and settings deferred to P3.
  */
 export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
+  const t = useT();
   const [state, setState] = useState<ReaderState>(() => controller.getState());
   const [dismissed, setDismissed] = useState<ReaderError | null>(null);
   const [showRemaining, setShowRemaining] = useState(false);
@@ -86,9 +88,13 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
   const canToggle = hasSentences && phase !== 'error';
 
   const progress = status && status.charsTotal > 0 ? status.charsRead / status.charsTotal : 0;
+  const percent = Math.round(progress * 100);
+  // The phrase around the clock is translated, so the two are kept apart until
+  // the very last moment.
   const remaining = status
-    ? formatRemaining(status.charsTotal - status.charsRead, status.charsPerSec)
-    : '';
+    ? remainingMessage(status.charsTotal - status.charsRead, status.charsPerSec)
+    : null;
+  const remainingText = remaining ? t(remaining.key, remaining.params) : '';
 
   const hint = state.error !== null && state.error !== dismissed ? HINTS[state.error] : null;
 
@@ -127,16 +133,18 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
       <ProgressRing
         progress={progress}
         phase={phase}
-        label={`Reading progress ${Math.round(progress * 100)} percent${
-          remaining ? `, ${remaining}` : ''
-        }`}
+        label={
+          remainingText
+            ? t('sideplayer.progress-remaining', { percent, remaining: remainingText })
+            : t('sideplayer.progress', { percent })
+        }
         onClick={() => setShowRemaining(true)}
       />
 
       <button
         type="button"
         class="control play-pause"
-        aria-label={active ? 'Pause' : 'Play'}
+        aria-label={active ? t('sideplayer.pause') : t('sideplayer.play')}
         disabled={!canToggle}
         onClick={() => controller.sendCommand({ type: 'toggle' })}
       >
@@ -152,7 +160,7 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
       <button
         type="button"
         class="control"
-        aria-label="Previous sentence"
+        aria-label={t('sideplayer.previous')}
         disabled={!canPrev}
         onClick={() => controller.sendCommand({ type: 'prev' })}
       >
@@ -162,7 +170,7 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
       <button
         type="button"
         class="control"
-        aria-label="Next sentence"
+        aria-label={t('sideplayer.next')}
         disabled={!canNext}
         onClick={() => controller.sendCommand({ type: 'next' })}
       >
@@ -172,7 +180,7 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
       <button
         type="button"
         class="control rate"
-        aria-label={`Playback speed ${formatRate(status?.rate ?? 1)}`}
+        aria-label={t('sideplayer.rate', { rate: formatRate(status?.rate ?? 1) })}
         disabled={!hasSentences}
         onClick={() =>
           controller.sendCommand({ type: 'setRate', rate: nextRate(status?.rate ?? 1) })
@@ -181,27 +189,35 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
         {formatRate(status?.rate ?? 1)}
       </button>
 
-      <button type="button" class="control" aria-label="Settings" onClick={onOpenSettings}>
+      <button
+        type="button"
+        class="control"
+        aria-label={t('sideplayer.settings')}
+        onClick={onOpenSettings}
+      >
         <GearIcon />
       </button>
 
       {hint && (
         <BubbleCard
-          title={hint.title}
-          message={hint.message}
+          title={t(hint.titleKey)}
+          message={t(hint.messageKey)}
           onDismiss={() => setDismissed(state.error)}
         />
       )}
 
       {!hint && state.scrolledAway && (
         <BubbleCard
-          message="You scrolled away from the sentence being read."
-          action={{ label: 'Back to position', onClick: () => controller.returnToPosition() }}
+          message={t('bubble.scrolled-away')}
+          action={{
+            label: t('bubble.back-to-position'),
+            onClick: () => controller.returnToPosition(),
+          }}
         />
       )}
 
-      {!hint && !state.scrolledAway && showRemaining && status && (
-        <BubbleCard message={remaining} />
+      {!hint && !state.scrolledAway && showRemaining && remainingText && (
+        <BubbleCard message={remainingText} />
       )}
     </div>
   );

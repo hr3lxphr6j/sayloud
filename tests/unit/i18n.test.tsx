@@ -123,6 +123,23 @@ describe('I18nProvider', () => {
     document.documentElement.lang = 'en';
   });
 
+  it('tags the element it was given instead of the document', () => {
+    // What the content script does: the page's `<html lang>` is not ours.
+    const host = document.createElement('div');
+    document.body.append(host);
+
+    render(
+      <I18nProvider lang="zh-CN" langElement={host}>
+        <Probe />
+      </I18nProvider>
+    );
+
+    expect(host.lang).toBe('zh-CN');
+    expect(document.documentElement.lang).toBe('en');
+
+    host.remove();
+  });
+
   it('switches language when the provider is re-rendered', () => {
     const { rerender } = render(
       <I18nProvider lang="en">

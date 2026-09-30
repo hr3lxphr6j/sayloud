@@ -1,3 +1,5 @@
+import type { MessageKey } from './i18n/messages.en';
+
 /**
  * Rough speaking speed in characters per second, used until the engine has
  * measured a real rate. The spec calls for an estimate first and a correction
@@ -23,9 +25,25 @@ export function estimateRemainingSeconds(charsRemaining: number, charsPerSec: nu
   return charsRemaining / rate;
 }
 
-/** The remaining-time phrase shown in the bubble card. */
-export function formatRemaining(charsRemaining: number, charsPerSec: number): string {
-  return `${formatDuration(estimateRemainingSeconds(charsRemaining, charsPerSec))} left`;
+/** The remaining-time card: the clock, and the message that wraps it. */
+export interface RemainingMessage {
+  /** Keyed, because the words around the clock have to be translated. */
+  key: MessageKey;
+  params: { time: string };
+}
+
+/**
+ * The remaining time, as a message key and its parameter.
+ *
+ * Only the clock is built here: `m:ss` reads the same in every language, while
+ * the phrase around it does not, and building that would mean this module
+ * importing a translator.
+ */
+export function remainingMessage(charsRemaining: number, charsPerSec: number): RemainingMessage {
+  return {
+    key: 'bubble.remaining',
+    params: { time: formatDuration(estimateRemainingSeconds(charsRemaining, charsPerSec)) },
+  };
 }
 
 function pad(value: number): string {

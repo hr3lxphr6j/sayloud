@@ -214,4 +214,10 @@ export const zh: Record<MessageKey, string> = {
   'bubble.scrolled-away': '已经滚动到当前朗读句子之外了。',
   'bubble.back-to-position': '回到朗读位置',
   'bubble.remaining': '剩余 {time}',
+
+  // --- on-device models -----------------------------------------------------
+  'model.kokoro-82m': 'Kokoro 82M',
+  'model.tier.light': '轻量',
+  'model.tier.standard': '标准',
+  'model.tier.hifi': '高保真',
 };

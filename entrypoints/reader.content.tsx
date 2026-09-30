@@ -22,6 +22,17 @@ export default defineContentScript({
 
     const settings = new SettingsStore(browser.storage.local, browser.storage.onChanged);
 
+    // The starting rate is read here rather than inside the mount: the reader
+    // announces a `load` command the moment it connects, and that command is
+    // the only chance to hand it a rate.
+    const initialRate = await settings
+      .load()
+      .then((loaded) => loaded.rate)
+      .catch((error: unknown) => {
+        console.error('[SayLoud] cannot read the saved settings', error);
+        return undefined;
+      });
+
     const ui = await createShadowRootUi(ctx, {
       name: 'sayloud-player',
       position: 'inline',
@@ -31,7 +42,7 @@ export default defineContentScript({
       onMount: (container, _shadow, shadowHost) => {
         shadowHost.id = HOST_ID;
 
-        const controller = new ReaderController(shadowHost);
+        const controller = new ReaderController(shadowHost, { initialRate });
         controller.connect();
         render(
           <ReaderPanel

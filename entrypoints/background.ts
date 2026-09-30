@@ -6,6 +6,7 @@ import { isCachePolicyRequest } from '~/lib/offscreen-protocol';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
+import { applyPlaybackSettings } from '~/lib/settings-effects';
 import { DEFAULT_SETTINGS, type Settings } from '~/lib/settings-store';
 
 /** Emitted by WXT from `entrypoints/reader.content.tsx`. */
@@ -38,7 +39,7 @@ export default defineBackground(() => {
   const applySettings = (next: Settings): void => {
     const previous = settings;
     settings = next;
-    app.engine.setVolume(next.volume);
+    applyPlaybackSettings(app.engine, previous, next);
     // An offscreen document cannot read `storage`, so a cache change has to be
     // pushed to it. The same subscription carries every other preference, and
     // those are no reason to disturb a document that is playing audio.

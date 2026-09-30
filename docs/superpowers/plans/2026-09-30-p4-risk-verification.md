@@ -329,3 +329,128 @@ ortError:    "Error: Can't create a session. ERROR_CODE: 7, ERROR_MESSAGE:
 | 额外工作量 | — | 约 1 天（已实测打通，风险低） |
 | 音质 | 官方支持，有保证 | **未经试听验证**（无法在无音频输出的环境判断） |
 | 风险 | 低 | 中：管线通了，但中文自然度未知 |
+
+---
+
+# 追加调研：其他模型的中文能力与耗时（2026-09-30）
+
+起因：Kokoro 中文既慢（RTF 1.45）又只是「绕道打通」，值得看替代方案。
+**全部为真机实测**（Apple M 系列，onnxruntime-web WASM，`numThreads=1`）。
+
+## 结论速览
+
+| 模型 | 中文 | 声调 | 体积 | RTF（实测） | 管线 |
+|---|---|---|---|---|---|
+| **Kokoro 82M** | ✅ 8 音色 | ✅ 箭头 | 92.4MB | **1.45** | 复杂：misaki 移植 + 7KB 表 + 绕道 `generate_from_ids` |
+| **Piper zh_CN-chaowen-medium** | ✅ | ✅ 数字 | 63.2MB | **0.115–0.12** | **简单：拼音直接喂** |
+| **Piper zh_CN-xiao_ya-medium** | ✅ | ✅ 数字 | 63.2MB | 未测（同架构） | 简单 |
+| **Piper zh_CN-huayan-x_low** | ✅ | ❌ **丢失** | **20.6MB** | **0.075–0.12** | 简单 |
+| **Piper zh_CN-huayan-medium** | ✅ | ❌ 丢失 | 63.2MB | 未测 | 简单 |
+| **MMS-TTS (VITS)** | ❌ 无中文 | — | 38.4MB | — | transformers.js 原生；**CC-BY-NC-4.0 不可商用** |
+| **Kitten TTS nano 0.8** | ❌ 英文 | — | 24MB | — | 需自写 StyleTTS2 |
+| **SpeechT5** | ❌ 英文 | — | 342.8MB | — | transformers.js 原生 |
+| **sherpa-onnx vits-zh-hf-fanchen-{C,wnj}** | ✅ | 未确认 | 116MB / 115MB | 未测 | ONNX 可用，但运行时是 C++ |
+
+## 🔴 关键发现 1：Piper 的中文模型分两类，差别是**声调**
+
+Piper 的 4 个中文模型分两组，配置里的 `espeak.voice` 不同：
+
+| 模型 | `espeak.voice` | 音素表符号数 | 声调符号 |
+|---|---|---|---|
+| `huayan` x_low / medium | **`cmn`** | 130 | ❌ **无** |
+| `chaowen` medium | **`zh`** | 85 | ✅ 数字 `1 2 3 4 5` |
+| `xiao_ya` medium | **`zh`** | 85 | ✅ 数字 `1 2 3 4 5` |
+
+### huayan 是无声调的（实测证据）
+
+决定性实验——最小对立对（只有声调不同）：
+
+```
+妈(ma1) → 音素 id 1,25,0,120,0,51,0,2
+骂(ma4) → 音素 id 1,25,0,120,0,51,0,2     ← 完全相同
+```
+
+**模型收到的输入一模一样，物理上不可能区分「妈」和「骂」。**
+
+对照实验（排除「音频长度差 = 声调」的误读）：同一句跑两次，音频长度
+4864 vs 7936 —— 模型带 `noise_scale: 0.667` 的随机噪声，长度本来就抖。
+所以之前观察到的长度差是噪声，不是声调。
+
+（另有 `麻(ma2)` 与 `马(ma3)` 的音素序列确实不同，那是 espeak `cmn`
+对二声输出双元音 `ɑɜ` 的副作用，不是系统的声调支持。）
+
+### chaowen / xiao_ya 是有声调的，而且**直接吃拼音**
+
+看 chaowen 的 85 个音素符号：
+
+```
+! $ , . 1 2 3 4 5 : ; ? ^ _ a ai an ang ao b c ch d e ei en eng er f g h i
+ia ian iang iao ie in ing iong iu j k l m n o ong ou p q r s sh t u ua uai
+uan uang ue ueng ui un uo v van ve vn w x y z zh Ø — … 、 。 ！ ， ： ； ？
+```
+
+**这不是 IPA，是拼音声母/韵母 + 声调数字**（`v/van/ve/vn` = ü/üan/üe/ün）。
+也就是说**不需要 espeak 音素化，把拼音直接映射到 id 就行**。
+
+实测声调可区分（四个声调 id 互不相同 ✅）：
+
+```
+妈 ma1 → m a 1        麻 ma2 → m a 2
+马 ma3 → m a 3        骂 ma4 → m a 4
+```
+
+复杂音节切分实测全对（贪心最长匹配）：
+
+```
+绝 jue2 → j ue 2      绿 lü4  → l v 4      云 yun2  → y un 2
+水 shui3 → sh ui 3    六 liu4 → l iu 4     略 lüe4 → l ve 4
+双 shuang1 → sh uang 1                熊 xiong2 → x iong 2
+```
+
+唯一缺口：轻声 `men0` 的 `0` 不在表里（表用 `5`），映射 `0 → 5` 即可。
+
+## 🔴 关键发现 2：Piper 比 Kokoro 快一个数量级
+
+| 句子 | Kokoro RTF | Piper chaowen RTF | 倍数 |
+|---|---|---|---|
+| 你好世界。 | 1.45（稳态） | **0.118** | **12×** |
+| 这是一段中文测试。 | 1.45 | **0.117** | 12× |
+| 今天天气很好，我们去公园散步吧。 | 1.45 | **0.120** | 12× |
+| 他说：“我明天要去北京。” | — | **0.115** | — |
+
+绝对耗时（chaowen）：210 / 402 / 621 / 399 ms。
+对比 Kokoro 的 2,102–12,191 ms。**Piper 是 RTF < 1（比实时快），
+Kokoro 是 RTF > 1（比实时慢）。**
+
+Piper `huayan-x_low` 更快（RTF 0.075–0.119）且只有 20.6MB，但无声调。
+
+## 许可
+
+- **chaowen**：数据集是 **CC0**（`github.com/OHF-Voice/voice-datasets`），
+  且是**从 xiao_ya 微调**而来 —— **许可干净**，上架友好。
+- **huayan**：数据集 `PlayVoice/HuaYan_TTS`，**License: Unknown** —— 有风险。
+- Piper 代码本身是 MIT。
+
+## 对 P4 选型的影响（待用户决策）
+
+**Piper chaowen 在中文上几乎全面优于 Kokoro**：
+
+| | Kokoro | Piper chaowen |
+|---|---|---|
+| 体积 | 92.4MB | **63.2MB** |
+| RTF | 1.45 | **0.115**（12× 快） |
+| 声调 | ✅ | ✅ |
+| 管线 | misaki 移植 + 7KB 表 + 绕道 API | **拼音直接查表** |
+| 依赖 | kokoro-js + transformers.js + phonemizer | **只需 onnxruntime-web + pinyin-pro** |
+| 许可 | Apache-2.0 | CC0 数据集 + MIT 代码 |
+| 包体 | +21MB（ORT jsep wasm）+ 3.1MB | **+21MB（ORT）+ 1.1MB** |
+
+**代价与未验证项**：
+- **音质未知**——无法在无音频输出的环境判断（V22 类问题，必须用户听）。
+- Piper 的中文只有 4 个音色（chaowen / xiao_ya / huayan×2），
+  Kokoro 有 8 个。
+- 英文侧：Piper 有 21 个英文音色族（low/medium 约 63MB），
+  但英文需要 espeak-ng 音素化（正好就是已有的 `phonemizer` 依赖）。
+  若中英文都用 Piper，则**可以完全不依赖 kokoro-js / transformers.js**。
+- **不测不知道 chaowen 的实际听感**。P4 原计划的 misaki 管线已实测打通，
+  作为「已知可行」的退路保留。

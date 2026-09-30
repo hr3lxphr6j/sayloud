@@ -56,9 +56,15 @@ export interface DashscopeConfig {
   apiKey: string;
   /** 百炼 workspace (business space) id; required for workspace-scoped keys. */
   workspaceId?: string;
-  /** DashScope region. Defaults to `cn-beijing`. */
-  region?: 'cn-beijing' | 'intl';
-  /** TTS model, e.g. `cosyvoice-v3`. Word timings require CosyVoice v3+. */
+  /**
+   * DashScope region (spec §2.2, line 126: `cn-beijing` / `ap-southeast-1`).
+   *
+   * Defaults to `cn-beijing`. `ap-southeast-1` is the international site, whose
+   * host is `dashscope-intl.aliyuncs.com`; CosyVoice's HTTP API is only open in
+   * Beijing, which the settings panel has to say (spec §2.2).
+   */
+  region?: 'cn-beijing' | 'ap-southeast-1';
+  /** TTS model, e.g. `cosyvoice-v3-flash`. Word timings require CosyVoice v3+. */
   model?: string;
   /** Override for tests or a proxy. Defaults to the region's public host. */
   baseUrl?: string;

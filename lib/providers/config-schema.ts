@@ -154,17 +154,20 @@ const SCHEMAS = {
         key: 'region',
         label: 'Region',
         kind: 'select',
+        // The spec's two regions (spec §2.2, line 126). `ap-southeast-1` is the
+        // international site, whose host is `dashscope-intl.aliyuncs.com`.
         options: [
           { value: 'cn-beijing', label: 'China (cn-beijing)' },
-          { value: 'intl', label: 'International' },
+          { value: 'ap-southeast-1', label: 'Singapore (ap-southeast-1)' },
         ],
+        help: 'CosyVoice and Qwen-Audio-TTS are only served from cn-beijing; the Singapore region serves the Qwen-TTS models.',
       },
       {
         key: 'model',
         label: 'Model',
         kind: 'text',
-        placeholder: 'cosyvoice-v3',
-        help: 'Word timings need a cosyvoice-v3 or later model.',
+        placeholder: 'cosyvoice-v3-flash',
+        help: 'Word timings need a cosyvoice-v3 or later model; the adapter then sends word_timestamp_enabled automatically.',
       },
       {
         key: 'baseUrl',

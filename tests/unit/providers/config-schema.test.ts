@@ -95,6 +95,29 @@ describe('PROVIDER_SCHEMAS', () => {
     expect(resourceId?.options?.[0]?.label).toMatch(/word timings/);
   });
 
+  it('offers the spec regions for DashScope, with the Beijing-only caveat', () => {
+    // spec §2.2 line 126: region is cn-beijing / ap-southeast-1, and the
+    // CosyVoice HTTP API is only open in Beijing.
+    const region = dashscope.fields.find((field) => field.key === 'region');
+
+    expect(region?.kind).toBe('select');
+    expect(region?.options?.map((option) => option.value)).toEqual([
+      'cn-beijing',
+      'ap-southeast-1',
+    ]);
+    expect(region?.help).toMatch(/cn-beijing/);
+  });
+
+  it('names a model V4 exercised and says how word timings are enabled', () => {
+    // V4 measured cosyvoice-v3-flash with word_timestamp_enabled; the flag is
+    // sent by the adapter, not typed by the user (spec §2.2, §6 V4).
+    const model = dashscope.fields.find((field) => field.key === 'model');
+
+    expect(model?.placeholder).toBe('cosyvoice-v3-flash');
+    expect(model?.help).toMatch(/cosyvoice-v3/);
+    expect(model?.help).toMatch(/word_timestamp_enabled/);
+  });
+
   it('keeps every base URL default equal to its adapter constant', () => {
     // The schema cannot import the adapters — it is bundled into the service
     // worker — so the two copies of each host are compared here instead.
@@ -269,7 +292,7 @@ describe('validateFormValues', () => {
   });
 
   it('accepts a select value that is one of the options', () => {
-    expect(validateFormValues(dashscope, { apiKey: 'sk-1', region: 'intl' })).toEqual({});
+    expect(validateFormValues(dashscope, { apiKey: 'sk-1', region: 'ap-southeast-1' })).toEqual({});
   });
 
   it('reports the first malformed header line', () => {
@@ -290,11 +313,11 @@ describe('configToFormValues', () => {
     const values = configToFormValues(dashscope, {
       provider: 'dashscope',
       apiKey: 'sk-1',
-      region: 'intl',
+      region: 'ap-southeast-1',
     });
 
     expect(values.apiKey).toBe('sk-1');
-    expect(values.region).toBe('intl');
+    expect(values.region).toBe('ap-southeast-1');
     expect(values.model).toBe('');
   });
 

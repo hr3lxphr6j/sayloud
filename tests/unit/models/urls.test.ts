@@ -98,13 +98,22 @@ describe('resolveUrl', () => {
     expect(resolveUrl(voice, { host: 'huggingface' })).toBe(voice);
   });
 
-  it('resolves a canonical URL the same way twice', () => {
-    // The fetch patch re-resolves what a previous pass produced, so a rewrite
-    // must be idempotent for a real Hugging Face URL.
-    const once = resolveUrl(CANONICAL, { host: 'huggingface' });
-    expect(resolveUrl(once, { host: 'modelscope' })).toBe(
-      resolveUrl(CANONICAL, { host: 'modelscope' })
-    );
+  it('is idempotent: a URL a previous pass produced is not rewritten again', () => {
+    // The fetch patch may see a URL an earlier pass produced, so resolving the
+    // result again has to be a no-op rather than inventing a second prefix.
+    for (const host of ['huggingface', 'modelscope'] as const) {
+      const once = resolveUrl(CANONICAL, { host });
+      expect(resolveUrl(once, { host })).toBe(once);
+    }
+  });
+
+  it('does not re-point an already resolved URL at a different mirror', () => {
+    // Deliberate: the source is decided once, by the caller, from the saved
+    // setting. Re-resolving a real Hugging Face URL to ModelScope would mean
+    // treating *any* Hugging Face URL as ours — which is how a request
+    // belonging to another project would silently get hijacked to the mirror.
+    const viaHuggingFace = resolveUrl(CANONICAL, { host: 'huggingface' });
+    expect(resolveUrl(viaHuggingFace, { host: 'modelscope' })).toBe(viaHuggingFace);
   });
 
   it('passes a foreign URL through untouched', () => {
@@ -125,6 +134,23 @@ describe('resolveUrl', () => {
     expect(resolveUrl(`${CANONICAL_HOST}${REPO}/resolve/main/`, { host: 'modelscope' })).toBe(
       `${CANONICAL_HOST}${REPO}/resolve/main/`
     );
+  });
+
+  it("leaves another project's Hugging Face URL alone", () => {
+    // Voice URLs are Hugging Face URLs, so a rewrite has to be able to tell
+    // ours from anybody else's: the fetch patch runs every request through
+    // here, and hijacking a foreign URL to the mirror would be invisible.
+    const foreign = 'https://huggingface.co/someone-else/other-model/resolve/main/weights.bin';
+    expect(resolveUrl(foreign, { host: 'modelscope' })).toBe(foreign);
+    expect(resolveUrl(foreign, { host: 'huggingface' })).toBe(foreign);
+    expect(resolveUrl(foreign, { host: 'custom', customHostUrl: 'https://mirror.test' })).toBe(
+      foreign
+    );
+
+    // Nor a file of ours that is not a voice: only `voices/*.bin` is ours on
+    // that host.
+    const oursButNotVoice = `https://huggingface.co/${REPO}/resolve/main/onnx/model.onnx`;
+    expect(resolveUrl(oursButNotVoice, { host: 'modelscope' })).toBe(oursButNotVoice);
   });
 });
 

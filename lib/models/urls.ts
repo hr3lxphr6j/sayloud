@@ -125,10 +125,19 @@ export function isOurs(url: string): boolean {
 /**
  * Rewrite a canonical URL into the real one for `source`.
  *
- * Anything that is not ours is returned unchanged, so a caller can pass every
- * request through here — which is exactly what the fetch patch does.
+ * Only URLs this module considers ours are rewritten — the canonical model
+ * keys it builds, and voice URLs (which are Hugging Face URLs because
+ * `kokoro-js` chose that spelling). Anything else is returned unchanged, so a
+ * caller can pass every request through here, which is what the fetch patch
+ * does.
+ *
+ * The `isOurs` guard is what keeps that promise. Without it a Hugging Face URL
+ * belonging to somebody else — any other model, any other library — would be
+ * rewritten to the selected mirror, which is both wrong and very hard to see.
  */
 export function resolveUrl(url: string, source: ModelSource): string {
+  if (!isOurs(url)) return url;
+
   const parsed = parseFrom(CANONICAL_HOST, url) ?? parseFrom(HUGGINGFACE_HOST, url);
   if (!parsed) return url;
 

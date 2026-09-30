@@ -307,33 +307,17 @@ describe('speak', () => {
     expect(result.durationMs).toBe(900);
   });
 
-  it('returns the bytes written to the stream when there are any', async () => {
+  it('returns result.audioData rather than the raw stream bytes', async () => {
     const synthesizer = await createAzureSpeechSdk().createSynthesizer(options);
     const pending = synthesizer.speak('你好', () => {}, new AbortController().signal);
 
-    const sink = fake.synth.audioConfig?.sink;
-    sink?.write(new Uint8Array([1, 2]).buffer);
-    sink?.write(new Uint8Array([3]).buffer);
+    // For RIFF formats the SDK streams headerless PCM and only adds the WAV
+    // header to result.audioData; the stream bytes are not a playable file.
+    fake.synth.audioConfig?.sink.write(new Uint8Array([1, 2]).buffer);
     completeWith(new Uint8Array([9, 9, 9]).buffer, 100 * TICKS_PER_MS);
 
     const result = await pending;
-    expect(Array.from(new Uint8Array(result.audio))).toEqual([1, 2, 3]);
-  });
-
-  it('does not carry stream bytes from one utterance into the next', async () => {
-    const synthesizer = await createAzureSpeechSdk().createSynthesizer(options);
-    const sink = fake.synth.audioConfig?.sink;
-
-    const first = synthesizer.speak('一', () => {}, new AbortController().signal);
-    sink?.write(new Uint8Array([1]).buffer);
-    completeWith(new ArrayBuffer(0), 0);
-    await first;
-
-    const second = synthesizer.speak('二', () => {}, new AbortController().signal);
-    sink?.write(new Uint8Array([2]).buffer);
-    completeWith(new ArrayBuffer(0), 0);
-
-    expect(Array.from(new Uint8Array((await second).audio))).toEqual([2]);
+    expect(Array.from(new Uint8Array(result.audio))).toEqual([9, 9, 9]);
   });
 
   it('converts boundary ticks to milliseconds', async () => {

@@ -3,6 +3,7 @@ import { CONFIG_KEY, type LocalStorageArea, SELECTED_VOICES_KEY } from '~/lib/co
 import { createApp, type OffscreenDeps } from '~/lib/container';
 import type { OffscreenCommand, SynthesizeReply } from '~/lib/offscreen-protocol';
 import type { EngineEvent } from '~/lib/protocol';
+import { DEFAULT_SETTINGS, SETTINGS_KEY } from '~/lib/settings-store';
 import type { SessionStorageArea } from '~/lib/snapshot-store';
 import type { TtsApi, TtsSpeakOptions, TtsVoiceLike } from '~/lib/speaker';
 
@@ -92,7 +93,54 @@ function fakeOffscreen(reply: SynthesizeReply = { durationMs: 1000, hasTimings: 
 
 const CLOUD_CONFIG = { provider: 'dashscope' as const, apiKey: 'k', model: 'cosyvoice-v3' };
 
+/** Commands and reads settle in a microtask; the tests wait for that turn. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe('createApp', () => {
+  it('reads the settings from the storage area it was given', async () => {
+    const { tts } = fakeTts();
+    const app = createApp({ tts, storage: { session: fakeSession(), local: fakeLocal() } });
+
+    expect(await app.settings.load()).toEqual(DEFAULT_SETTINGS);
+
+    await app.settings.update({ volume: 0.5 });
+
+    expect((await app.settings.load()).volume).toBe(0.5);
+  });
+
+  it('is not ready until the settings have been read', async () => {
+    const { tts } = fakeTts();
+    const local = fakeLocal();
+    const gate: { release: (() => void) | undefined } = { release: undefined };
+    const slow: LocalStorageArea = {
+      async get(key) {
+        const names = Array.isArray(key) ? key : [key];
+        if (names.includes(SETTINGS_KEY)) {
+          await new Promise<void>((resolve) => {
+            gate.release = resolve;
+          });
+        }
+        return local.get(key);
+      },
+      set: (items) => local.set(items),
+    };
+    const app = createApp({ tts, storage: { session: fakeSession(), local: slow } });
+
+    let ready = false;
+    void app.ready.then(() => {
+      ready = true;
+    });
+    await tick();
+    expect(ready).toBe(false);
+
+    gate.release?.();
+    await app.ready;
+
+    expect(ready).toBe(true);
+  });
+
   it('speaks with the browser voice when nothing is configured', async () => {
     const { tts, calls } = fakeTts();
     const app = createApp({ tts, storage: { session: fakeSession(), local: fakeLocal() } });

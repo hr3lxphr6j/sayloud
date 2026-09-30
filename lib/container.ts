@@ -3,6 +3,7 @@ import { type OffscreenApi, OffscreenManager, type RuntimeApi } from './offscree
 import { OffscreenSpeaker, type RuntimeEventSource } from './offscreen-speaker';
 import { PlaybackEngine } from './playback-engine';
 import { SessionRouter } from './router';
+import { SettingsStore, type StorageChangeApi } from './settings-store';
 import { type SessionStorageArea, SnapshotStore } from './snapshot-store';
 import { BrowserSpeaker, type TtsApi } from './speaker';
 import { SpeakerRouter } from './speaker-router';
@@ -31,7 +32,12 @@ export interface OffscreenDeps {
  */
 export interface AppDeps {
   tts: TtsApi;
-  storage: { session: SessionStorageArea; local: LocalStorageArea };
+  storage: {
+    session: SessionStorageArea;
+    local: LocalStorageArea;
+    /** Where the settings store hears about changes; absent in tests. */
+    onChanged?: StorageChangeApi;
+  };
   offscreen?: OffscreenDeps;
 }
 
@@ -42,10 +48,11 @@ export interface AppContainer {
   engine: PlaybackEngine;
   snapshots: SnapshotStore;
   speakers: SpeakerRouter;
+  settings: SettingsStore;
   /**
-   * Resolves once the saved provider configuration has been read.
+   * Resolves once the saved settings and provider configuration have been read.
    *
-   * Reading it is asynchronous while `createApp` is not, and the engine
+   * Reading them is asynchronous while `createApp` is not, and the engine
    * resolves a voice synchronously. Whoever starts a session waits for this
    * first, so the first sentence is not spoken in the wrong voice.
    */
@@ -63,6 +70,7 @@ export function createApp(deps: AppDeps): AppContainer {
   const voices = new VoiceCache(deps.tts);
   const snapshots = new SnapshotStore(deps.storage.session);
   const config = new ConfigStore(deps.storage.local);
+  const settings = new SettingsStore(deps.storage.local, deps.storage.onChanged);
 
   // Two separate browser speakers: one is the router's fallback delegate, the
   // other is the engine's last resort when the cloud service fails. Sharing one
@@ -100,5 +108,15 @@ export function createApp(deps: AppDeps): AppContainer {
 
   const router = new SessionRouter({ engine, snapshots, voices });
 
-  return { router, voices, engine, snapshots, speakers, ready: speakers.refresh() };
+  // Both are storage reads that the first sentence waits on. A settings read
+  // that fails must not be able to stop the reader from starting, so it leaves
+  // the defaults in place instead.
+  const ready = Promise.all([
+    settings.load().catch((error: unknown) => {
+      console.error('[SayLoud] cannot read the saved settings', error);
+    }),
+    speakers.refresh(),
+  ]).then(() => undefined);
+
+  return { router, voices, engine, snapshots, speakers, settings, ready };
 }

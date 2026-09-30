@@ -4,6 +4,7 @@ import { createApp } from '~/lib/container';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
+import { DEFAULT_SETTINGS, type Settings } from '~/lib/settings-store';
 
 /** Emitted by WXT from `entrypoints/reader.content.tsx`. */
 const CONTENT_SCRIPT = '/content-scripts/reader.js';
@@ -26,6 +27,23 @@ export default defineBackground(() => {
 
   // Track which tabs have active content scripts via their port connections.
   const activeTabs = new Set<number>();
+
+  // The settings are read once and then kept in step through `onChanged`:
+  // `tabs.onActivated` needs the current value synchronously, and a storage
+  // read there could let a pause land after a newer session had started.
+  // Until the first read lands, the defaults are what a tab switch sees.
+  let settings: Settings = DEFAULT_SETTINGS;
+  const applySettings = (next: Settings): void => {
+    settings = next;
+    app.engine.setVolume(next.volume);
+  };
+  app.settings.subscribe(applySettings);
+  void app.settings
+    .load()
+    .then(applySettings)
+    .catch((error: unknown) => {
+      console.error('[SayLoud] cannot apply the saved settings', error);
+    });
 
   // The engine resolves a voice synchronously per sentence, so the cache has to
   // be refreshed out of band whenever Chrome's voice list changes.
@@ -87,9 +105,10 @@ export default defineBackground(() => {
     }
   });
 
-  // Only one tab reads at a time, so switching tabs pauses the running session.
+  // Switching tabs only pauses when the user asked it to; the router owns that
+  // rule so it stays unit-tested.
   browser.tabs.onActivated.addListener(({ tabId }) => {
-    app.router.handleTabActivated(tabId);
+    app.router.handleTabActivated(tabId, settings.keepPlayingInBackground);
   });
 
   if (import.meta.env.MODE === 'e2e') {

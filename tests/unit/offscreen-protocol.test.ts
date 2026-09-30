@@ -15,6 +15,7 @@ describe('isOffscreenCommand', () => {
     { type: 'play', id: 'a', startTimeMs: 0 },
     { type: 'pause' },
     { type: 'setRate', rate: 1.5 },
+    { type: 'setVolume', volume: 1.5 },
     { type: 'stop' },
   ];
 
@@ -49,6 +50,8 @@ describe('isOffscreenCommand', () => {
     ['a play with NaN', { type: 'play', id: 'a', startTimeMs: Number.NaN }],
     ['a setRate without a rate', { type: 'setRate' }],
     ['a setRate with Infinity', { type: 'setRate', rate: Number.POSITIVE_INFINITY }],
+    ['a setVolume without a volume', { type: 'setVolume' }],
+    ['a setVolume with NaN', { type: 'setVolume', volume: Number.NaN }],
   ])('rejects %s', (_label, value) => {
     expect(isOffscreenCommand(value)).toBe(false);
   });

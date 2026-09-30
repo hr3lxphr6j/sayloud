@@ -35,6 +35,7 @@ export type OffscreenCommand =
   | { type: 'play'; id: string; startTimeMs: number }
   | { type: 'pause' }
   | { type: 'setRate'; rate: number }
+  | { type: 'setVolume'; volume: number }
   | { type: 'stop' };
 
 /**
@@ -80,6 +81,7 @@ const COMMAND_TYPES: ReadonlySet<string> = new Set([
   'play',
   'pause',
   'setRate',
+  'setVolume',
   'stop',
 ]);
 
@@ -117,6 +119,8 @@ export function isOffscreenCommand(value: unknown): value is OffscreenCommand {
       return isNonEmptyString(message.id) && isFiniteNumber(message.startTimeMs);
     case 'setRate':
       return isFiniteNumber(message.rate);
+    case 'setVolume':
+      return isFiniteNumber(message.volume);
     default:
       return true;
   }

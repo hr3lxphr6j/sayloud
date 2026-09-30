@@ -45,6 +45,7 @@ export interface AudioTimeline {
   pause(): void;
   stop(): void;
   setRate(rate: number): void;
+  setVolume(volume: number): void;
 }
 
 export interface AudioWorkerDeps {
@@ -165,6 +166,9 @@ export class AudioWorker {
         return undefined;
       case 'setRate':
         this.player.setRate(command.rate);
+        return undefined;
+      case 'setVolume':
+        this.player.setVolume(command.volume);
         return undefined;
       case 'stop':
         this.stop();

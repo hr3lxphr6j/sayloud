@@ -67,11 +67,26 @@ export class OffscreenSpeaker implements Speaker {
     this.events.addListener(this.onMessage);
   }
 
-  speak({ text, voice, rate }: SpeakRequest): void {
+  speak({ text, voice, rate, volume }: SpeakRequest): void {
     const generation = ++this.generation;
     const id = `sayloud-${++this.sequence}`;
     this.activeId = id;
-    void this.run(generation, id, text, voice, rate);
+    void this.run(generation, id, text, voice, rate, volume);
+  }
+
+  /**
+   * Change the loudness of the sentence that is playing.
+   *
+   * `create: false` for the same reason `stop` uses it: a volume change is only
+   * meaningful while audio is playing, and it must never be what brings the
+   * offscreen document into existence.
+   */
+  setVolume(volume: number): void {
+    void this.manager
+      .sendCommand({ type: 'setVolume', volume }, { create: false })
+      .catch((error: unknown) => {
+        console.warn('[SayLoud] could not change the cloud voice volume', error);
+      });
   }
 
   stop(): void {
@@ -136,7 +151,8 @@ export class OffscreenSpeaker implements Speaker {
     id: string,
     text: string,
     voice: string | undefined,
-    rate: number
+    rate: number,
+    volume: number | undefined
   ): Promise<void> {
     try {
       const reply = await this.manager.sendCommand({
@@ -159,6 +175,12 @@ export class OffscreenSpeaker implements Speaker {
       // scheduled at the right speed from the first word.
       await this.manager.sendCommand({ type: 'setRate', rate });
       if (this.stale(generation)) return;
+
+      // Same for the volume: the first word is already at the right loudness.
+      if (volume !== undefined) {
+        await this.manager.sendCommand({ type: 'setVolume', volume });
+        if (this.stale(generation)) return;
+      }
 
       await this.manager.sendCommand({ type: 'play', id, startTimeMs: 0 });
       if (this.stale(generation)) return;

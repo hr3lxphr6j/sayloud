@@ -117,6 +117,15 @@ describe('OffscreenSpeaker', () => {
       expect(types).toEqual(['synthesize', 'setRate', 'play']);
     });
 
+    it('sets the volume before playing, so the first word is at the right loudness', async () => {
+      speaker.speak({ text: 'hello', voice: 'v1', rate: 2, lang: 'en', volume: 1.2 });
+      await tick();
+
+      const types = channel.commands.map((command) => command.type);
+      expect(types).toEqual(['synthesize', 'setRate', 'setVolume', 'play']);
+      expect(channel.commands).toContainEqual({ type: 'setVolume', volume: 1.2 });
+    });
+
     it('sends an empty voice id when the engine resolved no voice', async () => {
       speaker.speak({ text: 'hello', rate: 1, lang: 'en' });
       await tick();
@@ -173,6 +182,44 @@ describe('OffscreenSpeaker', () => {
 
       expect(errors).toEqual(['audio is not loaded']);
       expect(started).toBe(0);
+    });
+  });
+
+  describe('setVolume', () => {
+    it('changes the volume of the sentence that is playing, without creating a document', async () => {
+      speaker.speak({ text: 'hello', voice: 'v1', rate: 1, lang: 'en' });
+      await tick();
+
+      speaker.setVolume(0.3);
+      await tick();
+
+      expect(channel.channel.sendCommand).toHaveBeenCalledWith(
+        { type: 'setVolume', volume: 0.3 },
+        { create: false }
+      );
+    });
+
+    it('does not supersede the utterance that is playing', async () => {
+      speaker.speak({ text: 'hello', voice: 'v1', rate: 1, lang: 'en' });
+      await tick();
+      const id = utteranceId(channel.commands);
+
+      speaker.setVolume(0.3);
+      await tick();
+      events.deliver({ type: 'sentence-end', id });
+
+      expect(ends).toBe(1);
+    });
+
+    it('survives a volume change that cannot be delivered', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(channel.channel.sendCommand).mockRejectedValue(new Error('no document'));
+
+      speaker.setVolume(0.3);
+      await tick();
+
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
     });
   });
 

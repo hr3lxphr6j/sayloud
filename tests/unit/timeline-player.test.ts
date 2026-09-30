@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import type { OffscreenEvent } from '~/lib/offscreen-protocol';
 import type { SynthesisResult, WordTiming } from '~/lib/providers/types';
-import { type AudioLike, TimelinePlayer } from '~/lib/timeline-player';
+import { type AudioContextLike, type AudioLike, TimelinePlayer } from '~/lib/timeline-player';
 
 /** A fake clock, so a word's delay can be inspected instead of waited for. */
 function fakeClock() {
@@ -48,6 +48,7 @@ function fakeAudios() {
       src: '',
       currentTime: 0,
       playbackRate: 1,
+      volume: 1,
       duration: Number.NaN,
       paused: true,
       play: vi.fn(async () => {
@@ -94,6 +95,40 @@ function result(overrides: Partial<SynthesisResult> = {}): SynthesisResult {
     durationMs: 0,
     ...overrides,
   };
+}
+
+/**
+ * A fake Web Audio graph.
+ *
+ * `startable: false` models a context whose `resume()` resolves but never
+ * reaches `running`, which is what Chrome's autoplay policy may give an
+ * offscreen document. `available: false` is a browser without `AudioContext`.
+ */
+function fakeGraph(options: { startable?: boolean; available?: boolean } = {}) {
+  let state = options.startable === false ? 'suspended' : 'running';
+  const sources: Array<{
+    connect: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
+  }> = [];
+  const gain = { gain: { value: 1 }, connect: vi.fn() };
+
+  const context: AudioContextLike = {
+    get state() {
+      return state;
+    },
+    resume: vi.fn(async () => {
+      state = options.startable === false ? 'suspended' : 'running';
+    }),
+    createMediaElementSource: vi.fn(() => {
+      const source = { connect: vi.fn(), disconnect: vi.fn() };
+      sources.push(source);
+      return source;
+    }),
+    createGain: vi.fn(() => gain),
+    destination: {},
+  };
+
+  return { context, gain, sources };
 }
 
 /** Timings for "hello world", four characters each. */
@@ -419,6 +454,139 @@ describe('TimelinePlayer', () => {
 
     it('ignores the rate when nothing is loaded', () => {
       expect(() => player.setRate(2)).not.toThrow();
+    });
+  });
+
+  describe('volume', () => {
+    let graph: ReturnType<typeof fakeGraph>;
+    let createContext: Mock<() => AudioContextLike | null>;
+
+    /**
+     * The player over the shared fakes plus a Web Audio graph.
+     *
+     * `startable: false` is a context whose `resume()` never reaches `running`,
+     * which is what an offscreen document without a user gesture may get.
+     */
+    function withGraph(options: { startable?: boolean; available?: boolean } = {}): TimelinePlayer {
+      const built = fakeGraph(options);
+      graph = built;
+      createContext = vi.fn(() => (options.available === false ? null : built.context));
+      return new TimelinePlayer({
+        emit: (event) => events.push(event),
+        createAudio: audios.createAudio,
+        createObjectUrl: () => {
+          const url = `blob:${urls.length}`;
+          urls.push(url);
+          return url;
+        },
+        revokeObjectUrl: (url) => revoked.push(url),
+        setTimer: clock.setTimer,
+        clearTimer: clock.clearTimer,
+        createAudioContext: createContext,
+      });
+    }
+
+    it('routes the sentence through a gain node and pins the element at full', async () => {
+      player = withGraph();
+      await load('a', result());
+
+      expect(graph.context.createMediaElementSource).toHaveBeenCalledWith(audios.at(0));
+      expect(graph.sources[0]?.connect).toHaveBeenCalledWith(graph.gain);
+      expect(graph.gain.connect).toHaveBeenCalledWith(graph.context.destination);
+      // The gain node owns the loudness; the element stays at its own maximum.
+      expect(audios.at(0).volume).toBe(1);
+    });
+
+    it('plays above 100% through the gain node', async () => {
+      player = withGraph();
+      player.setVolume(1.5);
+      await load('a', result());
+
+      expect(graph.gain.gain.value).toBe(1.5);
+      expect(audios.at(0).volume).toBe(1);
+    });
+
+    it('changes the volume of the sentence that is playing', async () => {
+      player = withGraph();
+      await load('a', result());
+      await player.play('a');
+
+      player.setVolume(0.25);
+
+      expect(graph.gain.gain.value).toBe(0.25);
+    });
+
+    it('creates one context and reuses it for every sentence', async () => {
+      player = withGraph();
+      await load('a', result());
+      await load('b', result());
+
+      expect(createContext).toHaveBeenCalledTimes(1);
+      expect(graph.context.createMediaElementSource).toHaveBeenCalledTimes(2);
+    });
+
+    it('releases the routed source when the sentence is replaced', async () => {
+      player = withGraph();
+      await load('a', result());
+      await load('b', result());
+
+      expect(graph.sources[0]?.disconnect).toHaveBeenCalled();
+      expect(graph.sources[1]?.disconnect).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the element volume when there is no audio context', async () => {
+      player = withGraph({ available: false });
+      player.setVolume(0.5);
+      await load('a', result());
+
+      expect(audios.at(0).volume).toBe(0.5);
+      expect(graph.gain.connect).not.toHaveBeenCalled();
+    });
+
+    it('caps the element volume at 100% in the fallback', async () => {
+      player = withGraph({ available: false });
+      player.setVolume(1.5);
+      await load('a', result());
+
+      expect(audios.at(0).volume).toBe(1);
+    });
+
+    it('changes the element volume live in the fallback', async () => {
+      player = withGraph({ available: false });
+      await load('a', result());
+
+      player.setVolume(0.4);
+
+      expect(audios.at(0).volume).toBe(0.4);
+    });
+
+    it('falls back when the context will not start', async () => {
+      player = withGraph({ startable: false });
+      await load('a', result());
+
+      expect(graph.context.createGain).not.toHaveBeenCalled();
+      expect(audios.at(0).volume).toBe(1);
+    });
+
+    it('keeps the fallback for the rest of the document', async () => {
+      player = withGraph({ startable: false });
+      await load('a', result());
+      player.setVolume(0.5);
+      await load('b', result());
+
+      // A context that would not start once will not start later, and a
+      // half-routed sentence would be silent.
+      expect(createContext).toHaveBeenCalledTimes(1);
+      expect(audios.at(1).volume).toBe(0.5);
+    });
+
+    it('ignores a volume that is not a number', async () => {
+      player = withGraph();
+      await load('a', result());
+
+      player.setVolume(Number.NaN);
+
+      expect(graph.gain.gain.value).toBe(1);
     });
   });
 });

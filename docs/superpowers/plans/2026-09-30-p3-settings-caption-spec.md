@@ -244,7 +244,8 @@ export const zh: Record<MessageKey, string> = {
 ### 5.3 测试影响（重要）
 
 - 单测默认 `en`：`I18nProvider` 默认语言为 `'en'`，`useT()` 在没有 Provider 时回退英文。既有断言（如 `getByText('Base URL is required.')`）应尽量保持通过；若某处断言的是 schema 字段标签，改为断言键或包一层 `en` provider。
-- smoke 与 e2e 一律跑英文（默认语言 `auto` + Chromium 默认 `en-US` → `en`）。**不要**把 e2e 改成中文断言。
+- smoke 与 e2e 一律跑英文。**不要**把 e2e 改成中文断言。
+  - ⚠️ **实测修正（2026-09-30，T2）**：原稿写「Chromium 默认 `en-US`」是**错的**。Playwright 的 `launchPersistentContext` 会**继承宿主机 locale**，所以在中文机器上 smoke 脚本整个跑在中文环境里，每一条英文断言都失败；e2e 之所以看起来正常，是因为 Playwright runner 自己默认 `en-US`，不是浏览器。**必须在两套 harness 里显式钉 `locale: 'en-US'`**（`tests/e2e/fixtures.ts` 的 `launchPersistentContext` 与 `.smoke/sidepanel-smoke.mjs`）。
 - 新增：`tests/unit/i18n.test.ts` 断言 `zh` 覆盖 `en` 的每一个键（`Object.keys(en).every(k => k in zh)`）、插值行为、`resolveLang` 的边界。
 - 新增一条中文渲染测试：`uiLang: 'zh-CN'` 时侧边栏出现中文标题。
 

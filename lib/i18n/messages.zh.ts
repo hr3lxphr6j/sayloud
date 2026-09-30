@@ -29,6 +29,7 @@ export const zh: Record<MessageKey, string> = {
   'panel.configure': '配置服务',
   'panel.voice.change': '更换',
   'panel.no-provider': '尚未配置任何服务。打开「设置」选择一项。',
+  'panel.browser-voice': '尚未配置云端服务，当前使用浏览器语音朗读。',
   'panel.sentence-progress': '第 {index} / {total} 句，语速 {rate}×',
   'panel.progress-label': '已朗读全文的 {percent}%',
   'panel.progress-text': '已朗读全文的 {percent}%。',
@@ -68,10 +69,14 @@ export const zh: Record<MessageKey, string> = {
 
   // --- the provider list and its form ---------------------------------------
   'provider.section.title': '语音服务',
+  'provider.list.label': 'SayLoud 使用的语音服务',
+  'provider.list.hint': '点击服务前的圆圈，即可切换 SayLoud 使用的语音服务。',
+  'provider.use': '使用 {service}',
   'provider.active': '使用中',
   'provider.configured': '已配置 · {voice}',
   'provider.console-link': '打开 {name} 控制台',
-  'provider.browser-notice': 'SayLoud 将使用 Chrome 已安装的语音。为其他服务保存的密钥会保留。',
+  'provider.browser-notice':
+    '选中浏览器语音前的圆圈后，SayLoud 会用它朗读。为其他服务保存的密钥会保留。',
   'provider.test': '测试连接',
   'provider.testing': '测试中…',
   'provider.save': '保存',
@@ -79,6 +84,7 @@ export const zh: Record<MessageKey, string> = {
   'provider.forget': '忘记已保存的密钥',
   'provider.test-succeeded': '连接成功。',
   'provider.saved': '已保存。',
+  'provider.saved-not-active': '已保存，但尚未启用。点击名称前的圆圈即可切换。',
   'provider.forgotten': '已移除保存的密钥。',
   'provider.save-failed': '保存失败：{detail}',
   'provider.forget-failed': '移除失败：{detail}',

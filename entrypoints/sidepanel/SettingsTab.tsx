@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'preact/hooks';
 import type { CacheUsage } from '~/lib/cache-admin';
-import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
+import type { ConfigStore, SavedConfigs, VoiceNames } from '~/lib/config-store';
 import { formatBytes } from '~/lib/format-bytes';
 import { useT } from '~/lib/i18n';
 import type { PermissionsApi } from '~/lib/provider-origins';
@@ -35,6 +35,8 @@ export interface SettingsTabProps {
   savedConfigs: SavedConfigs;
   /** The voice chosen for each provider, for the summary lines. */
   voices: Record<string, string>;
+  /** What those voices were listed as, so a summary can show a name. */
+  voiceNames: VoiceNames;
   settings?: SettingsStore;
   uiLang: UiLang;
   onUiLang: (next: UiLang) => void;
@@ -50,6 +52,7 @@ export function SettingsTab({
   config,
   savedConfigs,
   voices,
+  voiceNames,
   settings,
   uiLang,
   onUiLang,
@@ -70,6 +73,7 @@ export function SettingsTab({
           saved={config}
           savedConfigs={savedConfigs}
           voices={voices}
+          voiceNames={voiceNames}
           onChanged={onChanged}
           // A voice is saved on click, not with the form, and the Reading tab
           // shows the same choice: re-reading the store covers both.

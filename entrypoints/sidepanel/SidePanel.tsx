@@ -12,7 +12,7 @@
 import type { ComponentType } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { CacheUsage } from '~/lib/cache-admin';
-import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
+import type { ConfigStore, SavedConfigs, VoiceNames } from '~/lib/config-store';
 import { I18nProvider, type MessageKey, useT, useUiLanguage } from '~/lib/i18n';
 import type { PermissionsApi } from '~/lib/provider-origins';
 import type { CloudProviderId } from '~/lib/providers/registry';
@@ -60,6 +60,8 @@ export interface TabPageProps {
   savedConfigs: SavedConfigs;
   /** The voice chosen for each provider, for the summary lines. */
   voices: Record<string, string>;
+  /** What those voices were listed as, so a summary can show a name. */
+  voiceNames: VoiceNames;
   /** The chosen voice for the active provider, if there is one. */
   voice: string | null;
   uiLang: UiLang;
@@ -146,19 +148,22 @@ function SidePanelView({
   const [config, setConfig] = useState<ProviderConfig | null>(null);
   const [savedConfigs, setSavedConfigs] = useState<SavedConfigs>({});
   const [voices, setVoices] = useState<Record<string, string>>({});
+  const [voiceNames, setVoiceNames] = useState<VoiceNames>({});
   const [loading, setLoading] = useState(true);
 
   /** Re-read the store: the only copy of the saved configs is the store's. */
   const reload = useCallback(async () => {
     try {
-      const [loaded, saved, chosen] = await Promise.all([
+      const [loaded, saved, chosen, names] = await Promise.all([
         store.getConfig(),
         store.getSavedConfigs(),
         store.getSelectedVoices(),
+        store.getVoiceNames(),
       ]);
       setConfig(loaded);
       setSavedConfigs(saved);
       setVoices(chosen);
+      setVoiceNames(names);
     } catch (error) {
       // An unreadable config reads as "not configured": the user can always
       // fill the form in again, and the console has the reason.
@@ -208,6 +213,7 @@ function SidePanelView({
     config,
     savedConfigs,
     voices,
+    voiceNames,
     voice: config ? (voices[config.provider] ?? null) : null,
     uiLang,
     onUiLang,

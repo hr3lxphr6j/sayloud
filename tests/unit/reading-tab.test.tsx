@@ -58,6 +58,8 @@ const DASHSCOPE: ProviderConfig = { provider: 'dashscope', apiKey: 'sk-1' };
 interface RenderOptions {
   config?: ProviderConfig | null;
   voice?: string | null;
+  /** Remembered voice names, by provider then voice id. */
+  voiceNames?: Record<string, Record<string, string>>;
   stored?: Partial<Settings>;
   session?: SessionWatch;
 }
@@ -65,6 +67,7 @@ interface RenderOptions {
 async function renderTab({
   config = null,
   voice = null,
+  voiceNames = {},
   stored = {},
   session = IDLE_SESSION,
 }: RenderOptions = {}) {
@@ -76,6 +79,7 @@ async function renderTab({
     <ReadingTab
       config={config}
       voice={voice}
+      voiceNames={voiceNames}
       providers={providers}
       session={session}
       settings={store}
@@ -103,6 +107,23 @@ describe('the voice card', () => {
     expect(screen.getByText('Default voice')).toBeTruthy();
   });
 
+  it('shows the name a voice was listed under', async () => {
+    await renderTab({
+      config: DASHSCOPE,
+      voice: 'longxiaochun_v2',
+      voiceNames: { dashscope: { longxiaochun_v2: '龙小春 2.0' } },
+    });
+
+    expect(screen.getByText('龙小春 2.0')).toBeTruthy();
+    expect(screen.queryByText('longxiaochun_v2')).toBeNull();
+  });
+
+  it('falls back to the voice id when it was never picked from a list', async () => {
+    await renderTab({ config: DASHSCOPE, voice: 'S_cloned_voice' });
+
+    expect(screen.getByText('S_cloned_voice')).toBeTruthy();
+  });
+
   it('opens the voice picker when pressed', async () => {
     const { onChangeVoice } = await renderTab({ config: DASHSCOPE, voice: 'longxiaochun' });
 
@@ -128,6 +149,21 @@ describe('the voice card', () => {
     await renderTab({ config: { provider: 'browser' } });
 
     expect(screen.getByText('The browser voice tops out at 100%.')).toBeTruthy();
+  });
+
+  it('says it is reading with the browser voice when that is the deliberate choice', async () => {
+    await renderTab({ config: { provider: 'browser' } });
+
+    // Choosing the browser voice is an action, so the notice must not read as
+    // if nothing was configured — but there is still a service to configure,
+    // which is why the button stays.
+    expect(
+      screen.getByText('No cloud service is configured. SayLoud is reading with the browser voice.')
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('No provider is configured. Open Settings to choose one.')
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Configure a service' })).toBeTruthy();
   });
 });
 

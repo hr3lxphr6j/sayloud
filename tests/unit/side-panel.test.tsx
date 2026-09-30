@@ -145,6 +145,26 @@ describe('SidePanel', () => {
     const options = [...languageSelect().options].map((option) => option.value);
     expect(options).toEqual(['auto', 'en', 'zh-CN']);
   });
+
+  it('shows the chosen voice the way the list named it, not by its id', async () => {
+    const { area } = fakeArea({
+      [CONFIG_KEY]: { provider: 'dashscope', apiKey: 'sk-1' },
+      'sayloud:selected-voices': { dashscope: 'longxiaochun_v2' },
+      'sayloud:voice-names': { dashscope: { longxiaochun_v2: '龙小春 2.0' } },
+    });
+    const session = { subscribe: () => () => {}, load: async () => null };
+    render(
+      <SidePanel
+        store={new ConfigStore(area)}
+        providers={providers}
+        session={session as unknown as SessionWatch}
+      />
+    );
+
+    expect(await screen.findByText('龙小春 2.0')).toBeTruthy();
+    // The id is what is stored; the name is only how it was listed.
+    expect(screen.queryByText('longxiaochun_v2')).toBeNull();
+  });
 });
 
 describe('the tab list', () => {
@@ -213,7 +233,9 @@ describe('the settings tab', () => {
     expect(languageSelect()).toBeTruthy();
 
     // The browser row opens first, and has no fields of its own to save.
-    fireEvent.click(document.querySelector('[data-provider="dashscope"]') as HTMLElement);
+    fireEvent.click(
+      document.querySelector('[data-provider="dashscope"] .provider-toggle') as HTMLElement
+    );
     expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
   });
 });

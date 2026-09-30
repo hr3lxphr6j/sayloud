@@ -43,6 +43,11 @@ export interface ReadingTabProps {
   config: ProviderConfig | null;
   /** The voice chosen for the saved provider, if any. */
   voice: string | null;
+  /**
+   * What the voices of each provider were called in the list they were picked
+   * from. The id speaks; the name is how the list wrote it down.
+   */
+  voiceNames: Record<string, Record<string, string>>;
   providers: Record<CloudProviderId, Provider>;
   session: SessionWatch;
   /** Absent in tests, which then show the defaults and save nothing. */
@@ -56,6 +61,7 @@ export interface ReadingTabProps {
 export function ReadingTab({
   config,
   voice,
+  voiceNames,
   providers,
   session,
   settings,
@@ -103,6 +109,15 @@ export function ReadingTab({
   // choose a voice on, and the panel says so instead of offering one.
   const cloudConfig = config !== null && config.provider !== 'browser' ? config : null;
 
+  // The session reports the voice the engine actually resolved, which is what
+  // is speaking; the configured one is what the next session will use. Either
+  // way it is an id, and the name is only known when that id was picked from a
+  // loaded list — a hand-typed id has nothing to look up, and shows as itself.
+  const speaking = snapshot?.voice || voice;
+  const voiceLabel = speaking
+    ? ((cloudConfig ? voiceNames[cloudConfig.provider]?.[speaking] : undefined) ?? speaking)
+    : null;
+
   return (
     <div class="stack">
       {cloudConfig ? (
@@ -113,14 +128,7 @@ export function ReadingTab({
               <SpeakerGlyph />
             </span>
             <span class="voice-card-text">
-              {/*
-                The session reports the voice the engine actually resolved, which
-                is what is speaking; the configured one is what the next session
-                will use.
-              */}
-              <span class="voice-card-name">
-                {snapshot?.voice || voice || t('panel.default-voice')}
-              </span>
+              <span class="voice-card-name">{voiceLabel ?? t('panel.default-voice')}</span>
               <span class="voice-card-meta">{voiceMeta(cloudConfig, providers, t)}</span>
             </span>
             <span class="voice-card-action">{t('panel.voice.change')}</span>
@@ -128,7 +136,14 @@ export function ReadingTab({
         </section>
       ) : (
         <div class="notice">
-          <p class="muted">{t('panel.no-provider')}</p>
+          {/*
+            Two different situations, two different lines: nothing chosen yet,
+            or the browser voice deliberately chosen. Saying "no provider is
+            configured" for the second would read as if the circle had not
+            worked. Either way the button stays — the browser voice is still a
+            choice the user may want to change.
+          */}
+          <p class="muted">{t(config === null ? 'panel.no-provider' : 'panel.browser-voice')}</p>
           <button type="button" class="button disclosure" onClick={onOpenSettings}>
             {t('panel.configure')}
           </button>

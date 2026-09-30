@@ -423,7 +423,8 @@ export interface CaptionState {
 
 ### 8.2 交互规则
 
-- 服务商列表每行一个 `<button class="provider-row" data-provider="dashscope" aria-expanded>`；同一时间只展开一行。行首状态点：已保存（且当前生效）→ 实心绿 + 「使用中」徽章；已保存未生效 → 空心绿；未配置 → 灰。**不做红点**（要持久化「上次测试结果」，本轮不做）。
+- 服务商列表每行两个控件（P3 收尾补丁）：行首是**启用开关** —— 真正的 `<input type="radio" name="sayloud-provider">` 包在 `<label class="provider-select">` 里（圆点只负责画，命中区域是 24px 的 label），整个列表是 `role="radiogroup"`，可访问名 `Use {service}`；右侧 `<button class="provider-toggle" aria-expanded>` 只负责原地展开表单。同一时间只展开一行。行首状态点：已保存（且当前生效）→ 实心绿 + 外环 + 「使用中」徽章；已保存未生效 → 空心绿；未配置 → 灰且 radio `disabled`（没有可启用的配置）。**不做红点**（要持久化「上次测试结果」，本轮不做）。
+- **保存 ≠ 启用**：表单里的 `Save` 只写 `sayloud:provider-configs`（`saveConfig`），不碰 `sayloud:provider-config`；保存后若该服务不是当前使用的，状态行明说「已保存，但尚未启用。点击名称前的圆圈即可切换。」。若保存的正是当前使用的服务，则同时用 `setActiveConfig` 把 `sayloud:provider-config` 重新指向刚保存的值 —— 用户没有换服务，不该让引擎继续用旧值。浏览器语音没有自身配置，故其表单不渲染 `Save`，只用圆圈启用。`setActiveConfig` 对未保存的服务返回 false 且不写入，不会凭空造一份空配置。
 - 行摘要：已配置显示「已配置 · 音色 <name>」；未配置显示 schema 的 `summary`。
 - 展开的表单里按钮文案保持 `Test Connection` / `Save` / `Forget saved key`（英文键不变，仅翻译），`id="field-<key>"` 的约定保留，smoke 脚本好改。
 - 表单字段仍然由 `config-schema.ts` 驱动，只是 label/help 换成键。

@@ -509,6 +509,12 @@ code {
  * Rows, not a `<select>`: six services with a status each, one of which opens
  * its form in place. The list is the card's body, so its rows carry the
  * separators and the card carries the border.
+ *
+ * A row holds two controls rather than one: the circle, which chooses the
+ * service in use, and the button beside it, which opens that service's form.
+ * They are siblings because a button cannot contain another, and because the
+ * two jobs are genuinely different — configuring a service must not be what
+ * starts using it.
  */
 .provider-list {
   display: flex;
@@ -524,8 +530,84 @@ code {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  width: 100%;
   padding: var(--space-2) var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.provider-row:hover {
+  background: var(--surface);
+}
+
+/*
+ * The circle that chooses the service.
+ *
+ * The dot it draws stays small: six large circles down the side of the list
+ * would compete with the names. The target around it does not — three times the
+ * dot's width, so it can actually be pressed — and the ring below is what makes
+ * the current choice readable at a glance.
+ */
+.provider-select {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+/*
+ * Invisible but focusable: the dot is the drawing, and the input stretched over
+ * the label is what takes the click, the focus ring and the accessible name.
+ */
+.provider-radio {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.provider-select:hover:has(.provider-radio:not(:disabled)) .status-dot {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 35%, transparent);
+}
+
+/*
+ * The dot is the drawing, the input under it is the control: without this a
+ * click would land on the dot and the radio would never see it.
+ */
+.provider-select .status-dot {
+  pointer-events: none;
+}
+
+.provider-select:has(.provider-radio:focus-visible) {
+  box-shadow: var(--focus);
+}
+
+/*
+ * Disabled means "nothing saved to switch to", and the grey dot in the middle
+ * already says so — the cursor only repeats it for a pointer. Fading the whole
+ * control further would hide the one thing that explains why it is inert.
+ */
+.provider-select:has(.provider-radio:disabled) {
+  cursor: not-allowed;
+}
+
+.provider-select:has(.provider-radio:checked) .status-dot {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 22%, transparent);
+}
+
+.provider-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
@@ -535,8 +617,9 @@ code {
   cursor: pointer;
 }
 
-.provider-row:hover {
-  background: var(--surface);
+.provider-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
 }
 
 .provider-row-text {
@@ -563,7 +646,7 @@ code {
   transition: transform 120ms ease;
 }
 
-.provider-row[aria-expanded='true'] .provider-chevron {
+.provider-toggle[aria-expanded='true'] .provider-chevron {
   transform: rotate(90deg);
 }
 
@@ -572,11 +655,11 @@ code {
   flex-direction: column;
   gap: var(--space-2);
   /*
-   * Inset to the row's text rather than to its dot: the form belongs to the
-   * row above it, and a field starting under the status dot reads as a sibling
-   * of the whole list. The dot is 8px wide with an 8px gap after it.
+   * Inset to the row's text rather than to its circle: the form belongs to the
+   * row above it, and a field starting under the circle reads as a sibling of
+   * the whole list. The circle is 24px wide with an 8px gap after it.
    */
-  padding: var(--space-2) var(--space-1) var(--space-3) calc(var(--space-1) + 16px);
+  padding: var(--space-2) var(--space-1) var(--space-3) calc(var(--space-1) + 32px);
 }
 
 .pill {

@@ -123,11 +123,16 @@ export function VoicePicker({
     }
   };
 
-  const onSelect = async (voiceId: string) => {
+  const onSelect = async (voiceId: string, name?: string) => {
     if (voiceId.length === 0) return;
     setSelected(voiceId);
     try {
       await store.saveSelectedVoice(schema.id, voiceId);
+      // A name only comes from the catalogue, so a voice picked out of the list
+      // has one and an id typed into the box does not. Remembering it here is
+      // what lets the summaries say "Vivi 2.0" without fetching the catalogue
+      // again — the id stays the choice, the name is how it was listed.
+      if (name !== undefined) await store.saveVoiceName(schema.id, voiceId, name);
       setStatus({ kind: 'ok', message: t('voice.saved', { voice: voiceId }) });
       onSaved?.();
     } catch (error) {
@@ -199,7 +204,7 @@ export function VoicePicker({
                   name={`voice-${schema.id}`}
                   checked={selected === voice.id}
                   disabled={disabled}
-                  onChange={() => void onSelect(voice.id)}
+                  onChange={() => void onSelect(voice.id, voice.name)}
                 />
                 <span class="voice-name">{voice.name}</span>
                 <code class="voice-id">{voice.id}</code>

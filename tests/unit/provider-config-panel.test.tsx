@@ -61,21 +61,40 @@ async function renderPanel(store: ConfigStore) {
   return onChanged;
 }
 
-/** The row for one provider. `data-provider` is what the smoke script clicks. */
-function providerRow(id: string): HTMLElement {
-  const row = document.querySelector(`[data-provider="${id}"]`);
-  if (!row) throw new Error(`no row for ${id}`);
-  return row as HTMLElement;
+/**
+ * The list entry for one provider. `data-provider` is on the entry, which holds
+ * two controls: the circle that activates it and the button that opens it.
+ */
+function providerEntry(id: string): HTMLElement {
+  const entry = document.querySelector(`[data-provider="${id}"]`);
+  if (!entry) throw new Error(`no row for ${id}`);
+  return entry as HTMLElement;
+}
+
+/** The button that opens and closes a provider's form. */
+function providerToggle(id: string): HTMLElement {
+  const toggle = providerEntry(id).querySelector('.provider-toggle');
+  if (!toggle) throw new Error(`no expand button for ${id}`);
+  return toggle as HTMLElement;
+}
+
+/** The circle that decides which provider SayLoud reads with. */
+function providerDot(id: string): HTMLInputElement {
+  const dot = providerEntry(id).querySelector('.provider-radio');
+  if (!dot) throw new Error(`no activation control for ${id}`);
+  return dot as HTMLInputElement;
 }
 
 /**
  * Opens a provider's form the way a user does.
  *
- * Clicking a row toggles it, and the row for the active provider is open to
- * begin with — so a test that wants it open has to look before it clicks.
+ * The row's own button toggles it, and the row for the active provider is open
+ * to begin with — so a test that wants it open has to look first.
  */
 function open(id: string): void {
-  if (providerRow(id).getAttribute('aria-expanded') === 'false') fireEvent.click(providerRow(id));
+  if (providerToggle(id).getAttribute('aria-expanded') === 'false') {
+    fireEvent.click(providerToggle(id));
+  }
 }
 
 function apiKeyField(): HTMLInputElement {
@@ -90,7 +109,11 @@ describe('ProviderConfigPanel', () => {
     open('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-typed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await screen.findByText('Saved.');
+    // Not the provider in use, so "Saved." alone would leave the user thinking
+    // nothing had happened.
+    await screen.findByText(
+      'Saved, but not in use. Use the circle beside the name to switch to it.'
+    );
     await waitFor(async () =>
       expect((await store.getSavedConfigs()).dashscope).toMatchObject({ apiKey: 'sk-typed' })
     );
@@ -122,6 +145,7 @@ describe('ProviderConfigPanel', () => {
     const store = new ConfigStore(memoryArea());
     await store.saveConfig(DASHSCOPE);
     await store.saveConfig(VOLCENGINE);
+    await store.setActiveConfig('volcengine');
     await renderPanel(store);
 
     // Volcengine is active, so it is open first.
@@ -135,13 +159,54 @@ describe('ProviderConfigPanel', () => {
     expect((screen.getByLabelText(/Resource id/) as HTMLSelectElement).value).toBe('seed-tts-2.0');
   });
 
-  it('keeps the other keys when the browser voice is saved', async () => {
+  it('says a saved key is not in use, and which control puts it in use', async () => {
+    const store = new ConfigStore(memoryArea());
+    await renderPanel(store);
+
+    open('dashscope');
+    fireEvent.input(apiKeyField(), { target: { value: 'sk-typed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText(
+        'Saved, but not in use. Use the circle beside the name to switch to it.'
+      )
+    ).toBeTruthy();
+    await waitFor(async () =>
+      expect((await store.getSavedConfigs()).dashscope).toMatchObject({ apiKey: 'sk-typed' })
+    );
+    // The hint would be a lie otherwise: Save must not have chosen it.
+    expect(await store.getConfig()).toBeNull();
+  });
+
+  it('re-points the active config at an edit of the provider already in use', async () => {
     const store = new ConfigStore(memoryArea());
     await store.saveConfig(DASHSCOPE);
+    await store.setActiveConfig('dashscope');
+    await renderPanel(store);
+
+    open('dashscope');
+    fireEvent.input(apiKeyField(), { target: { value: 'sk-2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByText('Saved.');
+    // An edit is not a switch: the row stays in use, with what was just saved.
+    await waitFor(async () => expect(await store.getConfig()).toMatchObject({ apiKey: 'sk-2' }));
+    expect(providerEntry('dashscope').getAttribute('data-active')).toBe('true');
+  });
+
+  it('keeps the saved keys when the browser voice is chosen', async () => {
+    const store = new ConfigStore(memoryArea());
+    await store.saveConfig(DASHSCOPE);
+    await store.setActiveConfig('dashscope');
     await renderPanel(store);
 
     open('browser');
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    // Nothing to save for a voice that is not configured; its circle is the
+    // control, so offering Save here would be a button that does nothing.
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+
+    fireEvent.click(providerDot('browser'));
 
     await waitFor(async () => expect(await store.getConfig()).toEqual({ provider: 'browser' }));
     expect((await store.getSavedConfigs()).dashscope).toEqual(DASHSCOPE);
@@ -150,6 +215,7 @@ describe('ProviderConfigPanel', () => {
   it('forgets a saved key on request and clears the form', async () => {
     const store = new ConfigStore(memoryArea());
     await store.saveConfig(DASHSCOPE);
+    await store.setActiveConfig('dashscope');
     const onChanged = await renderPanel(store);
 
     fireEvent.click(screen.getByRole('button', { name: 'Forget saved key' }));
@@ -185,20 +251,20 @@ describe('the provider list', () => {
     await renderPanel(new ConfigStore(memoryArea()));
 
     open('dashscope');
-    expect(providerRow('dashscope').getAttribute('aria-expanded')).toBe('true');
-    expect(providerRow('browser').getAttribute('aria-expanded')).toBe('false');
+    expect(providerToggle('dashscope').getAttribute('aria-expanded')).toBe('true');
+    expect(providerToggle('browser').getAttribute('aria-expanded')).toBe('false');
 
     open('azure');
-    expect(providerRow('azure').getAttribute('aria-expanded')).toBe('true');
-    expect(providerRow('dashscope').getAttribute('aria-expanded')).toBe('false');
+    expect(providerToggle('azure').getAttribute('aria-expanded')).toBe('true');
+    expect(providerToggle('dashscope').getAttribute('aria-expanded')).toBe('false');
   });
 
   it('closes the open row when its own button is pressed again', async () => {
     await renderPanel(new ConfigStore(memoryArea()));
 
-    fireEvent.click(providerRow('browser'));
+    fireEvent.click(providerToggle('browser'));
 
-    expect(providerRow('browser').getAttribute('aria-expanded')).toBe('false');
+    expect(providerToggle('browser').getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByText('Save')).toBeNull();
   });
 
@@ -207,7 +273,7 @@ describe('the provider list', () => {
 
     open('dashscope');
 
-    const controls = providerRow('dashscope').getAttribute('aria-controls');
+    const controls = providerToggle('dashscope').getAttribute('aria-controls');
     expect(controls).toBe('provider-form-dashscope');
     expect(document.getElementById(controls as string)).toBeTruthy();
   });
@@ -215,11 +281,12 @@ describe('the provider list', () => {
   it('marks the provider in use and says what it is configured with', async () => {
     const store = new ConfigStore(memoryArea());
     await store.saveConfig(DASHSCOPE);
+    await store.setActiveConfig('dashscope');
     await store.saveSelectedVoice('dashscope', 'longxiaochun');
     await renderPanel(store);
 
-    expect(providerRow('dashscope').getAttribute('data-active')).toBe('true');
-    expect(providerRow('browser').getAttribute('data-active')).toBe('false');
+    expect(providerEntry('dashscope').getAttribute('data-active')).toBe('true');
+    expect(providerEntry('browser').getAttribute('data-active')).toBe('false');
     expect(screen.getByText('Active')).toBeTruthy();
   });
 
@@ -242,6 +309,28 @@ describe('the provider list', () => {
     expect(screen.getByText('Configured · longxiaochun')).toBeTruthy();
   });
 
+  it('writes a voice the way the list did, and its id when there is no name', async () => {
+    const store = new ConfigStore(memoryArea());
+    await store.saveConfig(DASHSCOPE);
+    await store.saveConfig(VOLCENGINE);
+    render(
+      <ProviderConfigPanel
+        store={store}
+        providers={providers}
+        saved={await store.getConfig()}
+        savedConfigs={await store.getSavedConfigs()}
+        voices={{ dashscope: 'longxiaochun_v2', volcengine: 'seed-voice' }}
+        voiceNames={{ dashscope: { longxiaochun_v2: '龙小春 2.0' } }}
+        onChanged={() => {}}
+      />
+    );
+
+    expect(screen.getByText('Configured · 龙小春 2.0')).toBeTruthy();
+    // Typed in by id, so it was never listed under a name: the id is all there
+    // is, and showing it beats showing nothing.
+    expect(screen.getByText('Configured · seed-voice')).toBeTruthy();
+  });
+
   it('shows the schema summary for a provider that is not configured', async () => {
     await renderPanel(new ConfigStore(memoryArea()));
 
@@ -249,6 +338,60 @@ describe('the provider list', () => {
       screen.getByText('Uses the voices Chrome already has installed. Nothing to configure.')
     ).toBeTruthy();
     expect(screen.getByText(/Word timings come from the with-timestamps endpoint/)).toBeTruthy();
+  });
+});
+
+describe('the activation circle', () => {
+  it('is one radio group, with one radio per provider', async () => {
+    const store = new ConfigStore(memoryArea());
+    await store.saveConfig(DASHSCOPE);
+    await store.setActiveConfig('dashscope');
+    await renderPanel(store);
+
+    expect(screen.getByRole('radiogroup')).toBeTruthy();
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect(radios).toHaveLength(6);
+    expect(radios.filter((radio) => radio.checked)).toHaveLength(1);
+    expect(providerDot('dashscope').checked).toBe(true);
+  });
+
+  it('is named after the service it switches to', async () => {
+    await renderPanel(new ConfigStore(memoryArea()));
+
+    expect(screen.getByRole('radio', { name: 'Use Browser voice' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Use DashScope (阿里云百炼)' })).toBeTruthy();
+  });
+
+  it('activates a provider without opening its form', async () => {
+    const store = new ConfigStore(memoryArea());
+    await store.saveConfig(DASHSCOPE);
+    const onChanged = await renderPanel(store);
+
+    fireEvent.click(providerDot('dashscope'));
+
+    await waitFor(async () => expect(await store.getConfig()).toEqual(DASHSCOPE));
+    expect(onChanged).toHaveBeenCalled();
+    // Two controls, two jobs: choosing a service must not open its form.
+    expect(providerToggle('dashscope').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('cannot be pressed for a provider with nothing saved', async () => {
+    const store = new ConfigStore(memoryArea());
+    await store.saveConfig(DASHSCOPE);
+    await renderPanel(store);
+
+    // Disabled in the DOM, not only announced: there is no config to switch to.
+    expect(providerDot('elevenlabs').disabled).toBe(true);
+    expect(
+      providerEntry('elevenlabs').querySelector('.status-dot')?.getAttribute('data-state')
+    ).toBe('empty');
+    expect(providerDot('dashscope').disabled).toBe(false);
+  });
+
+  it('offers the browser voice even before anything is saved', async () => {
+    await renderPanel(new ConfigStore(memoryArea()));
+
+    expect(providerDot('browser').disabled).toBe(false);
   });
 });
 
@@ -271,7 +414,9 @@ describe('SidePanel settings state', () => {
     open('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-new' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await screen.findByText('Saved.');
+    await screen.findByText(
+      'Saved, but not in use. Use the circle beside the name to switch to it.'
+    );
 
     // The Settings panel remounts when its tab comes back.
     fireEvent.click(screen.getByRole('tab', { name: 'Reading' }));

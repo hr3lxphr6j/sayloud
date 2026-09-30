@@ -1,2 +1,17 @@
+# Native build scripts the extension's dependencies ask for but must not run.
+#
+# The on-device TTS stack (`kokoro-js` → `@huggingface/transformers` →
+# `onnxruntime-web`) also ships the Node-only half of ONNX Runtime plus
+# `sharp`, which would compile native addons against the local toolchain.
+# Nothing in this extension ever runs that half: the model runs in the
+# offscreen document's browser build, and `onnxruntime-web` (the browser
+# package, and a direct dependency) needs none of these build steps.
+#
+# `protobufjs` is a genuine runtime dependency of `onnxruntime-web`, but its
+# postinstall only prints a note about optional CLI dependencies.
+allowBuilds:
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false
 minimumReleaseAgeExclude:
   - '@wxt-dev/browser@0.3.4'

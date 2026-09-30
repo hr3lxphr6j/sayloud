@@ -39,6 +39,10 @@
     "wxt": "0.21.4"
   },
   "dependencies": {
-    "microsoft-cognitiveservices-speech-sdk": "^1.51.0"
+    "@huggingface/transformers": "3.8.1",
+    "kokoro-js": "1.2.1",
+    "microsoft-cognitiveservices-speech-sdk": "^1.51.0",
+    "phonemizer": "1.2.1",
+    "pinyin-pro": "3.29.4"
   }
 }

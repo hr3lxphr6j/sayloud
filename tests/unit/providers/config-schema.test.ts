@@ -130,6 +130,8 @@ describe('PROVIDER_SCHEMAS', () => {
     for (const [schema, url] of cases) {
       const field = schema.fields.find((entry) => entry.key === 'baseUrl');
       expect(field?.defaultValue).toBe(url);
+      // Clearing the field must still show which host an empty value means.
+      expect(field?.placeholder).toBe(url);
     }
   });
 });

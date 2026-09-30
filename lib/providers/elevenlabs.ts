@@ -71,8 +71,8 @@ const ERROR_CODES: Record<string, ProviderErrorCode> = {
   quota_exceeded: 'no-quota',
   rate_limit_exceeded: 'rate-limit',
   concurrent_limit_exceeded: 'rate-limit',
-  subscription_required: 'service-unavailable',
-  paid_plan_required: 'service-unavailable',
+  subscription_required: 'not-activated',
+  paid_plan_required: 'not-activated',
 };
 
 /** Map an ElevenLabs error code to a unified one, or `undefined`. */

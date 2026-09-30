@@ -225,8 +225,8 @@ const ERROR_CODES: Record<string, ProviderErrorCode> = {
   AllocationQuotaExhausted: 'no-quota',
   Throttling: 'rate-limit',
   LimitRequests: 'rate-limit',
-  ModelNotOpen: 'service-unavailable',
-  ModelNotAvailable: 'service-unavailable',
+  ModelNotOpen: 'not-activated',
+  ModelNotAvailable: 'not-activated',
   ServiceUnavailable: 'service-unavailable',
   InternalError: 'service-unavailable',
 };

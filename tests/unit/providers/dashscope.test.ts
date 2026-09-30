@@ -565,7 +565,7 @@ describe('error mapping', () => {
   it.each([
     [401, 'InvalidApiKey', 'invalid-key'],
     [403, 'AuthenticationError', 'invalid-key'],
-    [400, 'ModelNotOpen', 'service-unavailable'],
+    [400, 'ModelNotOpen', 'not-activated'],
     [500, 'InternalError', 'service-unavailable'],
     [429, 'Throttling.RateQuota', 'rate-limit'],
     [402, 'Arrearage', 'no-quota'],
@@ -591,7 +591,7 @@ describe('error mapping', () => {
   it('reads a code nested under error', () => {
     const error = mapDashscopeError(400, '{"error":{"code":"ModelNotAvailable"}}');
 
-    expect(error.code).toBe('service-unavailable');
+    expect(error.code).toBe('not-activated');
     expect(error.details).toMatchObject({ status: 400, code: 'ModelNotAvailable' });
   });
 
@@ -616,7 +616,7 @@ describe('error mapping', () => {
 
     await expect(
       provider.synthesize({ text: '你好', voiceId: 'longanyang', signal }, config())
-    ).rejects.toMatchObject({ code: 'service-unavailable', message: 'model not activated' });
+    ).rejects.toMatchObject({ code: 'not-activated', message: 'model not activated' });
   });
 
   it('reports an unrecognized in-stream error code as unknown', async () => {

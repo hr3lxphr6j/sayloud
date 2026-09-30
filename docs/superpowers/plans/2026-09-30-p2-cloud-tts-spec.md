@@ -198,7 +198,9 @@ function alignTimings(
 2. **处理流式响应**（SSE / chunked JSON / WebSocket）
 3. **错误映射** — 统一错误码
    - `invalid-key` — key 无效
-   - `service-unavailable` — 服务未开通
+   - `not-activated` — 模型/资源未开通（key 有效）
+   - `voice-mismatch` — 音色与模型/资源不匹配
+   - `service-unavailable` — 服务暂时不可用
    - `rate-limit` — 限流
    - `no-quota` — 配额耗尽
    - `network-error` — 网络错误
@@ -791,7 +793,9 @@ export function createApp(deps: AppDeps): App {
 
 export class ProviderError extends Error {
   constructor(
-    public readonly code: 'invalid-key' | 'service-unavailable' | 'rate-limit' | 'no-quota' | 'network-error' | 'unknown',
+    public readonly code:
+      | 'invalid-key' | 'not-activated' | 'voice-mismatch' | 'service-unavailable'
+      | 'rate-limit' | 'no-quota' | 'network-error' | 'unknown',
     message: string,
     public readonly details?: unknown
   ) {

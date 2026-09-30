@@ -399,7 +399,9 @@ function audioIdentity(config: ProviderConfig): Record<string, unknown> {
     case 'dashscope':
       return { model: config.model ?? null, region: config.region ?? null };
     case 'volcengine':
-      return { model: config.model ?? null, resourceId: config.resourceId ?? null };
+      // The resource id decides both the model version and the billing mode, so
+      // there is no separate model to fold in.
+      return { resourceId: config.resourceId ?? null };
     case 'openai-compat':
       return {
         baseUrl: config.baseUrl,

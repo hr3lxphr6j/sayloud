@@ -34,7 +34,11 @@ import type {
 } from './types';
 import { requireConfig } from './types';
 
-const DEFAULT_BASE_URL = 'https://api.elevenlabs.io';
+/**
+ * The public host, exported so the settings schema can offer it as the form's
+ * default without keeping a second copy of the URL.
+ */
+export const DEFAULT_BASE_URL = 'https://api.elevenlabs.io';
 const API_PREFIX = '/v1';
 const VOICES_PATH = `${API_PREFIX}/voices`;
 

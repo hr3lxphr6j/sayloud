@@ -64,17 +64,31 @@ export interface DashscopeConfig {
   baseUrl?: string;
 }
 
-/** Volcengine (火山引擎豆包) — chunked-JSON HTTP TTS. */
+/**
+ * The resource ids Volcengine grants (`X-Api-Resource-Id`).
+ *
+ * The id decides both the model version and the billing mode, which is why
+ * there is no separate `model` field: `seed-tts-1.0` is the character-billed
+ * 1.0 service and the only one that reports word timings, `seed-tts-2.0` is
+ * the 2.0 service, and `seed-icl-2.0` is 2.0 with voice cloning.
+ */
+export type VolcengineResourceId = 'seed-tts-1.0' | 'seed-tts-2.0' | 'seed-icl-2.0';
+
+/**
+ * Volcengine (火山引擎豆包) — chunked-JSON HTTP TTS.
+ *
+ * Only the new console's `X-Api-Key` auth is supported (spec §2.2): the old
+ * console's AppId + Access Token pair is deliberately not a config option.
+ * The voice is not a config field either — it comes in as `voiceId`, chosen in
+ * the shared voice picker like every other provider's.
+ */
 export interface VolcengineConfig {
   provider: 'volcengine';
-  /** Volcengine application id (`X-Api-App-Id`). */
-  appId: string;
-  /** Access token, sent as both `X-Api-Key` and `X-Api-Access-Key`. */
-  accessToken: string;
-  /** Resource id (`X-Api-Resource-Id`), e.g. `volc.service_type.10029`. */
-  resourceId?: string;
-  /** Model generation. Only `tts-1.0` reports sentence timings. */
-  model?: 'tts-1.0' | 'tts-2.0';
+  /** New-console API key, sent as `X-Api-Key`. */
+  apiKey: string;
+  /** Decides the model version and the billing mode. Defaults to `seed-tts-1.0`. */
+  resourceId?: VolcengineResourceId;
+  /** Override for tests or a proxy. Defaults to the public host. */
   baseUrl?: string;
 }
 

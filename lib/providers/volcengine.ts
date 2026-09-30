@@ -1,15 +1,25 @@
 /**
- * Volcengine (火山引擎豆包) adapter (spec §2.3).
+ * Volcengine (火山引擎豆包) adapter (spec §2.2).
  *
- * Transport is HTTP POST with a chunked-JSON body: the service streams one
- * JSON object per frame, each carrying a base64 `data` field of audio. Word
- * timings arrive on the `TTSSentenceEnd` frame and — per the spec — only from
- * the TTS 1.0 model, so `capabilities().timings` is `'none'` for 2.0.
+ * Verified against the live API with a real key on 2026-09-29 (spec §6 V9):
  *
- * Wire-format assumptions that Phase 4 must confirm against the live API are
- * marked "assumed" below. Where the service's own vocabulary is ambiguous the
- * parser accepts aliases, so a mismatch degrades to sentence-level highlight
- * rather than losing the audio.
+ * - `POST {baseUrl}/api/v3/tts/unidirectional`, authenticated with the new
+ *   console's `X-Api-Key` plus `X-Api-Resource-Id`. The old console's AppId +
+ *   Access Token pair is deliberately not sent: it is a different auth path
+ *   this project does not support (spec §2.2).
+ * - The body is HTTP chunked, one JSON object per line — **not** SSE, so there
+ *   is no `data:` prefix to strip. Every frame is `{code, message, data}` with
+ *   `data` holding base64 audio, and the stream ends on `code: 20000000`.
+ * - With `enable_timestamp` the service adds a frame carrying
+ *   `{sentence: {text, words: [{word, startTime, endTime, confidence}]}}`.
+ *   Times are in **seconds** and there are no character offsets, so the words
+ *   are located by text. Only `seed-tts-1.0` reports them; 2.0 synthesizes but
+ *   returns an empty `words` array, which leaves sentence-level highlight.
+ *
+ * The request body is the one part the spike did not record, so it is marked
+ * `assumed:` below and Phase 4 has to confirm it against a live key. Where the
+ * response is ambiguous the parser accepts aliases, so a mismatch degrades to
+ * sentence-level highlight rather than losing the audio.
  */
 
 import { alignTimings } from './align-timings';
@@ -32,43 +42,42 @@ import type {
   SynthesisResult,
   SynthesizeRequest,
   Voice,
+  VolcengineResourceId,
   WordTiming,
 } from './types';
 import { requireConfig } from './types';
 
-/** assumed: the streaming TTS endpoint. */
-const DEFAULT_BASE_URL = 'https://openspeech.bytedance.com';
-const SYNTHESIZE_PATH = '/api/v1/tts';
+/** The public host; also the settings form's default. */
+export const DEFAULT_BASE_URL = 'https://openspeech.bytedance.com';
 
-/** assumed: the resource id that grants TTS 1.0. */
-const DEFAULT_RESOURCE_ID = 'volc.service_type.10029';
+/** The streaming TTS path (spec §2.2). */
+const SYNTHESIZE_PATH = '/api/v3/tts/unidirectional';
+
+/** The character-billed 1.0 resource, and the only one that reports timings. */
+export const DEFAULT_RESOURCE_ID: VolcengineResourceId = 'seed-tts-1.0';
+
+/** The code the service sends on its last frame (spec §6 V9). */
+export const END_CODE = 20000000;
 
 const AUDIO_FORMAT = 'mp3';
 const AUDIO_MIME = 'audio/mpeg';
 const SAMPLE_RATE = 24000;
-
-/**
- * Protocol event codes (assumed).
- *
- * Timings ride on the sentence-end frame, which some revisions send as the
- * number and others as the symbolic name, so both are accepted.
- */
-export const EVENT_SENTENCE_START = 350;
-export const EVENT_SENTENCE_END = 351;
-export const EVENT_RESPONSE = 352;
-export const EVENT_SESSION_END = 359;
-
-/** Default model. 1.0 is the only revision that reports word timings. */
-const DEFAULT_MODEL = 'tts-1.0';
-
-const DEFAULT_VOICE = 'zh_female_shuangkuaisisi_moon_bigtts';
 
 /** assumed: the per-request character cap. */
 const MAX_CHARS = 1000;
 
 const CONCURRENCY = 2;
 
-/** A sample of the voices the big-model TTS service ships with. */
+const DEFAULT_VOICE = 'zh_female_shuangkuaisisi_moon_bigtts';
+
+/**
+ * A sample of the voices the big-model TTS service ships with.
+ *
+ * These are the 1.0 voices the spike verified, including 爽快思思 and 温暖阿虎
+ * (spec §6 V9). The 2.0 catalogue is deliberately not guessed at here: Phase 4
+ * still has to verify which voices the `seed-tts-2.0` resource accepts, so
+ * until then every resource is offered this same list.
+ */
 const VOICES: Voice[] = [
   { id: 'zh_female_shuangkuaisisi_moon_bigtts', name: '爽快思思', lang: 'zh-CN', gender: 'female' },
   { id: 'zh_male_wennuanahu_moon_bigtts', name: '温暖阿虎', lang: 'zh-CN', gender: 'male' },
@@ -81,11 +90,13 @@ const VOICES: Voice[] = [
 ];
 
 /**
- * Volcengine's own error vocabulary (assumed).
+ * Volcengine's error vocabulary.
  *
- * 45000030 is the "service not activated" code the spec calls out; it shares
- * a bucket with the generic unavailable codes because the user-facing fix is
- * the same (open the console and enable the service).
+ * `45000030` ("requested resource not granted") is the "service not activated"
+ * case the spec calls out, and `55000000` is the voice/resource mismatch the
+ * spec gives its own prompt to (spec §6 V9). The three- and four-digit codes
+ * below come from the older endpoint and are kept so a service that still
+ * answers with them is not reported as an unknown failure.
  */
 const ERROR_CODES: Record<number, ProviderErrorCode> = {
   3001: 'unknown',
@@ -95,19 +106,20 @@ const ERROR_CODES: Record<number, ProviderErrorCode> = {
   3005: 'rate-limit',
   3006: 'service-unavailable',
   45000030: 'service-unavailable',
+  55000000: 'voice-mismatch',
 };
 
-/** Success codes: the legacy endpoint answers 3000, the newer one 0. */
-const SUCCESS_CODES = new Set([0, 3000]);
+/**
+ * Codes that mean "this frame is payload, not a failure".
+ *
+ * `20000000` is the verified end-of-stream frame (spec §6 V9); the audio frames
+ * before it carry `0`.
+ */
+const SUCCESS_CODES = new Set([0, END_CODE]);
 
-/** True when `model` reports word timings. */
-export function supportsTimings(model: string): boolean {
-  return model === 'tts-1.0';
-}
-
-/** True when a frame's `event` field marks the end of a sentence. */
-export function isSentenceEnd(event: unknown): boolean {
-  return event === EVENT_SENTENCE_END || event === 'TTSSentenceEnd';
+/** True when this resource reports word timings (spec §6 V9). */
+export function supportsTimings(resourceId: VolcengineResourceId): boolean {
+  return resourceId === 'seed-tts-1.0';
 }
 
 /** Map a Volcengine code to a unified one, or `undefined` if unknown. */
@@ -160,10 +172,10 @@ export class VolcengineProvider implements Provider {
   readonly name = '火山引擎豆包 TTS';
 
   capabilities(config: ProviderConfig): ProviderCapabilities {
-    const { model = DEFAULT_MODEL } = requireConfig(config, 'volcengine');
+    const { resourceId = DEFAULT_RESOURCE_ID } = requireConfig(config, 'volcengine');
 
     return {
-      timings: supportsTimings(model) ? 'exact' : 'none',
+      timings: supportsTimings(resourceId) ? 'exact' : 'none',
       maxChars: MAX_CHARS,
       concurrency: CONCURRENCY,
     };
@@ -175,18 +187,16 @@ export class VolcengineProvider implements Provider {
   }
 
   async listVoices(config: ProviderConfig, _signal: AbortSignal): Promise<Voice[]> {
-    const { model = DEFAULT_MODEL } = requireConfig(config, 'volcengine');
-    const timings = supportsTimings(model);
+    const { resourceId = DEFAULT_RESOURCE_ID } = requireConfig(config, 'volcengine');
+    const timings = supportsTimings(resourceId);
 
     return VOICES.map((voice) => ({ ...voice, supportsTimings: timings }));
   }
 
   async synthesize(request: SynthesizeRequest, config: ProviderConfig): Promise<SynthesisResult> {
     const {
-      appId,
-      accessToken,
+      apiKey,
       resourceId = DEFAULT_RESOURCE_ID,
-      model = DEFAULT_MODEL,
       baseUrl = DEFAULT_BASE_URL,
     } = requireConfig(config, 'volcengine');
 
@@ -194,22 +204,27 @@ export class VolcengineProvider implements Provider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-App-Id': appId,
-        // The spec names `X-Api-Key`; the live service documents
-        // `X-Api-Access-Key`. Both carry the same token so the adapter works
-        // either way — Phase 4 should confirm and drop the redundant one.
-        'X-Api-Key': accessToken,
-        'X-Api-Access-Key': accessToken,
+        // The new console's auth, and nothing else: sending the old console's
+        // AppId / Access Token alongside it would be the ambiguity the spec
+        // resolves by ruling that path out (spec §2.2).
+        'X-Api-Key': apiKey,
         'X-Api-Resource-Id': resourceId,
         'X-Api-Request-Id': crypto.randomUUID(),
       },
+      // assumed: the whole request body. The spike recorded the response, the
+      // headers and the auth, but not the body it sent, so this shape — and in
+      // particular where `enable_timestamp` belongs — has to be confirmed
+      // against a live key in Phase 4. `additions` is the other field the
+      // service documents for extra parameters.
       body: JSON.stringify({
         user: { uid: 'sayloud' },
         req_params: {
           text: request.text,
           speaker: request.voiceId || DEFAULT_VOICE,
-          model,
           audio_params: { format: AUDIO_FORMAT, sample_rate: SAMPLE_RATE },
+          // Only 1.0 can answer with timings, so asking the other resources for
+          // them would only add a frame that carries nothing.
+          ...(supportsTimings(resourceId) ? { enable_timestamp: true } : {}),
         },
       }),
       signal: request.signal,
@@ -248,8 +263,8 @@ export class VolcengineProvider implements Provider {
  * Read every JSON frame into audio chunks, words and an optional error.
  *
  * A frame that is not JSON is skipped rather than fatal: the stream carries
- * session bookkeeping frames alongside the audio, and one unexpected frame
- * should not discard the sentence.
+ * bookkeeping frames alongside the audio, and one unexpected frame should not
+ * discard the sentence.
  */
 function parseStream(body: string): StreamResult {
   const chunks: ArrayBuffer[] = [];
@@ -271,46 +286,45 @@ function parseStream(body: string): StreamResult {
     const base64 = readFirstString(frame, ['data', 'audio']);
     if (base64) chunks.push(decodeBase64(base64));
 
-    // Timings ride on the sentence-end frame, but the payload wrapper varies
-    // between revisions, so both the frame and its `payload` are inspected.
+    // Timings ride on their own frame, and the verified shape is a `sentence`
+    // object at the frame's root (spec §6 V9). A `payload` wrapper and a bare
+    // `words` list are kept as tolerances for revisions that nest differently.
+    collectWords(frame, words);
     const payload = readRecord(frame, 'payload');
-    if (isSentenceEnd(frame.event) || hasWords(frame) || (payload && hasWords(payload))) {
-      collectWords(frame, words);
-      if (payload) collectWords(payload, words);
-    }
+    if (payload) collectWords(payload, words);
   }
 
   return { chunks, words, error };
 }
 
-function hasWords(record: Record<string, unknown>): boolean {
-  return readArray(record, 'words') !== undefined || readArray(record, 'word_list') !== undefined;
-}
-
-/**
- * Collect word timings from a frame.
- *
- * The service reports seconds as floats in `start_time` / `end_time` and,
- * on some revisions, milliseconds in `start_ms` / `end_ms`; the millisecond
- * field wins when both are present.
- */
+/** Collect the word timings a frame carries, wherever it nests them. */
 function collectWords(source: Record<string, unknown>, into: Word[]): void {
-  const list = readArray(source, 'words') ?? readArray(source, 'word_list');
+  const sentence = readRecord(source, 'sentence');
+  const list =
+    (sentence && (readArray(sentence, 'words') ?? readArray(sentence, 'word_list'))) ??
+    readArray(source, 'words') ??
+    readArray(source, 'word_list');
   if (!list) return;
 
   for (const entry of list) {
     if (!isRecord(entry)) continue;
 
-    const text = readFirstString(entry, ['text', 'word']);
-    const startMs = readTimeMs(entry, ['start_ms', 'startMs'], ['start_time', 'begin_time']);
-    const endMs = readTimeMs(entry, ['end_ms', 'endMs'], ['end_time', 'endTime']);
+    const text = readFirstString(entry, ['word', 'text']);
+    const startMs = readTimeMs(entry, ['start_ms', 'startMs'], ['startTime', 'start_time']);
+    const endMs = readTimeMs(entry, ['end_ms', 'endMs'], ['endTime', 'end_time']);
     if (!text || startMs === undefined || endMs === undefined) continue;
 
     into.push({ text, startMs, endMs });
   }
 }
 
-/** Read a time as milliseconds, from a millisecond or a seconds field. */
+/**
+ * Read a time as milliseconds, from a millisecond or a seconds field.
+ *
+ * The verified fields are `startTime` / `endTime` in **seconds** (spec §6 V9);
+ * the millisecond aliases are kept from the older endpoint so a revision that
+ * still reports them is not misread as seconds.
+ */
 function readTimeMs(
   record: Record<string, unknown>,
   msKeys: string[],
@@ -333,6 +347,9 @@ function resolveTimings(sentenceText: string, words: Word[]): WordTiming[] | und
   }
   if (durationMs <= 0) return undefined;
 
+  // The words are normalized on the way back ("1.27" is spoken as "一 点 二 七"),
+  // so they are located by text. A word the sentence does not contain is never
+  // placed by estimation — that is a hard constraint, not a heuristic (§2.1).
   return alignTimings(sentenceText, { kind: 'sequential-words', words }, durationMs);
 }
 

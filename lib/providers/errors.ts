@@ -8,6 +8,7 @@
 export type ProviderErrorCode =
   | 'invalid-key'
   | 'service-unavailable'
+  | 'voice-mismatch'
   | 'rate-limit'
   | 'no-quota'
   | 'network-error'
@@ -71,6 +72,8 @@ export function networkError(cause: unknown): ProviderError {
 const CODE_MESSAGES: Record<ProviderErrorCode, string> = {
   'invalid-key': 'The API key was rejected. Check that it was copied in full.',
   'service-unavailable': 'The service is unavailable right now. Try again in a moment.',
+  'voice-mismatch':
+    'The chosen voice does not belong to the selected resource id. The two have to match — pick a voice from this resource.',
   'rate-limit': 'The service is rate limiting this key. Wait a moment and retry.',
   'no-quota': 'This account has no quota left for the service.',
   'network-error': 'The request could not reach the service. Check the URL and your connection.',

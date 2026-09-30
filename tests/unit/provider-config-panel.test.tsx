@@ -61,8 +61,21 @@ async function renderPanel(store: ConfigStore) {
   return onChanged;
 }
 
-function pick(provider: string): void {
-  fireEvent.change(screen.getByLabelText('Provider'), { target: { value: provider } });
+/** The row for one provider. `data-provider` is what the smoke script clicks. */
+function providerRow(id: string): HTMLElement {
+  const row = document.querySelector(`[data-provider="${id}"]`);
+  if (!row) throw new Error(`no row for ${id}`);
+  return row as HTMLElement;
+}
+
+/**
+ * Opens a provider's form the way a user does.
+ *
+ * Clicking a row toggles it, and the row for the active provider is open to
+ * begin with — so a test that wants it open has to look before it clicks.
+ */
+function open(id: string): void {
+  if (providerRow(id).getAttribute('aria-expanded') === 'false') fireEvent.click(providerRow(id));
 }
 
 function apiKeyField(): HTMLInputElement {
@@ -74,7 +87,7 @@ describe('ProviderConfigPanel', () => {
     const store = new ConfigStore(memoryArea());
     await renderPanel(store);
 
-    pick('dashscope');
+    open('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-typed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByText('Saved.');
@@ -83,8 +96,8 @@ describe('ProviderConfigPanel', () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    pick('browser');
-    pick('dashscope');
+    open('browser');
+    open('dashscope');
     expect(apiKeyField().value).toBe('sk-typed');
   });
 
@@ -92,7 +105,7 @@ describe('ProviderConfigPanel', () => {
     const store = new ConfigStore(memoryArea());
     await renderPanel(store);
 
-    pick('openai-compat');
+    open('openai-compat');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(screen.getByText('Base URL is required.')).toBeTruthy();
 
@@ -111,13 +124,13 @@ describe('ProviderConfigPanel', () => {
     await store.saveConfig(VOLCENGINE);
     await renderPanel(store);
 
-    // Volcengine is active, so it is shown first.
+    // Volcengine is active, so it is open first.
     expect(apiKeyField().value).toBe('volc-key');
 
-    pick('dashscope');
+    open('dashscope');
     expect(apiKeyField().value).toBe('sk-dash');
 
-    pick('volcengine');
+    open('volcengine');
     expect(apiKeyField().value).toBe('volc-key');
     expect((screen.getByLabelText(/Resource id/) as HTMLSelectElement).value).toBe('seed-tts-2.0');
   });
@@ -127,7 +140,7 @@ describe('ProviderConfigPanel', () => {
     await store.saveConfig(DASHSCOPE);
     await renderPanel(store);
 
-    pick('browser');
+    open('browser');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(async () => expect(await store.getConfig()).toEqual({ provider: 'browser' }));
@@ -151,9 +164,91 @@ describe('ProviderConfigPanel', () => {
     const store = new ConfigStore(memoryArea());
     await renderPanel(store);
 
-    pick('dashscope');
+    open('dashscope');
 
     expect(screen.queryByRole('button', { name: 'Forget saved key' })).toBeNull();
+  });
+});
+
+describe('the provider list', () => {
+  it('lists every provider as a row, in the schema order', async () => {
+    await renderPanel(new ConfigStore(memoryArea()));
+
+    expect(
+      [...document.querySelectorAll('[data-provider]')].map((row) =>
+        row.getAttribute('data-provider')
+      )
+    ).toEqual(['browser', 'dashscope', 'volcengine', 'openai-compat', 'elevenlabs', 'azure']);
+  });
+
+  it('keeps one row open at a time', async () => {
+    await renderPanel(new ConfigStore(memoryArea()));
+
+    open('dashscope');
+    expect(providerRow('dashscope').getAttribute('aria-expanded')).toBe('true');
+    expect(providerRow('browser').getAttribute('aria-expanded')).toBe('false');
+
+    open('azure');
+    expect(providerRow('azure').getAttribute('aria-expanded')).toBe('true');
+    expect(providerRow('dashscope').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('closes the open row when its own button is pressed again', async () => {
+    await renderPanel(new ConfigStore(memoryArea()));
+
+    fireEvent.click(providerRow('browser'));
+
+    expect(providerRow('browser').getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('Save')).toBeNull();
+  });
+
+  it('points the open row at its form', async () => {
+    await renderPanel(new ConfigStore(memoryArea()));
+
+    open('dashscope');
+
+    const controls = providerRow('dashscope').getAttribute('aria-controls');
+    expect(controls).toBe('provider-form-dashscope');
+    expect(document.getElementById(controls as string)).toBeTruthy();
+  });
+
+  it('marks the provider in use and says what it is configured with', async () => {
+    const store = new ConfigStore(memoryArea());
+    await store.saveConfig(DASHSCOPE);
+    await store.saveSelectedVoice('dashscope', 'longxiaochun');
+    await renderPanel(store);
+
+    expect(providerRow('dashscope').getAttribute('data-active')).toBe('true');
+    expect(providerRow('browser').getAttribute('data-active')).toBe('false');
+    expect(screen.getByText('Active')).toBeTruthy();
+  });
+
+  it('shows the chosen voice for a provider that has one', async () => {
+    const store = new ConfigStore(memoryArea());
+    await store.saveConfig(DASHSCOPE);
+    await store.saveSelectedVoice('dashscope', 'longxiaochun');
+    const savedConfigs = await store.getSavedConfigs();
+    render(
+      <ProviderConfigPanel
+        store={store}
+        providers={providers}
+        saved={await store.getConfig()}
+        savedConfigs={savedConfigs}
+        voices={{ dashscope: 'longxiaochun' }}
+        onChanged={() => {}}
+      />
+    );
+
+    expect(screen.getByText('Configured · longxiaochun')).toBeTruthy();
+  });
+
+  it('shows the schema summary for a provider that is not configured', async () => {
+    await renderPanel(new ConfigStore(memoryArea()));
+
+    expect(
+      screen.getByText('Uses the voices Chrome already has installed. Nothing to configure.')
+    ).toBeTruthy();
+    expect(screen.getByText(/Word timings come from the with-timestamps endpoint/)).toBeTruthy();
   });
 });
 
@@ -172,8 +267,8 @@ describe('SidePanel settings state', () => {
     );
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
-    await screen.findByLabelText('Provider');
-    pick('dashscope');
+    await screen.findByLabelText('Interface language');
+    open('dashscope');
     fireEvent.input(apiKeyField(), { target: { value: 'sk-new' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByText('Saved.');
@@ -181,9 +276,9 @@ describe('SidePanel settings state', () => {
     // The Settings panel remounts when its tab comes back.
     fireEvent.click(screen.getByRole('tab', { name: 'Reading' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Settings' }));
-    await screen.findByLabelText('Provider');
-    pick('browser');
-    pick('dashscope');
+    await screen.findByLabelText('Interface language');
+    open('browser');
+    open('dashscope');
 
     expect(apiKeyField().value).toBe('sk-new');
   });

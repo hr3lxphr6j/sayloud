@@ -7,6 +7,7 @@
  */
 import { render } from 'preact';
 import { browser } from 'wxt/browser';
+import { clearCache, readCacheUsage } from '~/lib/cache-admin';
 import { ConfigStore } from '~/lib/config-store';
 import { createProviders } from '~/lib/providers/registry';
 import { SessionWatch } from '~/lib/session-watch';
@@ -24,6 +25,12 @@ render(
     providers={createProviders()}
     permissions={browser.permissions}
     settings={new SettingsStore(browser.storage.local, browser.storage.onChanged)}
+    cache={{
+      readUsage: () => readCacheUsage(),
+      // The broadcast to a live offscreen document happens in `clearCache`.
+      clear: () => clearCache(browser.runtime),
+    }}
+    version={browser.runtime.getManifest().version}
     session={
       new SessionWatch(new SnapshotStore(browser.storage.session), browser.storage.onChanged)
     }

@@ -1,18 +1,41 @@
 /**
- * The Reading tab: what SayLoud is configured to do, and what it last did.
+ * The Reading tab: what SayLoud is set to do, and what it last did.
  *
  * There is no playback control here on purpose — the player on the page owns
  * that, and the service worker owns the session. This reads the session
- * snapshot the worker publishes and shows it, which is the whole of the
- * side panel's involvement with playback.
+ * snapshot the worker publishes and shows it, which is the whole of the side
+ * panel's involvement with playback.
+ *
+ * The two sliders are the exception that proves that rule: they are
+ * preferences, not transport. A drag updates the number on screen and writes
+ * settings once, when the handle is released.
  */
 import { useEffect, useState } from 'preact/hooks';
+import { formatRate } from '~/lib/format-rate';
 import { type MessageKey, useT } from '~/lib/i18n';
 import type { SessionSnapshot } from '~/lib/protocol';
 import { PROVIDER_SCHEMAS } from '~/lib/providers/config-schema';
 import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
+import {
+  MAX_RATE,
+  MAX_VOLUME,
+  MIN_RATE,
+  MIN_VOLUME,
+  type SettingsStore,
+} from '~/lib/settings-store';
+import { Card } from './ui/Card';
+import { SpeakerGlyph } from './ui/icons';
+import { Row } from './ui/Row';
+import { Slider } from './ui/Slider';
+import { Switch } from './ui/Switch';
+import { useSettings } from './use-settings';
+
+/** One step of the volume slider: 5%, which is 30 steps across 0–150%. */
+const VOLUME_STEP = 0.05;
+/** One step of the rate slider, to match the presets the player offers. */
+const RATE_STEP = 0.05;
 
 export interface ReadingTabProps {
   /** The saved config; null when the user has not configured a provider. */
@@ -21,13 +44,37 @@ export interface ReadingTabProps {
   voice: string | null;
   providers: Record<CloudProviderId, Provider>;
   session: SessionWatch;
-  /** True until the saved config has been read. */
-  loading: boolean;
+  /** Absent in tests, which then show the defaults and save nothing. */
+  settings?: SettingsStore;
+  /** Opens the Settings tab, where a service is configured. */
+  onOpenSettings: () => void;
+  /** Switches the panel to the full-page voice picker. */
+  onChangeVoice: () => void;
 }
 
-export function ReadingTab({ config, voice, providers, session, loading }: ReadingTabProps) {
+export function ReadingTab({
+  config,
+  voice,
+  providers,
+  session,
+  settings,
+  onOpenSettings,
+  onChangeVoice,
+}: ReadingTabProps) {
   const t = useT();
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
+  const { settings: saved, update } = useSettings(settings);
+
+  /**
+   * What the sliders show while a handle is being dragged.
+   *
+   * Null when nothing is being dragged, so the value on screen follows the
+   * stored one — including a change made in another context, which arrives
+   * through `storage.onChanged`.
+   */
+  const [draft, setDraft] = useState<{ volume?: number; rate?: number } | null>(null);
+  const volume = draft?.volume ?? saved.volume;
+  const rate = draft?.rate ?? saved.rate;
 
   useEffect(() => {
     let active = true;
@@ -50,39 +97,90 @@ export function ReadingTab({ config, voice, providers, session, loading }: Readi
     };
   }, [session]);
 
-  if (loading) return <p class="muted">{t('panel.loading')}</p>;
+  // The browser voice is what Chrome has installed, and it is also what an
+  // unconfigured panel is reading with; either way there is no service to
+  // choose a voice on, and the panel says so instead of offering one.
+  const cloudConfig = config !== null && config.provider !== 'browser' ? config : null;
 
   return (
     <div class="stack">
-      <section class="section">
-        <h2>{t('panel.section.provider')}</h2>
-        {config ? (
-          <dl class="facts">
-            <div>
-              <dt>{t('panel.fact.service')}</dt>
-              <dd>{t(PROVIDER_SCHEMAS[config.provider].labelKey)}</dd>
-            </div>
-            <div>
-              <dt>{t('panel.fact.voice')}</dt>
+      {cloudConfig ? (
+        <section class="section">
+          <h2>{t('voice.section')}</h2>
+          <button type="button" class="voice-card" onClick={onChangeVoice}>
+            <span class="voice-card-mark">
+              <SpeakerGlyph />
+            </span>
+            <span class="voice-card-text">
               {/*
                 The session reports the voice the engine actually resolved, which
-                is what is speaking; the configured one is the fallback for when
-                nothing is running.
+                is what is speaking; the configured one is what the next session
+                will use.
               */}
-              <dd>{snapshot?.voice || voice || t('panel.default-voice')}</dd>
-            </div>
-            <div>
-              <dt>{t('panel.fact.highlight')}</dt>
-              <dd>{t(highlightKey(config, providers))}</dd>
-            </div>
-          </dl>
-        ) : (
+              <span class="voice-card-name">
+                {snapshot?.voice || voice || t('panel.default-voice')}
+              </span>
+              <span class="voice-card-meta">{voiceMeta(cloudConfig, providers, t)}</span>
+            </span>
+            <span class="voice-card-action">{t('panel.voice.change')}</span>
+          </button>
+        </section>
+      ) : (
+        <div class="notice">
           <p class="muted">{t('panel.no-provider')}</p>
-        )}
-      </section>
+          <button type="button" class="button disclosure" onClick={onOpenSettings}>
+            {t('panel.configure')}
+          </button>
+        </div>
+      )}
 
-      <section class="section">
-        <h2>{t('panel.section.session')}</h2>
+      <Card>
+        <div class="rows">
+          <div>
+            <Slider
+              id="volume-slider"
+              label={t('settings.volume.label')}
+              value={volume}
+              min={MIN_VOLUME}
+              max={MAX_VOLUME}
+              step={VOLUME_STEP}
+              display={formatVolume(volume)}
+              onInput={(next) => setDraft((current) => ({ ...current, volume: next }))}
+              onCommit={(next) => {
+                update({ volume: next });
+                setDraft((current) => ({ ...current, volume: undefined }));
+              }}
+            />
+            {!cloudConfig && <p class="muted small">{t('settings.volume.browser-cap')}</p>}
+          </div>
+
+          <Slider
+            id="rate-slider"
+            label={t('settings.rate.label')}
+            value={rate}
+            min={MIN_RATE}
+            max={MAX_RATE}
+            step={RATE_STEP}
+            display={formatRate(rate)}
+            onInput={(next) => setDraft((current) => ({ ...current, rate: next }))}
+            onCommit={(next) => {
+              update({ rate: next });
+              setDraft((current) => ({ ...current, rate: undefined }));
+            }}
+          />
+
+          <Row label={t('settings.caption.label')} help={t('settings.caption.help')}>
+            <Switch
+              id="caption-switch"
+              label={t('settings.caption.label')}
+              checked={saved.captionWindow}
+              onChange={(checked) => update({ captionWindow: checked })}
+            />
+          </Row>
+        </div>
+      </Card>
+
+      <Card title={t('panel.section.session')}>
         {snapshot ? (
           <>
             <p>
@@ -104,10 +202,23 @@ export function ReadingTab({ config, voice, providers, session, loading }: Readi
         ) : (
           <p class="muted">{t('panel.nothing-reading')}</p>
         )}
-        <p class="muted small">{t('panel.reported-by')}</p>
-      </section>
+      </Card>
     </div>
   );
+}
+
+/** The voice card's second line: which service, and how it highlights. */
+function voiceMeta(
+  config: ProviderConfig & { provider: CloudProviderId },
+  providers: Record<CloudProviderId, Provider>,
+  t: (key: MessageKey) => string
+): string {
+  const service = t(PROVIDER_SCHEMAS[config.provider].labelKey);
+  return [service, t(highlightKey(config, providers))].join(' · ');
+}
+
+function formatVolume(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 function progressPercent(snapshot: SessionSnapshot): number {
@@ -124,14 +235,13 @@ function progressPercent(snapshot: SessionSnapshot): number {
  * Whether this configuration yields word-level highlight.
  *
  * The browser voice has no adapter to ask, and never reports timings: the
- * content script highlights the whole sentence it handed to `chrome.tts`.
+ * content script highlights the whole sentence it handed to `chrome.tts`. It is
+ * not asked about here — the card would be repeating the service name back.
  */
 function highlightKey(
-  config: ProviderConfig,
+  config: ProviderConfig & { provider: CloudProviderId },
   providers: Record<CloudProviderId, Provider>
 ): MessageKey {
-  if (config.provider === 'browser') return 'panel.highlight.browser';
-
   try {
     return providers[config.provider].capabilities(config).timings === 'exact'
       ? 'panel.highlight.words'

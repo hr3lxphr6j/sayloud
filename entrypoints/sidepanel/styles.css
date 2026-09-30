@@ -5,33 +5,56 @@
  * style `:root` and `body` — nothing else is on the page to collide with. The
  * palette follows the system theme, because a side panel sits next to Chrome's
  * own chrome all day and a mismatched one looks broken.
+ *
+ * The tokens are the design language; the components below are thin, and
+ * anything that needs a colour, a corner radius or a gap takes it from here
+ * rather than inventing one. Everything has to survive 320px: no fixed widths,
+ * and long voice ids or provider names wrap or ellipsize instead of pushing the
+ * page sideways.
  */
 
 :root {
   color-scheme: light dark;
 
+  /* Surfaces, from the page up: the page, a hover or a track, a card. */
   --bg: #fff;
+  --surface: #f5f5f7;
+  --surface-2: #f7f7f9;
+  /* The one raised thing: the selected pill in a segmented control. */
+  --raised: #fff;
   --fg: #1c1c1e;
   --muted: #6b6b70;
   --border: #d8d8dc;
-  --surface: #f5f5f7;
   --accent: #0071e3;
   --accent-fg: #fff;
   --error: #c0392b;
   --ok: #1a7f45;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.06);
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1f1f22;
+    --surface: #2a2a2e;
+    --surface-2: #26262a;
+    --raised: #35353b;
     --fg: #f2f2f4;
     --muted: #9a9aa0;
     --border: #3a3a3f;
-    --surface: #2a2a2e;
     --accent: #4c9aff;
     --accent-fg: #10131a;
     --error: #ff7b72;
     --ok: #5ddc8c;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
   }
 }
 
@@ -50,14 +73,29 @@ h1 {
   font-weight: 600;
 }
 
+/*
+ * No `text-transform: uppercase`, which the design language called for and this
+ * copy cannot take: half the labels are Chinese, where upcasing does nothing
+ * visible except push the Latin words next to it out of line.
+ */
 h2 {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--muted);
 }
+
+/*
+ * One focus treatment for everything focusable. The transparent outline is for
+ * forced-colors mode, where the shadow is dropped and only the outline is left.
+ */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: var(--focus);
+}
+
+/* --- shell ---------------------------------------------------------------- */
 
 .sidepanel {
   display: flex;
@@ -66,24 +104,44 @@ h2 {
 }
 
 .header {
-  padding: 10px 12px 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+}
+
+/* The full-page view that replaces the tabs: a back arrow and a title. */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3) var(--space-2);
 }
 
 .tabs {
   display: flex;
-  gap: 4px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border);
+  flex: 1 1 140px;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
 }
 
 .tab {
-  padding: 6px 10px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 5px 10px;
+  overflow: hidden;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-pill);
   background: none;
   color: var(--muted);
   font: inherit;
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -92,20 +150,84 @@ h2 {
 }
 
 .tab[aria-selected='true'] {
-  border-bottom-color: var(--accent);
+  background: var(--raised);
   color: var(--fg);
+  box-shadow: var(--shadow-1);
 }
 
 .panel {
+  min-width: 0;
   flex: 1;
-  padding: 12px;
+  padding: var(--space-3);
 }
 
 /* A vertical rhythm for whatever a tab stacks up. */
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
+}
+
+/* --- cards and rows ------------------------------------------------------- */
+
+.card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-1);
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.card-title + .card-body {
+  margin-top: var(--space-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.row-label {
+  font-weight: 500;
+}
+
+.row-help {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.row-control {
+  flex: 0 0 auto;
+}
+
+/*
+ * Rows inside one card, separated by a hairline rather than each in a card of
+ * its own. The children are wrapped in an element of their own when a row has
+ * more than one part (a slider and a note under it).
+ */
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.rows > * + * {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
 }
 
 .section {
@@ -118,8 +240,153 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
+
+/* With no heading above it, the only button in the row is the whole row. */
+.section-header > .button:only-child {
+  margin-left: auto;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* --- controls ------------------------------------------------------------- */
+
+.button {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+.button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.button.disclosure {
+  padding: 5px 8px;
+  border-color: transparent;
+  background: none;
+  color: var(--accent);
+}
+
+.button.disclosure:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--surface);
+}
+
+.switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.switch[aria-checked='true'] {
+  background: var(--accent);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  transition: left 120ms ease;
+}
+
+.switch[aria-checked='true'] .switch-knob {
+  left: 19px;
+}
+
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.slider-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.slider-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.slider-input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.progress {
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+}
+
+.progress-value {
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+
+/* --- form fields ---------------------------------------------------------- */
 
 .form {
   display: flex;
@@ -130,7 +397,7 @@ h2 {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .field.checkbox > label {
@@ -175,10 +442,15 @@ textarea {
   width: 100%;
   padding: 5px 7px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: inherit;
   font: inherit;
+}
+
+input[type='range'] {
+  box-sizing: border-box;
+  width: 100%;
 }
 
 textarea {
@@ -193,43 +465,16 @@ select[aria-invalid='true'] {
   border-color: var(--error);
 }
 
-.actions {
-  display: flex;
-  gap: 8px;
-}
-
-.button {
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: inherit;
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.button:hover:not(:disabled) {
-  border-color: var(--muted);
-}
-
-.button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-
-.button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
   margin: 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--fg);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
 }
 
 .result {
@@ -258,32 +503,178 @@ code {
   font-size: 12px;
 }
 
-.facts {
+/* --- the provider list ---------------------------------------------------- */
+
+/*
+ * Rows, not a `<select>`: six services with a status each, one of which opens
+ * its form in place. The list is the card's body, so its rows carry the
+ * separators and the card carries the border.
+ */
+.provider-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 0;
+  min-width: 0;
 }
 
-.facts > div {
+.provider-entry + .provider-entry {
+  border-top: 1px solid var(--border);
+}
+
+.provider-row {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.facts dt {
-  flex: 0 0 84px;
-  color: var(--muted);
+.provider-row:hover {
+  background: var(--surface);
 }
 
-.facts dd {
-  margin: 0;
+.provider-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.provider-name {
+  font-weight: 500;
   overflow-wrap: anywhere;
+}
+
+.provider-summary {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.provider-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.provider-row[aria-expanded='true'] .provider-chevron {
+  transform: rotate(90deg);
+}
+
+.provider-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /*
+   * Inset to the row's text rather than to its dot: the form belongs to the
+   * row above it, and a field starting under the status dot reads as a sibling
+   * of the whole list. The dot is 8px wide with an 8px gap after it.
+   */
+  padding: var(--space-2) var(--space-1) var(--space-3) calc(var(--space-1) + 16px);
+}
+
+.pill {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pill.active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+.status-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.status-dot[data-state='active'] {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.status-dot[data-state='configured'] {
+  border-color: var(--ok);
+}
+
+/* --- the voice card and the picker ---------------------------------------- */
+
+.voice-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.voice-card:hover {
+  border-color: var(--muted);
+}
+
+.voice-card-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.voice-card-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.voice-card-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.voice-card-meta {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.voice-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .voice-custom {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .voice-custom .inline {
@@ -309,10 +700,11 @@ code {
 
 .voice {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 6px;
-  padding: 4px 6px;
-  border-radius: 6px;
+  padding: var(--space-1) 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -326,30 +718,20 @@ code {
 
 .voice-name {
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .voice-id,
 .voice-meta {
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .badge {
   padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--surface);
   border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
   color: var(--muted);
   font-size: 11px;
-}
-
-.progress {
-  height: 4px;
-  overflow: hidden;
-  border-radius: 2px;
-  background: var(--surface);
-}
-
-.progress-value {
-  height: 100%;
-  background: var(--accent);
 }

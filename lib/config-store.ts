@@ -111,6 +111,16 @@ export class ConfigStore {
     return voices[provider] ?? null;
   }
 
+  /**
+   * Every chosen voice at once, by provider.
+   *
+   * The settings list shows a voice for each configured provider, and asking
+   * per row would read the same storage key once per provider.
+   */
+  getSelectedVoices(): Promise<Record<string, string>> {
+    return this.readSelectedVoices();
+  }
+
   /** Remember the voice for one provider, leaving the others alone. */
   async saveSelectedVoice(provider: ProviderId, voiceId: string): Promise<void> {
     const voices = await this.readSelectedVoices();

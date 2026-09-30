@@ -9,12 +9,17 @@
  * A voice can also be typed in by id: a cloned voice, one the provider added
  * after the catalogue was taken, or one a server does not list. The list can
  * run to hundreds of entries (Volcengine 2.0 has 445), so it is filterable.
+ *
+ * The same component stands in two places: inside a provider's form, and on the
+ * full-page picker the Reading tab's voice card opens. The page is the same
+ * panel of voices with the heading left to the page header above it.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ConfigStore } from '~/lib/config-store';
 import { useT } from '~/lib/i18n';
-import type { ProviderSchema } from '~/lib/providers/config-schema';
+import { PROVIDER_SCHEMAS, type ProviderSchema } from '~/lib/providers/config-schema';
 import { errorMessage, formatProviderError, providerErrorSummary } from '~/lib/providers/errors';
+import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig, Voice } from '~/lib/providers/types';
 import { type Deadline, startDeadline } from './deadline';
 import { type AsyncStatus, StatusLine } from './StatusLine';
@@ -29,8 +34,10 @@ export interface VoicePickerProps {
   config: ProviderConfig | null;
   store: ConfigStore;
   disabled: boolean;
+  /** Draws its own `voice.section` heading; off on the full-page picker. */
+  heading?: boolean;
   /** Lets the form show its own field errors when this is pressed too early. */
-  onAttempt: () => void;
+  onAttempt?: () => void;
   /**
    * Whether the form is showing its errors, i.e. the user has tried something.
    *
@@ -38,7 +45,9 @@ export interface VoicePickerProps {
    * kept in `status`, so it cannot outlive the form being filled in: it is
    * simply no longer true, and re-rendering drops it.
    */
-  showFormErrors: boolean;
+  showFormErrors?: boolean;
+  /** A voice was saved, so a reader looking at the same setting can catch up. */
+  onSaved?: () => void;
 }
 
 export function VoicePicker({
@@ -47,8 +56,10 @@ export function VoicePicker({
   config,
   store,
   disabled,
+  heading = true,
   onAttempt,
-  showFormErrors,
+  showFormErrors = false,
+  onSaved,
 }: VoicePickerProps) {
   const t = useT();
   const [voices, setVoices] = useState<Voice[] | null>(null);
@@ -76,7 +87,7 @@ export function VoicePicker({
   useEffect(() => () => inFlight.current?.cancel(), []);
 
   const onLoad = async () => {
-    onAttempt();
+    onAttempt?.();
     if (!config) return;
 
     const deadline = startDeadline(LOAD_TIMEOUT_MS);
@@ -118,6 +129,7 @@ export function VoicePicker({
     try {
       await store.saveSelectedVoice(schema.id, voiceId);
       setStatus({ kind: 'ok', message: t('voice.saved', { voice: voiceId }) });
+      onSaved?.();
     } catch (error) {
       setStatus({
         kind: 'error',
@@ -131,7 +143,7 @@ export function VoicePicker({
   return (
     <section class="section">
       <div class="section-header">
-        <h2>{t('voice.section')}</h2>
+        {heading && <h2>{t('voice.section')}</h2>}
         <button
           type="button"
           class="button"
@@ -154,35 +166,6 @@ export function VoicePicker({
         </p>
       )}
 
-      <form
-        class="voice-custom"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onSelect(typedId.trim());
-        }}
-      >
-        <label class="field-label" for={`voice-id-${schema.id}`}>
-          {t('voice.id-label')}
-        </label>
-        <div class="inline">
-          <input
-            id={`voice-id-${schema.id}`}
-            type="text"
-            placeholder={t('voice.id-placeholder')}
-            spellcheck={false}
-            autocomplete="off"
-            value={typedId}
-            disabled={disabled}
-            onInput={(event) => setTypedId(event.currentTarget.value)}
-          />
-          <button type="submit" class="button" disabled={disabled || typedId.trim() === ''}>
-            {t('voice.use-id')}
-          </button>
-        </div>
-      </form>
-
-      <StatusLine status={status} />
-
       {voices !== null && voices.length > 0 && (
         <input
           type="search"
@@ -192,6 +175,8 @@ export function VoicePicker({
           onInput={(event) => setQuery(event.currentTarget.value)}
         />
       )}
+
+      <StatusLine status={status} />
 
       {voices !== null && voices.length > 0 && shown.length === 0 && (
         <p class="muted">{t('voice.no-match', { query: query.trim() })}</p>
@@ -224,7 +209,71 @@ export function VoicePicker({
           ))}
         </ul>
       )}
+
+      {/*
+        Last, after the list: it is the escape hatch for a voice the catalogue
+        does not have, not the way most people pick one.
+      */}
+      <form
+        class="voice-custom"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSelect(typedId.trim());
+        }}
+      >
+        <label class="field-label" for={`voice-id-${schema.id}`}>
+          {t('voice.id-label')}
+        </label>
+        <div class="inline">
+          <input
+            id={`voice-id-${schema.id}`}
+            type="text"
+            placeholder={t('voice.id-placeholder')}
+            spellcheck={false}
+            autocomplete="off"
+            value={typedId}
+            disabled={disabled}
+            onInput={(event) => setTypedId(event.currentTarget.value)}
+          />
+          <button type="submit" class="button" disabled={disabled || typedId.trim() === ''}>
+            {t('voice.use-id')}
+          </button>
+        </div>
+      </form>
     </section>
+  );
+}
+
+export interface VoicePickerPageProps {
+  store: ConfigStore;
+  providers: Record<CloudProviderId, Provider>;
+  /** The active config; its provider decides whose voices are listed. */
+  config: ProviderConfig | null;
+  onSaved: () => void;
+}
+
+/**
+ * The voice picker as a page, opened from the Reading tab's voice card.
+ *
+ * It has no form of its own, so nothing has to be validated before the voices
+ * are fetched: the config it lists from is the one that is already saved.
+ */
+export function VoicePickerPage({ store, providers, config, onSaved }: VoicePickerPageProps) {
+  const t = useT();
+
+  if (!config) return <p class="muted">{t('panel.no-provider')}</p>;
+  if (config.provider === 'browser') return <p class="muted">{t('voice.browser-note')}</p>;
+
+  return (
+    <VoicePicker
+      schema={PROVIDER_SCHEMAS[config.provider]}
+      provider={providers[config.provider]}
+      config={config}
+      store={store}
+      disabled={false}
+      heading={false}
+      onSaved={onSaved}
+    />
   );
 }
 

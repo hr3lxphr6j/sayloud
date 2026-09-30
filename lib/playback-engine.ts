@@ -19,11 +19,17 @@ export type VoiceResolver = (lang: string) => string | undefined;
 export interface EngineDeps {
   speaker: Speaker;
   /**
-   * Used once when `speaker` reports a TTS error, so a failing cloud service
-   * degrades to the browser voice instead of stopping playback.
+   * Used when `speaker` reports a TTS error, so a failing cloud service
+   * degrades to the browser voice instead of stopping playback. The degrade
+   * lasts until the next session or `retryPrimary()`.
    */
   fallbackSpeaker?: Speaker;
   resolveVoice: VoiceResolver;
+  /**
+   * The voice resolver while the fallback speaks. Defaults to `resolveVoice`;
+   * needed when that one answers with voice ids only the primary understands.
+   */
+  resolveFallbackVoice?: VoiceResolver;
   now?: () => number;
 }
 
@@ -56,15 +62,18 @@ const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Scr
  */
 export class PlaybackEngine {
   private speaker: Speaker;
+  private readonly primarySpeaker: Speaker;
   private readonly fallbackSpeaker: Speaker | undefined;
-  private readonly resolveVoice: VoiceResolver;
+  private readonly resolvePrimaryVoice: VoiceResolver;
+  private readonly resolveFallbackVoice: VoiceResolver;
   private readonly now: () => number;
   private readonly listeners = new Set<(event: EngineEvent) => void>();
   private readonly speakerSubscriptions: Array<() => void> = [];
   /**
-   * Sticky for the worker's lifetime: a service that just failed is not retried
-   * on the next sentence, so a broken primary costs one failed utterance rather
-   * than one per sentence.
+   * Sticky for the rest of the session: a service that just failed is not
+   * retried on the next sentence, so a broken primary costs one failed
+   * utterance rather than one per sentence. A new session (`load`) or a
+   * configuration change (`retryPrimary`) tries the primary again.
    */
   private usingFallback = false;
 
@@ -87,8 +96,10 @@ export class PlaybackEngine {
 
   constructor(deps: EngineDeps) {
     this.speaker = deps.speaker;
+    this.primarySpeaker = deps.speaker;
     this.fallbackSpeaker = deps.fallbackSpeaker;
-    this.resolveVoice = deps.resolveVoice;
+    this.resolvePrimaryVoice = deps.resolveVoice;
+    this.resolveFallbackVoice = deps.resolveFallbackVoice ?? deps.resolveVoice;
     this.now = deps.now ?? (() => Date.now());
 
     this.bindSpeakerEvents();
@@ -202,11 +213,31 @@ export class PlaybackEngine {
   dispose(): void {
     this.unbindSpeakerEvents();
     this.listeners.clear();
-    this.speaker.dispose();
+    this.primarySpeaker.dispose();
+    this.fallbackSpeaker?.dispose();
+  }
+
+  /**
+   * Leave the fallback and speak through the primary again.
+   *
+   * Called when the provider configuration changes: whatever made the primary
+   * fail may have been fixed. A session mid-sentence replays that sentence on
+   * the primary; a paused one stays paused.
+   */
+  retryPrimary(): void {
+    if (!this.usingFallback) return;
+    const wasSpeaking = this.phase === 'playing' || this.phase === 'loading';
+    this.useSpeaker(this.primarySpeaker);
+    this.usingFallback = false;
+    if (wasSpeaking) this.speakCurrent();
   }
 
   load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
     this.speaker.stop();
+    if (this.usingFallback) {
+      this.useSpeaker(this.primarySpeaker);
+      this.usingFallback = false;
+    }
     this.resetTiming();
     this.sentences = [...sentences];
     this.charsTotal = this.sentences.reduce((sum, s) => sum + s.text.length, 0);
@@ -452,16 +483,28 @@ export class PlaybackEngine {
     if (!fallback) return;
 
     console.warn('[SayLoud] speaker failed, falling back to the browser voice');
+    // Stopped, not disposed: the primary is tried again on the next session.
+    this.useSpeaker(fallback);
     this.usingFallback = true;
 
-    // Detach from the failed speaker before disposing it, so events still in
-    // flight from the utterance Chrome is tearing down cannot move the cursor.
-    this.unbindSpeakerEvents();
-    this.speaker.dispose();
-    this.speaker = fallback;
-    this.bindSpeakerEvents();
-
     this.speakCurrent();
+  }
+
+  /**
+   * Point the engine at `next`.
+   *
+   * Unbinding first means events still in flight from the outgoing speaker's
+   * utterance cannot move the cursor.
+   */
+  private useSpeaker(next: Speaker): void {
+    this.unbindSpeakerEvents();
+    this.speaker.stop();
+    this.speaker = next;
+    this.bindSpeakerEvents();
+  }
+
+  private resolveVoice(lang: string): string | undefined {
+    return this.usingFallback ? this.resolveFallbackVoice(lang) : this.resolvePrimaryVoice(lang);
   }
 
   private bindSpeakerEvents(): void {

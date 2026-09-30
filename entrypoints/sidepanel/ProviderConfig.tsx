@@ -11,9 +11,11 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
+import { type Translator, useT } from '~/lib/i18n';
 import { type PermissionsApi, requestProviderAccess } from '~/lib/provider-origins';
 import {
   configToFormValues,
+  type FieldError,
   type FieldSpec,
   type FormValue,
   type FormValues,
@@ -23,7 +25,7 @@ import {
   type ProviderSchema,
   validateFormValues,
 } from '~/lib/providers/config-schema';
-import { describeProviderError, errorMessage } from '~/lib/providers/errors';
+import { errorMessage, formatProviderError, providerErrorSummary } from '~/lib/providers/errors';
 import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig, ProviderId } from '~/lib/providers/types';
 import { type Deadline, startDeadline } from './deadline';
@@ -37,8 +39,15 @@ import { VoicePicker } from './VoicePicker';
  */
 const VALIDATE_TIMEOUT_MS = 20_000;
 
-const ACCESS_DECLINED =
-  'SayLoud needs access to this host to reach the service. Allow it in the prompt to continue.';
+/**
+ * The message for a rejected field.
+ *
+ * The schema reports a code; the field's own name is filled in here because
+ * only the panel knows which language the label is being read in.
+ */
+function fieldErrorText(error: FieldError, field: FieldSpec, t: Translator): string {
+  return t(`error.${error.code}`, { field: t(field.labelKey), ...error.params });
+}
 
 export interface ProviderConfigPanelProps {
   store: ConfigStore;
@@ -65,6 +74,7 @@ export function ProviderConfigPanel({
   onChanged,
   permissions,
 }: ProviderConfigPanelProps) {
+  const t = useT();
   const [selected, setSelected] = useState<ProviderId>(() => saved?.provider ?? 'browser');
   const schema = PROVIDER_SCHEMAS[selected];
   const provider = selected === 'browser' ? null : providers[selected];
@@ -73,7 +83,7 @@ export function ProviderConfigPanel({
     <div class="stack">
       <div class="field">
         <label class="field-label" for="provider-select">
-          Provider
+          {t('provider.picker-label')}
         </label>
         <select
           id="provider-select"
@@ -82,14 +92,14 @@ export function ProviderConfigPanel({
         >
           {PROVIDER_IDS.map((id) => (
             <option key={id} value={id}>
-              {PROVIDER_SCHEMAS[id].label}
+              {t(PROVIDER_SCHEMAS[id].labelKey)}
             </option>
           ))}
         </select>
-        <span class="field-help">{schema.summary}</span>
+        <span class="field-help">{t(schema.summaryKey)}</span>
         {schema.consoleUrl && (
           <a class="field-help link" href={schema.consoleUrl} target="_blank" rel="noreferrer">
-            Open the {schema.label} console
+            {t('provider.console-link', { name: t(schema.labelKey) })}
           </a>
         )}
       </div>
@@ -129,6 +139,7 @@ function ProviderForm({
   onChanged,
   permissions,
 }: ProviderFormProps) {
+  const t = useT();
   const [values, setValues] = useState<FormValues>(() => configToFormValues(schema, saved));
   /** Errors appear only once the user has tried to do something with the form. */
   const [submitted, setSubmitted] = useState(false);
@@ -164,18 +175,21 @@ function ProviderForm({
 
     try {
       if (!(await access)) {
-        setTest({ kind: 'error', message: ACCESS_DECLINED });
+        setTest({ kind: 'error', message: t('provider.access-declined') });
         return;
       }
       await provider.validate(draft, deadline.signal);
-      setTest({ kind: 'ok', message: 'Connection succeeded.' });
+      setTest({ kind: 'ok', message: t('provider.test-succeeded') });
     } catch (error) {
       // A cancelled request is either this panel's own deadline or a request
       // that a newer one replaced; neither is a failure to report.
       if (deadline.timedOut()) {
-        setTest({ kind: 'error', message: `No response after ${VALIDATE_TIMEOUT_MS / 1000}s.` });
+        setTest({
+          kind: 'error',
+          message: t('error.no-response', { seconds: VALIDATE_TIMEOUT_MS / 1000 }),
+        });
       } else if (!deadline.signal.aborted) {
-        setTest({ kind: 'error', message: describeProviderError(error) });
+        setTest({ kind: 'error', message: formatProviderError(providerErrorSummary(error), t) });
       }
     } finally {
       deadline.dispose();
@@ -194,14 +208,17 @@ function ProviderForm({
     try {
       // A config the extension cannot reach would only fail later, mid-read.
       if (!(await access)) {
-        setSave({ kind: 'error', message: ACCESS_DECLINED });
+        setSave({ kind: 'error', message: t('provider.access-declined') });
         return;
       }
       await store.saveConfig(draft);
-      setSave({ kind: 'ok', message: 'Saved.' });
+      setSave({ kind: 'ok', message: t('provider.saved') });
       onChanged();
     } catch (error) {
-      setSave({ kind: 'error', message: `Could not save: ${errorMessage(error)}` });
+      setSave({
+        kind: 'error',
+        message: t('provider.save-failed', { detail: errorMessage(error) }),
+      });
     }
   };
 
@@ -211,21 +228,21 @@ function ProviderForm({
       await store.forgetConfig(schema.id);
       setValues(configToFormValues(schema, null));
       setTest({ kind: 'idle' });
-      setSave({ kind: 'ok', message: 'Saved key removed.' });
+      setSave({ kind: 'ok', message: t('provider.forgotten') });
       // Forgetting the active provider also made the browser voice active.
       onChanged();
     } catch (error) {
-      setSave({ kind: 'error', message: `Could not remove: ${errorMessage(error)}` });
+      setSave({
+        kind: 'error',
+        message: t('provider.forget-failed', { detail: errorMessage(error) }),
+      });
     }
   };
 
   return (
     <div class="stack">
       {schema.fields.length === 0 ? (
-        <p class="notice">
-          SayLoud will use the voices Chrome already has installed. Keys saved for other providers
-          are kept.
-        </p>
+        <p class="notice">{t('provider.browser-notice')}</p>
       ) : (
         <div class="form">
           {schema.fields.map((field) => (
@@ -246,15 +263,15 @@ function ProviderForm({
       <div class="actions">
         {provider && (
           <button type="button" class="button" disabled={busy} onClick={() => void onTest()}>
-            {test.kind === 'running' ? 'Testing…' : 'Test Connection'}
+            {test.kind === 'running' ? t('provider.testing') : t('provider.test')}
           </button>
         )}
         <button type="button" class="button primary" disabled={busy} onClick={() => void onSave()}>
-          {save.kind === 'running' ? 'Saving…' : 'Save'}
+          {save.kind === 'running' ? t('provider.saving') : t('provider.save')}
         </button>
         {saved && schema.id !== 'browser' && (
           <button type="button" class="button" disabled={busy} onClick={() => void onForget()}>
-            Forget saved key
+            {t('provider.forget')}
           </button>
         )}
       </div>
@@ -287,6 +304,7 @@ function CapabilityNote({
   provider: Provider | null;
   config: ProviderConfig | null;
 }) {
+  const t = useT();
   if (!provider || !config) return null;
 
   let exact: boolean;
@@ -298,35 +316,30 @@ function CapabilityNote({
     return null;
   }
 
-  return (
-    <p class="notice">
-      {exact
-        ? 'This configuration reports word timings, so words highlight as they are spoken.'
-        : 'This configuration reports no word timings, so SayLoud highlights whole sentences.'}
-    </p>
-  );
+  return <p class="notice">{t(exact ? 'provider.timings-exact' : 'provider.timings-none')}</p>;
 }
 
 interface FieldProps {
   field: FieldSpec;
   value: FormValue | undefined;
-  error: string | undefined;
+  error: FieldError | undefined;
   disabled: boolean;
   onChange: (key: string, value: FormValue) => void;
 }
 
 function Field({ field, value, error, disabled, onChange }: FieldProps) {
+  const t = useT();
   const id = `field-${field.key}`;
   const helpId = `${id}-help`;
   const errorId = `${id}-error`;
-  const describedBy = [field.help ? helpId : null, error ? errorId : null]
+  const describedBy = [field.helpKey ? helpId : null, error ? errorId : null]
     .filter(Boolean)
     .join(' ');
 
   const text = typeof value === 'string' ? value : '';
   const label = (
     <>
-      {field.label}
+      {t(field.labelKey)}
       {field.required && (
         <span class="required" aria-hidden="true">
           {' '}
@@ -335,14 +348,14 @@ function Field({ field, value, error, disabled, onChange }: FieldProps) {
       )}
     </>
   );
-  const help = field.help && (
+  const help = field.helpKey && (
     <span class="field-help" id={helpId}>
-      {field.help}
+      {t(field.helpKey)}
     </span>
   );
   const message = error && (
     <span class="field-error" id={errorId}>
-      {error}
+      {fieldErrorText(error, field, t)}
     </span>
   );
 
@@ -385,10 +398,10 @@ function Field({ field, value, error, disabled, onChange }: FieldProps) {
           onChange={(event) => onChange(field.key, event.currentTarget.value)}
         >
           {/* An optional select left blank means "whatever the provider defaults to". */}
-          {!field.required && <option value="">Default</option>}
+          {!field.required && <option value="">{t('field.default-option')}</option>}
           {field.options?.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {t(option.labelKey)}
             </option>
           ))}
         </select>

@@ -17,7 +17,12 @@
  * and an open `string` (a DashScope model name, an ElevenLabs output format) is
  * a text field, because a picker would stop a user from naming a model we have
  * not heard of yet.
+ *
+ * The table holds no prose: every label and help line is a `MessageKey`, and
+ * the panel translates it. That keeps the schema usable from the service worker
+ * and from tests, neither of which has a language.
  */
+import type { MessageKey } from '../i18n/messages.en';
 import type { ProviderConfig, ProviderConfigMap, ProviderId } from './types';
 
 /** How a field is edited, which decides both the widget and the validation. */
@@ -25,18 +30,19 @@ export type FieldKind = 'text' | 'password' | 'url' | 'select' | 'boolean' | 'kv
 
 export interface FieldOption {
   readonly value: string;
-  readonly label: string;
+  /** The option's name, translated by whoever renders it. */
+  readonly labelKey: MessageKey;
 }
 
 /** One editable config key. */
 export interface FieldSpec<K extends string = string> {
   readonly key: K;
-  readonly label: string;
+  readonly labelKey: MessageKey;
   readonly kind: FieldKind;
   /** Blocks saving while the field is empty. */
   readonly required?: boolean;
   readonly placeholder?: string;
-  readonly help?: string;
+  readonly helpKey?: MessageKey;
   /**
    * The value the form shows when nothing is saved.
    *
@@ -81,9 +87,9 @@ type ConfigKey<K extends ProviderId> = K extends ProviderId
 /** Everything the panel needs to know about one provider. */
 export interface ProviderSchema {
   readonly id: ProviderId;
-  readonly label: string;
+  readonly labelKey: MessageKey;
   /** One line under the provider picker, saying what this provider is. */
-  readonly summary: string;
+  readonly summaryKey: MessageKey;
   /** Where the user creates credentials, when the provider has such a page. */
   readonly consoleUrl?: string;
   readonly fields: readonly FieldSpec[];
@@ -101,8 +107,8 @@ export interface ProviderSchema {
  */
 interface SchemaSpec<K extends ProviderId> {
   readonly id: K;
-  readonly label: string;
-  readonly summary: string;
+  readonly labelKey: MessageKey;
+  readonly summaryKey: MessageKey;
   readonly consoleUrl?: string;
   readonly fields: readonly FieldSpec<ConfigKey<K>>[];
   readonly passthrough?: readonly PassthroughSpec<ConfigKey<K>>[];
@@ -131,128 +137,137 @@ const DEFAULT_BASE_URLS = {
 const SCHEMAS = {
   browser: {
     id: 'browser',
-    label: 'Browser voice',
-    summary: 'Uses the voices Chrome already has installed. Nothing to configure.',
+    labelKey: 'provider.browser.label',
+    summaryKey: 'provider.browser.summary',
     fields: [],
   },
 
   dashscope: {
     id: 'dashscope',
-    label: 'DashScope (阿里云百炼)',
-    summary: 'Alibaba Cloud Model Studio. CosyVoice v3 and later report word timings.',
+    labelKey: 'provider.dashscope.label',
+    summaryKey: 'provider.dashscope.summary',
     consoleUrl: 'https://bailian.console.aliyun.com/',
     fields: [
       {
         key: 'apiKey',
-        label: 'API key',
+        labelKey: 'field.api-key',
         kind: 'password',
         required: true,
         placeholder: 'sk-…',
       },
       {
         key: 'workspaceId',
-        label: 'Workspace id',
+        labelKey: 'field.workspace-id',
         kind: 'text',
-        help: 'Only for keys scoped to a business space. Leave empty otherwise.',
+        helpKey: 'provider.dashscope.workspace-id.help',
       },
       {
         key: 'region',
-        label: 'Region',
+        labelKey: 'field.region',
         kind: 'select',
         // The spec's two regions (spec §2.2, line 126). `ap-southeast-1` is the
         // international site, whose host is `dashscope-intl.aliyuncs.com`.
         options: [
-          { value: 'cn-beijing', label: 'China (cn-beijing)' },
-          { value: 'ap-southeast-1', label: 'Singapore (ap-southeast-1)' },
+          { value: 'cn-beijing', labelKey: 'provider.dashscope.region.option.cn-beijing' },
+          {
+            value: 'ap-southeast-1',
+            labelKey: 'provider.dashscope.region.option.ap-southeast-1',
+          },
         ],
-        help: 'CosyVoice and Qwen-Audio-TTS are only served from cn-beijing; the Singapore region serves the Qwen-TTS models.',
+        helpKey: 'provider.dashscope.region.help',
       },
       {
         key: 'model',
-        label: 'Model',
+        labelKey: 'field.model',
         kind: 'text',
         placeholder: 'cosyvoice-v3-flash',
-        help: 'Word timings need a cosyvoice-v3 or later model; the adapter then sends word_timestamp_enabled automatically.',
+        helpKey: 'provider.dashscope.model.help',
       },
       {
         key: 'baseUrl',
-        label: 'Base URL',
+        labelKey: 'field.base-url',
         kind: 'url',
         defaultValue: DEFAULT_BASE_URLS.dashscope,
         placeholder: DEFAULT_BASE_URLS.dashscope,
-        help: 'Override the region host, for example to go through a proxy.',
+        helpKey: 'provider.dashscope.base-url.help',
       },
     ],
   },
 
   volcengine: {
     id: 'volcengine',
-    label: '火山引擎豆包 TTS',
-    summary: 'Volcano Engine Doubao. The seed-tts-1.0 resource reports word timings.',
+    labelKey: 'provider.volcengine.label',
+    summaryKey: 'provider.volcengine.summary',
     consoleUrl: 'https://console.volcengine.com/speech/',
     fields: [
       {
         key: 'apiKey',
-        label: 'API key',
+        labelKey: 'field.api-key',
         kind: 'password',
         required: true,
-        help: 'From the new console, sent as the X-Api-Key header. The old console app id + access token pair is not supported.',
+        helpKey: 'provider.volcengine.api-key.help',
       },
       {
         key: 'resourceId',
-        label: 'Resource id',
+        labelKey: 'field.resource-id',
         kind: 'select',
         required: true,
         options: [
-          { value: 'seed-tts-1.0', label: 'seed-tts-1.0 (word timings)' },
-          { value: 'seed-tts-2.0', label: 'seed-tts-2.0 (sentence-level only)' },
+          {
+            value: 'seed-tts-1.0',
+            labelKey: 'provider.volcengine.resource-id.option.seed-tts-1.0',
+          },
+          {
+            value: 'seed-tts-2.0',
+            labelKey: 'provider.volcengine.resource-id.option.seed-tts-2.0',
+          },
         ],
         // 声音复刻 speaks only cloned voices, which the picker cannot enter.
         retiredOptions: { 'seed-icl-2.0': 'seed-tts-1.0' },
-        help: 'The resource id decides both the model version and the billing mode.',
+        helpKey: 'provider.volcengine.resource-id.help',
       },
       {
         key: 'baseUrl',
-        label: 'Base URL',
+        labelKey: 'field.base-url',
         kind: 'url',
         defaultValue: DEFAULT_BASE_URLS.volcengine,
         placeholder: DEFAULT_BASE_URLS.volcengine,
-        help: 'Host only, without /api/v3/… — for example to go through a proxy.',
+        helpKey: 'provider.volcengine.base-url.help',
       },
     ],
   },
 
   'openai-compat': {
     id: 'openai-compat',
-    label: 'OpenAI-compatible',
-    summary: 'Any /v1/audio/speech endpoint, including a local Kokoro-FastAPI server.',
+    labelKey: 'provider.openai-compat.label',
+    summaryKey: 'provider.openai-compat.summary',
     fields: [
       {
         key: 'baseUrl',
-        label: 'Base URL',
+        labelKey: 'field.base-url',
         kind: 'url',
         required: true,
         placeholder: 'http://localhost:8880/v1',
       },
       {
         key: 'apiKey',
-        label: 'API key',
+        labelKey: 'field.api-key',
         kind: 'password',
-        help: 'Leave empty for a local server that needs no auth.',
+        helpKey: 'provider.openai-compat.api-key.help',
       },
-      { key: 'model', label: 'Model', kind: 'text', placeholder: 'kokoro' },
+      { key: 'model', labelKey: 'field.model', kind: 'text', placeholder: 'kokoro' },
       {
         key: 'captionedSpeech',
-        label: 'Use /dev/captioned_speech',
+        labelKey: 'field.captioned-speech',
         kind: 'boolean',
-        help: 'Kokoro-FastAPI only. Returns word timings; the standard endpoint does not.',
+        helpKey: 'provider.openai-compat.captioned-speech.help',
       },
       {
         key: 'headers',
-        label: 'Extra headers',
+        labelKey: 'field.extra-headers',
         kind: 'kv',
         placeholder: 'X-Gateway-Key: …',
-        help: 'One Name: Value pair per line, for a self-hosted gateway.',
+        helpKey: 'provider.openai-compat.extra-headers.help',
       },
     ],
     passthrough: [{ key: 'voices', kind: 'array' }],
@@ -260,26 +275,26 @@ const SCHEMAS = {
 
   elevenlabs: {
     id: 'elevenlabs',
-    label: 'ElevenLabs',
-    summary: 'Word timings come from the with-timestamps endpoint.',
+    labelKey: 'provider.elevenlabs.label',
+    summaryKey: 'provider.elevenlabs.summary',
     consoleUrl: 'https://elevenlabs.io/app/settings/api-keys',
     fields: [
-      { key: 'apiKey', label: 'API key', kind: 'password', required: true },
+      { key: 'apiKey', labelKey: 'field.api-key', kind: 'password', required: true },
       {
         key: 'model',
-        label: 'Model',
+        labelKey: 'field.model',
         kind: 'text',
         placeholder: 'eleven_multilingual_v2',
       },
       {
         key: 'outputFormat',
-        label: 'Output format',
+        labelKey: 'field.output-format',
         kind: 'text',
         placeholder: 'mp3_44100_128',
       },
       {
         key: 'baseUrl',
-        label: 'Base URL',
+        labelKey: 'field.base-url',
         kind: 'url',
         defaultValue: DEFAULT_BASE_URLS.elevenlabs,
         placeholder: DEFAULT_BASE_URLS.elevenlabs,
@@ -290,41 +305,53 @@ const SCHEMAS = {
 
   azure: {
     id: 'azure',
-    label: 'Azure Speech',
-    summary: 'Azure AI Speech over the Speech SDK WebSocket.',
+    labelKey: 'provider.azure.label',
+    summaryKey: 'provider.azure.summary',
     consoleUrl: 'https://portal.azure.com/',
     fields: [
       {
         key: 'subscriptionKey',
-        label: 'Subscription key',
+        labelKey: 'field.subscription-key',
         kind: 'password',
         required: true,
       },
       {
         key: 'region',
-        label: 'Region',
+        labelKey: 'field.region',
         kind: 'text',
         required: true,
         placeholder: 'eastasia',
-        help: 'The region slug of the Speech resource, not its display name.',
+        helpKey: 'provider.azure.region.help',
       },
       {
         key: 'outputFormat',
-        label: 'Output format',
+        labelKey: 'field.output-format',
         kind: 'select',
         options: [
-          { value: 'mp3_24khz_48k', label: 'MP3 24 kHz 48 kbit/s (default)' },
-          { value: 'mp3_16khz_32k', label: 'MP3 16 kHz 32 kbit/s' },
-          { value: 'wav_24khz_16bit', label: 'WAV 24 kHz 16-bit' },
-          { value: 'ogg_16khz_opus', label: 'OGG 16 kHz Opus' },
+          {
+            value: 'mp3_24khz_48k',
+            labelKey: 'provider.azure.output-format.option.mp3_24khz_48k',
+          },
+          {
+            value: 'mp3_16khz_32k',
+            labelKey: 'provider.azure.output-format.option.mp3_16khz_32k',
+          },
+          {
+            value: 'wav_24khz_16bit',
+            labelKey: 'provider.azure.output-format.option.wav_24khz_16bit',
+          },
+          {
+            value: 'ogg_16khz_opus',
+            labelKey: 'provider.azure.output-format.option.ogg_16khz_opus',
+          },
         ],
       },
       {
         key: 'lang',
-        label: 'Language hint',
+        labelKey: 'field.language-hint',
         kind: 'text',
         placeholder: 'zh-CN',
-        help: 'Used to list voices when the voice id does not imply a language.',
+        helpKey: 'provider.azure.language-hint.help',
       },
     ],
   },
@@ -345,8 +372,28 @@ export const PROVIDER_IDS = Object.keys(SCHEMAS) as ProviderId[];
 export type FormValue = string | boolean;
 export type FormValues = Record<string, FormValue>;
 
-/** Field key to the message shown under it. */
-export type FieldErrors = Record<string, string>;
+/**
+ * Why a field was rejected.
+ *
+ * A code rather than a sentence: this module is bundled into the service worker
+ * and read by the adapters, and neither has a language. The panel turns the code
+ * and its parameters into words.
+ */
+export type FieldErrorCode =
+  | 'required'
+  | 'invalid-url'
+  | 'invalid-select'
+  | 'invalid-header-line'
+  | 'invalid-header-name';
+
+export interface FieldError {
+  readonly code: FieldErrorCode;
+  /** Values for the message's placeholders, such as the header line number. */
+  readonly params?: Readonly<Record<string, string>>;
+}
+
+/** Field key to what is wrong with it. */
+export type FieldErrors = Record<string, FieldError>;
 
 /** True for a non-null, non-array object. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -373,8 +420,8 @@ function formatHeaders(value: unknown): string {
 
 export interface HeaderParse {
   headers: Record<string, string>;
-  /** One message per line that is not a `Name: Value` pair, naming the line. */
-  errors: string[];
+  /** One entry per line that is not a `Name: Value` pair, naming the line. */
+  errors: FieldError[];
 }
 
 /**
@@ -397,7 +444,7 @@ const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
  */
 export function parseHeaderLines(text: string): HeaderParse {
   const headers: Record<string, string> = {};
-  const errors: string[] = [];
+  const errors: FieldError[] = [];
 
   text.split('\n').forEach((raw, index) => {
     const line = raw.trim();
@@ -406,11 +453,14 @@ export function parseHeaderLines(text: string): HeaderParse {
     const separator = line.indexOf(':');
     const name = separator === -1 ? '' : line.slice(0, separator).trim();
     if (name === '') {
-      errors.push(`Line ${index + 1}: expected a "Name: Value" pair.`);
+      errors.push({ code: 'invalid-header-line', params: { line: String(index + 1) } });
       return;
     }
     if (!HEADER_NAME.test(name)) {
-      errors.push(`Line ${index + 1}: "${name}" is not a valid header name.`);
+      errors.push({
+        code: 'invalid-header-name',
+        params: { line: String(index + 1), name },
+      });
       return;
     }
 
@@ -465,17 +515,19 @@ export function validateFormValues(schema: ProviderSchema, values: FormValues): 
     const text = typed === '' ? (field.defaultValue ?? '') : typed;
 
     if (text === '') {
-      if (field.required) errors[field.key] = `${field.label} is required.`;
+      if (field.required) errors[field.key] = { code: 'required' };
       continue;
     }
 
     if (field.kind === 'url' && !isHttpUrl(text)) {
-      errors[field.key] = 'Enter a full URL, for example http://localhost:8880/v1.';
+      errors[field.key] = { code: 'invalid-url' };
     } else if (field.kind === 'select' && !field.options?.some((o) => o.value === text)) {
-      errors[field.key] = 'Choose one of the listed options.';
+      errors[field.key] = { code: 'invalid-select' };
     } else if (field.kind === 'kv') {
       const { errors: lineErrors } = parseHeaderLines(text);
-      if (lineErrors.length > 0) errors[field.key] = lineErrors[0] as string;
+      const first = lineErrors[0];
+      // One complaint at a time: the panel shows a single line under the field.
+      if (first) errors[field.key] = first;
     }
   }
 

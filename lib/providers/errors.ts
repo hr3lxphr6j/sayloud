@@ -1,3 +1,5 @@
+import type { MessageKey, MessageParams, Translator } from '../i18n';
+
 /**
  * Unified provider error codes (spec §7.1).
  *
@@ -65,22 +67,20 @@ export function networkError(cause: unknown): ProviderError {
 }
 
 /**
- * What each unified code means, in one line the settings panel can show.
+ * What each unified code means, as the key of the line the panel shows.
  *
  * The code is the part a user can act on ("the key is wrong" vs "the service is
  * down"), so it leads; the provider's own message is appended as detail.
  */
-const CODE_MESSAGES: Record<ProviderErrorCode, string> = {
-  'invalid-key': 'The API key was rejected. Check that it was copied in full.',
-  'not-activated':
-    'This key has not been granted the selected model or resource. Enable it in the provider console, or pick one that is.',
-  'service-unavailable': 'The service is unavailable right now. Try again in a moment.',
-  'voice-mismatch':
-    'The chosen voice does not belong to the selected resource id. The two have to match — pick a voice from this resource.',
-  'rate-limit': 'The service is rate limiting this key. Wait a moment and retry.',
-  'no-quota': 'This account has no quota left for the service.',
-  'network-error': 'The request could not reach the service. Check the URL and your connection.',
-  unknown: 'The service rejected the request.',
+const CODE_KEYS: Record<ProviderErrorCode, MessageKey> = {
+  'invalid-key': 'error.invalid-key',
+  'not-activated': 'error.not-activated',
+  'service-unavailable': 'error.service-unavailable',
+  'voice-mismatch': 'error.voice-mismatch',
+  'rate-limit': 'error.rate-limit',
+  'no-quota': 'error.no-quota',
+  'network-error': 'error.network-error',
+  unknown: 'error.unknown',
 };
 
 /** The message of any thrown value, for logs and fallback copy. */
@@ -95,24 +95,54 @@ export function errorMessage(error: unknown): string {
 }
 
 /**
- * One line for the settings panel: the code's explanation, then the provider's
- * own message, which is usually the actionable half (`model not activated`,
- * `bad gateway URL`).
+ * What went wrong, in a form that can be put into words later.
  *
- * Never includes `details`: those can hold a whole response body, and echoing
- * it in the panel would be noise at best. A cancellation is reported as such,
- * because a superseded request is not a failure the user can act on.
+ * A key and its parameters rather than a sentence: this module is bundled into
+ * the service worker, which has no language, and a caller with a translator can
+ * always turn one of these into the other.
  */
-export function describeProviderError(error: unknown): string {
-  if (isAbortError(error)) return 'The request was cancelled.';
+export interface ProviderErrorSummary {
+  readonly key: MessageKey;
+  readonly params?: MessageParams;
+  /**
+   * The provider's own message, untranslated. It is remote copy, so it stays in
+   * whatever language the service wrote it in — and it is usually the
+   * actionable half (`model not activated`, `bad gateway URL`).
+   */
+  readonly detail?: string;
+}
+
+/**
+ * Read a thrown value as the line the settings panel should show.
+ *
+ * A cancellation is reported as such, because a superseded request is not a
+ * failure the user can act on.
+ */
+export function providerErrorSummary(error: unknown): ProviderErrorSummary {
+  if (isAbortError(error)) return { key: 'error.cancelled' };
 
   if (isProviderError(error)) {
-    const summary = CODE_MESSAGES[error.code];
+    const key = CODE_KEYS[error.code];
     const detail = error.message.trim();
-    return detail.length > 0 && detail !== summary ? `${summary} (${detail})` : summary;
+    // Whether the detail is worth showing cannot be decided here: it is dropped
+    // when it repeats our own line, and only a translator knows what that says.
+    return detail.length > 0 ? { key, detail } : { key };
   }
 
-  return `Unexpected failure: ${errorMessage(error)}.`;
+  return { key: 'error.unexpected', params: { detail: errorMessage(error) } };
+}
+
+/**
+ * One line for the settings panel: the code's explanation, then the provider's
+ * own message when it adds something.
+ *
+ * Never includes `details`: those can hold a whole response body, and echoing
+ * it in the panel would be noise at best.
+ */
+export function formatProviderError(summary: ProviderErrorSummary, t: Translator): string {
+  const text = t(summary.key, summary.params);
+  const detail = summary.detail?.trim() ?? '';
+  return detail.length > 0 && detail !== text ? `${text} (${detail})` : text;
 }
 
 /** Provider-specific refinements applied before the generic status mapping. */

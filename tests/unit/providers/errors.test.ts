@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { createTranslator } from '~/lib/i18n';
 import {
-  describeProviderError,
   errorFromStatus,
   errorMessage,
+  formatProviderError,
   isAbortError,
   isProviderError,
   messageFromBody,
   networkError,
   ProviderError,
   type ProviderErrorCode,
+  providerErrorSummary,
   readBodyText,
 } from '~/lib/providers/errors';
 import { requireConfig } from '~/lib/providers/types';
@@ -172,9 +174,13 @@ describe('errorMessage', () => {
   });
 });
 
-describe('describeProviderError', () => {
+describe('providerErrorSummary', () => {
+  const t = createTranslator('en');
+  /** The line the panel shows, which is what a user reads. */
+  const describe = (error: unknown): string => formatProviderError(providerErrorSummary(error), t);
+
   it('leads with what the code means and appends the provider message', () => {
-    const described = describeProviderError(new ProviderError('invalid-key', 'InvalidApiKey'));
+    const described = describe(new ProviderError('invalid-key', 'InvalidApiKey'));
 
     expect(described).toMatch(/^The API key was rejected/);
     expect(described).toContain('(InvalidApiKey)');
@@ -191,32 +197,36 @@ describe('describeProviderError', () => {
     ];
 
     for (const code of codes) {
-      const described = describeProviderError(new ProviderError(code, ''));
+      const described = describe(new ProviderError(code, ''));
       expect(described).not.toBe('');
       expect(described).not.toMatch(/undefined/);
     }
   });
 
-  it('does not repeat a message that says the same thing as the code', () => {
-    const summary = describeProviderError(new ProviderError('no-quota', ''));
+  it('translates the same failure into the other language', () => {
+    const summary = providerErrorSummary(new ProviderError('invalid-key', ''));
 
-    expect(describeProviderError(new ProviderError('no-quota', summary))).toBe(summary);
+    expect(formatProviderError(summary, createTranslator('zh-CN'))).toMatch(/^API 密钥被拒绝/);
+  });
+
+  it('does not repeat a message that says the same thing as the code', () => {
+    const summary = describe(new ProviderError('no-quota', ''));
+
+    expect(describe(new ProviderError('no-quota', summary))).toBe(summary);
   });
 
   it('reports a cancellation as one, not as a failure', () => {
-    expect(describeProviderError(new DOMException('aborted', 'AbortError'))).toBe(
-      'The request was cancelled.'
-    );
+    expect(describe(new DOMException('aborted', 'AbortError'))).toBe('The request was cancelled.');
   });
 
   it('says so plainly when the failure is not a provider error', () => {
-    expect(describeProviderError(new Error('boom'))).toBe('Unexpected failure: boom.');
-    expect(describeProviderError(undefined)).toBe('Unexpected failure: undefined.');
+    expect(describe(new Error('boom'))).toBe('Unexpected failure: boom.');
+    expect(describe(undefined)).toBe('Unexpected failure: undefined.');
   });
 
   it('never leaks the provider details, which can hold a whole response body', () => {
     const error = new ProviderError('unknown', 'nope', { body: 'secret-token-abc' });
 
-    expect(describeProviderError(error)).not.toContain('secret-token-abc');
+    expect(describe(error)).not.toContain('secret-token-abc');
   });
 });

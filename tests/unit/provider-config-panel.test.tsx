@@ -5,7 +5,7 @@ import {
   type ProviderConfigPanelProps,
 } from '~/entrypoints/sidepanel/ProviderConfig';
 import { ConfigStore, type LocalStorageArea } from '~/lib/config-store';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 
 function memoryArea(): LocalStorageArea {
@@ -72,7 +72,8 @@ const providers = {
   'openai-compat': fakeProvider(),
   elevenlabs: fakeProvider(),
   azure: fakeProvider(),
-} as Record<CloudProviderId, Provider>;
+  local: fakeProvider(),
+} as Record<AdapterProviderId, Provider>;
 
 const DASHSCOPE: ProviderConfig = { provider: 'dashscope', apiKey: 'sk-dash' };
 const VOLCENGINE: ProviderConfig = {
@@ -412,7 +413,15 @@ describe('the provider list', () => {
       [...document.querySelectorAll('[data-provider]')].map((row) =>
         row.getAttribute('data-provider')
       )
-    ).toEqual(['browser', 'dashscope', 'volcengine', 'openai-compat', 'elevenlabs', 'azure']);
+    ).toEqual([
+      'browser',
+      'dashscope',
+      'volcengine',
+      'openai-compat',
+      'elevenlabs',
+      'azure',
+      'local',
+    ]);
   });
 
   it('keeps one row open at a time', async () => {
@@ -518,7 +527,7 @@ describe('the activation circle', () => {
 
     expect(screen.getByRole('radiogroup')).toBeTruthy();
     const radios = screen.getAllByRole('radio') as HTMLInputElement[];
-    expect(radios).toHaveLength(6);
+    expect(radios).toHaveLength(7);
     expect(radios.filter((radio) => radio.checked)).toHaveLength(1);
     expect(providerDot('dashscope').checked).toBe(true);
   });

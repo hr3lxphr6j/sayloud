@@ -10,7 +10,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { describe, expect, it, vi } from 'vitest';
 import { ReadingTab } from '~/entrypoints/sidepanel/ReadingTab';
 import type { LocalStorageArea } from '~/lib/config-store';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
 import { SETTINGS_KEY, type Settings, SettingsStore } from '~/lib/settings-store';
@@ -45,7 +45,8 @@ const providers = {
   'openai-compat': fakeProvider(),
   elevenlabs: fakeProvider(),
   azure: fakeProvider(),
-} as Record<CloudProviderId, Provider>;
+  local: fakeProvider(),
+} as Record<AdapterProviderId, Provider>;
 
 /** No session: the tab renders its "nothing is being read" line. */
 const IDLE_SESSION = {

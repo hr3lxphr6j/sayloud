@@ -490,12 +490,25 @@ function isHttpsUrl(value: unknown): value is string {
 }
 
 /** Every file of the tier is in the cache. */
-function tierFilesPresent(
+export function tierFilesPresent(
   model: OnDeviceModel,
   tier: ModelTier,
   present: ReadonlySet<string>
 ): boolean {
   return tier.files.every((file) => present.has(canonicalModelUrl(model.repo, file)));
+}
+
+/**
+ * The canonical model keys Cache Storage holds.
+ *
+ * Exported because "is this tier downloaded" is asked in two places — the
+ * model tab (through `ModelStore`) and the local provider's `validate()`, which
+ * runs in the offscreen document where there is no `chrome.storage` to build a
+ * whole `ModelStore` over. Both go through `tierFilesPresent` so the answer
+ * cannot drift.
+ */
+export async function modelKeysInCache(cacheStorage: ModelCacheStorage): Promise<Set<string>> {
+  return presentKeys(await cacheStorage.open(TRANSFORMERS_CACHE));
 }
 
 /**

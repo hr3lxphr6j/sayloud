@@ -45,7 +45,7 @@ import {
   validateFormValues,
 } from '~/lib/providers/config-schema';
 import { errorMessage, formatProviderError, providerErrorSummary } from '~/lib/providers/errors';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig, ProviderId } from '~/lib/providers/types';
 import { type Deadline, startDeadline } from './deadline';
 import { type AsyncStatus, StatusLine } from './StatusLine';
@@ -71,7 +71,7 @@ function fieldErrorText(error: FieldError, field: FieldSpec, t: Translator): str
 
 export interface ProviderConfigPanelProps {
   store: ConfigStore;
-  providers: Record<CloudProviderId, Provider>;
+  providers: Record<AdapterProviderId, Provider>;
   /** The active config, which decides which row opens first. */
   saved: ProviderConfig | null;
   /** The last config saved for each provider, used to seed its form. */

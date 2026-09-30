@@ -12,7 +12,7 @@ import type { ConfigStore, SavedConfigs, VoiceNames } from '~/lib/config-store';
 import { formatBytes } from '~/lib/format-bytes';
 import { useT } from '~/lib/i18n';
 import type { PermissionsApi } from '~/lib/provider-origins';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import {
   MAX_BYTES_CHOICES,
@@ -29,7 +29,7 @@ import { useSettings } from './use-settings';
 
 export interface SettingsTabProps {
   store: ConfigStore;
-  providers: Record<CloudProviderId, Provider>;
+  providers: Record<AdapterProviderId, Provider>;
   /** The active config, which decides which row opens first. */
   config: ProviderConfig | null;
   savedConfigs: SavedConfigs;

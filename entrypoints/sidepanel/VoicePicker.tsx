@@ -19,7 +19,7 @@ import type { ConfigStore, VoiceNames } from '~/lib/config-store';
 import { useT } from '~/lib/i18n';
 import { PROVIDER_SCHEMAS, type ProviderSchema } from '~/lib/providers/config-schema';
 import { errorMessage, formatProviderError, providerErrorSummary } from '~/lib/providers/errors';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig, Voice } from '~/lib/providers/types';
 import { type Deadline, startDeadline } from './deadline';
 import { type AsyncStatus, StatusLine } from './StatusLine';
@@ -299,7 +299,7 @@ export function VoicePicker({ schema, provider, config, store, onSaved }: VoiceP
 
 export interface VoicePickerPageProps {
   store: ConfigStore;
-  providers: Record<CloudProviderId, Provider>;
+  providers: Record<AdapterProviderId, Provider>;
   /** The active config; its provider decides whose voices are listed. */
   config: ProviderConfig | null;
   onSaved: () => void;

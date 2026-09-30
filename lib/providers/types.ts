@@ -159,6 +159,43 @@ export interface BrowserConfig {
   lang?: string;
 }
 
+/**
+ * The on-device provider: no credentials, no network, one model family.
+ *
+ * The download source is deliberately **not** a field here. It lives in
+ * `ModelStore` (`sayloud:model-source`), which is the only place that writes it,
+ * and the resolved source reaches the offscreen document as a message. A second
+ * copy in the provider config would be a second answer to "where do downloads
+ * come from", and the two would disagree the moment the user changed one.
+ *
+ * The config does carry the three choices that *are* the provider's own:
+ * which model, which of its tiers, and how the user wants it run.
+ */
+export interface LocalConfig {
+  provider: 'local';
+  /** Which on-device model. Defaults to `kokoro-82m`. */
+  modelId?: string;
+  /**
+   * Which tier of that model.
+   *
+   * Optional rather than defaulted here: the right tier depends on the machine
+   * (spec §3.7.2), and only the caller that has measured the device can pick
+   * one. Unset means "ask `preferredTier`".
+   */
+  tier?: string;
+  /** `auto` uses WebGPU when there is one. */
+  device?: 'auto' | 'webgpu' | 'wasm';
+  /**
+   * BCP-47 hint, like `BrowserConfig.lang`.
+   *
+   * Optional because it is derivable: the voice id's prefix says which of the
+   * two phonemization paths a voice needs (`af`/`am`/`bf`/`bm` English,
+   * `zf`/`zm` Chinese), so asking the user to also set a language would be a
+   * setting they could get wrong for no gain.
+   */
+  lang?: string;
+}
+
 /** Config variants keyed by provider id. */
 export interface ProviderConfigMap {
   dashscope: DashscopeConfig;
@@ -167,6 +204,7 @@ export interface ProviderConfigMap {
   elevenlabs: ElevenLabsConfig;
   azure: AzureConfig;
   browser: BrowserConfig;
+  local: LocalConfig;
 }
 
 export type ProviderId = keyof ProviderConfigMap;

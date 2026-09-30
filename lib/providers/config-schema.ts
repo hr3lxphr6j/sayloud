@@ -355,6 +355,21 @@ const SCHEMAS = {
       },
     ],
   },
+
+  // Last, so it reads as the alternative to the services above rather than as
+  // another one of them.
+  //
+  // No fields yet, and deliberately so: the model, tier and device pickers live
+  // in the Models tab, where they can show download state, and repeating them
+  // as a generic form here would give the same setting two places to be wrong.
+  // The row exists so the provider can be selected and so its label and summary
+  // come from the same table as every other provider's.
+  local: {
+    id: 'local',
+    labelKey: 'provider.local.label',
+    summaryKey: 'provider.local.summary',
+    fields: [],
+  },
 } satisfies { [K in ProviderId]: SchemaSpec<K> };
 
 /** Every provider, in picker order. */

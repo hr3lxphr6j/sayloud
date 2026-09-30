@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact
 import { describe, expect, it } from 'vitest';
 import { SidePanel } from '~/entrypoints/sidepanel/SidePanel';
 import { CONFIG_KEY, ConfigStore, type LocalStorageArea } from '~/lib/config-store';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
 import { SETTINGS_KEY, SettingsStore, type StorageChangeApi } from '~/lib/settings-store';
@@ -50,7 +50,8 @@ const providers = {
   'openai-compat': {},
   elevenlabs: {},
   azure: {},
-} as unknown as Record<CloudProviderId, Provider>;
+  local: {},
+} as unknown as Record<AdapterProviderId, Provider>;
 
 function renderPanel(settings?: SettingsStore) {
   const { area } = fakeArea();

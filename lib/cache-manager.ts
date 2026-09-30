@@ -566,6 +566,15 @@ function audioIdentity(config: ProviderConfig): Record<string, unknown> {
         outputFormat: config.outputFormat ?? null,
         lang: config.lang ?? null,
       };
+    case 'local':
+      // The tier and the device both change the audio, and both are things the
+      // user can change at will — so both belong in the key, or switching to a
+      // sharper tier would keep replaying the old one's cached sentences.
+      return {
+        model: config.modelId ?? 'kokoro-82m',
+        tier: config.tier ?? null,
+        device: config.device ?? 'auto',
+      };
     default: {
       // A new provider must decide what steers its audio rather than silently
       // sharing another provider's identity.

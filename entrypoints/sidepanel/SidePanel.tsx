@@ -15,7 +15,7 @@ import type { CacheUsage } from '~/lib/cache-admin';
 import type { ConfigStore, SavedConfigs, VoiceNames } from '~/lib/config-store';
 import { I18nProvider, type MessageKey, useT, useUiLanguage } from '~/lib/i18n';
 import type { PermissionsApi } from '~/lib/provider-origins';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
 import type { SettingsStore, UiLang } from '~/lib/settings-store';
@@ -47,7 +47,7 @@ const TAB_PAGES: Record<TabId, ComponentType<TabPageProps>> = {
 /** What the shell hands to a tab page. Each page takes the part it needs. */
 export interface TabPageProps {
   store: ConfigStore;
-  providers: Record<CloudProviderId, Provider>;
+  providers: Record<AdapterProviderId, Provider>;
   session: SessionWatch;
   /** Absent in tests, which then render the defaults and save nowhere. */
   settings?: SettingsStore;
@@ -82,7 +82,7 @@ export interface CacheAdmin {
 
 export interface SidePanelProps {
   store: ConfigStore;
-  providers: Record<CloudProviderId, Provider>;
+  providers: Record<AdapterProviderId, Provider>;
   session: SessionWatch;
   settings?: SettingsStore;
   /** `chrome.permissions`, for providers that need a host grant. */

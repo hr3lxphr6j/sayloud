@@ -123,6 +123,9 @@ export const en = {
   // Provider names. The order of `PROVIDER_SCHEMAS` is the picker's order.
   'provider.browser.label': 'Browser voice',
   'provider.browser.summary': 'Uses the voices Chrome already has installed. Nothing to configure.',
+  'provider.local.label': 'On this device',
+  'provider.local.summary':
+    'Runs in the browser, so the text never leaves your machine. Needs a one-time model download.',
   'provider.dashscope.label': 'DashScope (阿里云百炼)',
   'provider.dashscope.summary':
     'Alibaba Cloud Model Studio. CosyVoice v3 and later report word timings.',
@@ -239,6 +242,18 @@ export const en = {
   'error.cancelled': 'The request was cancelled.',
   'error.unexpected': 'Unexpected failure: {detail}.',
   'error.no-response': 'No response after {seconds}s.',
+
+  // --- on-device failures ---------------------------------------------------
+  // The local provider's own codes. They read differently from the cloud ones
+  // on purpose: the fix is never a key or a quota, it is a download or a
+  // setting, and every one of them points at something the user can do here.
+  'error.model-missing': 'This model has not been downloaded yet. Download it in the Models tab.',
+  'error.model-host-unreachable':
+    'Neither download source could be reached. Pick one manually in the Models tab.',
+  'error.model-download-failed': 'The download did not finish. Try again.',
+  'error.model-load-failed':
+    'The model could not be loaded. It may be incomplete — delete and download it again.',
+  'error.device-unavailable': 'This machine has no WebGPU. Switch the device setting to WASM.',
 
   // --- the bar on the page --------------------------------------------------
   'sideplayer.play': 'Play',

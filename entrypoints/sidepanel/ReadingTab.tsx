@@ -16,7 +16,7 @@ import { formatRate } from '~/lib/format-rate';
 import { type MessageKey, useT } from '~/lib/i18n';
 import type { SessionSnapshot } from '~/lib/protocol';
 import { PROVIDER_SCHEMAS } from '~/lib/providers/config-schema';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
 import {
@@ -48,7 +48,7 @@ export interface ReadingTabProps {
    * from. The id speaks; the name is how the list wrote it down.
    */
   voiceNames: Record<string, Record<string, string>>;
-  providers: Record<CloudProviderId, Provider>;
+  providers: Record<AdapterProviderId, Provider>;
   session: SessionWatch;
   /** Absent in tests, which then show the defaults and save nothing. */
   settings?: SettingsStore;
@@ -234,8 +234,8 @@ export function ReadingTab({
 
 /** The voice card's second line: which service, and how it highlights. */
 function voiceMeta(
-  config: ProviderConfig & { provider: CloudProviderId },
-  providers: Record<CloudProviderId, Provider>,
+  config: ProviderConfig & { provider: AdapterProviderId },
+  providers: Record<AdapterProviderId, Provider>,
   t: (key: MessageKey) => string
 ): string {
   const service = t(PROVIDER_SCHEMAS[config.provider].labelKey);
@@ -264,8 +264,8 @@ function progressPercent(snapshot: SessionSnapshot): number {
  * not asked about here — the card would be repeating the service name back.
  */
 function highlightKey(
-  config: ProviderConfig & { provider: CloudProviderId },
-  providers: Record<CloudProviderId, Provider>
+  config: ProviderConfig & { provider: AdapterProviderId },
+  providers: Record<AdapterProviderId, Provider>
 ): MessageKey {
   try {
     return providers[config.provider].capabilities(config).timings === 'exact'

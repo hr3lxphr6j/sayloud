@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SettingsTab } from '~/entrypoints/sidepanel/SettingsTab';
 import type { CacheUsage } from '~/lib/cache-admin';
 import { ConfigStore, type LocalStorageArea } from '~/lib/config-store';
-import type { CloudProviderId } from '~/lib/providers/registry';
+import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider } from '~/lib/providers/types';
 import { SETTINGS_KEY, SettingsStore } from '~/lib/settings-store';
 
@@ -36,7 +36,8 @@ const providers = {
   'openai-compat': {},
   elevenlabs: {},
   azure: {},
-} as unknown as Record<CloudProviderId, Provider>;
+  local: {},
+} as unknown as Record<AdapterProviderId, Provider>;
 
 /** A cache of a known size that records what was asked of it. */
 function fakeCache(usage: CacheUsage = { bytes: 13 * 1024 * 1024, entries: 86 }) {

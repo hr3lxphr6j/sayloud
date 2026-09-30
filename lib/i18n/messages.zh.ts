@@ -96,6 +96,8 @@ export const zh: Record<MessageKey, string> = {
 
   'provider.browser.label': '浏览器语音',
   'provider.browser.summary': '使用 Chrome 已安装的语音，无需配置。',
+  'provider.local.label': '本地语音（浏览器内运行）',
+  'provider.local.summary': '浏览器内运行，文字不出本机。首次使用需要下载模型。',
   'provider.dashscope.label': '阿里云百炼',
   'provider.dashscope.summary':
     '阿里云百炼（Model Studio）。CosyVoice v3 及之后的模型会上报词级时间戳。',
@@ -189,6 +191,13 @@ export const zh: Record<MessageKey, string> = {
   'error.cancelled': '请求已取消。',
   'error.unexpected': '意外错误：{detail}。',
   'error.no-response': '{seconds} 秒内没有响应。',
+
+  // --- on-device failures ---------------------------------------------------
+  'error.model-missing': '该模型尚未下载。请到「模型」标签页下载。',
+  'error.model-host-unreachable': '两个下载源都连不上。请在「模型」标签页手动选择一个源。',
+  'error.model-download-failed': '下载未能完成，请重试。',
+  'error.model-load-failed': '模型加载失败，文件可能不完整——请删除后重新下载。',
+  'error.device-unavailable': '这台机器没有 WebGPU。请把设备设置改为 WASM。',
 
   // --- the bar on the page --------------------------------------------------
   'sideplayer.play': '播放',

@@ -145,11 +145,11 @@ check(
 // --- settings: provider list ------------------------------------------------
 await settings();
 checkEqual(
-  'all six providers are listed, in the schema order',
+  'every provider is listed, in the schema order',
   await page
     .locator('[data-provider]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-provider'))),
-  ['browser', 'dashscope', 'volcengine', 'openai-compat', 'elevenlabs', 'azure']
+  ['browser', 'dashscope', 'volcengine', 'openai-compat', 'elevenlabs', 'azure', 'local']
 );
 check(
   'the browser voice is the active row, and opens first',

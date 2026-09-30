@@ -15,6 +15,15 @@ export type ProviderErrorCode =
   | 'rate-limit'
   | 'no-quota'
   | 'network-error'
+  // The on-device model's own failures (P4 spec §3.15). They are separate codes
+  // rather than `unknown` because each one has a different fix, and every fix is
+  // something the user does in the extension: download, pick a source, retry,
+  // delete and re-download, or change the device.
+  | 'model-missing'
+  | 'model-host-unreachable'
+  | 'model-download-failed'
+  | 'model-load-failed'
+  | 'device-unavailable'
   | 'unknown';
 
 /**
@@ -80,6 +89,11 @@ const CODE_KEYS: Record<ProviderErrorCode, MessageKey> = {
   'rate-limit': 'error.rate-limit',
   'no-quota': 'error.no-quota',
   'network-error': 'error.network-error',
+  'model-missing': 'error.model-missing',
+  'model-host-unreachable': 'error.model-host-unreachable',
+  'model-download-failed': 'error.model-download-failed',
+  'model-load-failed': 'error.model-load-failed',
+  'device-unavailable': 'error.device-unavailable',
   unknown: 'error.unknown',
 };
 

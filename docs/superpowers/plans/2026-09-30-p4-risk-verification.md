@@ -581,3 +581,86 @@ catm 实测 WebGPU 比 WASM 快 10–30 倍，而我测出 1.44 vs 1.45（几乎
 只测了 `q8`（唯一一个 WebGPU 无效的档）就写下了「WebGPU 与 WASM 几乎同速」
 和「预取是必需品」——两条都错了。
 **性能结论必须把「体积/精度档位」当作测试变量，不能当常数。**
+
+---
+
+# 参考：catm 的分发方案（2026-10-01 调研）
+
+catm（`alainbrown/catm`，MIT，已上架 CWS）是同类产品。它的分发分四层：
+
+## 1. 扩展本体 → GitHub Actions 自动发布
+
+`.github/workflows/release-extension.yml`：
+
+- 链路：`Test` 工作流成功后触发（**测试是发布门禁**）
+- **`package.json` 的 version 是唯一真相**；与 `HEAD~1` 比较，没变就不发
+- 已存在 `ext-v<version>` tag 就跳过
+- 构建 → 打 zip → 建 GitHub Release → **通过 `chrome-webstore-upload-cli`
+  自动上传到 Chrome Web Store**
+- 需要的 secrets：`CWS_APP_ID` / `CWS_CLIENT_ID` / `CWS_CLIENT_SECRET` / `CWS_REFRESH_TOKEN`
+  （refresh token 的一次性获取流程见 `fregante/chrome-webstore-upload-keys`）
+- 另有 `deploy.yml` 把 `marketing/` 目录直接发到 GitHub Pages（无构建步骤）
+
+## 2. 模型权重 → 运行时从 HF 拉，Cache Storage 缓存
+
+`src/worker/modelCache.ts`：
+
+```ts
+const CACHE_NAME = "catm-model-v1";
+const CACHEABLE_HOST_HINTS = ["huggingface.co", "hf.co", "hf-mirror.com"];
+// 装一个 fetch wrapper：命中缓存直接返回，未命中则请求后 cache.put()
+```
+
+- **不打包模型**，运行时从 HF 下（或 `hf-mirror.com`）
+- 缓存 key 是**真实 URL**（没做 canonical 化）→ **换源会重下**
+  （我们 spec §3.5 的 canonical 主机方案比它好）
+- 权重**不进扩展包**，所以 CWS 包体很小
+
+## 3. WASM → 打进扩展包
+
+`src/worker/kokoro.worker.ts`：
+
+```ts
+ortWasm.wasmPaths = cfg.ortWasm.wasmPaths;
+// undefined overrides transformers.js's CDN default; forces bundled WASM.
+```
+
+- ORT 的 wasm **打包进扩展**（不是从 CDN 拉，MV3 也不允许远程脚本）
+- 与我们的 §3.14 一致
+
+## 4. manifest 的两个关键决定
+
+```ts
+const crossOriginIsolation = {
+  cross_origin_opener_policy: { value: "same-origin" },
+  cross_origin_embedder_policy: { value: "require-corp" },
+};
+// 注释：required so the side panel can use SharedArrayBuffer (ORT's threaded WASM build)
+```
+
+- **catm 启用了 COOP/COEP**，为了 SharedArrayBuffer → **多线程 WASM**
+- `permissions: ["sidePanel","contextMenus","scripting","activeTab","storage"]`
+- **没有 `host_permissions`**（靠 HF 的 CORS `*`）
+- **没有 `offscreen` 权限** —— 推理跑在**侧边栏里的 Worker**，不是 offscreen 文档
+
+## 与我们方案的差异（值得权衡）
+
+| | catm | 我们（P2–P4 spec） |
+|---|---|---|
+| 推理位置 | 侧边栏内的 Worker | offscreen 文档内的 Worker |
+| 侧边栏关闭后能否继续 | ❌ 不能（产品是侧边栏优先） | ✅ 能（P3 的「离开标签页继续播放」） |
+| 30 秒回收风险 | 无 | **有**（§3.12.3） |
+| 多线程 WASM | ✅ 有（COOP/COEP） | ❌ 没有（`numThreads=1`） |
+| 缓存 key | 真实 URL（换源重下） | canonical 主机（换源不重下） |
+| 自动发布 | ✅ 有（含 CWS 上传） | ❌ 待做 |
+
+**可以考虑借鉴的**：
+1. **CWS 自动发布链路**（上架那轮用）—— 用 `chrome-webstore-upload-cli` + 4 个 secrets
+2. **`macos-14` 跑 e2e**（catm 实测：唯一能跑真 WebGPU 的免费 runner；
+   Ubuntu + lavapipe 太慢会让合成测试超时）—— 对我们 CI 的 P4 e2e 同样适用
+3. **COOP/COEP + 多线程 WASM** —— 我们没有它，但既然 WebGPU 已经给出 6–8 倍，
+   优先级不高；且加它会带来六家云端 provider 的回归风险（§3.14 已论证）
+
+**不建议借鉴的**：
+- 推理放侧边栏（会失去「关闭侧边栏继续播放」，那是我们 P3 的既有能力）
+- 真实 URL 作缓存 key（换源重下 92–325MB）

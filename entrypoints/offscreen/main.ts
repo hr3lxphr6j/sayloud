@@ -14,7 +14,9 @@ import { browser } from 'wxt/browser';
 import { AudioWorker } from '~/lib/audio-worker';
 import { CacheManager } from '~/lib/cache-manager';
 import { CachePolicy, pullCachePolicy } from '~/lib/cache-policy';
+import type { OnDeviceEngine } from '~/lib/models/engine';
 import { pullModelSource } from '~/lib/models/source-channel';
+import type { ModelSource } from '~/lib/models/urls';
 import { createLocalWorker, WorkerLocalEngine } from '~/lib/models/worker-engine';
 import {
   isCacheCleared,
@@ -61,11 +63,25 @@ function providerMap(): Map<ProviderId, Provider> {
 function localProvider(): LocalProvider {
   return new LocalProvider({
     resolveSource: () => pullModelSource(browser.runtime),
-    createEngine: (source, allowFallback) =>
-      Promise.resolve(
-        new WorkerLocalEngine({ worker: createLocalWorker(), source, allowFallback })
-      ),
+    createEngine: (source, allowFallback) => buildEngine(source, allowFallback),
   });
+}
+
+/**
+ * The engine this context can supply: the real one, except in an e2e build.
+ *
+ * A test cannot download 163 MB of weights, and the whole point of the engine
+ * seam is that it does not have to — so the e2e build swaps in the silent one.
+ * The `import()` is dynamic and the whole branch is compiled out of a shipped
+ * build, so a release cannot accidentally carry a synthesiser that only makes
+ * silence.
+ */
+async function buildEngine(source: ModelSource, allowFallback: boolean): Promise<OnDeviceEngine> {
+  if (import.meta.env.MODE === 'e2e') {
+    const { FakeLocalEngine } = await import('~/lib/models/engine');
+    return new FakeLocalEngine();
+  }
+  return new WorkerLocalEngine({ worker: createLocalWorker(), source, allowFallback });
 }
 
 const cache = new CacheManager();

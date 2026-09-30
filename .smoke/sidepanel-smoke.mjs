@@ -73,6 +73,7 @@ await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
 
 const readingTab = page.locator('#tab-reading');
 const settingsTab = page.locator('#tab-settings');
+const modelsTab = page.locator('#tab-models');
 const providerEntry = (id) => page.locator(`[data-provider="${id}"]`);
 /** The circle that chooses the service; a radio, so `check()` is the click. */
 const providerDot = (id) => providerEntry(id).locator('.provider-radio');
@@ -179,6 +180,9 @@ const expectedFields = {
   'openai-compat': ['baseUrl', 'apiKey', 'model', 'captionedSpeech', 'headers'],
   elevenlabs: ['apiKey', 'model', 'outputFormat', 'baseUrl'],
   azure: ['subscriptionKey', 'region', 'outputFormat', 'lang'],
+  // Every field the on-device provider has is hidden: the Models tab owns
+  // them, so the form here draws nothing at all.
+  local: [],
 };
 
 for (const [id, fields] of Object.entries(expectedFields)) {
@@ -539,6 +543,67 @@ await checkEventually(
   'the usage line never reached zero'
 );
 
+// --- the models tab ---------------------------------------------------------
+// Rendered, not driven. A download would go to huggingface.co, and this script
+// has no network stub for 163 MB of weights — the e2e build covers the download
+// path with a routed mirror. `pageErrors` is counted from here because the
+// checks above deliberately provoke a failing service.
+const errorsBeforeModels = pageErrors.length;
+await modelsTab.click();
+checkEqual(
+  'the models tab offers every download source, with auto first',
+  await page
+    .locator('#model-source option')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('value'))),
+  ['auto', 'huggingface', 'modelscope', 'custom']
+);
+check(
+  'the models tab starts on auto, with a custom box only when asked for',
+  (await page.locator('#model-source').inputValue()) === 'auto' &&
+    (await page.locator('#model-source-url').count()) === 0
+);
+checkEqual(
+  'one card per registry model, with a row per tier and nothing downloaded',
+  await page
+    .locator('[data-tier]')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => `${node.getAttribute('data-tier')}:${node.getAttribute('data-state')}`)
+    ),
+  ['kokoro-82m:q8:absent', 'kokoro-82m:fp16:absent', 'kokoro-82m:fp32:absent']
+);
+checkEqual(
+  'each tier offers a download, and says what it costs',
+  await page
+    .locator('[data-tier] button')
+    .evaluateAll((nodes) => nodes.map((node) => node.textContent)),
+  ['Download', 'Download', 'Download']
+);
+check(
+  'the model card names the licence and what the model speaks',
+  (await page.getByRole('link', { name: 'Licence: Apache-2.0' }).count()) === 1 &&
+    (await page.getByText(/36 voices/).count()) === 1
+);
+check(
+  'the space the downloaded models occupy is reported',
+  (await page.getByText('Storage used').count()) === 1,
+  `storage label count ${await page.getByText('Storage used').count()}`
+);
+const deviceLine = await page.locator('.row-value').first().textContent();
+check(
+  'the device line says which backend the model will run on',
+  /^(WASM|WebGPU|Not loaded)/.test(deviceLine ?? ''),
+  `device line was ${JSON.stringify(deviceLine)}`
+);
+check(
+  'voices are fetched on demand, and say so instead of offering a dead button',
+  (await page.getByText(/Voices are downloaded on demand/).count()) === 1 &&
+    (await page.getByRole('button', { name: /Import/ }).count()) === 0
+);
+check(
+  'the models tab logs nothing of its own',
+  pageErrors.length === errorsBeforeModels,
+  pageErrors.slice(errorsBeforeModels).join(' | ')
+);
 // --- the narrowest panel Chrome allows -------------------------------------
 // A side panel is about 320px wide and the user cannot widen it, so anything
 // that pushes the page sideways is a bug with no workaround.
@@ -547,10 +612,12 @@ await readingTab.click();
 const readingOverflow = await page.evaluate(() => document.body.scrollWidth - window.innerWidth);
 await settings();
 const settingsOverflow = await page.evaluate(() => document.body.scrollWidth - window.innerWidth);
+await modelsTab.click();
+const modelsOverflow = await page.evaluate(() => document.body.scrollWidth - window.innerWidth);
 check(
   'no horizontal scroll at 320px',
-  readingOverflow <= 0 && settingsOverflow <= 0,
-  `reading overflows by ${readingOverflow}, settings by ${settingsOverflow}`
+  readingOverflow <= 0 && settingsOverflow <= 0 && modelsOverflow <= 0,
+  `reading overflows by ${readingOverflow}, settings by ${settingsOverflow}, models by ${modelsOverflow}`
 );
 
 await context.close();

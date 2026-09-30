@@ -1,4 +1,6 @@
 import { render } from 'preact';
+import { browser } from 'wxt/browser';
+import { OPEN_SETTINGS } from '~/lib/open-settings';
 import { ReaderController } from './reader.content/ReaderController';
 import { SidePlayer } from './reader.content/SidePlayer';
 import styles from './reader.content/styles.css?inline';
@@ -28,7 +30,17 @@ export default defineContentScript({
 
         const controller = new ReaderController(shadowHost);
         controller.connect();
-        render(<SidePlayer controller={controller} />, container);
+        render(
+          <SidePlayer
+            controller={controller}
+            onOpenSettings={() => {
+              // Sent synchronously: `sidePanel.open()` in the worker needs the
+              // click's transient activation, which an `await` here would spend.
+              void browser.runtime.sendMessage({ type: OPEN_SETTINGS });
+            }}
+          />,
+          container
+        );
         return controller;
       },
       onRemove: (controller) => controller?.dispose(),

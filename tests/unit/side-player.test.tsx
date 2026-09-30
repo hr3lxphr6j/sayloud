@@ -70,8 +70,11 @@ function fakeController(initial: ReaderState) {
 
 function renderPlayer(state: ReaderState = stateOf()) {
   const fake = fakeController(state);
-  const result = render(<SidePlayer controller={fake.controller} />);
-  return { ...fake, ...result };
+  const onOpenSettings = vi.fn();
+  const result = render(
+    <SidePlayer controller={fake.controller} onOpenSettings={onOpenSettings} />
+  );
+  return { ...fake, ...result, onOpenSettings };
 }
 
 describe('nextRate', () => {
@@ -217,5 +220,21 @@ describe('SidePlayer', () => {
 
     expect(screen.getByRole('button', { name: 'Pause' })).toBeDefined();
     expect(container.querySelector('.spinner')).not.toBeNull();
+  });
+
+  it('asks for the settings panel when the gear is clicked', () => {
+    const { onOpenSettings } = renderPlayer();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the gear even when the document has nothing to read', () => {
+    // Settings are how a user fixes a broken provider, so the gear must not be
+    // gated on there being sentences to play.
+    renderPlayer(stateOf({ status: statusOf({ total: 0 }) }));
+
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeDefined();
   });
 });

@@ -254,7 +254,25 @@ describe('synthesize (captioned endpoint)', () => {
       config({ captionedSpeech: true })
     );
 
-    expect(seenBody).toMatchObject({ return_timestamps: true, voice: 'af_bella' });
+    // V7: the request is the OpenAI body plus `stream: false`; without it
+    // Kokoro streams audio chunks instead of answering with one JSON body.
+    expect(seenBody).toMatchObject({ stream: false, voice: 'af_bella', input: 'Hello world' });
+    expect(seenBody).not.toHaveProperty('return_timestamps');
+  });
+
+  it('reads the audio format Kokoro reports in audio_format', async () => {
+    server.use(
+      http.post(CAPTIONED, () =>
+        HttpResponse.json({ audio: base64Of('AUDIO'), audio_format: 'wav', timestamps: [] })
+      )
+    );
+
+    const result = await provider.synthesize(
+      { text: 'Hello', voiceId: 'af_bella', signal },
+      config({ captionedSpeech: true })
+    );
+
+    expect(result.mime).toBe('audio/wav');
   });
 
   it('reads millisecond fields when the server sends them', async () => {

@@ -192,7 +192,6 @@ export const en = {
   'voice.browser-note':
     'The browser voice is the one Chrome has installed. There is nothing to choose here.',
   'voice.search': 'Search voices',
-  'voice.search-needs-form': 'Fill in the fields above to fetch the list.',
   'voice.loading': 'Loading…',
   'voice.load-failed': 'Could not fetch the voice list: {detail}',
   'voice.selected': 'Selected:',
@@ -201,7 +200,6 @@ export const en = {
   'voice.count-one': '{count} voice.',
   'voice.count-many': '{count} voices.',
   'voice.none-returned': 'This provider returned no voices. Check the model, and the base URL.',
-  'voice.fill-form-first': 'Fill in the required fields above first.',
   'voice.id-label': 'Voice id',
   'voice.id-placeholder': 'Any voice id the service accepts',
   'voice.use-id': 'Use this id',

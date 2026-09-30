@@ -1284,6 +1284,57 @@ T3 的引擎要知道 `auto` 解析成哪个 dtype。留到后面会变成在 UI
 - e2e：模型 tab 三态、下载/取消/删除、`model-missing` 路径、
   假引擎 + 假音素化整链路、「准备中」提示真的会出现。
 
+**T4 已完成（2026-10-01）**，产出：
+
+- `entrypoints/sidepanel/ModelsTab.tsx`、`use-models.ts`
+- `lib/providers/config-schema.ts` 的 `local` 条目 + `FieldSpec.hidden`
+- `tests/build/build-output.test.ts` + `pnpm test:build`
+- `tests/e2e/local-provider.spec.ts`（5 个用例）
+- 单测 1275 → 1316（另有 8 条构建产物断言，跑在 `pnpm test:build` 里），
+  e2e 31 → 36，smoke 53 → 63
+
+**实现后回写本 spec 的出入**（T5 若要继续对齐，看这几条）：
+
+1. **§4.2 的「音色」区（「下载全部音色」按钮）与「从本地文件导入模型…」按钮 T4 没做。**
+   两者都是 §3.6/§3.17 的后续工作；T4 按任务书把它们降级为一行说明文案
+   （`model.voices.note`）。**没有放一个点不动的按钮**——一个按下去什么都不发生的按钮
+   比没有按钮更坏。
+2. **§4.3 的「档位三态」里没有「下载中」的独立行状态**：下载中那一行的
+   `data-state` 是 `downloading`，但它不是 `<li class="tier">` 而是
+   `<li class="tier-download">`（要放进度条），所以断言三态时要注意选择器。
+3. **§4.3 的「使用中」徽章以 `config.tier` 为准有一个前提**：只有**本地 provider 是
+   当前启用的那个**时，`config` 才是本地配置；否则读的是 `savedConfigs.local`。
+   两者都归到「本地配置的 tier」，实现里由 `localConfigOf()` 统一。
+   另外「是否启用」和「用哪个档」是两件事：设档不会切换 provider（与
+   §8.2「保存不等于切换」一致）。
+4. **§4.2 的「运行设备」无法显示「实际加载时用的设备」。** offscreen 文档没有
+   `chrome.storage`，引擎上报的 `DeviceInfo` 没有任何通道回到侧边栏。T4 显示的是
+   **探针 + `resolveDevice(偏好)` 推出来的「下次会用什么」**，并在同一行下面写明
+   `model.device.help`。要显示「实际用的」，需要一条 offscreen → SW 的消息。
+5. **§3.2 的 `kind: 'select'` 对 `modelId` / `tier` 必须带 `options`，否则会静默丢值。**
+   `parseStoredConfig` 对没有 options 的 select 一律丢弃（`coerceStored` 返回 undefined），
+   于是模型 tab 自己写进去的 `tier` 下一次读就没了。T4 的实现是从注册表派生
+   option 列表（`MODEL_ID_OPTIONS` / `TIER_OPTIONS`），顺带得到了「注册表里没有的
+   档位会被拒绝」这个好处。
+6. **§4.3.1 的「正在准备本地模型…」/「正在生成…」T4 没做。** 区分「首次建 session」
+   与「正在合成」需要 offscreen → SW 的一条 stage 消息，而它要动 `Provider` 接口
+   （七个适配器）与 P1 的播放器。只做「本地 provider 的 loading 阶段显示一句
+   『正在准备』」是够便宜的，但那句话在**每一句**上都会出现（第二次合成并不建
+   session），于是是一句不成立的话。宁可不说。
+7. **下载进度不是「`ModelStore` 事件 + `chrome.storage.onChanged`」**，而是
+   `downloadTier(model, tier, { onProgress })` 的回调。进度不落盘，也不需要落盘：
+   下载的宿主是侧边栏页面本身。任务书里那句「listen to `chrome.storage.onChanged`
+   for the progress key」与实际的数据层不符。
+8. **`SidePanel.tsx` 的标签 key 命名不一致**：既有是 `panel.tab.reading`，任务书/
+   §5 给的第三个是 `panel.tab-models`（横线）。T4 按任务书照抄了，但这让
+   「tab 的 key 用点还是横线」这件事多了一个反例。
+9. **§7 的「准备中提示」e2e 与 §4.3.1 的另外三条提示**：T4 只实现了「模型未下载 →
+   去模型设置」这一条（在朗读标签页），其余三条见第 6 条。
+10. **播放侧的 `model-missing` 会退化成浏览器语音**（`PlaybackEngine` 把 provider
+    错误一律当 `tts-error`，然后切到 fallback speaker）。所以「去模型设置」的引导
+    必须在侧边栏里给，页面上那个气泡只会说「Voice failed」。把错误码接到 UI 需要
+    给 `EngineStatus.error` 加一套码，不在 T4 的文件清单里。
+
 ### T5 — 收尾
 
 - 版本号 0.3.0 → 0.4.0。

@@ -173,6 +173,7 @@ export const en = {
     'The browser voice is the one Chrome has installed. There is nothing to choose here.',
   'voice.load': 'Load Voices',
   'voice.loading': 'Loading…',
+  'voice.load-hint': 'Fetch the voice list from this service to pick one from it.',
   'voice.selected': 'Selected:',
   // Two keys rather than a plural rule: English inflects, Chinese does not, and
   // the count is always known at the call site.

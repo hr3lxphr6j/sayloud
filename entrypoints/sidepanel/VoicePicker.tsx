@@ -160,6 +160,13 @@ export function VoicePicker({
         </p>
       )}
 
+      {/*
+        Before the list has been fetched the page is otherwise just a button
+        and an id box, which reads as broken rather than as empty. The line goes
+        where the search box will appear, so fetching replaces it in place.
+      */}
+      {voices === null && status.kind === 'idle' && <p class="muted">{t('voice.load-hint')}</p>}
+
       {config === null && showFormErrors && (
         <p class="result error" role="alert">
           {t('voice.fill-form-first')}

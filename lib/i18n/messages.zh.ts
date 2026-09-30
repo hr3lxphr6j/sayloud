@@ -145,6 +145,7 @@ export const zh: Record<MessageKey, string> = {
   'voice.browser-note': '浏览器语音由 Chrome 提供，无需选择。',
   'voice.load': '加载音色',
   'voice.loading': '加载中…',
+  'voice.load-hint': '从服务获取音色列表后即可挑选。',
   'voice.selected': '已选：',
   'voice.count-one': '{count} 个音色。',
   'voice.count-many': '{count} 个音色。',

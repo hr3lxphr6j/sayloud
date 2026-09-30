@@ -51,7 +51,6 @@ import { type Deadline, startDeadline } from './deadline';
 import { type AsyncStatus, StatusLine } from './StatusLine';
 import { ChevronRight } from './ui/icons';
 import { StatusDot } from './ui/StatusDot';
-import { VoicePicker } from './VoicePicker';
 
 /**
  * Long enough for a slow synthesis — `validate()` really does speak two
@@ -90,8 +89,6 @@ export interface ProviderConfigPanelProps {
    * no copy of what it holds.
    */
   onChanged: () => void;
-  /** Called after a voice was picked, for the same reason. */
-  onVoiceSaved?: () => void;
   /** `chrome.permissions`; absent in tests, where no host grant is asked for. */
   permissions?: PermissionsApi;
 }
@@ -104,7 +101,6 @@ export function ProviderConfigPanel({
   voices = {},
   voiceNames = {},
   onChanged,
-  onVoiceSaved,
   permissions,
 }: ProviderConfigPanelProps) {
   const t = useT();
@@ -204,7 +200,6 @@ export function ProviderConfigPanel({
                     active={inUse}
                     store={store}
                     onChanged={onChanged}
-                    onVoiceSaved={onVoiceSaved}
                     permissions={permissions}
                   />
                 </div>
@@ -226,7 +221,6 @@ interface ProviderFormProps {
   active: boolean;
   store: ConfigStore;
   onChanged: () => void;
-  onVoiceSaved: (() => void) | undefined;
   permissions: PermissionsApi | undefined;
 }
 
@@ -237,7 +231,6 @@ function ProviderForm({
   active,
   store,
   onChanged,
-  onVoiceSaved,
   permissions,
 }: ProviderFormProps) {
   const t = useT();
@@ -503,18 +496,12 @@ function ProviderForm({
         </div>
       </div>
 
-      {provider && (
-        <VoicePicker
-          schema={schema}
-          provider={provider}
-          config={draft}
-          store={store}
-          disabled={testing}
-          onAttempt={() => setTouched(true)}
-          showFormErrors={touched}
-          {...(onVoiceSaved ? { onSaved: onVoiceSaved } : {})}
-        />
-      )}
+      {/*
+        No voice picker here. Choosing a voice is about how the reading sounds
+        rather than about what this service is, and the Reading tab's voice card
+        is the one place that does it — one place, one answer to "which voice am
+        I using", and no second copy to keep in step.
+      */}
 
       {/*
         Last, and quiet: deleting is the rare thing to do here, and it is the

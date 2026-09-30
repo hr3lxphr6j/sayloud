@@ -80,6 +80,23 @@ const providerDot = (id) => providerEntry(id).locator('.provider-radio');
 const providerToggle = (id) => providerEntry(id).locator('.provider-toggle');
 const settings = () => settingsTab.click();
 
+/** The Reading tab's voice card opens the picker page; the header's arrow leaves it. */
+const openVoicePage = () => page.locator('.voice-card').click();
+const leaveVoicePage = () => page.getByRole('button', { name: 'Back' }).click();
+
+/**
+ * Read the voice list the way a reader does: from the Reading tab's card.
+ *
+ * The list is fetched by focusing the search box, and it belongs to whichever
+ * service is in use, so this also checks that the two agree.
+ */
+async function openVoices() {
+  await readingTab.click();
+  await openVoicePage();
+  await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
+  await page.waitForSelector('.voice-list li', { timeout: 8000 }).catch(() => {});
+}
+
 /** The provider whose row is open, which is the form the checks type into. */
 const openProvider = () =>
   page
@@ -211,18 +228,13 @@ await checkEventually(
 );
 await page.locator('#field-headers').fill('X-Gateway: abc');
 
-await page.locator('#field-baseUrl').fill('');
-await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
-check(
-  'focusing the voice search with an incomplete form explains itself',
-  (await page.getByText('Fill in the required fields above first.').count()) === 1
-);
-
-// A stale result must not survive an edit to the field it described.
+// A field's complaint has to go when the field is fixed. (Voice selection moved
+// to the Reading tab, so there is no longer a voice search to drive from an
+// incomplete form.)
 await page.locator('#field-baseUrl').fill('http://127.0.0.1:8899/v1');
 await checkEventually(
-  'editing a field clears the previous error',
-  async () => (await page.getByText('Fill in the required fields above first.').count()) === 0
+  'fixing a field clears the complaint about it',
+  async () => (await page.getByText('Enter a full URL').count()) === 0
 );
 
 // --- save + persistence across a reload ------------------------------------
@@ -325,9 +337,7 @@ check(
   'the Reading tab falls back to the default voice',
   (await page.getByText('Default voice').count()) === 1
 );
-await settings();
-
-// --- Test Connection + the voice search against a local stub ----------------
+// --- Test Connection + the voice page against a local stub ------------------
 const server = createServer((request, response) => {
   // Extension pages fetch cross-origin, and the real Kokoro answers `*` (V7).
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
@@ -357,8 +367,9 @@ const server = createServer((request, response) => {
 });
 await new Promise((resolve) => server.listen(8899, '127.0.0.1', resolve));
 
-await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
-await page.waitForSelector('.voice-list li', { timeout: 8000 }).catch(() => {});
+// Voice selection lives on the Reading tab: the card opens the page, and the
+// page lists the voices of whichever service is in use.
+await openVoices();
 const voiceRows = await page.locator('.voice-list li').allTextContents();
 checkEqual('focusing the voice search lists the voices the server returned', voiceRows, [
   'af_bellaaf_bella',
@@ -376,8 +387,7 @@ checkEqual('picking a voice persists it', voiceStore['sayloud:selected-voices'],
   'openai-compat': 'af_bella',
 });
 
-// The Reading tab shows the same choice, which it reads from the store.
-await readingTab.click();
+await leaveVoicePage();
 check(
   'the Reading tab shows the voice that was picked',
   (await page.getByText('af_bella').count()) === 1
@@ -393,21 +403,25 @@ checkEqual(
 );
 
 // --- timings badges, from a provider that advertises them -------------------
+// Configure DashScope, make it the one in use, and read its voices off the
+// voice page — the same path a reader takes.
 await providerToggle('dashscope').click();
 await page.locator('#field-apiKey').fill('sk-test');
-await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
-await page.waitForSelector('.voice-list li', { timeout: 8000 }).catch(() => {});
-const diagnostics = await page.evaluate(() => ({
-  provider: document
-    .querySelector('.provider-toggle[aria-expanded="true"]')
-    ?.closest('[data-provider]')
-    ?.getAttribute('data-provider'),
-  apiKey: document.querySelector('#field-apiKey')?.value,
-  fields: [...document.querySelectorAll('.form [id^=field-]')].map((n) => n.id),
-  voiceItems: document.querySelectorAll('.voice-list li').length,
-  statuses: [...document.querySelectorAll('.result, .field-error')].map((n) => n.textContent),
-}));
-console.log('  dashscope diagnostics:', JSON.stringify(diagnostics));
+// Leaving the field is the save.
+await page.locator('#field-apiKey').blur();
+await checkEventually(
+  'a second service saves without becoming the one in use',
+  async () => {
+    const saved = await worker.evaluate(() =>
+      chrome.storage.local.get('sayloud:provider-configs')
+    );
+    return saved['sayloud:provider-configs']?.dashscope?.apiKey === 'sk-test';
+  },
+  'the dashscope config never reached storage'
+);
+await providerDot('dashscope').check();
+
+await openVoices();
 const dashVoices = await page.locator('.voice-list li').count();
 const dashBadges = await page.locator('.badge').count();
 check('DashScope lists its catalogue without a network call', dashVoices > 0, `${dashVoices} voices`);
@@ -416,18 +430,29 @@ check(
   dashBadges === dashVoices,
   `${dashBadges}/${dashVoices}`
 );
+await leaveVoicePage();
 
+// The model decides whether the catalogue reports timings, and the list follows
+// the config it was fetched for.
+await settings();
 await page.locator('#field-model').fill('cosyvoice-v2');
 check(
   'the capability note follows the model',
   (await page.getByText('reports no word timings').count()) === 1
 );
-await page.getByRole('searchbox', { name: 'Filter voices' }).focus();
-await page.waitForTimeout(400);
+await page.locator('#field-model').blur();
+
+await openVoices();
+await page.waitForTimeout(600);
 check(
   'and the voices stop being badged',
   (await page.locator('.badge').count()) === 0
 );
+await leaveVoicePage();
+
+// The later checks are written against the first service being the one in use.
+await settings();
+await providerDot('openai-compat').check();
 
 check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
 

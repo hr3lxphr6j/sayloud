@@ -86,6 +86,7 @@ function harness(
     pause: vi.fn(),
     stop: vi.fn(),
     setRate: vi.fn(),
+    setVolume: vi.fn(),
     ...options.player,
   };
 
@@ -402,6 +403,12 @@ describe('AudioWorker', () => {
       expect(player.setRate).toHaveBeenCalledWith(1.5);
     });
 
+    it('changes the volume', async () => {
+      const { worker, player } = harness();
+      await worker.handleCommand({ type: 'setVolume', volume: 0.4 });
+      expect(player.setVolume).toHaveBeenCalledWith(0.4);
+    });
+
     it('stops the player and abandons the request in flight', async () => {
       const { worker, provider, player, events } = harness();
       const signals: AbortSignal[] = [];
@@ -652,6 +659,7 @@ describe('AudioWorker over the real cache and player', () => {
       src: '',
       currentTime: 0,
       playbackRate: 1,
+      volume: 1,
       duration: Number.NaN,
       paused: true,
       play: vi.fn(async () => {

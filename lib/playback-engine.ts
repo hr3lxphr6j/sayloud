@@ -35,6 +35,9 @@ export interface EngineDeps {
 
 const MIN_RATE = 0.5;
 const MAX_RATE = 3;
+/** The engine's own range; the settings store offers the same one. */
+const MIN_VOLUME = 0;
+const MAX_VOLUME = 1.5;
 /** Below this, a rate sample is too noisy to publish. */
 const RATE_SAMPLE_MS = 250;
 
@@ -81,6 +84,7 @@ export class PlaybackEngine {
   private sentences: EngineSentence[] = [];
   private index = 0;
   private rate = 1;
+  private volume = 1;
   private voice = '';
   private error: EngineError | undefined;
   private tabId = -1;
@@ -326,6 +330,22 @@ export class PlaybackEngine {
     this.emitStatus();
   }
 
+  /**
+   * Change the loudness, for this and every later sentence.
+   *
+   * The current sentence is left alone: a speaker that can change volume while
+   * it plays — the cloud voice, through the offscreen player's gain node — does
+   * so from the stored value, and one that cannot reads it from the next
+   * request. Re-speaking here would restart the sentence on every step of the
+   * volume slider.
+   */
+  setVolume(volume: number): void {
+    const next = clampVolume(volume);
+    if (next === this.volume) return;
+    this.volume = next;
+    this.speaker.setVolume?.(next);
+  }
+
   stop(): void {
     this.speaker.stop();
     this.sentences = [];
@@ -413,6 +433,7 @@ export class PlaybackEngine {
         voice,
         rate: this.rate,
         lang: sentence.lang,
+        volume: this.volume,
       });
       return;
     }
@@ -579,6 +600,11 @@ function estimateSpeechMs(text: string): number {
 function clampRate(rate: number): number {
   if (!Number.isFinite(rate)) return 1;
   return Math.min(MAX_RATE, Math.max(MIN_RATE, rate));
+}
+
+function clampVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1;
+  return Math.min(MAX_VOLUME, Math.max(MIN_VOLUME, volume));
 }
 
 function clampIndex(index: number, total: number): number {

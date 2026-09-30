@@ -11,6 +11,7 @@ import type { PrefetchRequest, Speaker, SpeakRequest } from '~/lib/speaker';
 function fakeSpeaker(options: { prefetch?: boolean } = {}) {
   const requests: SpeakRequest[] = [];
   const prefetches: PrefetchRequest[][] = [];
+  const volumes: number[] = [];
   const listeners = new Map<string, Set<(payload: never) => void>>();
   let live = false;
   let stopCount = 0;
@@ -19,6 +20,9 @@ function fakeSpeaker(options: { prefetch?: boolean } = {}) {
     speak(request) {
       requests.push(request);
       live = true;
+    },
+    setVolume(volume: number) {
+      volumes.push(volume);
     },
     ...(options.prefetch === false
       ? {}
@@ -56,6 +60,7 @@ function fakeSpeaker(options: { prefetch?: boolean } = {}) {
     speaker,
     requests,
     prefetches,
+    volumes,
     get stopCount() {
       return stopCount;
     },
@@ -120,6 +125,7 @@ describe('PlaybackEngine', () => {
         voice: 'Samantha',
         rate: 1,
         lang: 'en',
+        volume: 1,
       });
     });
 
@@ -366,6 +372,53 @@ describe('PlaybackEngine', () => {
       events.length = 0;
       engine.dispatch({ type: 'setRate', rate: 1 });
       expect(events).toHaveLength(0);
+    });
+  });
+
+  describe('volume', () => {
+    it('starts at full volume', () => {
+      engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+
+      expect(fake.requests[0]?.volume).toBe(1);
+    });
+
+    it('stores the volume and hands it to the speaker', () => {
+      engine.setVolume(0.4);
+
+      expect(fake.volumes).toEqual([0.4]);
+    });
+
+    it('includes the stored volume in every request', () => {
+      engine.setVolume(0.4);
+      engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+
+      expect(fake.requests[0]?.volume).toBe(0.4);
+    });
+
+    it('does not re-speak the current sentence', () => {
+      engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+      fake.fire.start();
+      const before = fake.requests.length;
+
+      engine.setVolume(0.4);
+
+      // Unlike the rate, the cloud voice changes loudness without restarting:
+      // the offscreen player applies it to the gain node it is already using.
+      expect(fake.requests).toHaveLength(before);
+    });
+
+    it('clamps the volume to the supported range', () => {
+      engine.setVolume(9);
+      expect(fake.volumes).toEqual([1.5]);
+
+      engine.setVolume(-1);
+      expect(fake.volumes).toEqual([1.5, 0]);
+    });
+
+    it('says nothing when the volume does not change', () => {
+      engine.setVolume(1);
+
+      expect(fake.volumes).toEqual([]);
     });
   });
 

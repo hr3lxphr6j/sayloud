@@ -74,7 +74,7 @@ describe('PlaybackEngine fallback speaker', () => {
     // The failed utterance never advanced the cursor, so the fallback gets the
     // same sentence.
     expect(fallback.requests).toEqual([
-      { text: 'Hello world.', voice: 'Samantha', rate: 1, lang: 'en' },
+      { text: 'Hello world.', voice: 'Samantha', rate: 1, lang: 'en', volume: 1 },
     ]);
 
     fallback.fire.start();

@@ -17,6 +17,8 @@ export interface TtsSpeakOptions {
   voiceName?: string;
   rate?: number;
   lang?: string;
+  /** 0–1. `chrome.tts` has no louder setting and rejects anything outside. */
+  volume?: number;
   enqueue?: boolean;
   onEvent?: (event: TtsEventLike) => void;
 }
@@ -32,6 +34,8 @@ export interface SpeakRequest {
   voice?: string;
   rate: number;
   lang: string;
+  /** 0–1.5. A speaker that cannot go louder clamps it rather than refusing. */
+  volume?: number;
 }
 
 /** A sentence to warm in the cache before it is needed (spec §5.3). */
@@ -61,6 +65,12 @@ export interface Speaker {
    * engine's `speaker.prefetch?.(...)` a no-op for it.
    */
   prefetch?(requests: readonly PrefetchRequest[]): void;
+  /**
+   * Change the loudness of the sentence that is playing. Optional: `chrome.tts`
+   * takes the volume per utterance, so the browser voice has nothing to change
+   * live and reads the next request's instead.
+   */
+  setVolume?(volume: number): void;
   stop(): void;
   on<K extends keyof SpeakerEvents>(
     event: K,
@@ -85,7 +95,7 @@ export class BrowserSpeaker implements Speaker {
 
   constructor(private readonly tts: TtsApi) {}
 
-  speak({ text, voice, rate, lang }: SpeakRequest): void {
+  speak({ text, voice, rate, lang, volume }: SpeakRequest): void {
     const generation = ++this.generation;
 
     // Flush anything queued so the new sentence starts immediately.
@@ -95,6 +105,7 @@ export class BrowserSpeaker implements Speaker {
       voiceName: voice,
       rate,
       lang,
+      volume: elementVolume(volume),
       enqueue: false,
       onEvent: (event) => {
         if (generation !== this.generation) return;
@@ -158,6 +169,18 @@ export class BrowserSpeaker implements Speaker {
       (handler as (value: SpeakerEvents[K]) => void)(payload);
     }
   }
+}
+
+/**
+ * A volume `chrome.tts` can take, or undefined to leave its own default.
+ *
+ * The API's maximum is 1 and a value outside the range is an error rather than
+ * something it clamps, so the top of the extension's 0–150% range is dropped
+ * here instead of being passed through.
+ */
+function elementVolume(volume: number | undefined): number | undefined {
+  if (volume === undefined || !Number.isFinite(volume)) return undefined;
+  return Math.min(1, Math.max(0, volume));
 }
 
 /**

@@ -12,10 +12,14 @@ const REQUEST: SpeakRequest = { text: 'hello', voice: 'v1', rate: 1, lang: 'en-U
 function fakeSpeaker(name: string, options: { prefetch?: boolean } = {}) {
   const requests: SpeakRequest[] = [];
   const prefetches: PrefetchRequest[][] = [];
+  const volumes: number[] = [];
   const listeners = new Map<keyof SpeakerEvents, Set<(payload: never) => void>>();
   const speaker: Speaker = {
     speak(request) {
       requests.push(request);
+    },
+    setVolume(volume: number) {
+      volumes.push(volume);
     },
     ...(options.prefetch
       ? {
@@ -44,6 +48,7 @@ function fakeSpeaker(name: string, options: { prefetch?: boolean } = {}) {
     speaker,
     requests,
     prefetches,
+    volumes,
     stop: speaker.stop as ReturnType<typeof vi.fn>,
     dispose: speaker.dispose as ReturnType<typeof vi.fn>,
     deliver(event: keyof SpeakerEvents, payload: unknown): void {
@@ -370,6 +375,31 @@ describe('SpeakerRouter', () => {
 
       expect(router.isCloud).toBe(false);
       error.mockRestore();
+    });
+  });
+
+  describe('setVolume', () => {
+    it('forwards to the active speaker and to the browser fallback', async () => {
+      router = new SpeakerRouter({
+        browser: browser.speaker,
+        config: fakeConfig(DASHSCOPE, { dashscope: 'longxiaochun' }),
+        createCloud: () => cloud.speaker,
+        resolveBrowserVoice: (lang) => `browser:${lang}`,
+      });
+      await router.refresh();
+
+      router.setVolume(0.4);
+
+      expect(cloud.volumes).toEqual([0.4]);
+      // A later degrade to the browser voice has to arrive at the right volume.
+      expect(browser.volumes).toEqual([0.4]);
+    });
+
+    it('forwards while the browser voice is the one speaking', () => {
+      router.setVolume(0.4);
+
+      expect(browser.volumes).toEqual([0.4]);
+      expect(cloud.volumes).toEqual([]);
     });
   });
 

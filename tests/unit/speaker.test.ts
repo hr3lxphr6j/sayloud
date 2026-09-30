@@ -62,6 +62,36 @@ describe('BrowserSpeaker', () => {
     expect(fake.tts.stop).toHaveBeenCalledTimes(2);
   });
 
+  it('passes the volume to chrome.tts', () => {
+    speaker.speak({ text: 'Hello.', voice: 'Samantha', rate: 1, lang: 'en', volume: 0.4 });
+
+    expect(fake.calls[0]?.options.volume).toBe(0.4);
+  });
+
+  it('leaves the volume unset when the request has none', () => {
+    speaker.speak({ text: 'Hello.', rate: 1, lang: 'en' });
+
+    expect(fake.calls[0]?.options.volume).toBeUndefined();
+  });
+
+  it('clamps the volume to the loudest chrome.tts accepts', () => {
+    speaker.speak({ text: 'Hello.', rate: 1, lang: 'en', volume: 1.5 });
+
+    expect(fake.calls[0]?.options.volume).toBe(1);
+  });
+
+  it('clamps a negative volume to silence', () => {
+    speaker.speak({ text: 'Hello.', rate: 1, lang: 'en', volume: -1 });
+
+    expect(fake.calls[0]?.options.volume).toBe(0);
+  });
+
+  it('has no setVolume, so a live change waits for the next sentence', () => {
+    // `chrome.tts` takes the volume per utterance; there is nothing to change
+    // while one is speaking.
+    expect('setVolume' in speaker).toBe(false);
+  });
+
   it('reports start and end', () => {
     const onStart = vi.fn();
     const onEnd = vi.fn();

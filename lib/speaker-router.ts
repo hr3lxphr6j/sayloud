@@ -149,6 +149,19 @@ export class SpeakerRouter implements Speaker {
   }
 
   /**
+   * Apply the volume to the speaker that is active, and to the browser voice
+   * too.
+   *
+   * The browser delegate is set even when a cloud provider is speaking: a
+   * cloud failure degrades to the browser voice, and that speaker has to be at
+   * the right loudness by the time it takes over.
+   */
+  setVolume(volume: number): void {
+    this.active.setVolume?.(volume);
+    if (this.active !== this.browser) this.browser.setVolume?.(volume);
+  }
+
+  /**
    * Warm the cache on whichever speaker is active.
    *
    * A no-op when that speaker has no prefetch — the browser voice — which is

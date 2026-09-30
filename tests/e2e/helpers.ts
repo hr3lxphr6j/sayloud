@@ -22,6 +22,33 @@ export function wordHighlight(page: import('@playwright/test').Page) {
   return highlighted(page, 'sayloud-word');
 }
 
+/** Must match `lib/settings-store.ts`; e2e specs do not resolve the `~` alias. */
+const SETTINGS_KEY = 'sayloud:settings';
+
+/**
+ * Write behaviour preferences the way the side panel does.
+ *
+ * From an extension page, because a content script's `chrome.storage` lives in
+ * its isolated world, which Playwright cannot reach, and the service worker's
+ * own storage is not exposed to the test either.
+ */
+export async function saveSettings(
+  page: import('@playwright/test').Page,
+  settings: Record<string, unknown>
+): Promise<void> {
+  await page.evaluate(
+    ([key, value]) => {
+      const api = (
+        globalThis as unknown as {
+          chrome: { storage: { local: { set(items: Record<string, unknown>): Promise<void> } } };
+        }
+      ).chrome;
+      return api.storage.local.set({ [key as string]: value });
+    },
+    [SETTINGS_KEY, settings]
+  );
+}
+
 /** The bubble card, wherever the player has opened one. */
 export function bubble(page: import('@playwright/test').Page) {
   return page.getByRole('status');

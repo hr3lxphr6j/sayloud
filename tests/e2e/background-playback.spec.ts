@@ -1,29 +1,5 @@
-import type { Page } from '@playwright/test';
 import { control, expect, test } from './fixtures';
-
-/** Must match `lib/settings-store.ts`; e2e specs do not resolve the `~` alias. */
-const SETTINGS_KEY = 'sayloud:settings';
-
-/**
- * Write the settings the way the side panel does, from an extension page.
- *
- * A content script's `chrome.storage` lives in its isolated world, which
- * Playwright cannot reach, and the service worker's own storage is not exposed
- * to the test either. An extension page's main world has the API.
- */
-async function saveSettings(page: Page, settings: Record<string, unknown>): Promise<void> {
-  await page.evaluate(
-    ([key, value]) => {
-      const api = (
-        globalThis as unknown as {
-          chrome: { storage: { local: { set(items: Record<string, unknown>): Promise<void> } } };
-        }
-      ).chrome;
-      return api.storage.local.set({ [key as string]: value });
-    },
-    [SETTINGS_KEY, settings]
-  );
-}
+import { saveSettings } from './helpers';
 
 test.describe('playing while another tab has the focus', () => {
   test('keeps reading when the user switches to another tab', async ({

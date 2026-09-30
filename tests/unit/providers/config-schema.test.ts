@@ -11,9 +11,13 @@ import {
   parseStoredConfig,
   validateFormValues,
 } from '~/lib/providers/config-schema';
+import { DEFAULT_BASE_URL as DASHSCOPE_BASE_URL } from '~/lib/providers/dashscope';
+import { DEFAULT_BASE_URL as ELEVENLABS_BASE_URL } from '~/lib/providers/elevenlabs';
 import type { ProviderConfig } from '~/lib/providers/types';
+import { DEFAULT_BASE_URL as VOLCENGINE_BASE_URL } from '~/lib/providers/volcengine';
 
 const dashscope = PROVIDER_SCHEMAS.dashscope;
+const volcengine = PROVIDER_SCHEMAS.volcengine;
 const openai = PROVIDER_SCHEMAS['openai-compat'];
 
 /** Form values with every field filled with something the field accepts. */
@@ -57,6 +61,112 @@ describe('PROVIDER_SCHEMAS', () => {
   it('puts the browser voice first, since it needs nothing filled in', () => {
     expect(PROVIDER_IDS[0]).toBe('browser');
     expect(PROVIDER_SCHEMAS.browser.fields).toHaveLength(0);
+  });
+
+  it('exposes exactly the fields the verified Volcengine contract uses', () => {
+    // The old console's appId / access token and a separate model field are
+    // deliberately absent: only the new console's X-Api-Key is supported, and
+    // the resource id decides the model version (spec §2.2).
+    expect(volcengine.fields.map((field) => field.key)).toEqual([
+      'apiKey',
+      'resourceId',
+      'baseUrl',
+    ]);
+  });
+
+  it('requires the Volcengine API key and names the header it is sent as', () => {
+    const apiKey = volcengine.fields.find((field) => field.key === 'apiKey');
+
+    expect(apiKey).toMatchObject({ kind: 'password', required: true });
+    expect(apiKey?.help).toMatch(/X-Api-Key/);
+    expect(apiKey?.help).toMatch(/new console/);
+  });
+
+  it('offers the Volcengine resource ids as a required select', () => {
+    const resourceId = volcengine.fields.find((field) => field.key === 'resourceId');
+
+    expect(resourceId).toMatchObject({ kind: 'select', required: true });
+    expect(resourceId?.options?.map((option) => option.value)).toEqual([
+      'seed-tts-1.0',
+      'seed-tts-2.0',
+      'seed-icl-2.0',
+    ]);
+    // Only the 1.0 resource reports word timings (spec §6 V9).
+    expect(resourceId?.options?.[0]?.label).toMatch(/word timings/);
+  });
+
+  it('keeps every base URL default equal to its adapter constant', () => {
+    // The schema cannot import the adapters — it is bundled into the service
+    // worker — so the two copies of each host are compared here instead.
+    const cases = [
+      [PROVIDER_SCHEMAS.dashscope, DASHSCOPE_BASE_URL],
+      [volcengine, VOLCENGINE_BASE_URL],
+      [PROVIDER_SCHEMAS.elevenlabs, ELEVENLABS_BASE_URL],
+    ] as const;
+
+    for (const [schema, url] of cases) {
+      const field = schema.fields.find((entry) => entry.key === 'baseUrl');
+      expect(field?.defaultValue).toBe(url);
+    }
+  });
+});
+
+describe('defaultValue', () => {
+  it('shows the field default when nothing is stored', () => {
+    const values = configToFormValues(volcengine);
+
+    expect(values.baseUrl).toBe(VOLCENGINE_BASE_URL);
+    // A field with no default still starts empty.
+    expect(values.apiKey).toBe('');
+  });
+
+  it('prefers a stored value over the default', () => {
+    const values = configToFormValues(volcengine, {
+      provider: 'volcengine',
+      apiKey: 'k',
+      resourceId: 'seed-tts-1.0',
+      baseUrl: 'https://proxy.test',
+    });
+
+    expect(values.baseUrl).toBe('https://proxy.test');
+  });
+
+  it('validates a field holding its default, and one left empty', () => {
+    const schema: ProviderSchema = {
+      id: 'dashscope',
+      label: 'Test',
+      summary: 'A required field whose default stands in for a value.',
+      fields: [
+        {
+          key: 'apiKey',
+          label: 'API key',
+          kind: 'text',
+          required: true,
+          defaultValue: 'sk-default',
+        },
+      ],
+    };
+
+    // Empty falls back to the default, so the requirement is satisfied by it.
+    expect(validateFormValues(schema, { apiKey: 'sk-default' })).toEqual({});
+    expect(validateFormValues(schema, { apiKey: '' })).toEqual({});
+  });
+
+  it('still requires a field that has no default', () => {
+    expect(validateFormValues(volcengine, { baseUrl: VOLCENGINE_BASE_URL }).resourceId).toBe(
+      'Resource id is required.'
+    );
+  });
+
+  it('checks the default the way it checks a typed value', () => {
+    const schema: ProviderSchema = {
+      id: 'dashscope',
+      label: 'Test',
+      summary: 'A URL field with a malformed default.',
+      fields: [{ key: 'baseUrl', label: 'Base URL', kind: 'url', defaultValue: 'not-a-url' }],
+    };
+
+    expect(validateFormValues(schema, {})).toHaveProperty('baseUrl');
   });
 });
 
@@ -309,15 +419,31 @@ describe('parseStoredConfig', () => {
     expect(parseStoredConfig({ provider: 'dashscope', apiKey: 42 })).toBeNull();
   });
 
+  it('rejects a config whose required select holds an unknown option', () => {
+    expect(
+      parseStoredConfig({ provider: 'volcengine', apiKey: 'k', resourceId: 'seed-tts-9.0' })
+    ).toBeNull();
+  });
+
+  it('keeps a resource id that is one of the known ones', () => {
+    expect(
+      parseStoredConfig({ provider: 'volcengine', apiKey: 'k', resourceId: 'seed-tts-2.0' })
+    ).toEqual({ provider: 'volcengine', apiKey: 'k', resourceId: 'seed-tts-2.0' });
+  });
+
+  it('rejects an old-console Volcengine config, which has no supported key', () => {
+    expect(parseStoredConfig({ provider: 'volcengine', appId: 'a', accessToken: 't' })).toBeNull();
+  });
+
   it('drops an unknown option from an optional select, leaving the provider default', () => {
     const parsed = parseStoredConfig({
-      provider: 'volcengine',
-      appId: 'a',
-      accessToken: 't',
-      model: 'tts-9.0',
+      provider: 'azure',
+      subscriptionKey: 'k',
+      region: 'eastasia',
+      outputFormat: 'mp3_48khz',
     });
 
-    expect(parsed).toEqual({ provider: 'volcengine', appId: 'a', accessToken: 't' });
+    expect(parsed).toEqual({ provider: 'azure', subscriptionKey: 'k', region: 'eastasia' });
   });
 
   it('drops a corrupt optional field but keeps the rest', () => {

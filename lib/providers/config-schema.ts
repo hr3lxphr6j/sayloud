@@ -13,10 +13,10 @@
  * quietly doing nothing.
  *
  * Kinds are chosen from the config type, not from what would look nicest: a
- * closed union (`volcengine.model`, `azure.outputFormat`) is a `select`, and an
- * open `string` (a DashScope model name, an ElevenLabs output format) is a text
- * field, because a picker would stop a user from naming a model we have not
- * heard of yet.
+ * closed union (`volcengine.resourceId`, `azure.outputFormat`) is a `select`,
+ * and an open `string` (a DashScope model name, an ElevenLabs output format) is
+ * a text field, because a picker would stop a user from naming a model we have
+ * not heard of yet.
  */
 import type { ProviderConfig, ProviderConfigMap, ProviderId } from './types';
 
@@ -37,6 +37,14 @@ export interface FieldSpec<K extends string = string> {
   readonly required?: boolean;
   readonly placeholder?: string;
   readonly help?: string;
+  /**
+   * The value the form shows when nothing is saved.
+   *
+   * A default stands in for a value everywhere the field is read, so a
+   * `required` field that has one is satisfied by it. It is deliberately not
+   * `boolean`: a checkbox is never empty, so it has nothing to fall back to.
+   */
+  readonly defaultValue?: string;
   /** The allowed values, for `kind: 'select'`. */
   readonly options?: readonly FieldOption[];
 }
@@ -96,6 +104,20 @@ interface SchemaSpec<K extends ProviderId> {
 }
 
 /**
+ * The endpoint each of these adapters falls back to.
+ *
+ * Duplicated rather than imported on purpose: this module is bundled into the
+ * service worker, and importing an adapter would drag its wire format into
+ * that bundle. A unit test compares each entry with the adapter's own exported
+ * `DEFAULT_BASE_URL`, so the two copies cannot drift apart unnoticed.
+ */
+const DEFAULT_BASE_URLS = {
+  dashscope: 'https://dashscope.aliyuncs.com',
+  volcengine: 'https://openspeech.bytedance.com',
+  elevenlabs: 'https://api.elevenlabs.io',
+} as const;
+
+/**
  * The schema table.
  *
  * Key order is the picker's display order, so the browser voice comes first:
@@ -148,6 +170,7 @@ const SCHEMAS = {
         key: 'baseUrl',
         label: 'Base URL',
         kind: 'url',
+        defaultValue: DEFAULT_BASE_URLS.dashscope,
         placeholder: 'https://dashscope.aliyuncs.com',
         help: 'Override the region host, for example to go through a proxy.',
       },
@@ -157,32 +180,35 @@ const SCHEMAS = {
   volcengine: {
     id: 'volcengine',
     label: '火山引擎豆包 TTS',
-    summary: 'Volcano Engine Doubao. Only the tts-1.0 model reports word timings.',
+    summary: 'Volcano Engine Doubao. The seed-tts-1.0 resource reports word timings.',
     consoleUrl: 'https://console.volcengine.com/speech/',
     fields: [
-      { key: 'appId', label: 'App id', kind: 'text', required: true },
       {
-        key: 'accessToken',
-        label: 'Access token',
+        key: 'apiKey',
+        label: 'API key',
         kind: 'password',
         required: true,
+        help: 'From the new console, sent as the X-Api-Key header. The old console app id + access token pair is not supported.',
       },
       {
         key: 'resourceId',
         label: 'Resource id',
-        kind: 'text',
-        placeholder: 'volc.service_type.10029',
+        kind: 'select',
+        required: true,
+        options: [
+          { value: 'seed-tts-1.0', label: 'seed-tts-1.0 (word timings)' },
+          { value: 'seed-tts-2.0', label: 'seed-tts-2.0 (sentence-level only)' },
+          { value: 'seed-icl-2.0', label: 'seed-icl-2.0 (sentence-level only)' },
+        ],
+        help: 'The resource id decides both the model version and the billing mode.',
       },
       {
-        key: 'model',
-        label: 'Model',
-        kind: 'select',
-        options: [
-          { value: 'tts-1.0', label: 'tts-1.0 (word timings)' },
-          { value: 'tts-2.0', label: 'tts-2.0 (no word timings)' },
-        ],
+        key: 'baseUrl',
+        label: 'Base URL',
+        kind: 'url',
+        defaultValue: DEFAULT_BASE_URLS.volcengine,
+        help: 'Override the host, for example to go through a proxy.',
       },
-      { key: 'baseUrl', label: 'Base URL', kind: 'url' },
     ],
   },
 
@@ -241,7 +267,12 @@ const SCHEMAS = {
         kind: 'text',
         placeholder: 'mp3_44100_128',
       },
-      { key: 'baseUrl', label: 'Base URL', kind: 'url' },
+      {
+        key: 'baseUrl',
+        label: 'Base URL',
+        kind: 'url',
+        defaultValue: DEFAULT_BASE_URLS.elevenlabs,
+      },
     ],
     passthrough: [{ key: 'voiceSettings', kind: 'object' }],
   },
@@ -396,11 +427,15 @@ export function configToFormValues(
     const stored = source?.[field.key];
     if (field.kind === 'boolean') {
       values[field.key] = stored === true;
-    } else if (field.kind === 'kv') {
-      values[field.key] = formatHeaders(stored);
-    } else {
-      values[field.key] = typeof stored === 'string' ? stored : '';
+      continue;
     }
+
+    const rendered =
+      field.kind === 'kv' ? formatHeaders(stored) : typeof stored === 'string' ? stored : '';
+    // A field with nothing stored shows its default, so the form presents the
+    // endpoint the adapter would fall back to anyway. An empty string counts
+    // as nothing stored: `parseStoredConfig` never keeps one.
+    values[field.key] = rendered !== '' ? rendered : (field.defaultValue ?? '');
   }
   return values;
 }
@@ -413,7 +448,10 @@ export function validateFormValues(schema: ProviderSchema, values: FormValues): 
     if (field.kind === 'boolean') continue;
 
     const raw = values[field.key];
-    const text = typeof raw === 'string' ? raw.trim() : '';
+    const typed = typeof raw === 'string' ? raw.trim() : '';
+    // An empty field holds its default, so that is the value checked here —
+    // which is also what makes a `required` field with a default satisfied.
+    const text = typed === '' ? (field.defaultValue ?? '') : typed;
 
     if (text === '') {
       if (field.required) errors[field.key] = `${field.label} is required.`;

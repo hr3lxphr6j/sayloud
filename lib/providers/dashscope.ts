@@ -42,6 +42,12 @@ const REGION_BASE_URLS = {
   intl: 'https://dashscope-intl.aliyuncs.com',
 } as const;
 
+/**
+ * The default region's host, exported so the settings schema can offer it as
+ * the form's default without keeping a second copy of the URL.
+ */
+export const DEFAULT_BASE_URL: string = REGION_BASE_URLS['cn-beijing'];
+
 /** assumed: the SpeechSynthesizer service path. */
 const SYNTHESIZE_PATH = '/api/v1/services/audio/tts/SpeechSynthesizer';
 

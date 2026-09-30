@@ -1,7 +1,12 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CacheManager, L1Cache, L2Cache } from '~/lib/cache-manager';
-import type { ProviderConfig, SynthesisResult, WordTiming } from '~/lib/providers/types';
+import type {
+  ProviderConfig,
+  SynthesisResult,
+  VolcengineResourceId,
+  WordTiming,
+} from '~/lib/providers/types';
 
 function result(bytes = 8, overrides: Partial<SynthesisResult> = {}): SynthesisResult {
   return {
@@ -395,22 +400,21 @@ describe('CacheManager.computeKey', () => {
   });
 
   it('separates two Volcengine resources', async () => {
-    const volc = (resourceId: string): ProviderConfig => ({
+    const volc = (resourceId: VolcengineResourceId): ProviderConfig => ({
       provider: 'volcengine',
-      appId: 'a',
-      accessToken: 't',
+      apiKey: 'k',
       resourceId,
     });
 
     const first = await cache.computeKey({
       text: 'hi',
       voiceId: 'v',
-      config: volc('volc.service_type.10029'),
+      config: volc('seed-tts-1.0'),
     });
     const second = await cache.computeKey({
       text: 'hi',
       voiceId: 'v',
-      config: volc('volc.service_type.10048'),
+      config: volc('seed-tts-2.0'),
     });
 
     expect(first).not.toBe(second);

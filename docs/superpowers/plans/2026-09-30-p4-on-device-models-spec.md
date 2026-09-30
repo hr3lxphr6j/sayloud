@@ -288,6 +288,43 @@ export interface ModelTier {
   /** 相对 model 根的路径。 */
   readonly files: readonly string[];
   readonly bytes: number;
+  /**
+   * 这个档在哪类设备上是**首选**（§3.7.2）。
+   * 缺省 = 永不被自动选中，只能手动选。
+   */
+  readonly preferredFor?: readonly DeviceClass[];
+}
+
+/**
+ * 设备能力分成三档。这个分类是**实测结论**（§3.7.1）：
+ * - `webgpu-f16`：WebGPU + `shader-f16`，fp16 跑得动且体积只有 fp32 一半
+ * - `webgpu`：有 WebGPU 但无 `shader-f16`，只能 fp32
+ * - `wasm`：无 WebGPU，GPU 用不上，此时 **q8 的体积优势无代价**
+ */
+export type DeviceClass = 'webgpu-f16' | 'webgpu' | 'wasm';
+
+export interface DeviceCaps {
+  readonly webgpu: boolean;
+  readonly shaderF16: boolean;
+}
+
+/**
+ * 给定设备能力，这个模型应该用哪个档。
+ *
+ * **纯函数**：只看 `caps`，不看哪个档已下载——「推荐哪个」与
+ * 「哪个已下好」是两件事，后者由 store 回答。UI 拿两者组合出
+ * 「推荐」徽章与「去下载」按钮。
+ *
+ * 找不到匹配的 `preferredFor` 时退回第一个档（保证总有结果）。
+ */
+export function preferredTier(
+  model: OnDeviceModel,
+  caps: DeviceCaps,
+): ModelTier | undefined {
+  const tiers = model.tiers;
+  if (!tiers || tiers.length === 0) return undefined;
+  const cls: DeviceClass = !caps.webgpu ? 'wasm' : caps.shaderF16 ? 'webgpu-f16' : 'webgpu';
+  return tiers.find((t) => t.preferredFor?.includes(cls)) ?? tiers[0];
 }
 
 export interface OnDeviceModel {
@@ -330,11 +367,17 @@ export function modelById(id: string): OnDeviceModel | undefined;
   languages: ['en-US','en-GB','zh-CN'],
   voiceCount: 36,          // 28 英文 + 8 中文
   tiers: [
+    // 无 WebGPU 的设备 → q8 最小，反正 GPU 用不上。
     { id:'q8',   labelKey:'model.tier.light',    engineArg:'q8',   bytes: 92_360_000,
+      preferredFor: ['wasm'],
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model_quantized.onnx'] },
+    // 有 shader-f16 的 WebGPU → fp16 最优（实测 RTF 0.15，体积只有 fp32 一半）。
     { id:'fp16', labelKey:'model.tier.standard', engineArg:'fp16', bytes:163_230_000,
+      preferredFor: ['webgpu-f16'],
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model_fp16.onnx'] },
+    // 有 WebGPU 但无 f16 → fp32。
     { id:'fp32', labelKey:'model.tier.hifi',     engineArg:'fp32', bytes:325_530_000,
+      preferredFor: ['webgpu'],
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model.onnx'] },
   ],
   voiceFile: (id) => `voices/${id}.bin`,
@@ -545,8 +588,11 @@ vs `wasm/fp32` **1.119** → **快 6.3 倍**。
 | WebGPU 但不支持 `shader-f16` | `fp32` | 325MB，RTF ≈ 0.17 |
 | 无 WebGPU | **`q8`** | 92MB 最小；反正 GPU 用不上，q8 的劣势不存在 |
 
-**默认档必须根据实测设备动态选**，不能写死。`device: 'auto'` 解析出
-`webgpu`/`wasm` 之后，再按 `shader-f16` 有无选档。
+**默认档必须根据实测设备动态选**，不能写死。用 §3.1 的 `preferredTier(model, caps)`：
+调用方先用 `navigator.gpu` + `requestAdapter().features.has('shader-f16')`
+组装出 `DeviceCaps`，再拿到档位。
+
+**`q8` 在任何情况下都不是 WebGPU 机器的推荐档**——它在 GPU 上完全无效（§3.7.1）。
 
 **不再提供的档**：
 
@@ -1124,12 +1170,21 @@ P3 spec §8.1 把标签写死在 `SidePanel.tsx` 里，**要改成数据驱动�
 
 ### T2 — 通用模型注册表 + 管理器
 
-- `lib/models/registry.ts`（`OnDeviceModel`、`KOKORO_82M`、`modelById`）。
+- `lib/models/registry.ts`（`OnDeviceModel`、`ModelTier`、`DeviceCaps`、
+  `KOKORO_82M`、`modelById`、**`preferredTier(model, caps)`**）。
+  **不含任何运行时依赖**（不 import ORT），侧边栏与 worker 都能用。
 - `lib/models/urls.ts`（canonical 键、HF/ModelScope/custom 解析、音色 URL 改写）。
   **下载器与 fetch patch 必须共用它。**
 - `lib/models/downloader.ts`（清单、进度、取消、失败）。
-- `lib/models/store.ts`（下载/删除/占用统计/音色按需下载/源选择/last-good）。
+- `lib/models/store.ts`（下载/删除/占用统计、音色按需下载、源选择、last-good）。
 - 全套单测（含音色按需下载）。
+
+**档位选择属于 T2**，不能留到 T4：T4 的模型 tab 要显示「推荐」徽章，
+T3 的引擎要知道 `auto` 解析成哪个 dtype。留到后面会变成在 UI 层硬编码。
+`preferredTier` 是**纯函数**（只看 `caps`），「哪个档已下载」由 store 回答，
+两者分开以便各自单测。
+
+**T2 不碰**：UI、推理、音素化。产出是可在 Node 下单测的数据层。
 
 ### T3 — 音素化 + Kokoro 引擎 + fetch patch
 

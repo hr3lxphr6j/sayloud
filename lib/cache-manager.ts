@@ -25,6 +25,16 @@ const DEFAULT_MAX_L1_BYTES = 50 * 1024 * 1024;
 /** 200MB on disk, pruned oldest-first. */
 const DEFAULT_MAX_L2_BYTES = 200 * 1024 * 1024;
 
+/**
+ * How long an entry may go untouched before it is dropped.
+ *
+ * A month is far longer than any reading session and far shorter than the time
+ * it takes to fill a disk: what accumulates here is audio for articles nobody
+ * is going to read again, and a store that only ever grows is a store that
+ * eventually evicts something the user just listened to.
+ */
+const EXPIRED_ENTRY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 const DB_NAME = 'sayloud-cache';
 const DB_VERSION = 1;
 const STORE = 'audio';
@@ -34,7 +44,8 @@ const TIMESTAMP_INDEX = 'timestamp';
  * The record L2 stores.
  *
  * `timestamp` exists so the store can be pruned oldest-first; it is written on
- * every put, so re-synthesizing a sentence makes it the most recent entry.
+ * every put and refreshed on every hit, so an entry that keeps being read
+ * outlives one that was synthesized once and never needed again.
  */
 interface L2Entry {
   key: string;
@@ -122,7 +133,7 @@ export interface L2CacheOptions {
 export class L2Cache {
   private readonly factory: IDBFactory;
   private readonly dbName: string;
-  private readonly maxBytes: number;
+  private maxBytes: number;
   private db: IDBDatabase | null = null;
   /** The in-flight `init()`, so two callers cannot open two connections. */
   private opening: Promise<void> | null = null;
@@ -168,21 +179,31 @@ export class L2Cache {
 
   private async openAndMeasure(): Promise<void> {
     this.db = await this.open();
-
-    const measured = await this.measure();
-    this.bytes = measured.bytes;
-    this.keys.clear();
-    for (const key of measured.keys) this.keys.add(key);
+    this.seed(await this.measure());
+    // A store nobody has opened for a month is a store nobody is reading; the
+    // sweep happens here rather than on a timer because an offscreen document
+    // does not live long enough to own one.
+    await this.expire(EXPIRED_ENTRY_AGE_MS);
   }
 
   async get(key: string): Promise<SynthesisResult | undefined> {
     const db = await this.ready();
-    const tx = db.transaction(STORE, 'readonly');
+    const tx = db.transaction(STORE, 'readwrite');
     const done = transactionDone(tx);
-    const entry = await request<L2Entry | undefined>(tx.objectStore(STORE).get(key));
-    await done;
+    const store = tx.objectStore(STORE);
+    const entry = await request<L2Entry | undefined>(store.get(key));
+    const result = toResult(entry);
 
-    return toResult(entry);
+    // A hit is the entry being used, and `prune()` evicts by last use, so the
+    // timestamp is refreshed here. The record is already in hand, so this is
+    // one write rather than a second read; a malformed one is left alone.
+    if (result && entry) {
+      entry.timestamp = Date.now();
+      await request(store.put(entry));
+    }
+
+    await done;
+    return result;
   }
 
   async put(key: string, result: SynthesisResult): Promise<void> {
@@ -219,6 +240,68 @@ export class L2Cache {
     this.keys.clear();
   }
 
+  /**
+   * Change the budget and bring the store down to it.
+   *
+   * A size that is not usable is ignored rather than applied: this setter is
+   * fed from the saved settings, and a preference that could not be read must
+   * not be the reason a whole store is deleted.
+   */
+  async setMaxBytes(bytes: number): Promise<void> {
+    if (!Number.isFinite(bytes) || bytes <= 0) return;
+    this.maxBytes = bytes;
+    await this.prune();
+  }
+
+  /**
+   * What the store holds, measured from disk.
+   *
+   * The counters this instance keeps can be out of date — the settings panel
+   * has its own connection to the same store and can empty it while this one
+   * is still counting — so a number shown to a user is measured instead. The
+   * measurement doubles as a repair: it re-seeds the counters, which is what
+   * keeps the next `prune()` from evicting entries to make room for bytes that
+   * are already gone.
+   */
+  async usage(): Promise<{ bytes: number; entries: number }> {
+    const measured = await this.measure();
+    this.seed(measured);
+    return { bytes: measured.bytes, entries: this.keys.size };
+  }
+
+  /**
+   * Drop every entry last touched more than `olderThanMs` ago.
+   *
+   * The timestamp index is ordered, so the scan stops at the first entry that
+   * is recent enough instead of walking the whole store. Records written
+   * without a timestamp are not in the index and cannot expire; `put()` always
+   * writes one.
+   */
+  async expire(olderThanMs: number): Promise<void> {
+    const cutoff = Date.now() - olderThanMs;
+    const db = await this.ready();
+    const tx = db.transaction(STORE, 'readwrite');
+    const done = transactionDone(tx);
+    const cursor = tx.objectStore(STORE).index(TIMESTAMP_INDEX).openCursor();
+
+    await new Promise<void>((resolve, reject) => {
+      cursor.onsuccess = () => {
+        const row = cursor.result;
+        if (!row || timestampOf(row.value) >= cutoff) {
+          resolve();
+          return;
+        }
+        this.bytes -= storedBytes(row.value);
+        const key = storedKey(row.value);
+        if (key !== null) this.keys.delete(key);
+        row.delete();
+        row.continue();
+      };
+      cursor.onerror = () => reject(cursor.error ?? new Error('the audio cache is unreadable'));
+    });
+    await done;
+  }
+
   /** Close the connection; the offscreen document calls this as it unloads. */
   close(): void {
     this.db?.close();
@@ -246,6 +329,13 @@ export class L2Cache {
       open.onblocked = () =>
         reject(new Error('the audio cache is blocked by another open document'));
     });
+  }
+
+  /** Take a measurement as the new truth about both counters. */
+  private seed(measured: { bytes: number; keys: string[] }): void {
+    this.bytes = measured.bytes;
+    this.keys.clear();
+    for (const key of measured.keys) this.keys.add(key);
   }
 
   /** Every stored key and the total size, for the in-memory counters. */
@@ -312,6 +402,13 @@ export interface CacheManagerOptions extends L2CacheOptions {
 export class CacheManager {
   private readonly l1: L1Cache;
   private readonly l2: L2Cache;
+  /**
+   * Whether the durable layer is in use.
+   *
+   * On unless the user turns it off, which is why this is not simply read from
+   * the settings: the cache has to work before anyone has read one.
+   */
+  private persist = true;
 
   constructor(options: CacheManagerOptions = {}) {
     this.l1 = new L1Cache(options.maxL1Bytes ?? DEFAULT_MAX_L1_BYTES);
@@ -361,10 +458,48 @@ export class CacheManager {
     return this.l2.clear();
   }
 
+  /**
+   * Turn the durable layer on or off.
+   *
+   * Off means "memory only", which is why the store is emptied: the user asked
+   * for nothing to be written, not for what is already written to be read back
+   * later. The flag is set before the clear is awaited, so a sentence being
+   * synthesized right now cannot land in the store afterwards.
+   */
+  async setPersist(persist: boolean): Promise<void> {
+    this.persist = persist;
+    if (!persist) await this.l2.clear();
+  }
+
+  /** Change how much the durable layer may hold, and prune down to it. */
+  setMaxBytes(bytes: number): Promise<void> {
+    return this.l2.setMaxBytes(bytes);
+  }
+
+  /** Empty both layers; the settings panel's "clear cache". */
+  async clear(): Promise<void> {
+    this.l1.clear();
+    await this.l2.clear();
+  }
+
+  /**
+   * What the durable layer holds, measured.
+   *
+   * L1 is deliberately not part of this: it is the offscreen document's own
+   * memory and dies with the document, so there is nothing a user could do
+   * about a number for it.
+   */
+  usage(): Promise<{ bytes: number; entries: number }> {
+    return this.l2.usage();
+  }
+
   /** L1, then L2 — promoting an L2 hit so the next sentence boundary is free. */
   async get(key: string): Promise<SynthesisResult | undefined> {
     const cached = this.l1.get(key);
     if (cached) return cached;
+    // With persistence off, the memory layer is the whole cache: reading a
+    // record out of the store would be reading back what was just deleted.
+    if (!this.persist) return undefined;
 
     const stored = await this.l2.get(key);
     if (stored) this.l1.put(key, stored);
@@ -374,10 +509,10 @@ export class CacheManager {
   /** Write to both layers; L1 is synchronous and L2 is awaited. */
   async put(key: string, result: SynthesisResult): Promise<void> {
     this.l1.put(key, result);
-    await this.l2.put(key, result);
+    if (this.persist) await this.l2.put(key, result);
   }
 
-  /** Live byte counts, for tests and the P3 cache readout. */
+  /** The byte counts this instance keeps; `usage()` is what a user is shown. */
   stats(): { l1Bytes: number; l2Bytes: number; l2Entries: number } {
     return { l1Bytes: this.l1.size, l2Bytes: this.l2.size, l2Entries: this.l2.entryCount };
   }
@@ -496,6 +631,13 @@ function storedKey(value: unknown): string | null {
   if (typeof value !== 'object' || value === null) return null;
   const key = (value as { key?: unknown }).key;
   return typeof key === 'string' && key !== '' ? key : null;
+}
+
+/** When a stored record was last touched; 0 for one the index cannot order. */
+function timestampOf(value: unknown): number {
+  if (typeof value !== 'object' || value === null) return 0;
+  const timestamp = (value as { timestamp?: unknown }).timestamp;
+  return typeof timestamp === 'number' && Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function request<T>(req: IDBRequest<T>): Promise<T> {

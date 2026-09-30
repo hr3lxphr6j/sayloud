@@ -19,6 +19,13 @@ function result(bytes = 8, overrides: Partial<SynthesisResult> = {}): SynthesisR
 
 const TIMINGS: WordTiming[] = [{ charStart: 0, charEnd: 5, startMs: 0, endMs: 400 }];
 
+const DAY = 24 * 60 * 60 * 1000;
+
+/** A record written the way L2 writes one, for the raw-write helper below. */
+function storedRecord(key: string, bytes: number, timestamp: number): Record<string, unknown> {
+  return { key, audio: new ArrayBuffer(bytes), mime: 'audio/mpeg', durationMs: 1000, timestamp };
+}
+
 const DASHSCOPE: ProviderConfig = {
   provider: 'dashscope',
   apiKey: 'secret-one',
@@ -161,6 +168,12 @@ describe('L2Cache', () => {
     cache = new L2Cache({ factory: memoryFactory(), dbName: 'test-cache' });
   });
 
+  // Tests here freeze `Date.now` to order entries; leaving that mock behind
+  // would hand a stopped clock to everything that runs after them.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('round-trips audio, mime and timings', async () => {
     await cache.put('a', result(16, { durationMs: 1234, timings: TIMINGS }));
     const stored = await cache.get('a');
@@ -295,6 +308,112 @@ describe('L2Cache', () => {
     expect(await small.get('b')).toBeDefined();
     expect(small.size).toBe(6);
     expect(small.entryCount).toBe(1);
+  });
+
+  it('reports the usage of the store as it is on disk', async () => {
+    const factory = memoryFactory();
+    const cache = new L2Cache({ factory, dbName: 'test-cache' });
+    await cache.put('a', result(8));
+    await cache.put('b', result(16));
+
+    expect(await cache.usage()).toEqual({ bytes: 24, entries: 2 });
+  });
+
+  it('repairs its counters when another connection emptied the store', async () => {
+    const factory = memoryFactory();
+    const cache = new L2Cache({ factory, dbName: 'test-cache' });
+    await cache.put('a', result(8));
+
+    // The settings panel holds its own connection to the same store and can
+    // clear it while this instance is still counting what used to be there.
+    const panel = new L2Cache({ factory, dbName: 'test-cache' });
+    await panel.clear();
+    panel.close();
+
+    expect(await cache.usage()).toEqual({ bytes: 0, entries: 0 });
+    // Without the repair the next `prune()` would evict entries to make room
+    // for bytes that are no longer there.
+    expect(cache.size).toBe(0);
+    expect(cache.entryCount).toBe(0);
+  });
+
+  it('prunes down to a smaller budget when it changes', async () => {
+    const clock = { now: 1_000 };
+    vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const cache = new L2Cache({ factory: memoryFactory(), dbName: 'test-cache', maxBytes: 100 });
+
+    await cache.put('a', result(8));
+    clock.now += 1_000;
+    await cache.put('b', result(8));
+
+    await cache.setMaxBytes(8);
+
+    expect(await cache.get('a')).toBeUndefined();
+    expect(await cache.get('b')).toBeDefined();
+    expect(cache.size).toBe(8);
+    expect(cache.entryCount).toBe(1);
+  });
+
+  it('ignores a budget that is not a usable size', async () => {
+    await cache.put('a', result(8));
+
+    await cache.setMaxBytes(Number.NaN);
+    await cache.setMaxBytes(-1);
+
+    // Emptying the store because a preference could not be read is worse than
+    // keeping the budget that is already in force.
+    expect(await cache.get('a')).toBeDefined();
+  });
+
+  it('drops the entries older than the cutoff', async () => {
+    const clock = { now: 90 * DAY };
+    vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const factory = memoryFactory();
+    const cache = new L2Cache({ factory, dbName: 'test-cache' });
+    await writeRaw(factory, 'test-cache', storedRecord('old', 8, clock.now - 2_000));
+    await writeRaw(factory, 'test-cache', storedRecord('new', 16, clock.now - 500));
+    await cache.init();
+
+    await cache.expire(1_000);
+
+    expect(await cache.get('old')).toBeUndefined();
+    expect(await cache.get('new')).toBeDefined();
+    expect(cache.size).toBe(16);
+    expect(cache.entryCount).toBe(1);
+  });
+
+  it('drops month-old entries as it opens', async () => {
+    const clock = { now: 90 * DAY };
+    vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const factory = memoryFactory();
+    await writeRaw(factory, 'test-cache', storedRecord('stale', 8, clock.now - (30 * DAY + 1)));
+    await writeRaw(factory, 'test-cache', storedRecord('fresh', 8, clock.now - (30 * DAY - 1)));
+
+    const cache = new L2Cache({ factory, dbName: 'test-cache' });
+    await cache.init();
+
+    expect(await cache.get('stale')).toBeUndefined();
+    expect(await cache.get('fresh')).toBeDefined();
+    expect(cache.size).toBe(8);
+    expect(cache.entryCount).toBe(1);
+  });
+
+  it('keeps an entry that is read, even when it was written long ago', async () => {
+    const clock = { now: 90 * DAY };
+    vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const factory = memoryFactory();
+    const cache = new L2Cache({ factory, dbName: 'test-cache' });
+    await writeRaw(factory, 'test-cache', storedRecord('read', 8, clock.now - 5 * DAY));
+    await cache.init();
+
+    clock.now += 4 * DAY;
+    await cache.get('read');
+    await cache.expire(DAY);
+
+    // Reading is what keeps an entry alive: without the touch its timestamp is
+    // still nine days old, and four of those days of reads would count for it.
+    expect(await cache.get('read')).toBeDefined();
+    expect(cache.entryCount).toBe(1);
   });
 });
 
@@ -515,5 +634,71 @@ describe('CacheManager', () => {
     await cache.clearL2();
     expect(await cache.getL2('a')).toBeUndefined();
     expect(cache.stats()).toEqual({ l1Bytes: 0, l2Bytes: 0, l2Entries: 0 });
+  });
+
+  it('clears both layers at once', async () => {
+    await cache.put('a', result(8));
+
+    await cache.clear();
+
+    expect(cache.getL1('a')).toBeUndefined();
+    expect(await cache.getL2('a')).toBeUndefined();
+    expect(await cache.usage()).toEqual({ bytes: 0, entries: 0 });
+  });
+
+  it('reports the usage of the durable layer', async () => {
+    await cache.put('a', result(8));
+
+    expect(await cache.usage()).toEqual({ bytes: 8, entries: 1 });
+  });
+
+  it('forwards a new budget to the durable layer', async () => {
+    const clock = { now: 1_000 };
+    vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const managed = new CacheManager({
+      factory: memoryFactory(),
+      dbName: 'test-cache',
+      maxBytes: 100,
+    });
+    await managed.put('a', result(8));
+    clock.now += 1_000;
+    await managed.put('b', result(8));
+
+    await managed.setMaxBytes(8);
+
+    expect(await managed.usage()).toEqual({ bytes: 8, entries: 1 });
+    expect(managed.stats().l2Entries).toBe(1);
+  });
+
+  it('stops writing to the store when persistence is turned off', async () => {
+    await cache.put('a', result(8));
+
+    await cache.setPersist(false);
+
+    // What "off" clears is the durable half; the memory half is the point of
+    // turning it off, so the sentence just heard is still there.
+    expect(await cache.getL2('a')).toBeUndefined();
+    expect(cache.getL1('a')).toBeDefined();
+
+    await cache.put('b', result(8));
+    expect(await cache.getL2('b')).toBeUndefined();
+    expect(cache.getL1('b')).toBeDefined();
+  });
+
+  it('does not read the store while persistence is off', async () => {
+    await cache.setPersist(false);
+    // A record an earlier version of the extension left behind.
+    await cache.putL2('stale', result(8));
+
+    expect(await cache.get('stale')).toBeUndefined();
+  });
+
+  it('writes to the store again when persistence is turned back on', async () => {
+    await cache.setPersist(false);
+
+    await cache.setPersist(true);
+    await cache.put('a', result(8));
+
+    expect(await cache.getL2('a')).toBeDefined();
   });
 });

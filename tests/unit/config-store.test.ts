@@ -3,6 +3,7 @@ import {
   CONFIG_KEY,
   ConfigStore,
   type LocalStorageArea,
+  PROVIDER_CONFIGS_KEY,
   SELECTED_VOICES_KEY,
 } from '~/lib/config-store';
 import type { ProviderConfig } from '~/lib/providers/types';
@@ -29,6 +30,12 @@ const DASHSCOPE: ProviderConfig = {
   region: 'ap-southeast-1',
 };
 
+const VOLCENGINE: ProviderConfig = {
+  provider: 'volcengine',
+  apiKey: 'volc-1',
+  resourceId: 'seed-tts-2.0',
+};
+
 describe('ConfigStore', () => {
   let fake: ReturnType<typeof fakeArea>;
   let store: ConfigStore;
@@ -49,11 +56,59 @@ describe('ConfigStore', () => {
     expect(fake.data.get(CONFIG_KEY)).toEqual(DASHSCOPE);
   });
 
-  it('replaces the whole config, so the browser voice drops a stored key', async () => {
+  it('switches the active provider without dropping the previous one', async () => {
     await store.saveConfig(DASHSCOPE);
+    await store.saveConfig(VOLCENGINE);
     await store.saveConfig({ provider: 'browser' });
 
     expect(await store.getConfig()).toEqual({ provider: 'browser' });
+    // Switching back must not mean typing the key in again.
+    expect(await store.getSavedConfigs()).toEqual({
+      dashscope: DASHSCOPE,
+      volcengine: VOLCENGINE,
+    });
+  });
+
+  it('keeps the latest config per provider', async () => {
+    await store.saveConfig(DASHSCOPE);
+    await store.saveConfig({ ...DASHSCOPE, apiKey: 'sk-2' });
+
+    expect((await store.getSavedConfigs()).dashscope).toMatchObject({ apiKey: 'sk-2' });
+  });
+
+  it('counts a config saved before per-provider storage as saved', async () => {
+    fake.data.set(CONFIG_KEY, DASHSCOPE);
+
+    expect(await store.getSavedConfigs()).toEqual({ dashscope: DASHSCOPE });
+  });
+
+  it('drops a saved entry that is invalid or filed under another provider', async () => {
+    fake.data.set(PROVIDER_CONFIGS_KEY, {
+      dashscope: { provider: 'dashscope' },
+      elevenlabs: DASHSCOPE,
+      volcengine: VOLCENGINE,
+    });
+
+    expect(await store.getSavedConfigs()).toEqual({ volcengine: VOLCENGINE });
+  });
+
+  it('forgets one provider and leaves the others', async () => {
+    await store.saveConfig(DASHSCOPE);
+    await store.saveConfig(VOLCENGINE);
+
+    await store.forgetConfig('dashscope');
+
+    expect(await store.getSavedConfigs()).toEqual({ volcengine: VOLCENGINE });
+    expect(await store.getConfig()).toEqual(VOLCENGINE);
+  });
+
+  it('falls back to the browser voice when the active provider is forgotten', async () => {
+    await store.saveConfig(DASHSCOPE);
+
+    await store.forgetConfig('dashscope');
+
+    expect(await store.getConfig()).toEqual({ provider: 'browser' });
+    expect(await store.getSavedConfigs()).toEqual({});
   });
 
   it('reports a config that fails validation as unconfigured', async () => {

@@ -12,7 +12,10 @@ import type { ProviderConfig, ProviderId } from './providers/types';
 /** Every key this module owns. */
 const NAMESPACE = 'sayloud:';
 
+/** The active config: the one the service worker speaks with. */
 export const CONFIG_KEY = `${NAMESPACE}provider-config`;
+/** The last config saved for each cloud provider, active or not. */
+export const PROVIDER_CONFIGS_KEY = `${NAMESPACE}provider-configs`;
 export const SELECTED_VOICES_KEY = `${NAMESPACE}selected-voices`;
 
 /**
@@ -27,6 +30,9 @@ export interface LocalStorageArea {
   set(items: Record<string, unknown>): Promise<void>;
 }
 
+/** Saved configs by provider; the browser voice has nothing to save. */
+export type SavedConfigs = Partial<Record<ProviderId, ProviderConfig>>;
+
 /** The provider configuration and the voice chosen for each provider. */
 export class ConfigStore {
   constructor(private readonly area: LocalStorageArea) {}
@@ -38,13 +44,60 @@ export class ConfigStore {
   }
 
   /**
-   * Replace the active config.
+   * Make `config` the active one, and remember it for its provider.
    *
-   * There is one config, so saving the browser voice is also how a user drops a
-   * stored API key: the whole record is overwritten.
+   * Every provider keeps its own last-saved config, key included, so switching
+   * to another provider and back does not mean typing the key in again. A key
+   * is dropped with `forgetConfig`, not by switching away.
    */
   async saveConfig(config: ProviderConfig): Promise<void> {
-    await this.area.set({ [CONFIG_KEY]: config });
+    const saved = await this.getSavedConfigs();
+    if (config.provider !== 'browser') saved[config.provider] = config;
+    await this.area.set({ [CONFIG_KEY]: config, [PROVIDER_CONFIGS_KEY]: saved });
+  }
+
+  /**
+   * The last config saved for each provider, valid entries only.
+   *
+   * A config saved before configs were kept per provider is counted too, so
+   * upgrading does not hide the key the user already entered.
+   */
+  async getSavedConfigs(): Promise<SavedConfigs> {
+    const stored = await this.area.get([CONFIG_KEY, PROVIDER_CONFIGS_KEY]);
+    const saved: SavedConfigs = {};
+
+    const raw = stored[PROVIDER_CONFIGS_KEY];
+    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+      for (const [provider, value] of Object.entries(raw as Record<string, unknown>)) {
+        const config = parseStoredConfig(value);
+        // Filed under the wrong provider is as unusable as malformed.
+        if (config && config.provider === provider && provider !== 'browser') {
+          saved[config.provider] = config;
+        }
+      }
+    }
+
+    const active = parseStoredConfig(stored[CONFIG_KEY]);
+    if (active && active.provider !== 'browser' && !saved[active.provider]) {
+      saved[active.provider] = active;
+    }
+    return saved;
+  }
+
+  /**
+   * Delete the saved config (and key) for one provider.
+   *
+   * If it is the active one, the browser voice takes over: an active config
+   * whose key the user just deleted must not keep being used.
+   */
+  async forgetConfig(provider: ProviderId): Promise<void> {
+    const saved = await this.getSavedConfigs();
+    delete saved[provider];
+
+    const items: Record<string, unknown> = { [PROVIDER_CONFIGS_KEY]: saved };
+    const active = await this.getConfig();
+    if (active?.provider === provider) items[CONFIG_KEY] = { provider: 'browser' };
+    await this.area.set(items);
   }
 
   /**

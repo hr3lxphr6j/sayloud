@@ -7,7 +7,7 @@
  * side panel's involvement with playback.
  */
 import { useEffect, useState } from 'preact/hooks';
-import { useT } from '~/lib/i18n';
+import { type MessageKey, useT } from '~/lib/i18n';
 import type { SessionSnapshot } from '~/lib/protocol';
 import { PROVIDER_SCHEMAS } from '~/lib/providers/config-schema';
 import type { CloudProviderId } from '~/lib/providers/registry';
@@ -50,61 +50,61 @@ export function ReadingTab({ config, voice, providers, session, loading }: Readi
     };
   }, [session]);
 
-  if (loading) return <p class="muted">Loading…</p>;
+  if (loading) return <p class="muted">{t('panel.loading')}</p>;
 
   return (
     <div class="stack">
       <section class="section">
-        <h2>Provider</h2>
+        <h2>{t('panel.section.provider')}</h2>
         {config ? (
           <dl class="facts">
             <div>
-              <dt>Service</dt>
+              <dt>{t('panel.fact.service')}</dt>
               <dd>{t(PROVIDER_SCHEMAS[config.provider].labelKey)}</dd>
             </div>
             <div>
-              <dt>Voice</dt>
+              <dt>{t('panel.fact.voice')}</dt>
               {/*
                 The session reports the voice the engine actually resolved, which
                 is what is speaking; the configured one is the fallback for when
                 nothing is running.
               */}
-              <dd>{snapshot?.voice || voice || 'Default voice'}</dd>
+              <dd>{snapshot?.voice || voice || t('panel.default-voice')}</dd>
             </div>
             <div>
-              <dt>Highlight</dt>
-              <dd>{highlightLabel(config, providers)}</dd>
+              <dt>{t('panel.fact.highlight')}</dt>
+              <dd>{t(highlightKey(config, providers))}</dd>
             </div>
           </dl>
         ) : (
-          <p class="muted">No provider is configured. Open Settings to choose one.</p>
+          <p class="muted">{t('panel.no-provider')}</p>
         )}
       </section>
 
       <section class="section">
-        <h2>Reading session</h2>
+        <h2>{t('panel.section.session')}</h2>
         {snapshot ? (
           <>
             <p>
-              Sentence {snapshot.index + 1} of {snapshot.sentences.length} at {snapshot.rate}×
+              {t('panel.sentence-progress', {
+                index: snapshot.index + 1,
+                total: snapshot.sentences.length,
+                rate: snapshot.rate,
+              })}
             </p>
             <div
               class="progress"
               role="img"
-              aria-label={`${progressPercent(snapshot)} percent of the article read`}
+              aria-label={t('panel.progress-label', { percent: progressPercent(snapshot) })}
             >
               <div class="progress-value" style={{ width: `${progressPercent(snapshot)}%` }} />
             </div>
-            <p class="muted">{progressPercent(snapshot)}% of the article read.</p>
+            <p class="muted">{t('panel.progress-text', { percent: progressPercent(snapshot) })}</p>
           </>
         ) : (
-          <p class="muted">
-            Nothing is being read. Click the SayLoud toolbar icon on a page to start.
-          </p>
+          <p class="muted">{t('panel.nothing-reading')}</p>
         )}
-        <p class="muted small">
-          Reported by the service worker. Playback itself is controlled from the player on the page.
-        </p>
+        <p class="muted small">{t('panel.reported-by')}</p>
       </section>
     </div>
   );
@@ -126,19 +126,19 @@ function progressPercent(snapshot: SessionSnapshot): number {
  * The browser voice has no adapter to ask, and never reports timings: the
  * content script highlights the whole sentence it handed to `chrome.tts`.
  */
-function highlightLabel(
+function highlightKey(
   config: ProviderConfig,
   providers: Record<CloudProviderId, Provider>
-): string {
-  if (config.provider === 'browser') return 'Sentence by sentence (browser voice)';
+): MessageKey {
+  if (config.provider === 'browser') return 'panel.highlight.browser';
 
   try {
     return providers[config.provider].capabilities(config).timings === 'exact'
-      ? 'Word by word'
-      : 'Sentence by sentence';
+      ? 'panel.highlight.words'
+      : 'panel.highlight.sentences';
   } catch {
     // A capability lookup that throws is a wiring bug, not something the user
     // can fix; saying so plainly beats showing nothing.
-    return 'Unknown';
+    return 'panel.highlight.unknown';
   }
 }

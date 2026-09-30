@@ -1,8 +1,9 @@
 import { render } from 'preact';
 import { browser } from 'wxt/browser';
 import { OPEN_SETTINGS } from '~/lib/open-settings';
+import { SettingsStore } from '~/lib/settings-store';
 import { ReaderController } from './reader.content/ReaderController';
-import { SidePlayer } from './reader.content/SidePlayer';
+import { ReaderPanel } from './reader.content/ReaderPanel';
 import styles from './reader.content/styles.css?inline';
 
 /** Stable handle for the tests, and the guard against mounting twice. */
@@ -19,6 +20,8 @@ export default defineContentScript({
     // Clicking the icon again must not stack a second player.
     if (document.getElementById(HOST_ID)) return;
 
+    const settings = new SettingsStore(browser.storage.local, browser.storage.onChanged);
+
     const ui = await createShadowRootUi(ctx, {
       name: 'sayloud-player',
       position: 'inline',
@@ -31,8 +34,10 @@ export default defineContentScript({
         const controller = new ReaderController(shadowHost);
         controller.connect();
         render(
-          <SidePlayer
+          <ReaderPanel
             controller={controller}
+            settings={settings}
+            host={shadowHost}
             onOpenSettings={() => {
               // Sent synchronously: `sidePanel.open()` in the worker needs the
               // click's transient activation, which an `await` here would spend.

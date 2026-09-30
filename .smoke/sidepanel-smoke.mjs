@@ -48,6 +48,10 @@ function checkEqual(name, actual, expected) {
 
 const context = await chromium.launchPersistentContext('', {
   channel: 'chromium',
+  // The panel follows the browser's language when the setting is `auto`, and
+  // the checks below are written in English. Pinned rather than inherited: a
+  // developer on a Chinese machine would otherwise see every check fail.
+  locale: 'en-US',
   args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
 });
 

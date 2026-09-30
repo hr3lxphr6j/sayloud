@@ -14,6 +14,7 @@ import { browser } from 'wxt/browser';
 import { ConfigStore } from '~/lib/config-store';
 import { createProviders } from '~/lib/providers/registry';
 import { SessionWatch } from '~/lib/session-watch';
+import { SettingsStore } from '~/lib/settings-store';
 import { SnapshotStore } from '~/lib/snapshot-store';
 import { SidePanel } from '../sidepanel/SidePanel';
 import '../sidepanel/styles.css';
@@ -26,6 +27,7 @@ render(
     store={new ConfigStore(browser.storage.local)}
     providers={createProviders()}
     permissions={browser.permissions}
+    settings={new SettingsStore(browser.storage.local, browser.storage.onChanged)}
     session={
       new SessionWatch(new SnapshotStore(browser.storage.session), browser.storage.onChanged)
     }

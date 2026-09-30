@@ -3,8 +3,9 @@ import {
   BASELINE_CHARS_PER_SEC,
   estimateRemainingSeconds,
   formatDuration,
-  formatRemaining,
+  remainingMessage,
 } from '~/lib/format-time';
+import { createTranslator } from '~/lib/i18n';
 
 describe('formatDuration', () => {
   it('formats sub-minute durations as m:ss', () => {
@@ -51,14 +52,24 @@ describe('estimateRemainingSeconds', () => {
   });
 });
 
-describe('formatRemaining', () => {
-  it('renders a whole phrase for the bubble card', () => {
+describe('remainingMessage', () => {
+  it('carries the clock, and the key that says what it means', () => {
     // 9000 characters at 12 characters per second is 750 seconds.
-    expect(formatRemaining(9_000, 12)).toBe('12:30 left');
-    expect(formatRemaining(0, 12)).toBe('0:00 left');
+    expect(remainingMessage(9_000, 12)).toEqual({
+      key: 'bubble.remaining',
+      params: { time: '12:30' },
+    });
+    expect(remainingMessage(0, 12).params.time).toBe('0:00');
   });
 
   it('uses the baseline rate when the engine has no measurement yet', () => {
-    expect(formatRemaining(BASELINE_CHARS_PER_SEC * 60, 0)).toBe('1:00 left');
+    expect(remainingMessage(BASELINE_CHARS_PER_SEC * 60, 0).params.time).toBe('1:00');
+  });
+
+  it('reads as a whole phrase once translated', () => {
+    const message = remainingMessage(9_000, 12);
+
+    expect(createTranslator('en')(message.key, message.params)).toBe('12:30 left');
+    expect(createTranslator('zh-CN')(message.key, message.params)).toBe('剩余 12:30');
   });
 });

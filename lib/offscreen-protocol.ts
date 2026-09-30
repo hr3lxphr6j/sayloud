@@ -13,6 +13,7 @@
  * boundary: a stale document from a previous version, or any code that can post
  * to the extension's runtime, can put anything on this channel.
  */
+import type { ModelSource } from './models/urls';
 import type { ProviderErrorCode } from './providers/errors';
 import type { ProviderConfig } from './providers/types';
 import type { CacheSettings } from './settings-store';
@@ -111,6 +112,56 @@ const CACHE_POLICY = 'cache-policy';
 /** True for the offscreen document's request for the current cache policy. */
 export function isCachePolicyRequest(value: unknown): value is CachePolicyRequest {
   return typeOf(value) === CACHE_POLICY_REQUEST.type;
+}
+
+/**
+ * Where the on-device engine should fetch model files from.
+ *
+ * It travels as a message for the same reason the cache policy does: the
+ * offscreen document is not given `chrome.storage`, and the user's download
+ * source lives there. The engine needs it before its first request, and the
+ * document may be starting for the hundredth time.
+ */
+export interface ModelSourceMessage {
+  type: typeof MODEL_SOURCE;
+  source: ModelSource;
+  /** True when the source came from `auto`, so one retry is allowed. */
+  allowFallback: boolean;
+}
+
+/** The offscreen document asking the service worker where to download from. */
+export const MODEL_SOURCE_REQUEST = { type: 'model-source-request' } as const;
+
+export type ModelSourceRequest = typeof MODEL_SOURCE_REQUEST;
+
+const MODEL_SOURCE = 'model-source';
+
+/** True for the offscreen document's request for a download source. */
+export function isModelSourceRequest(value: unknown): value is ModelSourceRequest {
+  return typeOf(value) === MODEL_SOURCE_REQUEST.type;
+}
+
+/**
+ * True for a well-formed source message.
+ *
+ * Checked rather than trusted: the reply crosses a context boundary, and a
+ * malformed source would be handed straight to `fetch`.
+ */
+export function isModelSourceMessage(value: unknown): value is ModelSourceMessage {
+  if (typeOf(value) !== MODEL_SOURCE) return false;
+  const message = value as { source?: unknown; allowFallback?: unknown };
+  if (typeof message.allowFallback !== 'boolean') return false;
+
+  const source = message.source;
+  if (typeof source !== 'object' || source === null) return false;
+  const { host, customHostUrl, revision } = source as Record<string, unknown>;
+  if (host === 'huggingface' || host === 'modelscope') return true;
+  if (host !== 'custom') return false;
+  return (
+    typeof customHostUrl === 'string' &&
+    customHostUrl.startsWith('https://') &&
+    (revision === undefined || typeof revision === 'string')
+  );
 }
 
 /**

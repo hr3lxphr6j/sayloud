@@ -2,7 +2,10 @@ import { type Browser, browser } from 'wxt/browser';
 import { cachePolicyChanged, cachePolicyMessage, pushCachePolicy } from '~/lib/cache-policy';
 import { CONFIG_KEY, SELECTED_VOICES_KEY } from '~/lib/config-store';
 import { createApp } from '~/lib/container';
-import { isCachePolicyRequest } from '~/lib/offscreen-protocol';
+import { KOKORO_82M } from '~/lib/models/registry';
+import { modelSourceMessage } from '~/lib/models/source-channel';
+import { ModelStore } from '~/lib/models/store';
+import { isCachePolicyRequest, isModelSourceRequest } from '~/lib/offscreen-protocol';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
@@ -101,6 +104,18 @@ export default defineBackground(() => {
     return Promise.resolve(cachePolicyMessage(settings.cache));
   });
 
+  // Where the on-device engine downloads from. Same problem, same answer: the
+  // choice is in `storage`, and the offscreen document cannot read it.
+  //
+  // The service worker resolves `auto` here rather than handing the setting
+  // down, because resolving means probing both mirrors and remembering the
+  // winner — and only this context has the storage that remembers.
+  const models = new ModelStore({ storage: browser.storage.local });
+  browser.runtime.onMessage.addListener((message) => {
+    if (!isModelSourceRequest(message)) return;
+    return resolveDownloadSource();
+  });
+
   browser.runtime.onConnect.addListener((port) => {
     if (port.name !== PORT_NAME) return;
     const tabId = port.sender?.tab?.id;
@@ -134,6 +149,25 @@ export default defineBackground(() => {
 
   if (import.meta.env.MODE === 'e2e') {
     globalThis.sayloudActivate = activate;
+  }
+
+  /**
+   * The download source the offscreen document should use.
+   *
+   * `resolveSource` may probe both mirrors, which is why it lives here: the
+   * probe remembers its winner in storage, and the offscreen document has no
+   * storage. A probe that fails entirely is not fatal — if the model is already
+   * cached nothing is fetched at all — so it degrades to Hugging Face with the
+   * retry allowed rather than refusing to answer.
+   */
+  async function resolveDownloadSource(): Promise<ReturnType<typeof modelSourceMessage>> {
+    const setting = await models.getSource();
+    try {
+      return modelSourceMessage(await models.resolveSource(KOKORO_82M), setting.host === 'auto');
+    } catch (error) {
+      console.warn('[SayLoud] no download source answered; falling back', error);
+      return modelSourceMessage({ host: 'huggingface' }, true);
+    }
   }
 
   /**

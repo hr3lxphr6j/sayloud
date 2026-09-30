@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { formatRate } from '~/lib/format-rate';
 import { remainingMessage } from '~/lib/format-time';
 import { type MessageKey, useT } from '~/lib/i18n';
 import type { EngineCommand } from '~/lib/protocol';
@@ -35,11 +36,6 @@ export function nextRate(current: number): number {
   const index = RATE_STEPS.findIndex((rate) => Math.abs(rate - current) < 0.01);
   // An unrecognised rate (a snapshot from a later version) restarts the cycle.
   return RATE_STEPS[index === -1 ? 0 : (index + 1) % RATE_STEPS.length] ?? 1;
-}
-
-/** `1.5×`, without the trailing zeros `toFixed` would add. */
-export function formatRate(rate: number): string {
-  return `${rate.toFixed(2).replace(/\.?0+$/, '')}×`;
 }
 
 export const HINTS: Record<ReaderError, { titleKey: MessageKey; messageKey: MessageKey }> = {

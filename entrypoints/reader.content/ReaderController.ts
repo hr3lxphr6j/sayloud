@@ -18,7 +18,7 @@ export interface ReaderState {
   scrolledAway: boolean;
 }
 
-/** The starting rate, and the one the plan fixes for P1. */
+/** The starting rate, for a reader built without a saved preference. */
 const DEFAULT_RATE = 1;
 
 /** A port that dies because the worker is busy must not spin forever. */
@@ -29,6 +29,18 @@ const RECONNECT_DELAY_MS = 250;
 const INTERACTIVE = 'a, button, input, textarea, select, [contenteditable], [role="button"]';
 
 type Port = Browser.runtime.Port;
+
+/** What the reader needs from the settings before it starts reading. */
+export interface ReaderControllerOptions {
+  /**
+   * The saved default rate for a new session.
+   *
+   * Read before the reader is built rather than subscribed to afterwards: the
+   * rate travels in the `load` command, which is sent once, and the service
+   * worker takes a rate change from storage for every later one.
+   */
+  initialRate?: number;
+}
 
 /**
  * Owns the content script's half of a reading session.
@@ -50,6 +62,7 @@ export class ReaderController {
   private readonly docId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
   private state: ReaderState;
+  private readonly initialRate: number;
   private port: Port | null = null;
   private reconnects = 0;
   private reconnectTimer: number | null = null;
@@ -60,8 +73,12 @@ export class ReaderController {
   /** Sentence whose highlight is on screen, so scrolling only follows changes. */
   private highlighted = -1;
 
-  constructor(private readonly host: Element | null = null) {
+  constructor(
+    private readonly host: Element | null = null,
+    options: ReaderControllerOptions = {}
+  ) {
     installHighlightStyles();
+    this.initialRate = options.initialRate ?? DEFAULT_RATE;
 
     const blocks = extractBlocks();
     this.doc = blocks.length > 0 ? buildReadingDoc(blocks) : null;
@@ -131,7 +148,7 @@ export class ReaderController {
         lang: sentence.lang,
       })),
       startIndex: 0,
-      rate: DEFAULT_RATE,
+      rate: this.initialRate,
     });
   }
 

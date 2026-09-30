@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReaderState } from '~/entrypoints/reader.content/ReaderController';
 import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import {
-  formatRate,
   HINTS,
   nextRate,
   RATE_STEPS,
@@ -11,6 +10,7 @@ import {
   type SidePlayerProps,
 } from '~/entrypoints/reader.content/SidePlayer';
 import type { LocalStorageArea } from '~/lib/config-store';
+import { formatRate } from '~/lib/format-rate';
 import { I18nProvider } from '~/lib/i18n';
 import { en } from '~/lib/i18n/messages.en';
 import type { EngineCommand, EngineStatus } from '~/lib/protocol';

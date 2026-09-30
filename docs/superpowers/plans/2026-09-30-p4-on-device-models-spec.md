@@ -204,7 +204,10 @@ https://modelscope.cn/api/v1/models/{repo}/repo/files?Revision=master&Root={dir}
 - **根目录只有 4 个必需文件**：`config.json`(44B)、`tokenizer.json`(3497B)、
   `tokenizer_config.json`(113B)，加 `onnx/`、`voices/` 两个目录。
 - `onnx/` 下 8 个 `.onnx` 文件（体积见 §1.2 表）。
-- `voices/` 下 **55 个条目**（54 个音色 + 1 个遗留的合并文件 `af.bin`），合计 28.7MB。
+- `voices/` 下 **55 个条目**（**54 个音色** + 1 个遗留的合并文件 `af.bin`），合计 28.7MB。
+  ⚠️ **算术要小心**：每个音色 522,240 字节，54 × 522,240 = 28,200,960 = **28.2MB**。
+  28.7MB 是**55 个条目**的总和，包含了那个不是音色的 `af.bin`。
+  UI 文案写「约 29MB」是向上取整，但代码里的常量要用 28.2MB。
 
 ### 1.4 体积代价
 
@@ -406,7 +409,14 @@ export interface LocalConfig {
   modelId?: string;
   /** 族内档位 id。默认该模型的第一个档。 */
   tier?: string;
-  /** 权重下载源。在「模型」标签页管理。 */
+  /**
+   * 权重下载源。
+   *
+   * ⚠️ **实际由 `ModelStore` 持有**（`sayloud:model-source`，见 §3.4）——
+   * 这里保留只是为了让人看到「源是本地 provider 关心的事」。
+   * **T4 不要在这里写第二份**：模型 tab 写 store，provider 从 store 读。
+   * 两个地方各存一份，就会出现「设置里改了但播放还在用旧的」。
+   */
   host?: ModelHostId;            // 默认 'auto'
   /** 仅当 host === 'custom'。到 repo 路径为止。 */
   customHostUrl?: string;
@@ -465,11 +475,23 @@ expected execution providers」——部分算子回退到 CPU，把差距抹平
 | 值 | 行为 |
 |---|---|
 | `auto`（默认） | 先看 `sayloud:model-host-last-good`；没有记录就**并发探测**两个源的 `config.json`（超时 5s），用先成功的；都失败报 `model-host-unreachable`，提示手动选源 |
+
+**探测语义要写准**：「用先成功的」不等于「用先返回的」——一个源**快速失败**
+（比如立刻 403）不能算赢。实现用 `Promise.any` 加每次尝试的超时，
+只有**成功**才能胜出。
 | `huggingface` | 只用 `https://huggingface.co/`，分支 `main` |
 | `modelscope` | 只用 `https://modelscope.cn/models/`，分支 `master` |
 | `custom` | 用 `customHostUrl`，`{base}/{repo}/resolve/{revision}/{file}`，分支默认 `main` |
 
 - 成功后把源写进 `sayloud:model-host-last-good`，下次 `auto` 直接用，不再探测。
+- **用户选的源存在 `sayloud:model-source`**（`{host, customHostUrl?}`），与
+  `last-good` 分开：前者是「用户想要什么」，后者是「上次什么能用」。
+  **T4 必须通过 `ModelStore.setSource` 写它，不要自己再存一份**；
+  provider 侧也要从 store 读解析后的源，而不是从 `LocalConfig` 里读一份副本。
+  （§3.2 的 `LocalConfig.host` / `customHostUrl` 与此重复——T4 接线时
+  以 store 为准，那两个字段要么删掉要么只作缓存。）
+- 切到别的源再切回 `custom` 时，**保留用户填过的镜像 URL**（不要清空）。
+- `custom` 的 URL 必须能解析成绝对 https URL，否则视为无效。
 - **手动指定的源失败时不自动切换**，只在错误里给「改用另一个源重试」按钮——用户既然指定了，就不该偷偷换。
 - `custom` 的用途：自建镜像、公司内网、用户自己放到 OSS。
 
@@ -539,7 +561,12 @@ globalThis.fetch = async (input, init) => {
 - **音色的 key 必须与 kokoro-js 的硬编码 URL 逐字符一致**（V19 已抄下原文）：
   `https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/{id}.bin`。
   这个 key **故意不用规范主机**——因为 kokoro-js 读的就是它。
-- 音色默认**按需下载**（每个 522KB，实测），另提供「下载全部音色（约 29MB）」和「删除全部音色」。
+- 音色默认**按需下载**（每个 **522,240 字节**，实测），另提供「下载全部音色（约 29MB，实际 28.2MB）」和「删除全部音色」。
+  - **已经缓存的文件不重下**，所以部分失败后重试是**续传**而不是从头来。
+  - **批量下载：并发 4，单个失败不中止整批**；返回 `{downloaded, failed}`，
+    失败的音色**不能**被当成已下载。取消（用户的决定）则中止整批。
+  - 失败的那个音色只计入它**实际传了多少字节**，这样进度条不会倒退，
+    也不会把失败算成进度。
   - 按需下载要**可被播放阻塞**：用户选了一个未下载的音色，
     第一句必须等它下完（522KB，很快），不能静默失败。
   - 下载失败要能重试，且不能把失败状态当成「已下载」。
@@ -550,6 +577,19 @@ globalThis.fetch = async (input, init) => {
   而且这种 bug 在单测里很难发现。
 
 **为什么不用 transformers.js 自己的 `from_pretrained` 下载**：那会把 20.6MB 的 ORT wasm 加载进侧边栏（要建 ONNX session），而侧边栏只是设置页。手写下载器约 100 行，还顺便拿到进度和取消。
+
+**进度总数要加上共享文件**：`tier.bytes` 只是 ONNX 的大小，
+而一个档还要下 `config.json`(44B) / `tokenizer.json`(3,497B) / `tokenizer_config.json`(113B)。
+不加这三个，进度条永远到不了 100%。实测值放在 `registry.ts` 的 `SHARED_FILE_BYTES`，
+与档位体积放在一起，避免以后加模型时漏算。
+
+**两个拒绝下载的边界情况**（都由实现发现，不是推测）：
+
+- **HTTP 206 要当成失败**：Cache API 根本不接受部分响应，
+  让 `cache.put` 抛 `TypeError` 会被误报成「磁盘坏了」而不是「源有问题」。
+- **读到一半失败算 `network` 而不是 `cache`**：Node 会把流的拒绝原因包成
+  `EncodingError`，Chrome 则原样透传——所以要在**读失败的地方**记录，
+  而不是根据运行时抛了什么去猜。
 
 **为什么下载不放 offscreen**：offscreen 在 `AUDIO_PLAYBACK` 理由下**静音 30 秒就被 Chrome 关掉**（P2 spec V2 已记录），92MB 下载要几分钟，会被拦腰杀死。侧边栏是可见页面，下载和进度条都在那里最自然；Cache Storage 同源共享。
 
@@ -1185,6 +1225,34 @@ T3 的引擎要知道 `auto` 解析成哪个 dtype。留到后面会变成在 UI
 两者分开以便各自单测。
 
 **T2 不碰**：UI、推理、音素化。产出是可在 Node 下单测的数据层。
+
+**T2 已完成（2026-10-01）**，产出：
+
+- `lib/models/registry.ts`（零运行时依赖，只 import 一个 `type`）
+- `lib/models/urls.ts`（零 import）
+- `lib/models/downloader.ts`、`lib/models/store.ts`
+- 81 个新单测（1117 → 1198；修复后 1200）
+
+**实现过程中发现并已回写本 spec 的问题**（都已修正）：
+
+1. **音色体积算错了**：54 × 522,240 = 28.2MB，而 28.7MB 是 55 个条目
+   （含非音色的 `af.bin`）的总和。
+2. **`KOKORO_82M` 示例漏了 `labelKey`**，而接口要求必填（`MessageKey`）→
+   已补 4 个 i18n 键到两个字典。
+3. **源的存放位置在 spec 里没有归宿**（§3.6 说 store 管，§3.2 又放进 `LocalConfig`）
+   → 定为 `sayloud:model-source`，§3.4 已写明 T4 不得重复。
+4. **进度总数漏算共享文件** → `registry.ts` 新增 `SHARED_FILE_BYTES`。
+5. **`usage()` 无法统计 `files` 形态的模型**（形态 B/C）——已在代码里注明，
+   以后加 Piper/MMS 时要给那个形态补体积字段。
+6. **§3.4 的 `auto` 探测有竞态**：「先成功的」不等于「先返回的」，
+   快速失败不能算赢 → 已改成 `Promise.any` + 每次尝试超时。
+
+**我自己复核时发现并修掉的一个真 bug**（`0842123`）：
+`isOurs()` 只认 canonical 模型键 + `voices/*.bin`，但 `resolveUrl()`
+会改写**任何** HF URL——fetch patch 会把别的项目的 HF 请求劫持到镜像。
+实现里那条「幂等」测试正好把这个不安全行为固化了（它断言跨源重解析，
+而 patch 根本不需要那个能力）。已加 `isOurs` 守卫，并把测试改成断言安全契约。
+**新测试经验证会在旧代码上变红。**
 
 ### T3 — 音素化 + Kokoro 引擎 + fetch patch
 

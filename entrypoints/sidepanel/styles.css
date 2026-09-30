@@ -541,10 +541,11 @@ code {
 /*
  * The circle that chooses the service.
  *
- * The dot it draws stays small: six large circles down the side of the list
- * would compete with the names. The target around it does not — three times the
- * dot's width, so it can actually be pressed — and the ring below is what makes
- * the current choice readable at a glance.
+ * It has to read as a control, not as a bullet: the dot is the only thing in the
+ * row that says "this one, not that one", so it is drawn at the size of a radio
+ * button and the ring stays visible in every state. The 24px box around it is
+ * the press target — larger than the dot, so the control can actually be hit
+ * without the dot itself having to be large.
  */
 .provider-select {
   position: relative;
@@ -598,7 +599,7 @@ code {
 }
 
 .provider-select:has(.provider-radio:checked) .status-dot {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 22%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent);
 }
 
 .provider-toggle {
@@ -679,9 +680,14 @@ code {
 
 .status-dot {
   flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border: 1.5px solid var(--border);
+  /*
+   * Radio-button sized: at 8px it read as a list bullet rather than a choice.
+   * 12px of content plus the 2px ring lands on the 16px a native radio draws,
+   * which leaves the selected halo room to sit inside the 24px target.
+   */
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
   border-radius: var(--radius-pill);
 }
 

@@ -216,7 +216,9 @@ export class OpenAiCompatProvider implements Provider {
       input: request.text,
       voice: voiceId,
       response_format: AUDIO_FORMAT,
-      ...(resolved.captionedSpeech ? { return_timestamps: true } : {}),
+      // Kokoro's captioned endpoint streams audio chunks unless told not to;
+      // with `stream: false` it answers with one JSON body (spec §6 V7).
+      ...(resolved.captionedSpeech ? { stream: false } : {}),
     };
 
     const response = await sendRequest(
@@ -264,7 +266,8 @@ export class OpenAiCompatProvider implements Provider {
 
     return {
       audio: decodeBase64(base64),
-      mime: mimeFor(readFirstString(payload, ['response_format']) ?? AUDIO_FORMAT),
+      // Kokoro names the format `audio_format` (spec §6 V7).
+      mime: mimeFor(readFirstString(payload, ['audio_format', 'response_format']) ?? AUDIO_FORMAT),
       durationMs: lastEndMs(timings),
       timings,
     };

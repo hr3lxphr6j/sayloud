@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { describe, expect, it } from 'vitest';
 import { SidePanel } from '~/entrypoints/sidepanel/SidePanel';
-import { ConfigStore, type LocalStorageArea } from '~/lib/config-store';
+import { CONFIG_KEY, ConfigStore, type LocalStorageArea } from '~/lib/config-store';
 import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
@@ -147,6 +147,56 @@ describe('SidePanel', () => {
   });
 });
 
+describe('the tab list', () => {
+  it('renders a tab per entry, in order', async () => {
+    renderPanel();
+
+    expect(screen.getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'tab-reading',
+      'tab-settings',
+    ]);
+  });
+
+  it('drives one panel per tab, whatever the list holds', async () => {
+    // The whole list, not the two names: P4 adds a model tab, and neither this
+    // loop nor the render behind it should have to change for that.
+    renderPanel();
+
+    for (const tab of screen.getAllByRole('tab')) {
+      fireEvent.click(tab);
+
+      expect(tab.getAttribute('aria-selected')).toBe('true');
+      const panelId = tab.getAttribute('aria-controls');
+      expect(panelId).toBe(`panel-${tab.id.replace('tab-', '')}`);
+      const panel = document.getElementById(panelId as string);
+      expect(panel?.getAttribute('role')).toBe('tabpanel');
+      expect(panel?.getAttribute('aria-labelledby')).toBe(tab.id);
+    }
+  });
+
+  it('opens the voice picker as a page of its own, and comes back', async () => {
+    const { area } = fakeArea({ [CONFIG_KEY]: { provider: 'dashscope', apiKey: 'sk-1' } });
+    const session = { subscribe: () => () => {}, load: async () => null };
+    render(
+      <SidePanel
+        store={new ConfigStore(area)}
+        providers={providers}
+        session={session as unknown as SessionWatch}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /DashScope/ }));
+
+    // A page, not a tab: the tab list is gone while it is up.
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Voice' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(await screen.findByRole('tab', { name: 'Reading' })).toBeTruthy();
+  });
+});
+
 describe('the settings tab', () => {
   it('keeps the provider form working next to the language row', async () => {
     // The language row is rendered around `ProviderConfigPanel`; it must not
@@ -159,8 +209,11 @@ describe('the settings tab', () => {
     );
 
     fireEvent.click(screen.getByRole('tab', { name: 'Settings' }));
-    await screen.findByLabelText('Provider');
+    await screen.findByLabelText('Interface language');
     expect(languageSelect()).toBeTruthy();
+
+    // The browser row opens first, and has no fields of its own to save.
+    fireEvent.click(document.querySelector('[data-provider="dashscope"]') as HTMLElement);
     expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
   });
 });

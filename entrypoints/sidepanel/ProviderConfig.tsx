@@ -1,13 +1,17 @@
 /**
- * The Settings tab: pick a provider, fill in its fields, test, save.
+ * The Settings tab: the provider list, its in-place forms, and the voice
+ * picker that belongs to each one.
  *
  * The form is generated from `PROVIDER_SCHEMAS`, so this file knows about field
  * *kinds* and nothing about any particular service. Adding a provider to that
- * table is enough to get a form for it here.
+ * table is enough to get a row and a form for it here.
  *
- * The saved config is passed in rather than read here, so the panel is the only
- * place that talks to storage for the config; this component owns the draft
- * (the provider being edited, and the values typed so far).
+ * The list is rows rather than a `<select>` (spec §8.2): a service has a status
+ * to show — configured or not, in use or not — and the form for the chosen one
+ * opens where the row is, so the panel never loses the user's place. The saved
+ * config is passed in rather than read here, so the panel is the only place that
+ * talks to storage for the config; this component owns the draft (which row is
+ * open, and the values typed so far).
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
@@ -30,11 +34,13 @@ import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig, ProviderId } from '~/lib/providers/types';
 import { type Deadline, startDeadline } from './deadline';
 import { type AsyncStatus, StatusLine } from './StatusLine';
+import { ChevronRight } from './ui/icons';
+import { StatusDot } from './ui/StatusDot';
 import { VoicePicker } from './VoicePicker';
 
 /**
  * Long enough for a slow synthesis — `validate()` really does speak two
- * characters on DashScope and Volcengine — and short enough that a hung socket
+ * characters on Dashscope and Volcengine — and short enough that a hung socket
  * stops looking like a slow one.
  */
 const VALIDATE_TIMEOUT_MS = 20_000;
@@ -52,16 +58,20 @@ function fieldErrorText(error: FieldError, field: FieldSpec, t: Translator): str
 export interface ProviderConfigPanelProps {
   store: ConfigStore;
   providers: Record<CloudProviderId, Provider>;
-  /** The active config, which decides the provider shown first. */
+  /** The active config, which decides which row opens first. */
   saved: ProviderConfig | null;
   /** The last config saved for each provider, used to seed its form. */
   savedConfigs: SavedConfigs;
+  /** The voice chosen for each provider, for the row summaries. */
+  voices?: Record<string, string>;
   /**
    * Called after anything was written — a save or a forget — so the owner can
    * re-read the store. The store is the one source of truth; this panel keeps
    * no copy of what it holds.
    */
   onChanged: () => void;
+  /** Called after a voice was picked, for the same reason. */
+  onVoiceSaved?: () => void;
   /** `chrome.permissions`; absent in tests, where no host grant is asked for. */
   permissions?: PermissionsApi;
 }
@@ -71,52 +81,76 @@ export function ProviderConfigPanel({
   providers,
   saved,
   savedConfigs,
+  voices = {},
   onChanged,
+  onVoiceSaved,
   permissions,
 }: ProviderConfigPanelProps) {
   const t = useT();
-  const [selected, setSelected] = useState<ProviderId>(() => saved?.provider ?? 'browser');
-  const schema = PROVIDER_SCHEMAS[selected];
-  const provider = selected === 'browser' ? null : providers[selected];
+  // With nothing saved the browser voice is what is in use, so its row is the
+  // one that opens: the list starts by showing the current state of things.
+  const [open, setOpen] = useState<ProviderId | null>(() => saved?.provider ?? 'browser');
+  const active = saved?.provider ?? 'browser';
 
   return (
-    <div class="stack">
-      <div class="field">
-        <label class="field-label" for="provider-select">
-          {t('provider.picker-label')}
-        </label>
-        <select
-          id="provider-select"
-          value={selected}
-          onChange={(event) => setSelected(event.currentTarget.value as ProviderId)}
-        >
-          {PROVIDER_IDS.map((id) => (
-            <option key={id} value={id}>
-              {t(PROVIDER_SCHEMAS[id].labelKey)}
-            </option>
-          ))}
-        </select>
-        <span class="field-help">{t(schema.summaryKey)}</span>
-        {schema.consoleUrl && (
-          <a class="field-help link" href={schema.consoleUrl} target="_blank" rel="noreferrer">
-            {t('provider.console-link', { name: t(schema.labelKey) })}
-          </a>
-        )}
-      </div>
+    <div class="provider-list">
+      {PROVIDER_IDS.map((id) => {
+        const schema = PROVIDER_SCHEMAS[id];
+        const config = id === 'browser' ? null : (savedConfigs[id] ?? null);
+        const expanded = open === id;
+        const inUse = active === id;
+        const voice = voices[id];
 
-      {/*
-        Keyed by provider so switching starts from a clean form: the values,
-        the inline errors and any test result all belong to one provider.
-      */}
-      <ProviderForm
-        key={selected}
-        schema={schema}
-        provider={provider}
-        saved={savedConfigs[selected] ?? null}
-        store={store}
-        onChanged={onChanged}
-        permissions={permissions}
-      />
+        return (
+          <div class="provider-entry" key={id}>
+            <button
+              type="button"
+              class="provider-row"
+              data-provider={id}
+              data-active={inUse}
+              aria-expanded={expanded}
+              aria-controls={expanded ? `provider-form-${id}` : undefined}
+              onClick={() => setOpen(expanded ? null : id)}
+            >
+              <StatusDot state={inUse ? 'active' : config ? 'configured' : 'empty'} />
+              <span class="provider-row-text">
+                <span class="provider-name">{t(schema.labelKey)}</span>
+                <span class="provider-summary">
+                  {config
+                    ? t('provider.configured', {
+                        voice: voice ?? t('panel.default-voice'),
+                      })
+                    : t(schema.summaryKey)}
+                </span>
+              </span>
+              {inUse && <span class="pill active">{t('provider.active')}</span>}
+              <span class="provider-chevron">
+                <ChevronRight />
+              </span>
+            </button>
+
+            {/*
+              Keyed by provider so opening another row starts from a clean form:
+              the values, the inline errors and any test result all belong to one
+              provider.
+            */}
+            {expanded && (
+              <div class="provider-form" id={`provider-form-${id}`}>
+                <ProviderForm
+                  key={id}
+                  schema={schema}
+                  provider={id === 'browser' ? null : providers[id]}
+                  saved={config}
+                  store={store}
+                  onChanged={onChanged}
+                  onVoiceSaved={onVoiceSaved}
+                  permissions={permissions}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -128,6 +162,7 @@ interface ProviderFormProps {
   saved: ProviderConfig | null;
   store: ConfigStore;
   onChanged: () => void;
+  onVoiceSaved: (() => void) | undefined;
   permissions: PermissionsApi | undefined;
 }
 
@@ -137,6 +172,7 @@ function ProviderForm({
   saved,
   store,
   onChanged,
+  onVoiceSaved,
   permissions,
 }: ProviderFormProps) {
   const t = useT();
@@ -260,6 +296,12 @@ function ProviderForm({
 
       <CapabilityNote provider={provider} config={draft} />
 
+      {schema.consoleUrl && (
+        <a class="field-help link" href={schema.consoleUrl} target="_blank" rel="noreferrer">
+          {t('provider.console-link', { name: t(schema.labelKey) })}
+        </a>
+      )}
+
       <div class="actions">
         {provider && (
           <button type="button" class="button" disabled={busy} onClick={() => void onTest()}>
@@ -290,6 +332,7 @@ function ProviderForm({
           disabled={busy}
           onAttempt={() => setSubmitted(true)}
           showFormErrors={submitted}
+          {...(onVoiceSaved ? { onSaved: onVoiceSaved } : {})}
         />
       )}
     </div>

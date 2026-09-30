@@ -1,5 +1,6 @@
 /**
- * The side panel shell: two tabs over one shared config.
+ * The side panel shell: a header, a segmented control of tabs, and one page
+ * below it.
  *
  * The saved configuration is read once here and passed down, so the Reading tab
  * and the Settings tab cannot disagree about what is configured — a save in one
@@ -8,7 +9,9 @@
  * This is also the language boundary. The saved language is read here, once,
  * and everything below renders in it.
  */
+import type { ComponentType } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
+import type { CacheUsage } from '~/lib/cache-admin';
 import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
 import { I18nProvider, type MessageKey, useT, useUiLanguage } from '~/lib/i18n';
 import type { PermissionsApi } from '~/lib/provider-origins';
@@ -16,8 +19,10 @@ import type { CloudProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
 import type { SessionWatch } from '~/lib/session-watch';
 import type { SettingsStore, UiLang } from '~/lib/settings-store';
-import { ProviderConfigPanel } from './ProviderConfig';
 import { ReadingTab } from './ReadingTab';
+import { SettingsTab } from './SettingsTab';
+import { ChevronLeft } from './ui/icons';
+import { VoicePickerPage } from './VoicePicker';
 
 export type TabId = 'reading' | 'settings';
 
@@ -27,14 +32,61 @@ const TABS: readonly { id: TabId; labelKey: MessageKey }[] = [
   { id: 'settings', labelKey: 'panel.tab.settings' },
 ];
 
+/**
+ * Which page each tab renders.
+ *
+ * Keyed by `TabId`, so a tab without a page is a typecheck failure, and the
+ * render below is one line whichever tab is selected. The model tab in P4 is a
+ * row in `TABS` plus a component here; there is no `if` to add it to.
+ */
+const TAB_PAGES: Record<TabId, ComponentType<TabPageProps>> = {
+  reading: ReadingTab,
+  settings: SettingsTab,
+};
+
+/** What the shell hands to a tab page. Each page takes the part it needs. */
+export interface TabPageProps {
+  store: ConfigStore;
+  providers: Record<CloudProviderId, Provider>;
+  session: SessionWatch;
+  /** Absent in tests, which then render the defaults and save nowhere. */
+  settings?: SettingsStore;
+  permissions?: PermissionsApi;
+  /** Reading the cache's usage and emptying it; absent in tests. */
+  cache?: CacheAdmin;
+  /** For the about line; absent in tests. */
+  version?: string;
+  config: ProviderConfig | null;
+  savedConfigs: SavedConfigs;
+  /** The voice chosen for each provider, for the summary lines. */
+  voices: Record<string, string>;
+  /** The chosen voice for the active provider, if there is one. */
+  voice: string | null;
+  uiLang: UiLang;
+  onUiLang: (next: UiLang) => void;
+  /** Something was written; re-read the store. */
+  onChanged: () => void;
+  /** The Reading tab's shortcut into the settings. */
+  onOpenSettings: () => void;
+  /** The Reading tab's voice card: switch to the voice picker page. */
+  onChangeVoice: () => void;
+}
+
+/** The cache, as the settings tab needs it. Built over `lib/cache-admin`. */
+export interface CacheAdmin {
+  readUsage(): Promise<CacheUsage>;
+  clear(): Promise<void>;
+}
+
 export interface SidePanelProps {
   store: ConfigStore;
   providers: Record<CloudProviderId, Provider>;
   session: SessionWatch;
-  /** Absent in tests, which then render in English. */
   settings?: SettingsStore;
   /** `chrome.permissions`, for providers that need a host grant. */
   permissions?: PermissionsApi;
+  cache?: CacheAdmin;
+  version?: string;
 }
 
 /**
@@ -44,7 +96,15 @@ export interface SidePanelProps {
  * component provides, not the value it hands down, so the panel's own copy has
  * to be rendered by a child of the provider it creates.
  */
-export function SidePanel({ store, providers, session, permissions, settings }: SidePanelProps) {
+export function SidePanel({
+  store,
+  providers,
+  session,
+  permissions,
+  settings,
+  cache,
+  version,
+}: SidePanelProps) {
   const { uiLang, lang, setUiLang } = useUiLanguage(settings);
 
   return (
@@ -54,6 +114,9 @@ export function SidePanel({ store, providers, session, permissions, settings }: 
         providers={providers}
         session={session}
         permissions={permissions}
+        settings={settings}
+        cache={cache}
+        version={version}
         uiLang={uiLang}
         onUiLang={setUiLang}
       />
@@ -61,7 +124,7 @@ export function SidePanel({ store, providers, session, permissions, settings }: 
   );
 }
 
-interface SidePanelViewProps extends Omit<SidePanelProps, 'settings'> {
+interface SidePanelViewProps extends SidePanelProps {
   uiLang: UiLang;
   onUiLang: (next: UiLang) => void;
 }
@@ -71,22 +134,31 @@ function SidePanelView({
   providers,
   session,
   permissions,
+  settings,
+  cache,
+  version,
   uiLang,
   onUiLang,
 }: SidePanelViewProps) {
   const t = useT();
   const [tab, setTab] = useState<TabId>('reading');
+  const [pickingVoice, setPickingVoice] = useState(false);
   const [config, setConfig] = useState<ProviderConfig | null>(null);
   const [savedConfigs, setSavedConfigs] = useState<SavedConfigs>({});
-  const [voice, setVoice] = useState<string | null>(null);
+  const [voices, setVoices] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   /** Re-read the store: the only copy of the saved configs is the store's. */
   const reload = useCallback(async () => {
     try {
-      const [loaded, saved] = await Promise.all([store.getConfig(), store.getSavedConfigs()]);
+      const [loaded, saved, chosen] = await Promise.all([
+        store.getConfig(),
+        store.getSavedConfigs(),
+        store.getSelectedVoices(),
+      ]);
       setConfig(loaded);
       setSavedConfigs(saved);
+      setVoices(chosen);
     } catch (error) {
       // An unreadable config reads as "not configured": the user can always
       // fill the form in again, and the console has the reason.
@@ -98,103 +170,79 @@ function SidePanelView({
     void reload().finally(() => setLoading(false));
   }, [reload]);
 
-  useEffect(() => {
-    const provider = config?.provider;
-    if (!provider) {
-      setVoice(null);
-      return;
-    }
+  if (pickingVoice) {
+    return (
+      <div class="sidepanel">
+        <header class="page-header">
+          <button
+            type="button"
+            class="icon-button"
+            aria-label={t('panel.back')}
+            onClick={() => setPickingVoice(false)}
+          >
+            <ChevronLeft />
+          </button>
+          <h1>{t('voice.section')}</h1>
+        </header>
+        <main class="panel">
+          <VoicePickerPage
+            store={store}
+            providers={providers}
+            config={config}
+            onSaved={() => void reload()}
+          />
+        </main>
+      </div>
+    );
+  }
 
-    let active = true;
-    store
-      .getSelectedVoice(provider)
-      .then((voiceId) => {
-        if (active) setVoice(voiceId);
-      })
-      .catch((error: unknown) => {
-        console.error('[SayLoud] cannot read the selected voice', error);
-      });
-    return () => {
-      active = false;
-    };
-  }, [store, config]);
+  const Page = TAB_PAGES[tab];
+  const page: TabPageProps = {
+    store,
+    providers,
+    session,
+    settings,
+    permissions,
+    cache,
+    version,
+    config,
+    savedConfigs,
+    voices,
+    voice: config ? (voices[config.provider] ?? null) : null,
+    uiLang,
+    onUiLang,
+    onChanged: () => void reload(),
+    onOpenSettings: () => setTab('settings'),
+    onChangeVoice: () => setPickingVoice(true),
+  };
 
   return (
     <div class="sidepanel">
       <header class="header">
         <h1>SayLoud</h1>
+        <div class="tabs" role="tablist" aria-label={t('panel.sections')}>
+          {TABS.map(({ id, labelKey }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`tab-${id}`}
+              class="tab"
+              aria-selected={tab === id}
+              // Only the selected tab points at a panel: the others' panels are
+              // not mounted, and `aria-controls` on a missing id is a lie.
+              aria-controls={tab === id ? `panel-${id}` : undefined}
+              onClick={() => setTab(id)}
+            >
+              {t(labelKey)}
+            </button>
+          ))}
+        </div>
       </header>
 
-      <div class="tabs" role="tablist" aria-label={t('panel.sections')}>
-        {TABS.map(({ id, labelKey }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            id={`tab-${id}`}
-            class="tab"
-            aria-selected={tab === id}
-            aria-controls={`panel-${id}`}
-            onClick={() => setTab(id)}
-          >
-            {t(labelKey)}
-          </button>
-        ))}
-      </div>
-
       <main class="panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'reading' ? (
-          <ReadingTab
-            config={config}
-            voice={voice}
-            providers={providers}
-            session={session}
-            loading={loading}
-          />
-        ) : (
-          !loading && (
-            <div class="stack">
-              <LanguageRow uiLang={uiLang} onChange={onUiLang} />
-              <ProviderConfigPanel
-                store={store}
-                providers={providers}
-                saved={config}
-                savedConfigs={savedConfigs}
-                // The voice effect above follows the active provider.
-                onChanged={() => void reload()}
-                {...(permissions ? { permissions } : {})}
-              />
-            </div>
-          )
-        )}
+        {loading ? <p class="muted">{t('panel.loading')}</p> : <Page {...page} />}
       </main>
     </div>
-  );
-}
-
-/**
- * The interface language.
- *
- * A plain select for now: the settings tab is being redesigned separately, and
- * this only has to be usable in the meantime. `auto` is the default, and the
- * browser decides what it means.
- */
-function LanguageRow({ uiLang, onChange }: { uiLang: UiLang; onChange: (next: UiLang) => void }) {
-  const t = useT();
-
-  return (
-    <section class="section">
-      <h2>{t('settings.language.label')}</h2>
-      <select
-        id="ui-lang"
-        aria-label={t('settings.language.label')}
-        value={uiLang}
-        onChange={(event) => onChange(event.currentTarget.value as UiLang)}
-      >
-        <option value="auto">{t('settings.language.auto')}</option>
-        <option value="en">{t('settings.language.en')}</option>
-        <option value="zh-CN">{t('settings.language.zh')}</option>
-      </select>
-    </section>
   );
 }

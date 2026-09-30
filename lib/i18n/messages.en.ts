@@ -4,11 +4,12 @@
  * Keys are `<area>.<control>[.<state>]`, all lower case and dot-separated. The
  * area is where the words appear — `sideplayer` is the bar on the page,
  * `panel` the side panel's shell and Reading tab, `provider` the service
- * picker and its form, `field` a label shared by several providers, `voice` the
- * voice picker, `error` anything a user is told went wrong, `settings` the
- * settings tab's own rows. Translations live in `messages.zh.ts`, which is
- * typed against this table so a new key fails `pnpm typecheck` until it is
- * translated too.
+ * list and its form, `field` a label shared by several providers, `voice` the
+ * voice picker, `error` anything a user is told went wrong, `settings` a
+ * preference row (the language, the cache, the volume — the Reading tab and
+ * the Settings tab both carry some). Translations live in `messages.zh.ts`,
+ * which is typed against this table so a new key fails `pnpm typecheck` until
+ * it is translated too.
  *
  * `as const` rather than an interface: `MessageKey` is derived from these keys,
  * so a typo in a component is caught by the compiler instead of rendering the
@@ -20,35 +21,65 @@ export const en = {
   'panel.tab.reading': 'Reading',
   'panel.tab.settings': 'Settings',
   'panel.loading': 'Loading…',
+  // The <h1> of the full-page voice picker, next to its back arrow.
+  'panel.back': 'Back',
 
   // --- the Reading tab ------------------------------------------------------
-  'panel.section.provider': 'Provider',
-  'panel.section.session': 'Reading session',
-  'panel.fact.service': 'Service',
-  'panel.fact.voice': 'Voice',
-  'panel.fact.highlight': 'Highlight',
-  'panel.default-voice': 'Default voice',
   'panel.no-provider': 'No provider is configured. Open Settings to choose one.',
+  'panel.configure': 'Configure a service',
+  'panel.voice.change': 'Change',
+  'panel.default-voice': 'Default voice',
+  'panel.section.session': 'Reading session',
   'panel.sentence-progress': 'Sentence {index} of {total} at {rate}×',
   'panel.progress-label': '{percent} percent of the article read',
   'panel.progress-text': '{percent}% of the article read.',
   'panel.nothing-reading':
     'Nothing is being read. Click the SayLoud toolbar icon on a page to start.',
-  'panel.reported-by':
-    'Reported by the service worker. Playback itself is controlled from the player on the page.',
-  'panel.highlight.browser': 'Sentence by sentence (browser voice)',
   'panel.highlight.words': 'Word by word',
   'panel.highlight.sentences': 'Sentence by sentence',
   'panel.highlight.unknown': 'Unknown',
 
-  // --- the settings tab -----------------------------------------------------
+  // --- the settings rows ----------------------------------------------------
+  // Volume, rate and the caption switch are preferences like the language, so
+  // they share the `settings` area even though they live on the Reading tab.
+  'settings.volume.label': 'Volume',
+  // Only the browser voice has a ceiling; a cloud voice plays through a gain
+  // node and can be pushed past 100%.
+  'settings.volume.browser-cap': 'The browser voice tops out at 100%.',
+  'settings.rate.label': 'Speed',
+  'settings.caption.label': 'Caption window',
+  'settings.caption.help': 'Turn it on here, then open it from the bar on the page.',
   'settings.language.label': 'Interface language',
   'settings.language.auto': 'Follow the browser',
   'settings.language.en': 'English',
   'settings.language.zh': '中文',
 
-  // --- the provider picker and its form -------------------------------------
-  'provider.picker-label': 'Provider',
+  // --- the cache card -------------------------------------------------------
+  'settings.cache.title': 'Cache',
+  'settings.cache.persist': 'Keep synthesized audio',
+  'settings.cache.persist-help':
+    'Off deletes the saved audio and stops new audio from being written.',
+  'settings.cache.max': 'Limit',
+  'settings.cache.used': 'Used {size} · {count} clips',
+  // Says what is *not* counted as well as what is: on-device models are a
+  // separate store, managed on the model tab, and clearing this one cannot
+  // make room for them.
+  'settings.cache.note': 'Audio only. On-device models are stored separately.',
+  'settings.cache.unavailable': 'The cache could not be read.',
+  'settings.cache.clear': 'Clear cache',
+  'settings.cache.clear-confirm': 'Clear',
+  'settings.cache.cancel': 'Cancel',
+  'settings.cache.cleared': 'Cache cleared.',
+
+  // --- the about line -------------------------------------------------------
+  'settings.about.line': 'SayLoud {version} · MIT · Audio goes only to the service you configure.',
+  // For the tests, which have no manifest to read a version from.
+  'settings.about.plain': 'SayLoud · MIT · Audio goes only to the service you configure.',
+
+  // --- the provider list and its form ---------------------------------------
+  'provider.section.title': 'Voice services',
+  'provider.active': 'Active',
+  'provider.configured': 'Configured · {voice}',
   'provider.console-link': 'Open the {name} console',
   'provider.browser-notice':
     'SayLoud will use the voices Chrome already has installed. Keys saved for other providers are kept.',
@@ -138,6 +169,8 @@ export const en = {
 
   // --- the voice picker -----------------------------------------------------
   'voice.section': 'Voice',
+  'voice.browser-note':
+    'The browser voice is the one Chrome has installed. There is nothing to choose here.',
   'voice.load': 'Load Voices',
   'voice.loading': 'Loading…',
   'voice.selected': 'Selected:',

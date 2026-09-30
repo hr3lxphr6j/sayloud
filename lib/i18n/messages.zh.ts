@@ -20,33 +20,55 @@ export const zh: Record<MessageKey, string> = {
   'panel.tab.reading': '朗读',
   'panel.tab.settings': '设置',
   'panel.loading': '加载中…',
+  // The <h1> of the full-page voice picker, next to its back arrow.
+  'panel.back': '返回',
 
   // --- the Reading tab ------------------------------------------------------
-  'panel.section.provider': '语音服务',
   'panel.section.session': '朗读会话',
-  'panel.fact.service': '服务',
-  'panel.fact.voice': '音色',
-  'panel.fact.highlight': '高亮',
   'panel.default-voice': '默认音色',
+  'panel.configure': '配置服务',
+  'panel.voice.change': '更换',
   'panel.no-provider': '尚未配置任何服务。打开「设置」选择一项。',
   'panel.sentence-progress': '第 {index} / {total} 句，语速 {rate}×',
   'panel.progress-label': '已朗读全文的 {percent}%',
   'panel.progress-text': '已朗读全文的 {percent}%。',
   'panel.nothing-reading': '当前没有正在朗读的内容。在网页上点击 SayLoud 工具栏图标即可开始。',
-  'panel.reported-by': '数据由 Service Worker 上报；播放本身由页面上的播放条控制。',
-  'panel.highlight.browser': '逐句高亮（浏览器语音）',
   'panel.highlight.words': '逐词高亮',
   'panel.highlight.sentences': '逐句高亮',
   'panel.highlight.unknown': '未知',
 
-  // --- the settings tab -----------------------------------------------------
+  // --- the settings rows ----------------------------------------------------
+  'settings.volume.label': '音量',
+  'settings.volume.browser-cap': '浏览器语音最高 100%。',
+  'settings.rate.label': '语速',
+  'settings.caption.label': '悬浮窗字幕',
+  'settings.caption.help': '在这里打开，然后在网页竖条上点字幕按钮。',
   'settings.language.label': '界面语言',
   'settings.language.auto': '跟随浏览器',
   'settings.language.en': 'English',
   'settings.language.zh': '中文',
 
-  // --- the provider picker and its form -------------------------------------
-  'provider.picker-label': '语音服务',
+  // --- the cache card -------------------------------------------------------
+  'settings.cache.title': '缓存',
+  'settings.cache.persist': '保存合成音频',
+  'settings.cache.persist-help': '关闭会清除已保存的音频，之后也不再写入。',
+  'settings.cache.max': '上限',
+  'settings.cache.used': '已用 {size} · {count} 段',
+  'settings.cache.note': '仅统计合成音频；端侧模型单独存放。',
+  'settings.cache.unavailable': '无法读取缓存占用。',
+  'settings.cache.clear': '清除缓存',
+  'settings.cache.clear-confirm': '确认清除',
+  'settings.cache.cancel': '取消',
+  'settings.cache.cleared': '缓存已清除。',
+
+  // --- the about line -------------------------------------------------------
+  'settings.about.line': 'SayLoud {version} · MIT · 音频仅发送至你配置的服务商。',
+  'settings.about.plain': 'SayLoud · MIT · 音频仅发送至你配置的服务商。',
+
+  // --- the provider list and its form ---------------------------------------
+  'provider.section.title': '语音服务',
+  'provider.active': '使用中',
+  'provider.configured': '已配置 · {voice}',
   'provider.console-link': '打开 {name} 控制台',
   'provider.browser-notice': 'SayLoud 将使用 Chrome 已安装的语音。为其他服务保存的密钥会保留。',
   'provider.test': '测试连接',
@@ -120,6 +142,7 @@ export const zh: Record<MessageKey, string> = {
 
   // --- the voice picker -----------------------------------------------------
   'voice.section': '音色',
+  'voice.browser-note': '浏览器语音由 Chrome 提供，无需选择。',
   'voice.load': '加载音色',
   'voice.loading': '加载中…',
   'voice.selected': '已选：',

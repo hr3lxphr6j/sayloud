@@ -165,4 +165,14 @@ describe('ConfigStore', () => {
 
     expect(await store.getSelectedVoice('dashscope')).toBeNull();
   });
+
+  it('reads every chosen voice in one pass, for a list that needs all of them', async () => {
+    await store.saveSelectedVoice('dashscope', 'longxiaochun');
+    await store.saveSelectedVoice('azure', 'zh-CN-XiaoxiaoNeural');
+
+    expect(await store.getSelectedVoices()).toEqual({
+      dashscope: 'longxiaochun',
+      azure: 'zh-CN-XiaoxiaoNeural',
+    });
+  });
 });

@@ -69,74 +69,20 @@ const MAX_CHARS = 1000;
 const CONCURRENCY = 2;
 
 /**
- * The 1.0 voices, including 爽快思思 and 温暖阿虎, which the spike verified
- * against `seed-tts-1.0` (spec §6 V9).
- */
-const VOICES_1_0: Voice[] = [
-  { id: 'zh_female_shuangkuaisisi_moon_bigtts', name: '爽快思思', lang: 'zh-CN', gender: 'female' },
-  { id: 'zh_male_wennuanahu_moon_bigtts', name: '温暖阿虎', lang: 'zh-CN', gender: 'male' },
-  { id: 'zh_male_shaonianzixin_moon_bigtts', name: '少年梓辛', lang: 'zh-CN', gender: 'male' },
-  { id: 'zh_female_cancan_mars_bigtts', name: '灿灿', lang: 'zh-CN', gender: 'female' },
-  { id: 'zh_male_beijingxiaoye_moon_bigtts', name: '北京小爷', lang: 'zh-CN', gender: 'male' },
-  { id: 'zh_female_wanwanxiaohe_moon_bigtts', name: '湾湾小何', lang: 'zh-CN', gender: 'female' },
-  { id: 'en_female_amanda_moon_bigtts', name: 'Amanda', lang: 'en-US', gender: 'female' },
-  { id: 'en_male_jackson_moon_bigtts', name: 'Jackson', lang: 'en-US', gender: 'male' },
-];
-
-/**
- * The 2.0 voices (`*_uranus_bigtts`).
+ * The voice each resource falls back to, and the one `validate()` probes.
  *
  * A voice only works on its own resource: a 1.0 voice on `seed-tts-2.0` is
- * rejected with 55000000 (spec §6 V9, and confirmed on a live key). assumed:
- * this list comes from a public voice table, not from the spike; VV 2.0 is the
- * one the probe uses.
+ * rejected with 55000000 (spec §6 V9, confirmed on a live key). These are the
+ * first entries of the catalogue in `volcengine-voices.ts`, kept here so
+ * synthesis does not have to load it.
  */
-const VOICES_2_0: Voice[] = [
-  { id: 'zh_female_vv_uranus_bigtts', name: 'VV 2.0', lang: 'zh-CN', gender: 'female' },
-  { id: 'zh_female_xiaohe_uranus_bigtts', name: '小何 2.0', lang: 'zh-CN', gender: 'female' },
-  {
-    id: 'zh_female_shuangkuaisisi_uranus_bigtts',
-    name: '爽快思思 2.0',
-    lang: 'zh-CN',
-    gender: 'female',
-  },
-  {
-    id: 'zh_female_qingxinnvsheng_uranus_bigtts',
-    name: '清新女声 2.0',
-    lang: 'zh-CN',
-    gender: 'female',
-  },
-  {
-    id: 'zh_female_tianmeitaozi_uranus_bigtts',
-    name: '甜美桃子 2.0',
-    lang: 'zh-CN',
-    gender: 'female',
-  },
-  {
-    id: 'zh_female_zhixingjiejie_uranus_bigtts',
-    name: '知性姐姐 2.0',
-    lang: 'zh-CN',
-    gender: 'female',
-  },
-  { id: 'zh_male_yunzhou_uranus_bigtts', name: '云舟 2.0', lang: 'zh-CN', gender: 'male' },
-  { id: 'zh_male_xiaotian_uranus_bigtts', name: '小天 2.0', lang: 'zh-CN', gender: 'male' },
-  { id: 'zh_male_liufei_uranus_bigtts', name: '刘飞 2.0', lang: 'zh-CN', gender: 'male' },
-  {
-    id: 'zh_male_shaonianzixin_uranus_bigtts',
-    name: '少年梓辛 2.0',
-    lang: 'zh-CN',
-    gender: 'male',
-  },
-];
-
-/** The voices each resource accepts, the first being the one `validate()` probes. */
-const VOICES_BY_RESOURCE: Record<VolcengineResourceId, Voice[]> = {
-  'seed-tts-1.0': VOICES_1_0,
-  'seed-tts-2.0': VOICES_2_0,
+const DEFAULT_VOICES: Record<VolcengineResourceId, string> = {
+  'seed-tts-1.0': 'zh_female_shuangkuaisisi_moon_bigtts',
+  'seed-tts-2.0': 'zh_female_vv_uranus_bigtts',
 };
 
-function defaultVoice(resourceId: VolcengineResourceId): string {
-  return (VOICES_BY_RESOURCE[resourceId][0] as Voice).id;
+export function defaultVoice(resourceId: VolcengineResourceId): string {
+  return DEFAULT_VOICES[resourceId];
 }
 
 /**
@@ -264,7 +210,11 @@ export class VolcengineProvider implements Provider {
     const { resourceId = DEFAULT_RESOURCE_ID } = requireConfig(config, 'volcengine');
     const timings = supportsTimings(resourceId);
 
-    return VOICES_BY_RESOURCE[resourceId].map((voice) => ({ ...voice, supportsTimings: timings }));
+    // Several hundred entries: loaded on demand so the offscreen document,
+    // which only synthesizes, never carries them.
+    const { VOICES_1_0, VOICES_2_0 } = await import('./volcengine-voices');
+    const voices = resourceId === 'seed-tts-2.0' ? VOICES_2_0 : VOICES_1_0;
+    return voices.map((voice) => ({ ...voice, supportsTimings: timings }));
   }
 
   async synthesize(request: SynthesizeRequest, config: ProviderConfig): Promise<SynthesisResult> {

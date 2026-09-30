@@ -89,7 +89,6 @@ describe('PROVIDER_SCHEMAS', () => {
     expect(resourceId?.options?.map((option) => option.value)).toEqual([
       'seed-tts-1.0',
       'seed-tts-2.0',
-      'seed-icl-2.0',
     ]);
     // Only the 1.0 resource reports word timings (spec §6 V9).
     expect(resourceId?.options?.[0]?.label).toMatch(/word timings/);
@@ -436,6 +435,14 @@ describe('parseStoredConfig', () => {
 
   it('rejects a provider it does not know', () => {
     expect(parseStoredConfig({ provider: 'polly' })).toBeNull();
+  });
+
+  it('keeps a saved Volcengine config whose resource id was retired', () => {
+    // seed-icl-2.0 used to be offered; dropping the whole config would also
+    // drop the user's key and silently switch them to the browser voice.
+    expect(
+      parseStoredConfig({ provider: 'volcengine', apiKey: 'k', resourceId: 'seed-icl-2.0' })
+    ).toEqual({ provider: 'volcengine', apiKey: 'k', resourceId: 'seed-tts-1.0' });
   });
 
   it('rejects a config whose required field is missing', () => {

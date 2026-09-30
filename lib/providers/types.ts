@@ -75,10 +75,11 @@ export interface DashscopeConfig {
  *
  * The id decides both the model version and the billing mode, which is why
  * there is no separate `model` field: `seed-tts-1.0` is the character-billed
- * 1.0 service and the only one that reports word timings, `seed-tts-2.0` is
- * the 2.0 service, and `seed-icl-2.0` is 2.0 with voice cloning.
+ * 1.0 service and the only one that reports word timings, and `seed-tts-2.0`
+ * is the 2.0 service. `seed-icl-2.0` (声音复刻) is left out: it speaks only
+ * voices the user cloned, and the voice picker has no way to enter one.
  */
-export type VolcengineResourceId = 'seed-tts-1.0' | 'seed-tts-2.0' | 'seed-icl-2.0';
+export type VolcengineResourceId = 'seed-tts-1.0' | 'seed-tts-2.0';
 
 /**
  * Volcengine (火山引擎豆包) — chunked-JSON HTTP TTS.

@@ -129,16 +129,10 @@ const VOICES_2_0: Voice[] = [
   },
 ];
 
-/**
- * The voices each resource accepts, the first being the one `validate()` probes.
- *
- * `seed-icl-2.0` has no system voices: it speaks cloned voices, whose ids are
- * the user's own, so it offers the 2.0 list and leaves the rest to the console.
- */
+/** The voices each resource accepts, the first being the one `validate()` probes. */
 const VOICES_BY_RESOURCE: Record<VolcengineResourceId, Voice[]> = {
   'seed-tts-1.0': VOICES_1_0,
   'seed-tts-2.0': VOICES_2_0,
-  'seed-icl-2.0': VOICES_2_0,
 };
 
 function defaultVoice(resourceId: VolcengineResourceId): string {

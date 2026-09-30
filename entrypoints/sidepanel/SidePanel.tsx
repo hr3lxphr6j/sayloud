@@ -37,26 +37,22 @@ export function SidePanel({ store, providers, session, permissions }: SidePanelP
   const [voice, setVoice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([store.getConfig(), store.getSavedConfigs()])
-      .then(([loaded, saved]) => {
-        if (!active) return;
-        setConfig(loaded);
-        setSavedConfigs(saved);
-      })
-      .catch((error: unknown) => {
-        // An unreadable config reads as "not configured": the user can always
-        // fill the form in again, and the console has the reason.
-        console.error('[SayLoud] cannot read the provider configuration', error);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+  /** Re-read the store: the only copy of the saved configs is the store's. */
+  const reload = useCallback(async () => {
+    try {
+      const [loaded, saved] = await Promise.all([store.getConfig(), store.getSavedConfigs()]);
+      setConfig(loaded);
+      setSavedConfigs(saved);
+    } catch (error) {
+      // An unreadable config reads as "not configured": the user can always
+      // fill the form in again, and the console has the reason.
+      console.error('[SayLoud] cannot read the provider configuration', error);
+    }
   }, [store]);
+
+  useEffect(() => {
+    void reload().finally(() => setLoading(false));
+  }, [reload]);
 
   useEffect(() => {
     const provider = config?.provider;
@@ -78,11 +74,6 @@ export function SidePanel({ store, providers, session, permissions }: SidePanelP
       active = false;
     };
   }, [store, config]);
-
-  const onSaved = useCallback((saved: ProviderConfig) => {
-    // The voice effect above reloads the selection for the new provider.
-    setConfig(saved);
-  }, []);
 
   return (
     <div class="sidepanel">
@@ -123,7 +114,8 @@ export function SidePanel({ store, providers, session, permissions }: SidePanelP
               providers={providers}
               saved={config}
               savedConfigs={savedConfigs}
-              onSaved={onSaved}
+              // The voice effect above follows the active provider.
+              onChanged={() => void reload()}
               {...(permissions ? { permissions } : {})}
             />
           )

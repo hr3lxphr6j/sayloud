@@ -47,8 +47,12 @@ export interface ProviderConfigPanelProps {
   saved: ProviderConfig | null;
   /** The last config saved for each provider, used to seed its form. */
   savedConfigs: SavedConfigs;
-  /** Called after a successful save so the panel can refresh what it shows. */
-  onSaved: (config: ProviderConfig) => void;
+  /**
+   * Called after anything was written — a save or a forget — so the owner can
+   * re-read the store. The store is the one source of truth; this panel keeps
+   * no copy of what it holds.
+   */
+  onChanged: () => void;
   /** `chrome.permissions`; absent in tests, where no host grant is asked for. */
   permissions?: PermissionsApi;
 }
@@ -57,13 +61,11 @@ export function ProviderConfigPanel({
   store,
   providers,
   saved,
-  savedConfigs: initialSaved,
-  onSaved,
+  savedConfigs,
+  onChanged,
   permissions,
 }: ProviderConfigPanelProps) {
   const [selected, setSelected] = useState<ProviderId>(() => saved?.provider ?? 'browser');
-  // Owned here so a save or a forget shows up when switching back.
-  const [savedConfigs, setSavedConfigs] = useState<SavedConfigs>(initialSaved);
   const schema = PROVIDER_SCHEMAS[selected];
   const provider = selected === 'browser' ? null : providers[selected];
 
@@ -102,19 +104,7 @@ export function ProviderConfigPanel({
         provider={provider}
         saved={savedConfigs[selected] ?? null}
         store={store}
-        onSaved={(config) => {
-          if (config.provider !== 'browser') {
-            setSavedConfigs((current) => ({ ...current, [config.provider]: config }));
-          }
-          onSaved(config);
-        }}
-        onForgotten={(provider) => {
-          setSavedConfigs((current) => {
-            const next = { ...current };
-            delete next[provider];
-            return next;
-          });
-        }}
+        onChanged={onChanged}
         permissions={permissions}
       />
     </div>
@@ -127,8 +117,7 @@ interface ProviderFormProps {
   provider: Provider | null;
   saved: ProviderConfig | null;
   store: ConfigStore;
-  onSaved: (config: ProviderConfig) => void;
-  onForgotten: (provider: ProviderId) => void;
+  onChanged: () => void;
   permissions: PermissionsApi | undefined;
 }
 
@@ -137,8 +126,7 @@ function ProviderForm({
   provider,
   saved,
   store,
-  onSaved,
-  onForgotten,
+  onChanged,
   permissions,
 }: ProviderFormProps) {
   const [values, setValues] = useState<FormValues>(() => configToFormValues(schema, saved));
@@ -211,7 +199,7 @@ function ProviderForm({
       }
       await store.saveConfig(draft);
       setSave({ kind: 'ok', message: 'Saved.' });
-      onSaved(draft);
+      onChanged();
     } catch (error) {
       setSave({ kind: 'error', message: `Could not save: ${errorMessage(error)}` });
     }
@@ -224,10 +212,8 @@ function ProviderForm({
       setValues(configToFormValues(schema, null));
       setTest({ kind: 'idle' });
       setSave({ kind: 'ok', message: 'Saved key removed.' });
-      onForgotten(schema.id);
-      // Forgetting the active provider hands playback to the browser voice.
-      const active = await store.getConfig();
-      if (active) onSaved(active);
+      // Forgetting the active provider also made the browser voice active.
+      onChanged();
     } catch (error) {
       setSave({ kind: 'error', message: `Could not remove: ${errorMessage(error)}` });
     }

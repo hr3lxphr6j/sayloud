@@ -23,7 +23,11 @@ function fakeArea(initial: Record<string, unknown> = {}) {
   return { area, data };
 }
 
-const DASHSCOPE: ProviderConfig = { provider: 'dashscope', apiKey: 'sk-1', region: 'intl' };
+const DASHSCOPE: ProviderConfig = {
+  provider: 'dashscope',
+  apiKey: 'sk-1',
+  region: 'ap-southeast-1',
+};
 
 describe('ConfigStore', () => {
   let fake: ReturnType<typeof fakeArea>;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { en, type MessageKey } from '~/lib/i18n/messages.en';
 import {
   configToFormValues,
   type FormValues,
@@ -19,6 +20,17 @@ import { DEFAULT_BASE_URL as VOLCENGINE_BASE_URL } from '~/lib/providers/volceng
 const dashscope = PROVIDER_SCHEMAS.dashscope;
 const volcengine = PROVIDER_SCHEMAS.volcengine;
 const openai = PROVIDER_SCHEMAS['openai-compat'];
+
+/**
+ * A label or help line, in English.
+ *
+ * The schema holds keys, so an assertion about the wording has to go through
+ * the catalogue. English is the reference language for these: they describe
+ * what a provider's console asks for, which no translation can change.
+ */
+function text(key: MessageKey | undefined): string {
+  return key === undefined ? '' : en[key];
+}
 
 /** Form values with every field filled with something the field accepts. */
 function filledValues(schema: ProviderSchema): FormValues {
@@ -78,8 +90,8 @@ describe('PROVIDER_SCHEMAS', () => {
     const apiKey = volcengine.fields.find((field) => field.key === 'apiKey');
 
     expect(apiKey).toMatchObject({ kind: 'password', required: true });
-    expect(apiKey?.help).toMatch(/X-Api-Key/);
-    expect(apiKey?.help).toMatch(/new console/);
+    expect(text(apiKey?.helpKey)).toMatch(/X-Api-Key/);
+    expect(text(apiKey?.helpKey)).toMatch(/new console/);
   });
 
   it('offers the Volcengine resource ids as a required select', () => {
@@ -91,7 +103,7 @@ describe('PROVIDER_SCHEMAS', () => {
       'seed-tts-2.0',
     ]);
     // Only the 1.0 resource reports word timings (spec §6 V9).
-    expect(resourceId?.options?.[0]?.label).toMatch(/word timings/);
+    expect(text(resourceId?.options?.[0]?.labelKey)).toMatch(/word timings/);
   });
 
   it('offers the spec regions for DashScope, with the Beijing-only caveat', () => {
@@ -104,7 +116,7 @@ describe('PROVIDER_SCHEMAS', () => {
       'cn-beijing',
       'ap-southeast-1',
     ]);
-    expect(region?.help).toMatch(/cn-beijing/);
+    expect(text(region?.helpKey)).toMatch(/cn-beijing/);
   });
 
   it('names a model V4 exercised and says how word timings are enabled', () => {
@@ -113,8 +125,8 @@ describe('PROVIDER_SCHEMAS', () => {
     const model = dashscope.fields.find((field) => field.key === 'model');
 
     expect(model?.placeholder).toBe('cosyvoice-v3-flash');
-    expect(model?.help).toMatch(/cosyvoice-v3/);
-    expect(model?.help).toMatch(/word_timestamp_enabled/);
+    expect(text(model?.helpKey)).toMatch(/cosyvoice-v3/);
+    expect(text(model?.helpKey)).toMatch(/word_timestamp_enabled/);
   });
 
   it('keeps every base URL default equal to its adapter constant', () => {
@@ -158,12 +170,12 @@ describe('defaultValue', () => {
   it('validates a field holding its default, and one left empty', () => {
     const schema: ProviderSchema = {
       id: 'dashscope',
-      label: 'Test',
-      summary: 'A required field whose default stands in for a value.',
+      labelKey: 'provider.dashscope.label',
+      summaryKey: 'provider.dashscope.summary',
       fields: [
         {
           key: 'apiKey',
-          label: 'API key',
+          labelKey: 'field.api-key',
           kind: 'text',
           required: true,
           defaultValue: 'sk-default',
@@ -177,17 +189,19 @@ describe('defaultValue', () => {
   });
 
   it('still requires a field that has no default', () => {
-    expect(validateFormValues(volcengine, { baseUrl: VOLCENGINE_BASE_URL }).resourceId).toBe(
-      'Resource id is required.'
-    );
+    expect(validateFormValues(volcengine, { baseUrl: VOLCENGINE_BASE_URL }).resourceId).toEqual({
+      code: 'required',
+    });
   });
 
   it('checks the default the way it checks a typed value', () => {
     const schema: ProviderSchema = {
       id: 'dashscope',
-      label: 'Test',
-      summary: 'A URL field with a malformed default.',
-      fields: [{ key: 'baseUrl', label: 'Base URL', kind: 'url', defaultValue: 'not-a-url' }],
+      labelKey: 'provider.dashscope.label',
+      summaryKey: 'provider.dashscope.summary',
+      fields: [
+        { key: 'baseUrl', labelKey: 'field.base-url', kind: 'url', defaultValue: 'not-a-url' },
+      ],
     };
 
     expect(validateFormValues(schema, {})).toHaveProperty('baseUrl');
@@ -235,14 +249,16 @@ describe('parseHeaderLines', () => {
     const parsed = parseHeaderLines('# a note\nX-Key: abc');
 
     expect(parsed.headers).toEqual({ 'X-Key': 'abc' });
-    expect(parsed.errors).toEqual(['Line 1: expected a "Name: Value" pair.']);
+    expect(parsed.errors).toEqual([{ code: 'invalid-header-line', params: { line: '1' } }]);
   });
 
   it('rejects a name that is not a header token', () => {
     const parsed = parseHeaderLines('# note: abc');
 
     expect(parsed.headers).toEqual({});
-    expect(parsed.errors).toEqual(['Line 1: "# note" is not a valid header name.']);
+    expect(parsed.errors).toEqual([
+      { code: 'invalid-header-name', params: { line: '1', name: '# note' } },
+    ]);
   });
 
   it('rejects a name with a space in it', () => {
@@ -253,7 +269,7 @@ describe('parseHeaderLines', () => {
     const parsed = parseHeaderLines('X-Key: abc\nnot a header\nX-More: d');
 
     expect(parsed.headers).toEqual({ 'X-Key': 'abc', 'X-More': 'd' });
-    expect(parsed.errors).toEqual(['Line 2: expected a "Name: Value" pair.']);
+    expect(parsed.errors).toEqual([{ code: 'invalid-header-line', params: { line: '2' } }]);
   });
 
   it('rejects a line whose name is only whitespace', () => {
@@ -273,7 +289,7 @@ describe('validateFormValues', () => {
   it('requires the fields marked required', () => {
     const errors = validateFormValues(dashscope, { apiKey: '   ' });
 
-    expect(errors.apiKey).toBe('API key is required.');
+    expect(errors.apiKey).toEqual({ code: 'required' });
   });
 
   it('does not require an optional field', () => {
@@ -283,13 +299,13 @@ describe('validateFormValues', () => {
   it('rejects a URL without a scheme', () => {
     const errors = validateFormValues(openai, { baseUrl: 'localhost:8880' });
 
-    expect(errors.baseUrl).toMatch(/full URL/);
+    expect(errors.baseUrl).toEqual({ code: 'invalid-url' });
   });
 
   it('rejects a select value outside its options', () => {
     const errors = validateFormValues(dashscope, { apiKey: 'sk-1', region: 'mars' });
 
-    expect(errors.region).toBe('Choose one of the listed options.');
+    expect(errors.region).toEqual({ code: 'invalid-select' });
   });
 
   it('accepts a select value that is one of the options', () => {
@@ -299,7 +315,7 @@ describe('validateFormValues', () => {
   it('reports the first malformed header line', () => {
     const errors = validateFormValues(openai, { baseUrl: 'https://a.test/v1', headers: 'oops' });
 
-    expect(errors.headers).toBe('Line 1: expected a "Name: Value" pair.');
+    expect(errors.headers).toEqual({ code: 'invalid-header-line', params: { line: '1' } });
   });
 
   it('ignores booleans, which are never empty', () => {

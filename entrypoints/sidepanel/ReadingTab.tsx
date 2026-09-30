@@ -7,6 +7,7 @@
  * side panel's involvement with playback.
  */
 import { useEffect, useState } from 'preact/hooks';
+import { useT } from '~/lib/i18n';
 import type { SessionSnapshot } from '~/lib/protocol';
 import { PROVIDER_SCHEMAS } from '~/lib/providers/config-schema';
 import type { CloudProviderId } from '~/lib/providers/registry';
@@ -25,6 +26,7 @@ export interface ReadingTabProps {
 }
 
 export function ReadingTab({ config, voice, providers, session, loading }: ReadingTabProps) {
+  const t = useT();
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export function ReadingTab({ config, voice, providers, session, loading }: Readi
           <dl class="facts">
             <div>
               <dt>Service</dt>
-              <dd>{PROVIDER_SCHEMAS[config.provider].label}</dd>
+              <dd>{t(PROVIDER_SCHEMAS[config.provider].labelKey)}</dd>
             </div>
             <div>
               <dt>Voice</dt>

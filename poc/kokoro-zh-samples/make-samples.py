@@ -31,6 +31,7 @@ import re
 import sys
 from pathlib import Path
 
+import cn2an
 import jieba
 import numpy as np
 import onnxruntime as ort
@@ -45,6 +46,10 @@ sys.path.insert(0, str(V11 / 'misakizh'))
 
 TABLE = json.loads((Path(__file__).parent.parent.parent / 'lib/models/phonemize/pinyin-table.json').read_text())
 TONE_LETTER = {1: '˥', 2: '˧˥', 3: '˧˩˧', 4: '˥˩', 5: ''}
+
+# The only characters the tokenizers' normalizers are allowed to remove: the two
+# combining marks the syllable table emits, neither of which is in any vocabulary.
+KNOWN_STRIPPED = {'\u032F', '\u0329'}
 
 
 def retone(ipa: str) -> str:
@@ -77,6 +82,18 @@ class Tokenizer:
         unknown = sorted({c for c in kept if c not in self.vocab})
         if unknown:
             raise SystemExit(f'{self.name}: chars kept but not in vocab: {unknown}')
+        # The normalizer is supposed to remove exactly the two combining marks the
+        # syllable table emits, and nothing else. Anything else it removes means
+        # the phoneme string was never put through the pipeline it should have
+        # been — a full-width comma, a digit, a Han character — and the clip is
+        # silently missing something audible.
+        dropped = sorted(set(phonemes) - set(kept))
+        unexpected = [c for c in dropped if c not in KNOWN_STRIPPED]
+        if unexpected:
+            raise SystemExit(
+                f'{self.name}: normalizer dropped unexpected chars {unexpected!r} '
+                f'from {phonemes!r}'
+            )
         ids = [0] + [self.vocab[c] for c in kept] + [0]   # TemplateProcessing adds `$` both ends
         return ids, len(phonemes) - len(kept), kept
 
@@ -114,11 +131,31 @@ def write_wav(path: Path, samples: np.ndarray, rate=24000) -> None:
 
 # --- the legacy reference (the training target) -----------------------------
 
+def map_punctuation(text: str) -> str:
+    """misaki `ZHG2P.map_punctuation`, verbatim."""
+    for a, b in [('、', ', '), ('，', ', '), ('。', '. '), ('．', '. '), ('！', '! '),
+                 ('：', ': '), ('；', '; '), ('？', '? '),
+                 ('«', ' “'), ('»', '” '), ('《', ' “'), ('》', '” '),
+                 ('「', ' “'), ('」', '” '), ('【', ' “'), ('】', '” '),
+                 ('（', ' ('), ('）', ') ')]:
+        text = text.replace(a, b)
+    return text.strip()
+
+
 def legacy_phonemes(text: str) -> str:
     """
-    misaki's `legacy_call`: jieba words, each word's syllables concatenated with
-    no separator, words joined by a space, U+032F deleted at the end.
+    misaki's `ZHG2P.__call__` on the legacy path: cn2an, then map_punctuation,
+    then `legacy_call` — jieba words, each word's syllables concatenated with no
+    separator, words joined by a space, U+032F deleted at the end.
+
+    The two preprocessing steps are load-bearing. Skipping `map_punctuation`
+    leaves full-width `，`/`。` in the string, they are not in the tokenizer's
+    vocabulary, and the normalizer silently deletes them — so the clip loses its
+    pauses entirely and no longer represents the training target at all. That is
+    exactly the bug this function shipped with once; the assertion in
+    `Tokenizer.encode` is what stops it recurring.
     """
+    text = map_punctuation(cn2an.transform(text, 'an2cn'))
     result = ''
     for segment in re.findall(r'[\u4E00-\u9FFF]+|[^\u4E00-\u9FFF]+', text):
         if re.match(r'[\u4E00-\u9FFF]', segment):

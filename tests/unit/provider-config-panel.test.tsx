@@ -571,6 +571,24 @@ describe('the activation circle', () => {
     expect(providerToggle('dashscope').getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('creates a default on-device config without choosing a tier', async () => {
+    const store = new ConfigStore(memoryArea());
+    const onChanged = await renderPanel(store);
+
+    fireEvent.click(providerDot('local'));
+
+    await waitFor(async () => expect(await store.getConfig()).not.toBeNull());
+    const config = await store.getConfig();
+    expect(config).toMatchObject({ provider: 'local', modelId: 'kokoro-82m', device: 'auto' });
+    // Absent, not merely falsy: an explicit `tier` sends `tierFor` down the
+    // "the user chose this" path, where the device is never consulted. That is
+    // how a GPU without `shader-f16` ended up running fp16 and producing
+    // distorted audio that stopped part-way through the sentence.
+    expect(config).not.toHaveProperty('tier');
+
+    expect(onChanged).toHaveBeenCalled();
+  });
+
   it('cannot be pressed for a provider with nothing saved', async () => {
     const store = new ConfigStore(memoryArea());
     await store.saveConfig(DASHSCOPE);

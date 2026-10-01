@@ -271,6 +271,7 @@ export const zh: Record<MessageKey, string> = {
   'model.read-failed': '无法读取已下载的模型。',
   'model.recommended': '推荐用于 WebGPU',
   'model.recommended-cpu': '推荐用于无 GPU 的设备',
+  'model.requires-missing': '此 GPU 不支持，音频会失真',
   'model.license': '许可：{name}',
   'model.voice-count': '{count} 个音色',
   'model.timings': '仅句级高亮',

@@ -31,7 +31,14 @@ import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
 import { formatDecimalBytes } from '~/lib/format-bytes';
 import { type MessageKey, type Translator, useT } from '~/lib/i18n';
 import { fileBytes } from '~/lib/models/downloader';
-import { deviceClass, MODELS, type ModelTier, type OnDeviceModel } from '~/lib/models/registry';
+import {
+  type DeviceCaps,
+  type DeviceClass,
+  deviceClass,
+  MODELS,
+  type ModelTier,
+  type OnDeviceModel,
+} from '~/lib/models/registry';
 import type { ModelSourceSetting } from '~/lib/models/store';
 import { MODEL_HOSTS, type ModelHostId } from '~/lib/models/urls';
 import type { ProviderConfig } from '~/lib/providers/types';
@@ -301,7 +308,7 @@ function TierCards({
                 model={model}
                 tier={tier}
                 status={downloads.statuses[tierKey(model, tier)] ?? { kind: 'unknown' }}
-                recommended={recommendationKey(tier, recommendedClass)}
+                recommended={recommendationKey(tier, recommendedClass, caps)}
                 chosen={chosenTier === tier.id}
                 confirming={confirming === tierKey(model, tier)}
                 onDownload={() => downloads.start(model, tier)}
@@ -333,16 +340,24 @@ function cardMeta(model: OnDeviceModel, t: Translator): string {
 }
 
 /**
- * Why this tier is the one to get, when it is.
+ * Why this tier is the one to get, or why it cannot be used here.
  *
  * A tier can be preferred for exactly one device class, and the badge has to
  * say which: "recommended" alone is a claim about a machine the reader may be
  * looking at from another one.
+ *
+ * A missing *requirement* outranks that and replaces it. "Not preferred" means
+ * slower than it needs to be; "cannot run" means the audio comes out wrong, and
+ * the difference is worth losing the recommendation badge over.
  */
 function recommendationKey(
   tier: ModelTier,
-  preferred: ReturnType<typeof deviceClass> | undefined
+  preferred: DeviceClass | undefined,
+  caps: DeviceCaps | undefined
 ): MessageKey | undefined {
+  if (caps !== undefined && tier.requires !== undefined && !caps[tier.requires]) {
+    return 'model.requires-missing';
+  }
   if (preferred === undefined || tier.preferredFor?.includes(preferred) !== true) return undefined;
   // `wasm` is the only class without a GPU, and the one whose badge must not
   // read as advice to use one.

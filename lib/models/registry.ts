@@ -50,6 +50,17 @@ export interface ModelTier {
    * Absent means "never selected automatically, manual choice only".
    */
   readonly preferredFor?: readonly DeviceClass[];
+  /**
+   * A capability this tier cannot produce correct audio without.
+   *
+   * Not the same question as `preferredFor`. A tier that is merely not
+   * preferred is slower than it needs to be; a tier missing what it requires is
+   * *wrong*, and wrong in a way that does not look like a failure: `fp16` on a
+   * GPU without `shader-f16` overflows to `Inf` and then `NaN`, which arrives
+   * as distorted speech that stops part-way through the sentence. Measured on
+   * exactly such a machine, with `fp32` working perfectly on the same one.
+   */
+  readonly requires?: keyof DeviceCaps;
 }
 
 /**
@@ -148,12 +159,14 @@ export const KOKORO_82M: OnDeviceModel = {
     },
     {
       // Best on a WebGPU device with `shader-f16`: measured RTF ≈ 0.15, at half
-      // of fp32's size.
+      // of fp32's size. It is the one tier that needs something, and the
+      // requirement is the adapter's, not the model's.
       id: 'fp16',
       labelKey: 'model.tier.standard',
       engineArg: 'fp16',
       bytes: 163_230_000,
       preferredFor: ['webgpu-f16'],
+      requires: 'shaderF16',
       files: [...SHARED_MODEL_FILES, 'onnx/model_fp16.onnx'],
     },
     {

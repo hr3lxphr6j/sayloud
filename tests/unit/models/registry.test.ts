@@ -59,6 +59,34 @@ describe('preferredTier', () => {
     const flat: OnDeviceModel = { ...KOKORO_82M, tiers: undefined };
     expect(preferredTier(flat, WASM)).toBeUndefined();
   });
+
+  it('prefers a tier whose requirement the machine does not meet, never', () => {
+    // The two questions have to stay coupled: a tier that needs a capability
+    // must not also be the preferred one somewhere that lacks it, or the
+    // recommendation becomes the bug.
+    for (const caps of [WASM, WEBGPU, WEBGPU_F16]) {
+      const tier = preferredTier(KOKORO_82M, caps);
+      if (tier?.requires !== undefined) expect(caps[tier.requires]).toBe(true);
+    }
+  });
+});
+
+describe('tier requirements', () => {
+  const tierOf = (id: string) => KOKORO_82M.tiers?.find((tier) => tier.id === id);
+
+  it('says fp16 needs shader-f16', () => {
+    // Without it the arithmetic overflows to `Inf` and then `NaN`, which arrives
+    // as distorted speech that stops part-way through the sentence — measured on
+    // a machine whose adapter lacked the extension, with `fp32` working
+    // perfectly on the same one. `preferredFor` cannot express this: it says
+    // which device a tier suits, not which one it *requires*.
+    expect(tierOf('fp16')?.requires).toBe('shaderF16');
+  });
+
+  it('requires nothing of the tiers that run anywhere', () => {
+    expect(tierOf('q8')?.requires).toBeUndefined();
+    expect(tierOf('fp32')?.requires).toBeUndefined();
+  });
 });
 
 describe('the registry', () => {

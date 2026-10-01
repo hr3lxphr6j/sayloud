@@ -197,10 +197,23 @@ export class ReaderController {
     if (!this.doc) return;
 
     // `sync` first: it tells the engine which document this is, and makes it
-    // re-announce the current state when it already has this session.
+    // re-announce the current state when it already has this session. It also
+    // answers when the engine has nothing — see `session-lost` below.
     this.post({ type: 'sync', docId: this.docId });
     if (this.loaded) return;
 
+    this.sendLoad(0);
+  }
+
+  /**
+   * Hand the document to the engine.
+   *
+   * `startIndex` is what separates a first send from a recovery: on a recovery
+   * the reader resumes where it was, because losing the worker is not the same
+   * as being asked to start over.
+   */
+  private sendLoad(startIndex: number): void {
+    if (!this.doc) return;
     this.loaded = true;
     this.post({
       type: 'load',
@@ -208,7 +221,7 @@ export class ReaderController {
         text: sentence.text,
         lang: sentence.lang,
       })),
-      startIndex: 0,
+      startIndex,
       rate: this.initialRate,
     });
   }
@@ -350,6 +363,14 @@ export class ReaderController {
         return;
       case 'word':
         this.onWord(event.index, event.charStart, event.charEnd);
+        return;
+      case 'session-lost':
+        // The worker was recycled and could not rebuild the session. Nothing
+        // else will fix this: `loaded` is still true, so the sentences would
+        // never be sent again, and the reader would sit there pressing a play
+        // button that has nothing to play.
+        console.warn('[SayLoud] the worker lost the session; sending the document again');
+        this.sendLoad(this.state.status?.index ?? 0);
         return;
       default:
         return;

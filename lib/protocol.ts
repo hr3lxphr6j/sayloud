@@ -31,7 +31,17 @@ export type EngineCommand =
 
 export type EngineEvent =
   | { type: 'status'; status: EngineStatus }
-  | { type: 'word'; index: number; charStart: number; charEnd: number };
+  | { type: 'word'; index: number; charStart: number; charEnd: number }
+  /**
+   * The engine has no session, and the reader believes it already sent one.
+   *
+   * Only ever an answer to `sync`, and only when there is nothing to catch the
+   * reader up to. Without it both sides wait forever: the reader will not send
+   * `load` again because as far as it knows it already did, and the engine has
+   * nothing to speak. Reached when the worker was recycled and no usable
+   * snapshot was left behind.
+   */
+  | { type: 'session-lost' };
 
 export interface SessionSnapshot {
   tabId: number;

@@ -652,6 +652,25 @@ describe('PlaybackEngine', () => {
       expect(status().phase).toBe('idle');
       expect(status().total).toBe(0);
     });
+
+    it('tells a reader with no session to send its document again', () => {
+      // A recycled worker comes back with nothing. The reader believes it
+      // already sent its sentences and will never send them again by itself,
+      // so an engine that cannot resume has to say so — otherwise pressing
+      // play does nothing, forever, with no error anywhere to look at.
+      engine.dispatch({ type: 'sync', docId: 'doc-1' });
+
+      expect(events).toContainEqual({ type: 'session-lost' });
+    });
+
+    it('does not ask for the document again when it still has one', () => {
+      engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+      events.length = 0;
+
+      engine.dispatch({ type: 'sync', docId: 'doc-1' });
+
+      expect(events).not.toContainEqual({ type: 'session-lost' });
+    });
   });
 
   describe('subscriptions', () => {

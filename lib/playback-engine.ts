@@ -480,7 +480,16 @@ export class PlaybackEngine {
     this.setPhase('ended');
   }
 
-  private fail(error: EngineError): void {
+  private fail(error: EngineError, detail?: string): void {
+    // The speaker's own message, logged before anything is decided about it.
+    // Without this every cause — a model that was never downloaded, a worker
+    // that died, a rejected key — reaches the console as the same three words,
+    // "speaker failed", and the one detail that says which of them it was is
+    // thrown away a frame later.
+    if (detail !== undefined && detail.length > 0) {
+      console.warn(`[SayLoud] the speaker reported: ${detail}`);
+    }
+
     // Only a TTS error is worth retrying on another speaker: no installed voice
     // is a dead end for every speaker, and the UI has to say so.
     if (this.fallbackSpeaker && error === 'tts-error' && !this.usingFallback) {
@@ -536,7 +545,7 @@ export class PlaybackEngine {
       }),
       this.speaker.on('word', (span) => this.onWord(span)),
       this.speaker.on('end', () => this.onEnd()),
-      this.speaker.on('error', () => this.fail('tts-error'))
+      this.speaker.on('error', (message) => this.fail('tts-error', message))
     );
   }
 

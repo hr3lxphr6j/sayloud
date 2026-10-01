@@ -364,6 +364,10 @@ export const en = {
   // What the line means, so "WebGPU" before anything has been loaded does not
   // read as a claim that a model is already running there.
   'model.device.help': 'Used the next time the model loads.',
+  'model.device.resolved': 'Will run on',
+  'model.device.option-auto': 'Choose automatically (recommended)',
+  'model.device.option-webgpu': 'WebGPU — this machine’s graphics',
+  'model.device.option-wasm': 'CPU — slower, always works',
 } as const;
 
 /** Every message the UI can ask for. */

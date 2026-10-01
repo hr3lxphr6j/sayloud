@@ -22,7 +22,7 @@
 # 依赖（见 P5 spec 与 poc/kokoro-v11zh-webgpu/README.md）
 #   /tmp/zhvenv        python + pypinyin/pypinyin-dict/jieba/cn2an/addict/ordered-set/numpy/onnxruntime
 #   /tmp/misakizh      misaki 的 zh 前端（从 GitHub 原始文件拼装）
-#   /tmp/kokoro-v10    v1.0 的 model.onnx + tokenizer.json + voices/zf_xiaobei.bin
+#   /tmp/kokoro-v10    v1.0 的 model.onnx + tokenizer.json + voices/<V10_VOICE>.bin
 #   /tmp/kokoro-poc-models  v1.1-zh 的 model.onnx + tokenizer.json + voices/zf_001.bin + misakizh
 #   /tmp/jieba-check   npm i jieba-wasm 的临时安装（gen-variants.mjs 从这里 import）
 
@@ -37,6 +37,11 @@ node poc/kokoro-zh-samples/server.mjs      # http://127.0.0.1:8914/
 ```
 
 音频写到 `/tmp/kokoro-zh-samples-out`，清单写到 `samples.json`。
+
+**音色是 `make-samples.py` 顶部的两个常量**（`V10_VOICE = 'zf_xiaoyi'`、`V11_VOICE = 'zf_001'`），
+切换只改一行。v1.0 的 8 个中文音色（`zf_xiaobei`/`zf_xiaoni`/`zf_xiaoxiao`/`zf_xiaoyi`/
+`zm_yunjian`/`zm_yunxi`/`zm_yunxia`/`zm_yunyang`）与 v1.1-zh 的命名（`zf_001..zf_100`）**没有对应关系**，
+所以两阶段的音色不可能一致 —— 页面上会把实际音色显示在标题里。
 
 ## 四个让它可信的设计
 

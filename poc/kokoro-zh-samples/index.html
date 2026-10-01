@@ -126,8 +126,8 @@
 
       const SENTENCE_ORDER = ['r1', 'r2', 'r3', 'r4'];
       const GROUP_TITLES = {
-        fmt: '阶段 1 — 格式对齐（v1.0 模型 · zf_xiaobei）',
-        v11: '阶段 2 — v1.1-zh（zf_001）',
+        fmt: '阶段 1 — 格式对齐',
+        v11: '阶段 2',
       };
       const GROUP_INTROS = {
         fmt: '模型与音色不变，只改音素串。这一组回答「格式对齐这个方向对不对、哪一项在起作用」。',
@@ -151,7 +151,10 @@
         if (rows.length === 0) continue;
 
         const h2 = document.createElement('h2');
-        h2.textContent = GROUP_TITLES[group];
+        // The voice comes from the data, not from this file: it gets switched for
+        // comparison, and a hardcoded name silently lies the moment it does.
+        const voice = rows[0]?.model ?? '';
+        h2.textContent = voice ? `${GROUP_TITLES[group]}（${voice}）` : GROUP_TITLES[group];
         groups.append(h2);
 
         const p = document.createElement('p');

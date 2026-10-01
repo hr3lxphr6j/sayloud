@@ -189,11 +189,15 @@ function SourceCard({ models }: SourceCardProps) {
   return (
     <Card title={t('model.source.title')}>
       <div class="field">
-        <label class="field-label" for="model-source">
-          {t('model.source.label')}
-        </label>
+        {/*
+          No visible label: the card is already titled with the same words, and
+          saying it twice was the second thing on the line and the only thing
+          above the control. The name stays for screen readers, which get no
+          help from a `<legend>`-less card.
+        */}
         <select
           id="model-source"
+          aria-label={t('model.source.label')}
           value={host}
           disabled={models === undefined}
           onChange={(event) =>
@@ -522,7 +526,6 @@ function StorageCard({ device, downloads, preference, onSetDevice }: StorageCard
         </label>
         <select
           id="device-preference"
-          class="input select"
           value={preference}
           onChange={(event) =>
             onSetDevice((event.currentTarget as HTMLSelectElement).value as DevicePreference)

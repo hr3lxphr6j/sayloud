@@ -205,6 +205,26 @@ h2 {
   font-weight: 500;
 }
 
+/*
+ * A control sharing a row with its label sizes to its own content.
+ *
+ * `select` and `textarea` are `width: 100%` for the forms above, where they own
+ * the line; inside a row that same rule leaves the label whatever is left over,
+ * which for a four-character label is a column of single characters.
+ */
+.row select,
+.row textarea {
+  width: auto;
+  /*
+   * Both are needed to get back under 320px. A `select` does not shrink below
+   * its own content by default, and its longest option alone is wider than a
+   * narrow side panel leaves for it — so without these the row overflows the
+   * card rather than the control getting shorter.
+   */
+  min-width: 0;
+  max-width: 100%;
+}
+
 .row-help {
   color: var(--muted);
   font-size: 12px;

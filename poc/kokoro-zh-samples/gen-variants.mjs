@@ -8,20 +8,33 @@
  * rather than only whether the whole batch helps. Each variant flips exactly one
  * flag:
  *
- *   现状            every deviation present (what we ship today)
- *   只修 A 词边界    word-internal concatenation instead of per-syllable spaces
- *   只修 B 标点      punctuation flush instead of space-before-punctuation
- *   只修 C 变调      toneSandhi off
- *   只修 D 去标记    U+032F deleted
- *   全部对齐         A+B+C+D
- *   全部对齐+补丁    A+B+C+D plus the 还书 patch
+ *   现状               every deviation present (what we ship today)
+ *   只修 A（jieba）      word-internal concatenation, words from jieba
+ *   只修 A（ICU）         same, but words from Intl.Segmenter — the comparison
+ *   只修 B 标点         punctuation flush instead of space-before-punctuation
+ *   只修 C 变调         toneSandhi off
+ *   只修 D 去标记       U+032F deleted
+ *   全部对齐            A+B+C+D, jieba boundaries
+ *   全部对齐+补丁        A+B+C+D plus the 还书 patch
  *
  * `现状` is not hand-written: it is asserted equal to the *real* exported
  * `hanToIpa` / `mapPunctuation` / `splitRuns` output, so a drift in either the
  * product code or this reimplementation fails loudly instead of quietly
  * mislabelling a sample. The reimplementation exists only because the real one
  * has the flags hardcoded.
+ *
+ * The word boundaries come from jieba because that is what the model was trained
+ * with (misaki's legacy path is `jieba.lcut` + `lazy_pinyin`). `hmm: true` is
+ * load-bearing: with it off, jieba-wasm splits 还书 into 还|书 and diverges from
+ * the Python jieba the training pipeline used. Measured on 24 sentences,
+ * `cut(text, true)` and Python `jieba.lcut(text)` agree 24/24; with `hmm: false`
+ * they already disagree on the first one.
+ *
+ * jieba-wasm is imported from a scratch install rather than package.json: the
+ * dependency is not part of the product until the spec is approved, and this file
+ * is a spike.
  */
+import { cut } from '/tmp/jieba-check/node_modules/jieba-wasm/pkg/nodejs/jieba_rs_wasm.js';
 import { pinyin } from 'pinyin-pro';
 import { hanToIpa, mapPunctuation, retone, splitRuns, TONE_MAPPING } from '../../lib/models/phonemize/chinese.ts';
 import { numbersToHan } from '../../lib/models/phonemize/numbers.ts';
@@ -74,7 +87,21 @@ function hanToIpaVariant(han, { toneSandhi, stripMark, boundaries }) {
   return words.join(' ');
 }
 
-/** Word lengths from `Intl.Segmenter`, the phase-1 choice (spec §3.2). */
+/**
+ * Word lengths from jieba — the training pipeline's segmenter, and phase 1's
+ * choice (spec §3.2).
+ *
+ * `hmm: true` matches Python `jieba.lcut`'s default. See the file header.
+ */
+function jiebaWordLengths(han) {
+  const words = cut(han, true);
+  const lengths = words.map((w) => [...w].length);
+  const total = lengths.reduce((a, b) => a + b, 0);
+  if (total !== [...han].length) throw new Error(`jieba covered ${total}/${[...han].length} of ${han}`);
+  return lengths;
+}
+
+/** Word lengths from `Intl.Segmenter`, kept only as a comparison. */
 const segmenter = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
 function icuWordLengths(han) {
   const lengths = [];
@@ -175,8 +202,14 @@ const VARIANTS = [
   },
   {
     id: 'fix-a',
-    label: '只修 A 词边界',
-    note: '词内连写、词间空格（Intl.Segmenter）；其余不变',
+    label: '只修 A 词边界（jieba）',
+    note: '词内连写、词间空格，词边界用 jieba（训练时的分词器）；其余不变',
+    opts: { toneSandhi: true, stripMark: false, boundaries: jiebaWordLengths, trimOther: true, spaceBetweenParts: true },
+  },
+  {
+    id: 'fix-a-icu',
+    label: '只修 A（对照：Intl.Segmenter）',
+    note: '同上，但词边界用 Intl.Segmenter —— 听它把「工程师/图书馆」切碎成什么样',
     opts: { toneSandhi: true, stripMark: false, boundaries: icuWordLengths, trimOther: true, spaceBetweenParts: true },
   },
   {
@@ -186,12 +219,6 @@ const VARIANTS = [
     opts: { toneSandhi: true, stripMark: false, boundaries: 'syllable', trimOther: false, spaceBetweenParts: false },
   },
   {
-    id: 'fix-c',
-    label: '只修 C 变调',
-    note: 'toneSandhi:false，「一/不」不再变调；其余不变',
-    opts: { toneSandhi: false, stripMark: false, boundaries: 'syllable', trimOther: true, spaceBetweenParts: true },
-  },
-  {
     id: 'fix-d',
     label: '只修 D 去标记',
     note: '删掉 U+032F；其余不变（预期听不出差别，用来做对照）',
@@ -199,16 +226,22 @@ const VARIANTS = [
   },
   {
     id: 'aligned',
-    label: '全部对齐（A+B+C+D）',
-    note: '阶段 1 的目标：与 legacy 格式一致，只差词边界来源',
-    opts: { toneSandhi: false, stripMark: true, boundaries: icuWordLengths, trimOther: false, spaceBetweenParts: false },
+    label: '对齐 A+B+D（保留变调）',
+    note: '阶段 1 的目标。jieba 边界 + 删 U+032F + 标点紧邻，不动变调；读音仍用 pinyin-pro',
+    opts: { toneSandhi: true, stripMark: true, boundaries: jiebaWordLengths, trimOther: false, spaceBetweenParts: false },
   },
   {
     id: 'aligned-patched',
-    label: '全部对齐 + 补丁',
+    label: '对齐 A+B+D + 补丁',
     note: '在上一版基础上加多音字补丁表（还书 → huán shū）',
     only: ['s3'],
-    opts: { toneSandhi: false, stripMark: true, boundaries: icuWordLengths, trimOther: false, spaceBetweenParts: false, patches: PATCHES },
+    opts: { toneSandhi: true, stripMark: true, boundaries: jiebaWordLengths, trimOther: false, spaceBetweenParts: false, patches: PATCHES },
+  },
+  {
+    id: 'aligned-nosandhi',
+    label: '对齐 A+B+C+D（关变调，对照）',
+    note: '把变调也关掉 —— 原方案。现已知道 legacy 自己也不一致（词典里 56% 变调 / 44% 原调），所以这一项不列入阶段 1',
+    opts: { toneSandhi: false, stripMark: true, boundaries: jiebaWordLengths, trimOther: false, spaceBetweenParts: false },
   },
 ];
 
@@ -280,7 +313,7 @@ for (const sentence of SENTENCES) {
   const { syllables, wordLengths } = phonemize(sentence.text, {
     toneSandhi: true,
     stripMark: true,
-    boundaries: icuWordLengths,
+    boundaries: jiebaWordLengths,
     trimOther: false,
     spaceBetweenParts: false,
     patches: PATCHES,

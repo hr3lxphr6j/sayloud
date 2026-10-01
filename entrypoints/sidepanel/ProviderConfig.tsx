@@ -116,22 +116,31 @@ export function ProviderConfigPanel({
    * disabled in that case, and this is the backstop — so a refusal only has to
    * leave the list as it was.
    *
-   * Exception: the local provider gets a default config (first model, first
-   * tier) when activated with nothing saved, so the user does not have to click
-   * "Set as active" in the Models tab before the circle works here.
+   * Exception: the local provider gets a default config when activated with
+   * nothing saved, and when already active with a saved config, the saved one
+   * is synced to match the active one (fixes stale saved configs).
    */
   const activate = async (provider: ProviderId) => {
     if (provider === 'local') {
-      const saved = (await store.getSavedConfigs()).local;
-      if (!saved) {
+      const configs = await store.getSavedConfigs();
+      const localSaved = configs.local;
+      if (!localSaved) {
         // Create a default config so the user can activate local without visiting
-        // the Models tab first. The first model and first tier are the defaults.
+        // the Models tab first. Use fp16 as the default tier (best balance of
+        // speed and quality when WebGPU is available).
         await store.saveConfig({
           provider: 'local',
           modelId: 'kokoro-82m',
           tier: 'fp16',
           device: 'auto',
         });
+      } else if (localSaved.provider === 'local' && saved?.provider === 'local') {
+        // Sync saved config to active config when they differ (e.g. user changed
+        // tier in Models tab but saved config wasn't updated). This prevents
+        // "model not downloaded" errors when the saved tier differs from active.
+        if (localSaved.tier !== saved.tier || localSaved.modelId !== saved.modelId) {
+          await store.saveConfig(saved);
+        }
       }
     }
     if (await store.setActiveConfig(provider)) onChanged();

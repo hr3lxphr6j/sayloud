@@ -125,15 +125,14 @@ export function ProviderConfigPanel({
       const configs = await store.getSavedConfigs();
       const localSaved = configs.local;
       if (!localSaved) {
-        // Create a default config so the user can activate local without visiting
-        // the Models tab first. Use fp16 as the default tier (best balance of
-        // speed and quality when WebGPU is available).
-        await store.saveConfig({
-          provider: 'local',
-          modelId: 'kokoro-82m',
-          tier: 'fp16',
-          device: 'auto',
-        });
+        // Create a default config so the user can activate local without
+        // visiting the Models tab first.
+        //
+        // No `tier`: which one is right depends on this machine, and only
+        // `preferredTier` knows that. Pinning `fp16` here is what handed a tier
+        // the GPU cannot run — silent, distorted audio — to every machine whose
+        // adapter lacks `shader-f16`, which is most of them.
+        await store.saveConfig({ provider: 'local', modelId: 'kokoro-82m', device: 'auto' });
       } else if (localSaved.provider === 'local' && saved?.provider === 'local') {
         // Sync saved config to active config when they differ (e.g. user changed
         // tier in Models tab but saved config wasn't updated). This prevents
@@ -157,8 +156,12 @@ export function ProviderConfigPanel({
           const inUse = active === id;
           const voice = voices[id];
           // The browser voice needs no config, so it can always be chosen; a
-          // service with nothing saved has nothing to switch to.
-          const activatable = id === 'browser' || config !== null;
+          // service with nothing saved has nothing to switch to. The on-device
+          // model is the exception among services: it has no credentials to
+          // save, and its real prerequisite — a downloaded model — lives in the
+          // Models tab with a link to it from the Reading tab. Refusing here
+          // only hid that step behind a disabled circle nobody could explain.
+          const activatable = id === 'browser' || id === 'local' || config !== null;
 
           return (
             <div class="provider-entry" key={id} data-provider={id} data-active={inUse}>

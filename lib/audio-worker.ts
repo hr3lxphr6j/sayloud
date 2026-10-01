@@ -27,7 +27,13 @@ import type {
   OffscreenEvent,
   SynthesizeReply,
 } from './offscreen-protocol';
-import { errorMessage, isAbortError, isProviderError, ProviderError } from './providers/errors';
+import {
+  abortError,
+  errorMessage,
+  isAbortError,
+  isProviderError,
+  ProviderError,
+} from './providers/errors';
 import type { Provider, ProviderConfig, ProviderId, SynthesisResult } from './providers/types';
 import type { LoadedAudioInfo } from './timeline-player';
 
@@ -56,10 +62,27 @@ export interface AudioWorkerDeps {
   emit: (event: OffscreenEvent) => void;
   /** How long one synthesis may take before it is abandoned. */
   synthesizeTimeoutMs?: number;
+  /**
+   * The same, for on-device models.
+   *
+   * Separate because the cost profile is nothing like a cloud call's: there is
+   * no network, but the first sentence of a session also builds the inference
+   * session.
+   */
+  localSynthesizeTimeoutMs?: number;
 }
 
 /** Long enough for a slow provider on a slow connection. */
 const DEFAULT_SYNTHESIZE_TIMEOUT_MS = 30_000;
+
+/**
+ * The on-device engine gets far longer, and for a reason no cloud provider has:
+ * the first sentence of a session also builds an inference session. Measured at
+ * 12–13 seconds for a tier already on disk, before the audio decode that shares
+ * the same machine — and a tier that is *not* yet downloaded would be worse
+ * still. Thirty seconds is not a budget this work fits in.
+ */
+const LOCAL_SYNTHESIZE_TIMEOUT_MS = 180_000;
 
 /**
  * How many sentences may be queued for prefetching.
@@ -110,6 +133,7 @@ export class AudioWorker {
   private readonly player: AudioTimeline;
   private readonly emit: (event: OffscreenEvent) => void;
   private readonly synthesizeTimeoutMs: number;
+  private readonly localSynthesizeTimeoutMs: number;
 
   /**
    * Bumped by every command that supersedes work in flight. A synthesis that
@@ -142,6 +166,7 @@ export class AudioWorker {
     this.player = deps.player;
     this.emit = deps.emit;
     this.synthesizeTimeoutMs = deps.synthesizeTimeoutMs ?? DEFAULT_SYNTHESIZE_TIMEOUT_MS;
+    this.localSynthesizeTimeoutMs = deps.localSynthesizeTimeoutMs ?? LOCAL_SYNTHESIZE_TIMEOUT_MS;
   }
 
   /**
@@ -200,7 +225,7 @@ export class AudioWorker {
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, this.synthesizeTimeoutMs);
+    }, this.timeoutFor(command.config.provider));
 
     const identity: CacheIdentity = {
       text: command.text,
@@ -213,9 +238,12 @@ export class AudioWorker {
       let result = key === null ? undefined : await this.readCache(key);
 
       if (!result) {
-        result = await this.providerFor(command.config.provider).synthesize(
-          { text: command.text, voiceId: command.voiceId, signal: controller.signal },
-          command.config
+        result = await this.raceAbort(
+          this.providerFor(command.config.provider).synthesize(
+            { text: command.text, voiceId: command.voiceId, signal: controller.signal },
+            command.config
+          ),
+          controller.signal
         );
         if (this.stale(generation)) return undefined;
         if (key !== null) await this.writeCache(key, result);
@@ -322,7 +350,7 @@ export class AudioWorker {
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, this.synthesizeTimeoutMs);
+    }, this.timeoutFor(config.provider));
 
     try {
       const identity: CacheIdentity = { text: item.text, voiceId: item.voiceId, config };
@@ -334,9 +362,12 @@ export class AudioWorker {
       if (await this.readCache(key)) return;
       if (this.prefetchStale(batch)) return;
 
-      const result = await this.providerFor(config.provider).synthesize(
-        { text: item.text, voiceId: item.voiceId, signal: controller.signal },
-        config
+      const result = await this.raceAbort(
+        this.providerFor(config.provider).synthesize(
+          { text: item.text, voiceId: item.voiceId, signal: controller.signal },
+          config
+        ),
+        controller.signal
       );
       if (this.prefetchStale(batch)) return;
 
@@ -354,6 +385,40 @@ export class AudioWorker {
 
   private prefetchStale(batch: number): boolean {
     return batch !== this.prefetchBatch;
+  }
+
+  /** How long a synthesis from this provider gets before it is abandoned. */
+  private timeoutFor(provider: ProviderId): number {
+    return provider === 'local' ? this.localSynthesizeTimeoutMs : this.synthesizeTimeoutMs;
+  }
+
+  /**
+   * Settle when the signal aborts, even if the work does not.
+   *
+   * Every cloud adapter honours its signal, because `fetch` does. The on-device
+   * engine cannot: `load()` has no signal to honour, so a stop or a seek that
+   * arrives while a session is being built would leave this worker awaiting a
+   * promise nothing will ever settle. The playback is gone either way, but the
+   * request would stay counted as in flight and the next sentence would queue
+   * behind a sentence nobody is listening to.
+   */
+  private raceAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) return Promise.reject(abortError());
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = (): void => reject(abortError());
+      // `once` removes it when it fires; the settling paths below remove it.
+      signal.addEventListener('abort', onAbort, { once: true });
+      work.then(
+        (value) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        },
+        (error: unknown) => {
+          signal.removeEventListener('abort', onAbort);
+          reject(error);
+        }
+      );
+    });
   }
 
   /** Abort the request in flight and return the new generation. */

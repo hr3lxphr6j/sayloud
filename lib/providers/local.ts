@@ -24,7 +24,7 @@ import { durationMsFor, pcmToWav } from '../models/audio';
 import type { Device, DevicePreference, DeviceProbe } from '../models/device';
 import { DeviceUnavailableError, resolveDevice } from '../models/device';
 import type { ModelCacheStorage } from '../models/downloader';
-import type { OnDeviceEngine } from '../models/engine';
+import { isWorkerDeadError, type OnDeviceEngine } from '../models/engine';
 import {
   KOKORO_82M,
   type ModelTier,
@@ -164,25 +164,35 @@ export class LocalProvider implements Provider {
     const device = await this.deviceFor(local);
     const engine = await this.engineFor();
 
-    // Idempotent for an unchanged tier and device, so this is cheap on every
-    // sentence and only rebuilds when the user actually changed something.
-    await engine.load(model, tier, device);
+    try {
+      // Idempotent for an unchanged tier and device, so this is cheap on every
+      // sentence and only rebuilds when the user actually changed something.
+      await engine.load(model, tier, device);
 
-    const lang = local.lang ?? voiceLanguage(request.voiceId) ?? 'en-US';
-    const { pcm, sampleRate } = await engine.synthesize(
-      request.text,
-      request.voiceId,
-      lang,
-      request.signal
-    );
+      const lang = local.lang ?? voiceLanguage(request.voiceId) ?? 'en-US';
+      const { pcm, sampleRate } = await engine.synthesize(
+        request.text,
+        request.voiceId,
+        lang,
+        request.signal
+      );
 
-    // No timings, ever: Kokoro returns audio and nothing else, and SayLoud
-    // highlights the whole sentence rather than estimating word positions.
-    return {
-      audio: pcmToWav(pcm, sampleRate),
-      mime: 'audio/wav',
-      durationMs: durationMsFor(pcm.length, sampleRate),
-    };
+      // No timings, ever: Kokoro returns audio and nothing else, and SayLoud
+      // highlights the whole sentence rather than estimating word positions.
+      return {
+        audio: pcmToWav(pcm, sampleRate),
+        mime: 'audio/wav',
+        durationMs: durationMsFor(pcm.length, sampleRate),
+      };
+    } catch (error) {
+      // A worker that died cannot answer anything again, so this instance is
+      // kept no longer: the next sentence builds a fresh one. Every other
+      // failure — an unknown voice, a tier that will not load, an aborted
+      // request — leaves the engine in place, because rebuilding it would pay
+      // for the ONNX session a second time for an error that is not about it.
+      if (isWorkerDeadError(error)) this.engine = null;
+      throw error;
+    }
   }
 
   private async isDownloaded(model: OnDeviceModel, tier: ModelTier): Promise<boolean> {

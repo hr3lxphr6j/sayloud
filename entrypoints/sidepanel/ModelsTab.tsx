@@ -33,7 +33,6 @@ import { type MessageKey, type Translator, useT } from '~/lib/i18n';
 import type { DevicePreference } from '~/lib/models/device';
 import { fileBytes } from '~/lib/models/downloader';
 import {
-  type DeviceCaps,
   type DeviceClass,
   deviceClass,
   MODELS,
@@ -314,7 +313,7 @@ function TierCards({
                 model={model}
                 tier={tier}
                 status={downloads.statuses[tierKey(model, tier)] ?? { kind: 'unknown' }}
-                recommended={recommendationKey(tier, recommendedClass, caps)}
+                recommended={recommendationKey(tier, recommendedClass)}
                 chosen={chosenTier === tier.id}
                 confirming={confirming === tierKey(model, tier)}
                 onDownload={() => downloads.start(model, tier)}
@@ -346,28 +345,23 @@ function cardMeta(model: OnDeviceModel, t: Translator): string {
 }
 
 /**
- * Why this tier is the one to get, or why it cannot be used here.
+ * Why this tier is the one to get, or why it must not be used here.
  *
  * A tier can be preferred for exactly one device class, and the badge has to
  * say which: "recommended" alone is a claim about a machine the reader may be
  * looking at from another one.
  *
- * A missing *requirement* outranks that and replaces it. "Not preferred" means
- * slower than it needs to be; "cannot run" means the audio comes out wrong, and
- * the difference is worth losing the recommendation badge over.
+ * A known-broken combination outranks that and replaces it. "Not preferred"
+ * means slower than it needs to be; "broken here" means the audio comes out
+ * wrong, and that is worth losing the recommendation badge over.
  */
-function recommendationKey(
-  tier: ModelTier,
-  preferred: DeviceClass | undefined,
-  caps: DeviceCaps | undefined
-): MessageKey | undefined {
-  if (caps !== undefined && tier.requires !== undefined && !caps[tier.requires]) {
-    return 'model.requires-missing';
-  }
-  if (preferred === undefined || tier.preferredFor?.includes(preferred) !== true) return undefined;
+function recommendationKey(tier: ModelTier, cls: DeviceClass | undefined): MessageKey | undefined {
+  if (cls === undefined) return undefined;
+  if (tier.brokenOn?.includes(cls) === true) return 'model.broken-on-device';
+  if (tier.preferredFor?.includes(cls) !== true) return undefined;
   // `wasm` is the only class without a GPU, and the one whose badge must not
   // read as advice to use one.
-  return preferred === 'wasm' ? 'model.recommended-cpu' : 'model.recommended';
+  return cls === 'wasm' ? 'model.recommended-cpu' : 'model.recommended';
 }
 
 function modelHasTier(model: OnDeviceModel, tierId: string): boolean {

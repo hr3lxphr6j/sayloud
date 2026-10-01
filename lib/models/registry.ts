@@ -51,16 +51,22 @@ export interface ModelTier {
    */
   readonly preferredFor?: readonly DeviceClass[];
   /**
-   * A capability this tier cannot produce correct audio without.
+   * Device classes where this tier is known to produce wrong audio.
    *
-   * Not the same question as `preferredFor`. A tier that is merely not
-   * preferred is slower than it needs to be; a tier missing what it requires is
-   * *wrong*, and wrong in a way that does not look like a failure: `fp16` on a
-   * GPU without `shader-f16` overflows to `Inf` and then `NaN`, which arrives
-   * as distorted speech that stops part-way through the sentence. Measured on
-   * exactly such a machine, with `fp32` working perfectly on the same one.
+   * Neither a missing `preferredFor` nor a capability requirement can express
+   * this. "Not preferred" means slower than it needs to be; a missing
+   * capability means the hardware cannot do the arithmetic at all. This is the
+   * third case: the capability is there, the session builds, and the backend is
+   * simply wrong.
+   *
+   * `fp16` on WebGPU is that case. Measured 2026-10-01 on an Apple M3, whose
+   * adapter does advertise `shader-f16`: the audio was distorted and stopped
+   * part-way through the sentence, while the _same weights_ on the CPU were
+   * perfect and `fp32` on the same GPU was perfect too. It is the combination
+   * of this dtype with this backend, and nothing was ever verified about the
+   * audio — V20 measured fp16's *speed* and never its quality.
    */
-  readonly requires?: keyof DeviceCaps;
+  readonly brokenOn?: readonly DeviceClass[];
 }
 
 /**
@@ -158,24 +164,29 @@ export const KOKORO_82M: OnDeviceModel = {
       files: [...SHARED_MODEL_FILES, 'onnx/model_quantized.onnx'],
     },
     {
-      // Best on a WebGPU device with `shader-f16`: measured RTF ≈ 0.15, at half
-      // of fp32's size. It is the one tier that needs something, and the
-      // requirement is the adapter's, not the model's.
+      // Half of fp32's size, and it was the recommended tier for a `shader-f16`
+      // GPU until its audio was actually listened to. It produces distorted
+      // speech that stops part-way through on WebGPU — measured on hardware whose
+      // adapter advertises the extension — while the same weights on the CPU are
+      // flawless. So it is never recommended, and the Models tab says why.
       id: 'fp16',
       labelKey: 'model.tier.standard',
       engineArg: 'fp16',
       bytes: 163_230_000,
-      preferredFor: ['webgpu-f16'],
-      requires: 'shaderF16',
+      brokenOn: ['webgpu-f16', 'webgpu'],
       files: [...SHARED_MODEL_FILES, 'onnx/model_fp16.onnx'],
     },
     {
-      // WebGPU without `shader-f16`, and the most compatible.
+      // WebGPU, with or without `shader-f16`. It took over the `webgpu-f16`
+      // class from fp16, which means the larger download is now the one
+      // automatic selection makes on a modern GPU — correctness is not
+      // negotiable, and every other tier of this model has a device class where
+      // it is the right answer.
       id: 'fp32',
       labelKey: 'model.tier.hifi',
       engineArg: 'fp32',
       bytes: 325_530_000,
-      preferredFor: ['webgpu'],
+      preferredFor: ['webgpu-f16', 'webgpu'],
       files: [...SHARED_MODEL_FILES, 'onnx/model.onnx'],
     },
   ],
@@ -217,5 +228,10 @@ export function preferredTier(model: OnDeviceModel, caps: DeviceCaps): ModelTier
   if (!tiers || tiers.length === 0) return undefined;
 
   const wanted = deviceClass(caps);
-  return tiers.find((tier) => tier.preferredFor?.includes(wanted)) ?? tiers[0];
+  return (
+    tiers.find(
+      (tier) =>
+        tier.preferredFor?.includes(wanted) === true && tier.brokenOn?.includes(wanted) !== true
+    ) ?? tiers[0]
+  );
 }

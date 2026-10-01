@@ -344,7 +344,7 @@ export const en = {
   // nothing when the user reads it on the other one.
   'model.recommended': 'Recommended for WebGPU',
   'model.recommended-cpu': 'Recommended without a GPU',
-  'model.requires-missing': 'This GPU cannot run it — the audio would be distorted',
+  'model.broken-on-device': 'Known to distort the audio on this device',
   'model.license': 'Licence: {name}',
   'model.voice-count': '{count} voices',
   'model.timings': 'Sentence highlighting',

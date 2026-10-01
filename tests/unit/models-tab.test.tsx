@@ -246,11 +246,16 @@ describe('the model cards', () => {
     expect(tierRow(fp16).textContent).not.toContain('Recommended');
   });
 
-  it('recommends fp16 where shader-f16 is available', async () => {
+  it('sends both GPU classes to fp32, and warns about fp16 instead', async () => {
     renderTab({ probe: () => Promise.resolve({ caps: { webgpu: true, shaderF16: true } }) });
 
     await screen.findByText('Kokoro 82M');
-    await waitFor(() => expect(tierRow(fp16).textContent).toContain('Recommended for WebGPU'));
+    // `shader-f16` is present, and it does not matter: fp16 on WebGPU distorts
+    // the audio regardless (measured 2026-10-01 on an Apple M3). So the badge
+    // that used to sit on fp16 now sits on fp32, and fp16 says what it does.
+    await waitFor(() => expect(tierRow(fp32).textContent).toContain('Recommended for WebGPU'));
+    expect(tierRow(fp16).textContent).toContain('Known to distort the audio on this device');
+    expect(tierRow(fp16).textContent).not.toContain('Recommended');
     expect(tierRow(q8).textContent).not.toContain('Recommended');
   });
 });

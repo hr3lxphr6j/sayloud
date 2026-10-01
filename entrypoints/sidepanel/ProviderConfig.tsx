@@ -514,9 +514,11 @@ function ProviderForm({
       {/*
         Last, and quiet: deleting is the rare thing to do here, and it is the
         only way to drop a key once it is stored. Offered only when there is
-        something to delete.
+        something to delete. Hidden for providers whose fields are all hidden
+        (e.g. local, whose config lives on the Models tab) — there is no key
+        to delete.
       */}
-      {saved && (
+      {saved && schema.fields.some((f) => !f.hidden) && (
         <button
           type="button"
           class="provider-delete"

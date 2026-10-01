@@ -33,6 +33,15 @@ import {
   type WorkerRequest,
 } from '~/lib/models/worker-protocol';
 import type { ProviderErrorCode } from '~/lib/providers/errors';
+// The URLs the bundle emitted for ONNX Runtime's wasm pair.
+//
+// Spelled as a path into `node_modules` because `@huggingface/transformers`
+// exports only its entry points, and `?url` because ORT builds this path at
+// runtime and `import()`s it — nothing else lets a bundler see the file, and
+// without it the glue module is left out of the build entirely, ORT falls back
+// to its jsdelivr default, and `script-src 'self'` blocks it.
+import ortGlueUrl from '../../node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs?url';
+import ortWasmUrl from '../../node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm?url';
 
 /** The slice of `DedicatedWorkerGlobalScope` used here. */
 interface WorkerScope {
@@ -59,11 +68,14 @@ const scope = self as unknown as WorkerScope;
  * entirely — a global manifest change that would have put all six cloud
  * providers at risk.
  *
- * `wasmPaths` is deliberately *not* set. The bundler resolves ONNX Runtime's
- * own `new URL('...wasm', import.meta.url)` into an asset emitted inside the
- * extension, which is exactly the "the extension's own copy, never a CDN" the
- * spec asks for — and overriding it with a directory we would then have to keep
- * in step with the package is a second source of truth for a 21 MB file.
+ * `wasmPaths` **must** name both files, and this is the one thing that has to be
+ * spelled out rather than inferred. ONNX Runtime assembles that path at runtime
+ * and `import()`s the result, so no bundler can rewrite it: the wasm binary
+ * happens to arrive as an asset because ORT also mentions it in a static
+ * `new URL(...)`, but the glue module does not — it was left out of the build
+ * altogether, ORT fell back to its jsdelivr default, and the extension's
+ * `script-src 'self'` blocked it. The symptom was "no available backend found"
+ * on every synthesis, with the model downloaded and the GPU sitting right there.
  */
 function configureRuntime(): void {
   env.allowLocalModels = false;
@@ -71,7 +83,18 @@ function configureRuntime(): void {
   // `backends` is typed `Partial<Env>`, so the wasm flags may be absent on a
   // build that does not ship the backend at all.
   const wasm = env.backends.onnx.wasm;
-  if (wasm) wasm.numThreads = 1;
+  if (wasm) {
+    wasm.numThreads = 1;
+    // Absolute, because ONNX Runtime hands these straight to `import()` and to
+    // `fetch` from inside a worker whose base URL is this file's own path.
+    // Resolved against `self.location` rather than left as the bundle's
+    // root-relative spelling, so no assumption about that resolution has to
+    // hold.
+    wasm.wasmPaths = {
+      mjs: new URL(ortGlueUrl, self.location.href).href,
+      wasm: new URL(ortWasmUrl, self.location.href).href,
+    };
+  }
 }
 
 /**

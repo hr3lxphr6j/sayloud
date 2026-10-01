@@ -20,8 +20,24 @@
   "sentenceId": "s1",
   "text": "他是一个工程师，在图书馆工作。",
   "why": "多字词（工程师 / 图书馆）→ 词边界的影响最大；逗号处听停顿",
-  "label": "只修 A 词边界",
-  "note": "词内连写、词间空格（Intl.Segmenter）；其余不变",
+  "label": "只修 A 词边界（jieba）",
+  "note": "词内连写、词间空格，词边界用 jieba（训练时的分词器）；其余不变",
+  "phonemes": "tʰa→ ʂɻ̩↘ i↗kɤ↘ kʊ→ŋꭧʰə↗ŋʂɻ̩→ , ʦai̯↘ tʰu↗ʂu→kwa↓n kʊ→ŋʦwo↘ .",
+  "keptByNormalizer": "tʰa→ ʂɻ↘ i↗kɤ↘ kʊ→ŋꭧʰə↗ŋʂɻ→ , ʦai↘ tʰu↗ʂu→kwa↓n kʊ→ŋʦwo↘ .",
+  "stripped": 3,
+  "idsDigest": "4e68d81c",
+  "idsLength": 60,
+  "seconds": 4.67,
+  "model": "v1.0 / zf_xiaobei",
+  "wav": "fmt-s1-01.wav"
+ },
+ {
+  "group": "fmt",
+  "sentenceId": "s1",
+  "text": "他是一个工程师，在图书馆工作。",
+  "why": "多字词（工程师 / 图书馆）→ 词边界的影响最大；逗号处听停顿",
+  "label": "只修 A（对照：Intl.Segmenter）",
+  "note": "同上，但词边界用 Intl.Segmenter —— 听它把「工程师/图书馆」切碎成什么样",
   "phonemes": "tʰa→ʂɻ̩↘ i↗kɤ↘ kʊ→ŋꭧʰə↗ŋ ʂɻ̩→ , ʦai̯↘ tʰu↗ʂu→ kwa↓n kʊ→ŋʦwo↘ .",
   "keptByNormalizer": "tʰa→ʂɻ↘ i↗kɤ↘ kʊ→ŋꭧʰə↗ŋ ʂɻ→ , ʦai↘ tʰu↗ʂu→ kwa↓n kʊ→ŋʦwo↘ .",
   "stripped": 3,
@@ -29,7 +45,7 @@
   "idsLength": 61,
   "seconds": 4.67,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s1-01.wav"
+  "wav": "fmt-s1-02.wav"
  },
  {
   "group": "fmt",
@@ -44,22 +60,6 @@
   "idsDigest": "5a44b79d",
   "idsLength": 64,
   "seconds": 4.72,
-  "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s1-02.wav"
- },
- {
-  "group": "fmt",
-  "sentenceId": "s1",
-  "text": "他是一个工程师，在图书馆工作。",
-  "why": "多字词（工程师 / 图书馆）→ 词边界的影响最大；逗号处听停顿",
-  "label": "只修 C 变调",
-  "note": "toneSandhi:false，「一/不」不再变调；其余不变",
-  "phonemes": "tʰa→ ʂɻ̩↘ i→ kɤ↘ kʊ→ŋ ꭧʰə↗ŋ ʂɻ̩→ , ʦai̯↘ tʰu↗ ʂu→ kwa↓n kʊ→ŋ ʦwo↘ .",
-  "keptByNormalizer": "tʰa→ ʂɻ↘ i→ kɤ↘ kʊ→ŋ ꭧʰə↗ŋ ʂɻ→ , ʦai↘ tʰu↗ ʂu→ kwa↓n kʊ→ŋ ʦwo↘ .",
-  "stripped": 3,
-  "idsDigest": "e5af1769",
-  "idsLength": 66,
-  "seconds": 4.67,
   "model": "v1.0 / zf_xiaobei",
   "wav": "fmt-s1-03.wav"
  },
@@ -84,16 +84,32 @@
   "sentenceId": "s1",
   "text": "他是一个工程师，在图书馆工作。",
   "why": "多字词（工程师 / 图书馆）→ 词边界的影响最大；逗号处听停顿",
-  "label": "全部对齐（A+B+C+D）",
-  "note": "阶段 1 的目标：与 legacy 格式一致，只差词边界来源",
-  "phonemes": "tʰa→ʂɻ̩↘ i→kɤ↘ kʊ→ŋꭧʰə↗ŋ ʂɻ̩→, ʦai↘ tʰu↗ʂu→ kwa↓n kʊ→ŋʦwo↘.",
-  "keptByNormalizer": "tʰa→ʂɻ↘ i→kɤ↘ kʊ→ŋꭧʰə↗ŋ ʂɻ→, ʦai↘ tʰu↗ʂu→ kwa↓n kʊ→ŋʦwo↘.",
+  "label": "对齐 A+B+D（保留变调）",
+  "note": "阶段 1 的目标。jieba 边界 + 删 U+032F + 标点紧邻，不动变调；读音仍用 pinyin-pro",
+  "phonemes": "tʰa→ ʂɻ̩↘ i↗kɤ↘ kʊ→ŋꭧʰə↗ŋʂɻ̩→, ʦai↘ tʰu↗ʂu→kwa↓n kʊ→ŋʦwo↘.",
+  "keptByNormalizer": "tʰa→ ʂɻ↘ i↗kɤ↘ kʊ→ŋꭧʰə↗ŋʂɻ→, ʦai↘ tʰu↗ʂu→kwa↓n kʊ→ŋʦwo↘.",
   "stripped": 2,
-  "idsDigest": "61aaa1d8",
-  "idsLength": 59,
-  "seconds": 4.65,
+  "idsDigest": "2aaf48fd",
+  "idsLength": 58,
+  "seconds": 4.6,
   "model": "v1.0 / zf_xiaobei",
   "wav": "fmt-s1-05.wav"
+ },
+ {
+  "group": "fmt",
+  "sentenceId": "s1",
+  "text": "他是一个工程师，在图书馆工作。",
+  "why": "多字词（工程师 / 图书馆）→ 词边界的影响最大；逗号处听停顿",
+  "label": "对齐 A+B+C+D（关变调，对照）",
+  "note": "把变调也关掉 —— 原方案。现已知道 legacy 自己也不一致（词典里 56% 变调 / 44% 原调），所以这一项不列入阶段 1",
+  "phonemes": "tʰa→ ʂɻ̩↘ i→kɤ↘ kʊ→ŋꭧʰə↗ŋʂɻ̩→, ʦai↘ tʰu↗ʂu→kwa↓n kʊ→ŋʦwo↘.",
+  "keptByNormalizer": "tʰa→ ʂɻ↘ i→kɤ↘ kʊ→ŋꭧʰə↗ŋʂɻ→, ʦai↘ tʰu↗ʂu→kwa↓n kʊ→ŋʦwo↘.",
+  "stripped": 2,
+  "idsDigest": "00c9571f",
+  "idsLength": 58,
+  "seconds": 4.62,
+  "model": "v1.0 / zf_xiaobei",
+  "wav": "fmt-s1-06.wav"
  },
  {
   "group": "fmt",
@@ -109,15 +125,31 @@
   "idsLength": 38,
   "seconds": 3.3,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s2-06.wav"
+  "wav": "fmt-s2-07.wav"
  },
  {
   "group": "fmt",
   "sentenceId": "s2",
   "text": "一石二鸟，一举两得。",
   "why": "两个「一」→ 变调差异最容易听出来",
-  "label": "只修 A 词边界",
-  "note": "词内连写、词间空格（Intl.Segmenter）；其余不变",
+  "label": "只修 A 词边界（jieba）",
+  "note": "词内连写、词间空格，词边界用 jieba（训练时的分词器）；其余不变",
+  "phonemes": "i↘ʂɻ̩↗ɚ↘njau̯↓ , i↘ʨy↓lja↓ŋtɤ↗ .",
+  "keptByNormalizer": "i↘ʂɻ↗ɚ↘njau↓ , i↘ʨy↓lja↓ŋtɤ↗ .",
+  "stripped": 2,
+  "idsDigest": "81f62382",
+  "idsLength": 32,
+  "seconds": 3.25,
+  "model": "v1.0 / zf_xiaobei",
+  "wav": "fmt-s2-08.wav"
+ },
+ {
+  "group": "fmt",
+  "sentenceId": "s2",
+  "text": "一石二鸟，一举两得。",
+  "why": "两个「一」→ 变调差异最容易听出来",
+  "label": "只修 A（对照：Intl.Segmenter）",
+  "note": "同上，但词边界用 Intl.Segmenter —— 听它把「工程师/图书馆」切碎成什么样",
   "phonemes": "i↘ʂɻ̩↗ɚ↘njau̯↓ , i↘ʨy↓ lja↓ŋ tɤ↗ .",
   "keptByNormalizer": "i↘ʂɻ↗ɚ↘njau↓ , i↘ʨy↓ lja↓ŋ tɤ↗ .",
   "stripped": 2,
@@ -125,7 +157,7 @@
   "idsLength": 34,
   "seconds": 3.25,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s2-07.wav"
+  "wav": "fmt-s2-09.wav"
  },
  {
   "group": "fmt",
@@ -141,23 +173,7 @@
   "idsLength": 36,
   "seconds": 3.23,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s2-08.wav"
- },
- {
-  "group": "fmt",
-  "sentenceId": "s2",
-  "text": "一石二鸟，一举两得。",
-  "why": "两个「一」→ 变调差异最容易听出来",
-  "label": "只修 C 变调",
-  "note": "toneSandhi:false，「一/不」不再变调；其余不变",
-  "phonemes": "i→ ʂɻ̩↗ ɚ↘ njau̯↓ , i→ ʨy↓ lja↓ŋ tɤ↗ .",
-  "keptByNormalizer": "i→ ʂɻ↗ ɚ↘ njau↓ , i→ ʨy↓ lja↓ŋ tɤ↗ .",
-  "stripped": 2,
-  "idsDigest": "f75157d6",
-  "idsLength": 38,
-  "seconds": 3.33,
-  "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s2-09.wav"
+  "wav": "fmt-s2-10.wav"
  },
  {
   "group": "fmt",
@@ -173,23 +189,39 @@
   "idsLength": 38,
   "seconds": 3.3,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s2-10.wav"
+  "wav": "fmt-s2-11.wav"
  },
  {
   "group": "fmt",
   "sentenceId": "s2",
   "text": "一石二鸟，一举两得。",
   "why": "两个「一」→ 变调差异最容易听出来",
-  "label": "全部对齐（A+B+C+D）",
-  "note": "阶段 1 的目标：与 legacy 格式一致，只差词边界来源",
-  "phonemes": "i→ʂɻ̩↗ɚ↘njau↓, i→ʨy↓ lja↓ŋ tɤ↗.",
-  "keptByNormalizer": "i→ʂɻ↗ɚ↘njau↓, i→ʨy↓ lja↓ŋ tɤ↗.",
+  "label": "对齐 A+B+D（保留变调）",
+  "note": "阶段 1 的目标。jieba 边界 + 删 U+032F + 标点紧邻，不动变调；读音仍用 pinyin-pro",
+  "phonemes": "i↘ʂɻ̩↗ɚ↘njau↓, i↘ʨy↓lja↓ŋtɤ↗.",
+  "keptByNormalizer": "i↘ʂɻ↗ɚ↘njau↓, i↘ʨy↓lja↓ŋtɤ↗.",
   "stripped": 1,
-  "idsDigest": "804d8186",
-  "idsLength": 32,
-  "seconds": 3.25,
+  "idsDigest": "c6b22286",
+  "idsLength": 30,
+  "seconds": 3.3,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s2-11.wav"
+  "wav": "fmt-s2-12.wav"
+ },
+ {
+  "group": "fmt",
+  "sentenceId": "s2",
+  "text": "一石二鸟，一举两得。",
+  "why": "两个「一」→ 变调差异最容易听出来",
+  "label": "对齐 A+B+C+D（关变调，对照）",
+  "note": "把变调也关掉 —— 原方案。现已知道 legacy 自己也不一致（词典里 56% 变调 / 44% 原调），所以这一项不列入阶段 1",
+  "phonemes": "i→ʂɻ̩↗ɚ↘njau↓, i→ʨy↓lja↓ŋtɤ↗.",
+  "keptByNormalizer": "i→ʂɻ↗ɚ↘njau↓, i→ʨy↓lja↓ŋtɤ↗.",
+  "stripped": 1,
+  "idsDigest": "6f237f56",
+  "idsLength": 30,
+  "seconds": 3.33,
+  "model": "v1.0 / zf_xiaobei",
+  "wav": "fmt-s2-13.wav"
  },
  {
   "group": "fmt",
@@ -205,15 +237,31 @@
   "idsLength": 52,
   "seconds": 3.8,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s3-12.wav"
+  "wav": "fmt-s3-14.wav"
  },
  {
   "group": "fmt",
   "sentenceId": "s3",
   "text": "他昨天去图书馆还书了。",
   "why": "「还书」读错（hái 应为 huán）+ 多字词",
-  "label": "只修 A 词边界",
-  "note": "词内连写、词间空格（Intl.Segmenter）；其余不变",
+  "label": "只修 A 词边界（jieba）",
+  "note": "词内连写、词间空格，词边界用 jieba（训练时的分词器）；其余不变",
+  "phonemes": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xai̯↗ʂu→ lɤ .",
+  "keptByNormalizer": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xai↗ʂu→ lɤ .",
+  "stripped": 1,
+  "idsDigest": "e644ce87",
+  "idsLength": 48,
+  "seconds": 3.77,
+  "model": "v1.0 / zf_xiaobei",
+  "wav": "fmt-s3-15.wav"
+ },
+ {
+  "group": "fmt",
+  "sentenceId": "s3",
+  "text": "他昨天去图书馆还书了。",
+  "why": "「还书」读错（hái 应为 huán）+ 多字词",
+  "label": "只修 A（对照：Intl.Segmenter）",
+  "note": "同上，但词边界用 Intl.Segmenter —— 听它把「工程师/图书馆」切碎成什么样",
   "phonemes": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→ kwa↓n xai̯↗ʂu→ lɤ .",
   "keptByNormalizer": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→ kwa↓n xai↗ʂu→ lɤ .",
   "stripped": 1,
@@ -221,7 +269,7 @@
   "idsLength": 49,
   "seconds": 3.67,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s3-13.wav"
+  "wav": "fmt-s3-16.wav"
  },
  {
   "group": "fmt",
@@ -237,23 +285,7 @@
   "idsLength": 51,
   "seconds": 3.77,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s3-14.wav"
- },
- {
-  "group": "fmt",
-  "sentenceId": "s3",
-  "text": "他昨天去图书馆还书了。",
-  "why": "「还书」读错（hái 应为 huán）+ 多字词",
-  "label": "只修 C 变调",
-  "note": "toneSandhi:false，「一/不」不再变调；其余不变",
-  "phonemes": "tʰa→ ʦwo↗ tʰjɛ→n ʨʰy↘ tʰu↗ ʂu→ kwa↓n xai̯↗ ʂu→ lɤ .",
-  "keptByNormalizer": "tʰa→ ʦwo↗ tʰjɛ→n ʨʰy↘ tʰu↗ ʂu→ kwa↓n xai↗ ʂu→ lɤ .",
-  "stripped": 1,
-  "idsDigest": "acf73003",
-  "idsLength": 52,
-  "seconds": 3.8,
-  "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s3-15.wav"
+  "wav": "fmt-s3-17.wav"
  },
  {
   "group": "fmt",
@@ -269,39 +301,55 @@
   "idsLength": 52,
   "seconds": 3.8,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s3-16.wav"
+  "wav": "fmt-s3-18.wav"
  },
  {
   "group": "fmt",
   "sentenceId": "s3",
   "text": "他昨天去图书馆还书了。",
   "why": "「还书」读错（hái 应为 huán）+ 多字词",
-  "label": "全部对齐（A+B+C+D）",
-  "note": "阶段 1 的目标：与 legacy 格式一致，只差词边界来源",
-  "phonemes": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→ kwa↓n xai↗ʂu→ lɤ.",
-  "keptByNormalizer": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→ kwa↓n xai↗ʂu→ lɤ.",
+  "label": "对齐 A+B+D（保留变调）",
+  "note": "阶段 1 的目标。jieba 边界 + 删 U+032F + 标点紧邻，不动变调；读音仍用 pinyin-pro",
+  "phonemes": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xai↗ʂu→ lɤ.",
+  "keptByNormalizer": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xai↗ʂu→ lɤ.",
   "stripped": 0,
-  "idsDigest": "2ce2fa9b",
-  "idsLength": 48,
+  "idsDigest": "a7d46ab3",
+  "idsLength": 47,
   "seconds": 3.73,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s3-17.wav"
+  "wav": "fmt-s3-19.wav"
  },
  {
   "group": "fmt",
   "sentenceId": "s3",
   "text": "他昨天去图书馆还书了。",
   "why": "「还书」读错（hái 应为 huán）+ 多字词",
-  "label": "全部对齐 + 补丁",
+  "label": "对齐 A+B+D + 补丁",
   "note": "在上一版基础上加多音字补丁表（还书 → huán shū）",
-  "phonemes": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→ kwa↓n xwa↗nʂu→ lɤ.",
-  "keptByNormalizer": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→ kwa↓n xwa↗nʂu→ lɤ.",
+  "phonemes": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xwa↗nʂu→ lɤ.",
+  "keptByNormalizer": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xwa↗nʂu→ lɤ.",
   "stripped": 0,
-  "idsDigest": "4a973e9e",
-  "idsLength": 49,
-  "seconds": 3.83,
+  "idsDigest": "5bfa32d9",
+  "idsLength": 48,
+  "seconds": 3.85,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s3-18.wav"
+  "wav": "fmt-s3-20.wav"
+ },
+ {
+  "group": "fmt",
+  "sentenceId": "s3",
+  "text": "他昨天去图书馆还书了。",
+  "why": "「还书」读错（hái 应为 huán）+ 多字词",
+  "label": "对齐 A+B+C+D（关变调，对照）",
+  "note": "把变调也关掉 —— 原方案。现已知道 legacy 自己也不一致（词典里 56% 变调 / 44% 原调），所以这一项不列入阶段 1",
+  "phonemes": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xai↗ʂu→ lɤ.",
+  "keptByNormalizer": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xai↗ʂu→ lɤ.",
+  "stripped": 0,
+  "idsDigest": "a7d46ab3",
+  "idsLength": 47,
+  "seconds": 3.73,
+  "model": "v1.0 / zf_xiaobei",
+  "wav": "fmt-s3-21.wav"
  },
  {
   "group": "fmt",
@@ -317,7 +365,7 @@
   "idsLength": 58,
   "seconds": 4.6,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s1-19.wav"
+  "wav": "fmt-s1-22.wav"
  },
  {
   "group": "fmt",
@@ -333,7 +381,7 @@
   "idsLength": 30,
   "seconds": 3.33,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s2-20.wav"
+  "wav": "fmt-s2-23.wav"
  },
  {
   "group": "fmt",
@@ -349,7 +397,7 @@
   "idsLength": 48,
   "seconds": 3.85,
   "model": "v1.0 / zf_xiaobei",
-  "wav": "fmt-s3-21.wav"
+  "wav": "fmt-s3-24.wav"
  },
  {
   "group": "v11",
@@ -365,7 +413,7 @@
   "idsLength": 48,
   "seconds": 4.17,
   "model": "v1.1-zh / zf_001",
-  "wav": "v11-s1-22.wav"
+  "wav": "v11-s1-25.wav"
  },
  {
   "group": "v11",
@@ -374,14 +422,14 @@
   "why": "多字词（工程师 / 图书馆）→ 词边界的影响最大；逗号处听停顿",
   "label": "v1.1-zh 2a 式（我们的读音）",
   "note": "pinyin-pro 读音 + 注音符号 + `/` 分隔 + 一/不变调；无儿化、无 large_pinyin",
-  "phonemes": "ㄊㄚ1ㄕ十4/ㄧ2ㄍㄜ4/ㄍ中1ㄔㄥ2/ㄕ十1/ㄗㄞ4/ㄊㄨ2ㄕㄨ1/ㄍ万3/ㄍ中1ㄗ我4",
-  "keptByNormalizer": "ㄊㄚ1ㄕ十4/ㄧ2ㄍㄜ4/ㄍ中1ㄔㄥ2/ㄕ十1/ㄗㄞ4/ㄊㄨ2ㄕㄨ1/ㄍ万3/ㄍ中1ㄗ我4",
+  "phonemes": "ㄊㄚ1/ㄕ十4/ㄧ2ㄍㄜ4/ㄍ中1ㄔㄥ2ㄕ十1/ㄗㄞ4/ㄊㄨ2ㄕㄨ1ㄍ万3/ㄍ中1ㄗ我4",
+  "keptByNormalizer": "ㄊㄚ1/ㄕ十4/ㄧ2ㄍㄜ4/ㄍ中1ㄔㄥ2ㄕ十1/ㄗㄞ4/ㄊㄨ2ㄕㄨ1ㄍ万3/ㄍ中1ㄗ我4",
   "stripped": 0,
-  "idsDigest": "86fb86c8",
-  "idsLength": 47,
-  "seconds": 4.0,
+  "idsDigest": "66b643a3",
+  "idsLength": 46,
+  "seconds": 4.05,
   "model": "v1.1-zh / zf_001",
-  "wav": "v11-s1-23.wav"
+  "wav": "v11-s1-26.wav"
  },
  {
   "group": "v11",
@@ -397,7 +445,7 @@
   "idsLength": 26,
   "seconds": 2.73,
   "model": "v1.1-zh / zf_001",
-  "wav": "v11-s2-24.wav"
+  "wav": "v11-s2-27.wav"
  },
  {
   "group": "v11",
@@ -406,14 +454,14 @@
   "why": "两个「一」→ 变调差异最容易听出来",
   "label": "v1.1-zh 2a 式（我们的读音）",
   "note": "pinyin-pro 读音 + 注音符号 + `/` 分隔 + 一/不变调；无儿化、无 large_pinyin",
-  "phonemes": "ㄧ4ㄕ十2ㄦ4ㄋ要3/ㄧ4ㄐㄩ3/ㄌ阳3/ㄉㄜ2",
-  "keptByNormalizer": "ㄧ4ㄕ十2ㄦ4ㄋ要3/ㄧ4ㄐㄩ3/ㄌ阳3/ㄉㄜ2",
+  "phonemes": "ㄧ4ㄕ十2ㄦ4ㄋ要3/ㄧ4ㄐㄩ3ㄌ阳3ㄉㄜ2",
+  "keptByNormalizer": "ㄧ4ㄕ十2ㄦ4ㄋ要3/ㄧ4ㄐㄩ3ㄌ阳3ㄉㄜ2",
   "stripped": 0,
-  "idsDigest": "e4557b4c",
-  "idsLength": 26,
-  "seconds": 2.6,
+  "idsDigest": "544c2cf3",
+  "idsLength": 24,
+  "seconds": 2.7,
   "model": "v1.1-zh / zf_001",
-  "wav": "v11-s2-25.wav"
+  "wav": "v11-s2-28.wav"
  },
  {
   "group": "v11",
@@ -429,7 +477,7 @@
   "idsLength": 38,
   "seconds": 3.33,
   "model": "v1.1-zh / zf_001",
-  "wav": "v11-s3-26.wav"
+  "wav": "v11-s3-29.wav"
  },
  {
   "group": "v11",
@@ -438,13 +486,13 @@
   "why": "「还书」读错（hái 应为 huán）+ 多字词",
   "label": "v1.1-zh 2a 式（我们的读音）",
   "note": "pinyin-pro 读音 + 注音符号 + `/` 分隔 + 一/不变调；无儿化、无 large_pinyin",
-  "phonemes": "ㄊㄚ1/ㄗ我2ㄊ言1/ㄑㄩ4/ㄊㄨ2ㄕㄨ1/ㄍ万3/ㄏ万2ㄕㄨ1/ㄌㄜ5",
-  "keptByNormalizer": "ㄊㄚ1/ㄗ我2ㄊ言1/ㄑㄩ4/ㄊㄨ2ㄕㄨ1/ㄍ万3/ㄏ万2ㄕㄨ1/ㄌㄜ5",
+  "phonemes": "ㄊㄚ1/ㄗ我2ㄊ言1/ㄑㄩ4/ㄊㄨ2ㄕㄨ1ㄍ万3/ㄏ万2ㄕㄨ1/ㄌㄜ5",
+  "keptByNormalizer": "ㄊㄚ1/ㄗ我2ㄊ言1/ㄑㄩ4/ㄊㄨ2ㄕㄨ1ㄍ万3/ㄏ万2ㄕㄨ1/ㄌㄜ5",
   "stripped": 0,
-  "idsDigest": "3f6341f7",
-  "idsLength": 38,
+  "idsDigest": "abcbb233",
+  "idsLength": 37,
   "seconds": 3.23,
   "model": "v1.1-zh / zf_001",
-  "wav": "v11-s3-27.wav"
+  "wav": "v11-s3-30.wav"
  }
 ]

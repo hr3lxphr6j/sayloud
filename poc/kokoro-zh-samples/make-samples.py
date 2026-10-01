@@ -31,8 +31,6 @@ import re
 import sys
 from pathlib import Path
 
-import cn2an
-import jieba
 import numpy as np
 import onnxruntime as ort
 from pypinyin import Style, lazy_pinyin
@@ -44,28 +42,9 @@ V11 = Path('/tmp/kokoro-poc-models')
 
 sys.path.insert(0, str(V11 / 'misakizh'))
 
-TABLE = json.loads((Path(__file__).parent.parent.parent / 'lib/models/phonemize/pinyin-table.json').read_text())
-TONE_LETTER = {1: '˥', 2: '˧˥', 3: '˧˩˧', 4: '˥˩', 5: ''}
-
 # The only characters the tokenizers' normalizers are allowed to remove: the two
 # combining marks the syllable table emits, neither of which is in any vocabulary.
 KNOWN_STRIPPED = {'\u032F', '\u0329'}
-
-
-def retone(ipa: str) -> str:
-    return (ipa.replace('˧˩˧', '↓').replace('˧˥', '↗')
-               .replace('˥˩', '↘').replace('˥', '→'))
-
-
-def syllable_to_ipa(py: str) -> str:
-    """The product's `syllableToIpa`, in Python."""
-    tone = int(py[-1])
-    tone = 5 if tone == 0 else tone
-    key = py[:-1].replace('ü', 'v')
-    template = TABLE.get(key)
-    if template is None:
-        raise SystemExit(f'no IPA for syllable {key!r} (from {py!r})')
-    return retone(template.replace('0', TONE_LETTER[tone]))
 
 
 # --- the tokenizers ---------------------------------------------------------
@@ -129,44 +108,34 @@ def write_wav(path: Path, samples: np.ndarray, rate=24000) -> None:
         f.writeframes((np.clip(samples, -1, 1) * 32767).astype('<i2').tobytes())
 
 
+def legacy_reference(texts):
+    """
+    The training target, produced by a **fresh interpreter**.
+
+    Not a stylistic choice. `ZHFrontend.__init__` calls `large_pinyin.load()`,
+    which mutates pypinyin's **global** phrase dictionary, and `large_pinyin`
+    stores *sandhi-applied* readings. So by the time this module has imported
+    misaki, `lazy_pinyin` no longer answers the way the real legacy path would —
+    the reference came out with 一个 as `i↗` instead of `i→` for exactly that
+    reason.
+
+    `legacy_phonemes.py` imports no misaki and cannot be polluted; running it as a
+    subprocess is what keeps this process's global state out of its answers.
+    """
+    import subprocess
+
+    here = Path(__file__).parent
+    in_path, out_path = here / '.legacy-in.json', here / 'legacy.json'
+    in_path.write_text(json.dumps(texts, ensure_ascii=False))
+    subprocess.run(
+        [sys.executable, str(here / 'legacy_phonemes.py'), str(in_path), str(out_path)],
+        check=True,
+    )
+    in_path.unlink()
+    return json.loads(out_path.read_text())
+
+
 # --- the legacy reference (the training target) -----------------------------
-
-def map_punctuation(text: str) -> str:
-    """misaki `ZHG2P.map_punctuation`, verbatim."""
-    for a, b in [('、', ', '), ('，', ', '), ('。', '. '), ('．', '. '), ('！', '! '),
-                 ('：', ': '), ('；', '; '), ('？', '? '),
-                 ('«', ' “'), ('»', '” '), ('《', ' “'), ('》', '” '),
-                 ('「', ' “'), ('」', '” '), ('【', ' “'), ('】', '” '),
-                 ('（', ' ('), ('）', ') ')]:
-        text = text.replace(a, b)
-    return text.strip()
-
-
-def legacy_phonemes(text: str) -> str:
-    """
-    misaki's `ZHG2P.__call__` on the legacy path: cn2an, then map_punctuation,
-    then `legacy_call` — jieba words, each word's syllables concatenated with no
-    separator, words joined by a space, U+032F deleted at the end.
-
-    The two preprocessing steps are load-bearing. Skipping `map_punctuation`
-    leaves full-width `，`/`。` in the string, they are not in the tokenizer's
-    vocabulary, and the normalizer silently deletes them — so the clip loses its
-    pauses entirely and no longer represents the training target at all. That is
-    exactly the bug this function shipped with once; the assertion in
-    `Tokenizer.encode` is what stops it recurring.
-    """
-    text = map_punctuation(cn2an.transform(text, 'an2cn'))
-    result = ''
-    for segment in re.findall(r'[\u4E00-\u9FFF]+|[^\u4E00-\u9FFF]+', text):
-        if re.match(r'[\u4E00-\u9FFF]', segment):
-            words = jieba.lcut(segment, cut_all=False)
-            segment = ' '.join(
-                ''.join(syllable_to_ipa(p) for p in lazy_pinyin(w, style=Style.TONE3, neutral_tone_with_five=True))
-                for w in words
-            )
-        result += segment
-    return result.replace(chr(815), '')
-
 
 # --- the 2a-style bopomofo --------------------------------------------------
 
@@ -235,6 +204,7 @@ def main() -> None:
 
     variants = json.loads((HERE / 'variants.json').read_text())
     clips = []
+    legacy = legacy_reference(sorted({e['text'] for e in variants}))
 
     def add(group, sentence_id, text, why, label, note, phonemes, model, tokenizer, model_label):
         ids, stripped, kept = tokenizer.encode(phonemes)
@@ -270,12 +240,13 @@ def main() -> None:
         add('fmt', entry['sentenceId'], entry['text'], entry['why'], entry['label'], entry['note'],
             entry['phonemes'], m10, tok10, 'v1.0 / zf_xiaobei')
 
-    # The training target itself, for comparison.
+    # The training target itself, for comparison. Produced by a subprocess — see
+    # `legacy_reference` for why that is not optional.
     print('group 1 — legacy 参考')
     for sid, entry in sentences.items():
         add('fmt', sid, entry['text'], entry['why'], 'legacy 参考（训练目标）',
             'jieba 词边界 · 无变调 · 已删 U+032F · 标点紧邻',
-            legacy_phonemes(entry['text']), m10, tok10, 'v1.0 / zf_xiaobei')
+            legacy[entry['text']], m10, tok10, 'v1.0 / zf_xiaobei')
 
     # Group 2: v1.1-zh, official front end vs a 2a-style input.
     print('group 2 — v1.1-zh (zf_001)')

@@ -17,7 +17,7 @@ export default defineConfig({
   vite: () => ({ plugins: [preact()] }),
   manifest: ({ mode }) => ({
     name: 'SayLoud',
-    version: '0.2.0',
+    version: '0.4.0',
     // The reader is injected into the clicked tab under `activeTab`, so the
     // extension asks for no standing access to any site. `offscreen` is what
     // lets the service worker own an audio document, which is the only place

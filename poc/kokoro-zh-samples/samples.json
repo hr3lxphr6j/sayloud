@@ -11,8 +11,8 @@
   "stripped": 15,
   "idsDigest": "072d5ed5",
   "idsLength": 222,
-  "seconds": 11.28,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 9.32,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r1-00.wav"
  },
  {
@@ -27,8 +27,8 @@
   "stripped": 15,
   "idsDigest": "097b80d6",
   "idsLength": 207,
-  "seconds": 11.22,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 9.4,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r1-01.wav"
  },
  {
@@ -43,8 +43,8 @@
   "stripped": 3,
   "idsDigest": "a3844f54",
   "idsLength": 201,
-  "seconds": 11.12,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 9.3,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r1-02.wav"
  },
  {
@@ -59,8 +59,8 @@
   "stripped": 3,
   "idsDigest": "f474e3fb",
   "idsLength": 201,
-  "seconds": 11.15,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 9.12,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r1-03.wav"
  },
  {
@@ -75,8 +75,8 @@
   "stripped": 11,
   "idsDigest": "2957ec84",
   "idsLength": 183,
-  "seconds": 10.53,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 8.53,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r2-04.wav"
  },
  {
@@ -91,8 +91,8 @@
   "stripped": 11,
   "idsDigest": "4445da28",
   "idsLength": 167,
-  "seconds": 10.35,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 8.7,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r2-05.wav"
  },
  {
@@ -107,8 +107,8 @@
   "stripped": 5,
   "idsDigest": "42b66871",
   "idsLength": 160,
-  "seconds": 10.35,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 8.47,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r2-06.wav"
  },
  {
@@ -123,8 +123,8 @@
   "stripped": 5,
   "idsDigest": "42b66871",
   "idsLength": 160,
-  "seconds": 10.35,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 8.47,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r2-07.wav"
  },
  {
@@ -139,8 +139,8 @@
   "stripped": 17,
   "idsDigest": "03302772",
   "idsLength": 244,
-  "seconds": 12.72,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 10.7,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r3-08.wav"
  },
  {
@@ -155,8 +155,8 @@
   "stripped": 17,
   "idsDigest": "7a3cbdf6",
   "idsLength": 221,
-  "seconds": 13.0,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 10.97,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r3-09.wav"
  },
  {
@@ -171,8 +171,8 @@
   "stripped": 4,
   "idsDigest": "fcc2e2ea",
   "idsLength": 217,
-  "seconds": 12.97,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 11.03,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r3-10.wav"
  },
  {
@@ -187,8 +187,8 @@
   "stripped": 4,
   "idsDigest": "fcc2e2ea",
   "idsLength": 217,
-  "seconds": 12.97,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 11.03,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r3-11.wav"
  },
  {
@@ -203,8 +203,8 @@
   "stripped": 4,
   "idsDigest": "9c15385a",
   "idsLength": 27,
-  "seconds": 2.85,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 2.52,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r4-12.wav"
  },
  {
@@ -219,8 +219,8 @@
   "stripped": 4,
   "idsDigest": "c1341182",
   "idsLength": 25,
-  "seconds": 2.8,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 2.42,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r4-13.wav"
  },
  {
@@ -235,8 +235,8 @@
   "stripped": 2,
   "idsDigest": "c1341182",
   "idsLength": 25,
-  "seconds": 2.8,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 2.42,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r4-14.wav"
  },
  {
@@ -251,8 +251,8 @@
   "stripped": 2,
   "idsDigest": "c1341182",
   "idsLength": 25,
-  "seconds": 2.8,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 2.42,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r4-15.wav"
  },
  {
@@ -267,8 +267,8 @@
   "stripped": 3,
   "idsDigest": "72983e1d",
   "idsLength": 204,
-  "seconds": 11.32,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 9.47,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r1-16.wav"
  },
  {
@@ -283,8 +283,8 @@
   "stripped": 5,
   "idsDigest": "42b66871",
   "idsLength": 160,
-  "seconds": 10.35,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 8.47,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r2-17.wav"
  },
  {
@@ -299,8 +299,8 @@
   "stripped": 4,
   "idsDigest": "cf5b10c3",
   "idsLength": 216,
-  "seconds": 12.95,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 11.03,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r3-18.wav"
  },
  {
@@ -315,8 +315,8 @@
   "stripped": 2,
   "idsDigest": "73c6078a",
   "idsLength": 26,
-  "seconds": 2.83,
-  "model": "v1.0 / zf_xiaobei",
+  "seconds": 2.45,
+  "model": "v1.0 / zf_xiaoyi",
   "wav": "fmt-r4-19.wav"
  },
  {

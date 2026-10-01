@@ -7,7 +7,7 @@ Synthesize the listening samples for the P5 spec's V24 / V27 (spike, throwaway).
 Two groups, two models:
 
   Group 1 — 阶段 1（V24）: the *current production* model (Kokoro v1.0, IPA
-  tokenizer, voice zf_xiaobei), fed the same sentence in seven phoneme-string
+  tokenizer, voice zf_xiaoyi), fed the same sentence in five phoneme-string
   formats. This is the only way to judge whether the spec's §1.2 format
   deviations actually matter — and whether the direction is right, since the
   format argument is an inference.
@@ -35,6 +35,14 @@ import onnxruntime as ort
 from pypinyin import Style, lazy_pinyin
 
 HERE = Path(__file__).parent
+
+# Voices are constants so switching one is a one-line change. `zf_xiaobei` and
+# `zf_xiaoyi` are both v1.0 Chinese voices (the repo has eight); v1.1-zh has a
+# different, unrelated naming scheme (zf_001..zf_100), so there is no "the same
+# voice" across the two models and the phase-2 clips cannot match the phase-1
+# timbre.
+V10_VOICE = 'zf_xiaoyi'
+V11_VOICE = 'zf_001'
 OUT = Path('/tmp/kokoro-zh-samples-out')
 V10 = Path('/tmp/kokoro-v10')
 V11 = Path('/tmp/kokoro-poc-models')
@@ -144,8 +152,8 @@ def main() -> None:
 
     tok10 = Tokenizer(V10 / 'tokenizer.json', 'v1.0')
     tok11 = Tokenizer(V11 / 'tokenizer.json', 'v1.1-zh')
-    m10 = Model(V10 / 'model.onnx', V10 / 'voices/zf_xiaobei.bin', 'v1.0/zf_xiaobei')
-    m11 = Model(V11 / 'model.onnx', V11 / 'voices/zf_001.bin', 'v1.1-zh/zf_001')
+    m10 = Model(V10 / 'model.onnx', V10 / f'voices/{V10_VOICE}.bin', f'v1.0/{V10_VOICE}')
+    m11 = Model(V11 / 'model.onnx', V11 / f'voices/{V11_VOICE}.bin', f'v1.1-zh/{V11_VOICE}')
 
     variants = json.loads((HERE / 'variants.json').read_text())
     clips = []
@@ -180,10 +188,10 @@ def main() -> None:
         sentences.setdefault(entry['sentenceId'], entry)
 
     # Group 1: the format variants, on the model we ship today.
-    print('group 1 — 格式对齐 (v1.0 + zf_xiaobei)')
+    print(f'group 1 — 格式对齐 (v1.0 + {V10_VOICE})')
     for entry in variants:
         add('fmt', entry['sentenceId'], entry['text'], entry['why'], entry['label'], entry['note'],
-            entry['phonemes'], m10, tok10, 'v1.0 / zf_xiaobei')
+            entry['phonemes'], m10, tok10, f'v1.0 / {V10_VOICE}')
 
     # The training target itself, for comparison. Produced by a subprocess — see
     # `legacy_reference` for why that is not optional.
@@ -191,7 +199,7 @@ def main() -> None:
     for sid, entry in sentences.items():
         add('fmt', sid, entry['text'], entry['why'], 'legacy 参考（训练目标）',
             'jieba 词边界 · 无变调 · 已删 U+032F · 标点紧邻',
-            legacy[entry['text']], m10, tok10, 'v1.0 / zf_xiaobei')
+            legacy[entry['text']], m10, tok10, f'v1.0 / {V10_VOICE}')
 
     # Group 2: v1.1-zh, official front end only.
     #
@@ -209,13 +217,13 @@ def main() -> None:
     #
     # A correct table is T5's job, generated with the same care as
     # pinyin-table.json, not something to improvise for a preview page.
-    print('group 2 — v1.1-zh (zf_001)')
+    print(f'group 2 — v1.1-zh ({V11_VOICE})')
     for sid, entry in sentences.items():
         text = entry['text']
         phonemes, _ = g2p(text)
         add('v11', sid, text, entry['why'], 'v1.1-zh 官方 ZHFrontend',
             'sandhi + 儿化 + jieba 词性 + large_pinyin（目标）',
-            phonemes, m11, tok11, 'v1.1-zh / zf_001')
+            phonemes, m11, tok11, f'v1.1-zh / {V11_VOICE}')
 
     (HERE / 'samples.json').write_text(json.dumps(clips, ensure_ascii=False, indent=1))
     print(f'\nwrote samples.json ({len(clips)} clips) and {len(clips)} wavs to {OUT}')

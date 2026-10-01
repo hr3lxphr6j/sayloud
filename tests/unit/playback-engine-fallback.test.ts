@@ -85,6 +85,33 @@ describe('PlaybackEngine fallback speaker', () => {
     expect(engine.getStatus().error).toBeUndefined();
   });
 
+  it('reports what the speaker actually said, not only that it failed', () => {
+    const primary = fakeSpeaker();
+    const fallback = fakeSpeaker();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const engine = new PlaybackEngine({
+        speaker: primary.speaker,
+        fallbackSpeaker: fallback.speaker,
+        resolveVoice: () => 'Samantha',
+      });
+
+      engine.dispatch({ type: 'load', sentences: [SENTENCE], startIndex: 0, rate: 1 });
+      primary.fire.start();
+      primary.fire.error('kokoro-82m tier fp16 has not been downloaded');
+
+      // The provider's own message is the only thing that says which failure
+      // this is. Dropped, every cause reaches the console as the same three
+      // words and there is nothing left to act on.
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('kokoro-82m tier fp16 has not been downloaded')
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('detaches from the primary so its stale events cannot move the cursor', () => {
     const primary = fakeSpeaker();
     const fallback = fakeSpeaker();

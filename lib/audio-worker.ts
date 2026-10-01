@@ -488,6 +488,11 @@ export class AudioWorker {
   }
 
   private emitError(id: string, code: OffscreenErrorCode, message: string): void {
+    // Logged here as well as reported. This document is where the failure
+    // happened and its console is the only one a stack can still reach; what
+    // the service worker receives is a code and a message, which is enough to
+    // act on but not enough to debug with.
+    console.error(`[SayLoud] synthesis failed (${code}): ${message}`);
     this.emit({ type: 'error', id, code, message });
   }
 }

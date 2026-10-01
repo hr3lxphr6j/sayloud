@@ -13,3 +13,7 @@ node_modules/
 # The pi harness keeps its own state here.
 .pi/
 .ab-listen/
+
+# Python bytecode from the vendored misaki transcription script.
+__pycache__/
+*.pyc

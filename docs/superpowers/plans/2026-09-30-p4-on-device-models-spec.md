@@ -21,9 +21,12 @@
    中文走自建管线（§3.11）。**只覆盖 zh/en**，其余语言 P4 不做。
 
 **性能预期（实测，见 §3.7.1）**：在**有 WebGPU 的机器**上，
-`fp16`/`fp32` 档的合成 **RTF ≈ 0.15–0.18（比实时快 5–6 倍）**，
+`fp32` 档的合成 **RTF ≈ 0.15–0.18（比实时快 5–6 倍）**，
 从点播放到出声约 **1–2 秒**（前提：模型已在设置里下好）。
 **在无 WebGPU 的机器**上会退回 WASM（RTF ≈ 1.1–1.45），那里需要靠预取与缓存。
+
+> ⚠️ **`fp16` 的速度（RTF 0.15）就是这一组数字里的最优值，但它的音频是坏的** ——
+> 性能矩阵不等于质量报告。见 §3.7.2 的修正与 risk-verification「二次修正」。
 
 > ⚠️ 早期版本本节写的是「RTF 1.45、要等十几秒」，那是用 `q8` 档测的——
 > q8 在 WebGPU 上完全无效。详见 §3.7.1 与 §3.12.1。
@@ -299,9 +302,10 @@ export interface ModelTier {
 }
 
 /**
- * 设备能力分成三档。这个分类是**实测结论**（§3.7.1）：
- * - `webgpu-f16`：WebGPU + `shader-f16`，fp16 跑得动且体积只有 fp32 一半
- * - `webgpu`：有 WebGPU 但无 `shader-f16`，只能 fp32
+ * 设备能力分成三档。这个分类是**实测结论**（§3.7.1），但**推荐档位已于 2026-10-01 修正**：
+ * - `webgpu-f16`：WebGPU + `shader-f16`；**推荐 `fp32`** —— `fp16` 在这个后端上
+ *   产出的音频是坏的（能力齐备、session 正常、ORT 无报错，但算错）
+ * - `webgpu`：有 WebGPU 但无 `shader-f16`；推荐 `fp32`
  * - `wasm`：无 WebGPU，GPU 用不上，此时 **q8 的体积优势无代价**
  */
 export type DeviceClass = 'webgpu-f16' | 'webgpu' | 'wasm';
@@ -374,13 +378,17 @@ export function modelById(id: string): OnDeviceModel | undefined;
     { id:'q8',   labelKey:'model.tier.light',    engineArg:'q8',   bytes: 92_360_000,
       preferredFor: ['wasm'],
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model_quantized.onnx'] },
-    // 有 shader-f16 的 WebGPU → fp16 最优（实测 RTF 0.15，体积只有 fp32 一半）。
+    // 🔴 2026-10-01 修正：此档位曾在 WebGPU 上被推荐，依据是 RTF 0.15——但只量了速度、
+    // 没听过输出。实测（Apple M3，Adapter 支持 shader-f16）失真且中途静音；同一份权重
+    // 在 CPU 上完好。故 preferredFor 清空、标 brokenOn，但**保留档位**（CPU 上可用，
+    // 且目前只有一台机器的证据）。详见 risk-verification「二次修正」。
     { id:'fp16', labelKey:'model.tier.standard', engineArg:'fp16', bytes:163_230_000,
-      preferredFor: ['webgpu-f16'],
+      brokenOn: ['webgpu-f16', 'webgpu'],
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model_fp16.onnx'] },
-    // 有 WebGPU 但无 f16 → fp32。
+    // 有 WebGPU 就选它（无论有没有 f16）——fp16 在 f16 机器上也是坏的，
+    // 所以这一类只能靠 fp32。
     { id:'fp32', labelKey:'model.tier.hifi',     engineArg:'fp32', bytes:325_530_000,
-      preferredFor: ['webgpu'],
+      preferredFor: ['webgpu-f16', 'webgpu'],
       files:['config.json','tokenizer.json','tokenizer_config.json','onnx/model.onnx'] },
   ],
   voiceFile: (id) => `voices/${id}.bin`,
@@ -622,9 +630,17 @@ vs `wasm/fp32` **1.119** → **快 6.3 倍**。
 
 #### 3.7.2 档位策略（按设备能力推荐）
 
+> 🔴 **本节已于 2026-10-01 修正。** 原表把 `fp16` 列为「WebGPU + `shader-f16`」的推荐档，
+> 依据是 RTF 0.15（全场最快）。**那个依据只量了速度，没有听过输出。**
+> 用户实测（Apple M3，adapter 明确支持 `shader-f16`）：
+> **`fp16` + WebGPU 失真且说到句子中途就没声音；同一份权重在 CPU 上完好；`fp32` + WebGPU 完好。**
+> 详见 `2026-09-30-p4-risk-verification.md` 的「二次修正」一节。
+>
+> **教训：`preferredFor`（适合）与设备能力检查都只能数据驱动，"算得对不对"只能靠听。**
+
 | 设备 | 推荐档 | 理由 |
 |---|---|---|
-| WebGPU 且支持 `shader-f16`（实测 Apple M 系列支持） | **`fp16`（默认）** | 163MB，RTF ≈ 0.15，体积只有 fp32 的一半 |
+| WebGPU 且支持 `shader-f16` | **`fp32`** | 325MB；`fp16` 在这个后端上产出的音频是坏的（见上方修正） |
 | WebGPU 但不支持 `shader-f16` | `fp32` | 325MB，RTF ≈ 0.17 |
 | 无 WebGPU | **`q8`** | 92MB 最小；反正 GPU 用不上，q8 的劣势不存在 |
 
@@ -645,11 +661,15 @@ vs `wasm/fp32` **1.119** → **快 6.3 倍**。
 | 档位 | dtype | 文件 | 体积 | UI 提示 |
 |---|---|---|---|---|
 | 轻量 | `q8` | `model_quantized.onnx` | 92.4MB | 体积最小；**有 WebGPU 时不推荐**（GPU 加速无效） |
-| 标准（默认） | `fp16` | `model_fp16.onnx` | 163.2MB | 推荐搭配 WebGPU；需 `shader-f16` |
-| 高保真 | `fp32` | `model.onnx` | 325.5MB | 最准、最兼容 WebGPU |
+| 标准 | `fp16` | `model_fp16.onnx` | 163.2MB | **在 WebGPU 上已知会损伤音质**（2026-10-01 实测）；CPU 上正常 |
+| 高保真 | `fp32` | `model.onnx` | 325.5MB | **所有 WebGPU 设备的推荐档**；最准、最兼容 |
 
 - **换档不删旧档**：各档是不同的缓存 key，模型 tab 按档位分别显示状态，旧档由用户自己删，避免换档时意外重下。
-- `fp16` 在无 `shader-f16` 的 WebGPU 上要能自动退回 `fp32` 或 `wasm`，并在 UI 说明原因。
+- **`fp16` 不再被自动选中**：`preferredFor` 空缺，`brokenOn: ['webgpu-f16','webgpu']`，
+  模型页在该档旁显示警告。用户仍可手动选（CPU 上是好的，且只有一台机器的证据）。
+- **设备可手动覆盖**（`device: 'auto' | 'webgpu' | 'wasm'`，模型页下拉）：
+  `auto` 是一次能力探测，而**能力探测看不见驱动 bug** —— 那是 `fp16` 这件事的直接教训，
+  也是当时把后端确定为变量的唯一手段。
 - **共享文件不重复算体积**：`config.json` / `tokenizer*.json` 三个档共用，
   「占用空间」只算一次。
 - **档位变更要让音频缓存失效**（§3.13 的 `audioIdentity` 已包含 `tier`）。

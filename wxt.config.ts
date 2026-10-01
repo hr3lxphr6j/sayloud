@@ -15,6 +15,24 @@ function e2eHostPermissions(): string[] {
 
 export default defineConfig({
   vite: () => ({ plugins: [preact()] }),
+  /**
+   * Dev mode only, and not cosmetic.
+   *
+   * WXT builds the dev CSP from `dev.server.origin`, a *separate* option that
+   * defaults to `http://localhost:3000` and does not follow the port, while
+   * `strictPort: false` (the default) lets the server silently move to the next
+   * free port. Two `pnpm dev` instances therefore produced a manifest whose CSP
+   * allowed `localhost:3000` while the pages loaded from `localhost:3001`: every
+   * script was blocked and the side panel never opened. Pinning both options
+   * means a second instance fails loudly instead of overwriting
+   * `.output/chrome-mv3-dev` with a broken extension.
+   */
+  dev: {
+    server: {
+      port: 3000,
+      strictPort: true,
+    },
+  },
   manifest: ({ mode }) => ({
     name: 'SayLoud',
     version: '0.4.0',

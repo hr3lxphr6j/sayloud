@@ -30,6 +30,7 @@ function reloadExtension(): void {
  */
 function fakePort() {
   const sent: unknown[] = [];
+  const listeners = new Set<(message: unknown) => void>();
   let stale = false;
 
   return {
@@ -39,12 +40,18 @@ function fakePort() {
         sent.push(message);
       },
       disconnect: () => {},
-      onMessage: { addListener: () => {} },
+      onMessage: {
+        addListener: (listener: (message: unknown) => void) => listeners.add(listener),
+      },
       onDisconnect: { addListener: () => {} },
     },
     sent,
     goStale: () => {
       stale = true;
+    },
+    /** Deliver an event the way the worker would. */
+    receive: (message: unknown) => {
+      for (const listener of [...listeners]) listener(message);
     },
   };
 }
@@ -134,5 +141,31 @@ describe('ReaderController', () => {
     expect(() => controller.sendCommand({ type: 'toggle' })).not.toThrow();
 
     controller.dispose();
+  });
+
+  it('sends the document again when the worker says it lost the session', () => {
+    // The whole point of `session-lost`. The reader set `loaded` the first time
+    // it sent the sentences, so without this it would keep pressing a play
+    // button that has nothing behind it — the symptom that took the longest to
+    // find, because there is no error anywhere.
+    document.body.innerHTML = '<article><p>One sentence here. Another follows.</p></article>';
+
+    const port = fakePort();
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue(
+      port.port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController();
+    controller.connect();
+
+    expect(port.sent).toContainEqual(expect.objectContaining({ type: 'load' }));
+
+    port.sent.length = 0;
+    port.receive({ type: 'session-lost' });
+
+    expect(port.sent).toContainEqual(expect.objectContaining({ type: 'load' }));
+
+    controller.dispose();
+    document.body.innerHTML = '';
   });
 });

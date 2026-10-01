@@ -48,6 +48,17 @@ export class SessionRouter {
       this.activeTabId = snapshot.tabId;
       this.engine.setTabId(snapshot.tabId);
       this.engine.restore(snapshot);
+    } else {
+      // Worth saying out loud. With no session here, the first `sync` from a
+      // reader that already sent its sentences reaches an engine with nothing
+      // to answer with — and the reader has no way to know that, so it waits.
+      // The two numbers are what tell the causes apart: a snapshot that was
+      // never written, versus one whose tab id was never set.
+      console.warn('[SayLoud] no session to restore', {
+        found: snapshot !== null,
+        tabId: snapshot?.tabId ?? null,
+        sentences: snapshot?.sentences.length ?? 0,
+      });
     }
 
     this.unsubscribe?.();

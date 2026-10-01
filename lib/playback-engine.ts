@@ -379,6 +379,10 @@ export class PlaybackEngine {
   private sync(docId: string): void {
     if (this.sentences.length === 0) {
       this.docId = docId;
+      // Asked to catch a reconnected reader up, with nothing to catch it up to.
+      // Saying so is the only way out of the standoff: the reader believes it
+      // already sent its sentences, so it will never send them again by itself.
+      this.emit({ type: 'session-lost' });
       return;
     }
     if (this.docId && this.docId !== docId) {

@@ -291,6 +291,9 @@ export const en = {
   'sideplayer.hint.no-voice.message': 'Chrome has no voice installed for this page.',
   'sideplayer.hint.tts-error.title': 'Voice failed',
   'sideplayer.hint.tts-error.message': 'Chrome could not speak this page.',
+  'sideplayer.hint.orphaned.title': 'SayLoud was reloaded',
+  'sideplayer.hint.orphaned.message':
+    'Refresh this page to keep reading — the extension was updated underneath it.',
 
   // --- the caption window ---------------------------------------------------
   'caption.counter': 'Sentence {index} of {total}',

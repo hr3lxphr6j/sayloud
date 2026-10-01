@@ -60,6 +60,10 @@ export const HINTS: Record<ReaderError, { titleKey: MessageKey; messageKey: Mess
     titleKey: 'sideplayer.hint.tts-error.title',
     messageKey: 'sideplayer.hint.tts-error.message',
   },
+  orphaned: {
+    titleKey: 'sideplayer.hint.orphaned.title',
+    messageKey: 'sideplayer.hint.orphaned.message',
+  },
 };
 
 /**

@@ -10,7 +10,12 @@ import type { Settings, SettingsStore } from '~/lib/settings-store';
 import { type CaptionState, CaptionWindow } from './CaptionWindow';
 
 /** Reasons the reader cannot read, each with its own bubble card. */
-export type ReaderError = 'no-content' | 'no-voice' | 'tts-error';
+/**
+ * `'orphaned'` is the odd one out: the other three come from the engine, and
+ * this one is the reader's own — the extension was reloaded under the page, so
+ * there is no engine left to have an opinion about anything.
+ */
+export type ReaderError = 'no-content' | 'no-voice' | 'tts-error' | 'orphaned';
 
 /** The word being spoken, as offsets into the sentence's own text. */
 export interface WordPosition {
@@ -164,7 +169,15 @@ export class ReaderController {
     try {
       port = browser.runtime.connect({ name: PORT_NAME });
     } catch (error) {
-      // The extension was reloaded or disabled; there is nothing to talk to.
+      // Two different failures look alike here and could not be less alike in
+      // what they need: a worker that is merely restarting is worth retrying,
+      // while a reloaded extension has left this content script permanently
+      // unable to reach anything. Only the second one is worth telling the
+      // reader about, because nothing they do will fix it.
+      if (this.contextGone()) {
+        this.orphan();
+        return;
+      }
       console.warn('[SayLoud] cannot reach the service worker', error);
       this.scheduleReconnect();
       return;
@@ -252,13 +265,55 @@ export class ReaderController {
     try {
       this.port?.postMessage(command);
     } catch (error) {
+      if (this.contextGone()) {
+        this.orphan();
+        return;
+      }
       console.warn('[SayLoud] command dropped', error);
       this.port = null;
       this.scheduleReconnect();
     }
   }
 
+  /**
+   * Whether this content script's extension context is still alive.
+   *
+   * Reloading the extension — which `wxt dev` does on every save — turns every
+   * content script already in a page into an orphan: the DOM it drew is still
+   * there and its buttons still click, but `runtime.id` is gone and every call
+   * into the extension throws. Nothing recovers from that but a page reload, so
+   * it is checked before a retry rather than discovered after a few.
+   */
+  private contextGone(): boolean {
+    try {
+      const id: unknown = browser.runtime.id;
+      return typeof id !== 'string';
+    } catch {
+      // Reading `runtime` itself throws once the context is gone.
+      return true;
+    }
+  }
+
+  /**
+   * Report that the extension was reloaded under this page.
+   *
+   * Said once and never retried. A reader that keeps trying its dead port looks
+   * exactly like one that ignores clicks, and that is the worst of the
+   * available failures: the person clicking has no way to tell the two apart,
+   * so they wait for something that is never coming.
+   */
+  private orphan(): void {
+    if (this.state.error === 'orphaned') return;
+    this.setState({ ...this.state, error: 'orphaned' });
+  }
+
   private scheduleReconnect(): void {
+    // An orphaned reader can never reach anything again, and a retry loop would
+    // only hide that from the person waiting on it.
+    if (this.contextGone()) {
+      this.orphan();
+      return;
+    }
     if (this.disposed || this.reconnectTimer !== null) return;
     if (this.reconnects >= MAX_RECONNECTS) return;
     this.reconnects += 1;

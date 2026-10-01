@@ -113,10 +113,14 @@ describe('the voice card', () => {
     expect(screen.getByText('DashScope (阿里云百炼) · Word by word')).toBeTruthy();
   });
 
-  it('falls back to the default voice before one is chosen', async () => {
+  it('says no voice is chosen, rather than calling it the default', async () => {
     await renderTab({ config: DASHSCOPE });
 
-    expect(screen.getByText('Default voice')).toBeTruthy();
+    // "Default voice" read as a working configuration, which is why the browser
+    // voice arriving instead of the chosen service looked like a fallback.
+    expect(screen.getByText('No voice selected')).toBeTruthy();
+    expect(screen.getByText('Reading in the browser voice for now')).toBeTruthy();
+    expect(screen.queryByText('Default voice')).toBeNull();
   });
 
   it('shows the name a voice was listed under', async () => {

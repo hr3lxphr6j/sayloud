@@ -209,7 +209,9 @@ describe('the tab list', () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: /DashScope/ }));
+    // The voice card is what opens the picker; with no voice chosen it reads
+    // "No voice selected", which is also the honest state to be in.
+    fireEvent.click(await screen.findByRole('button', { name: /No voice selected/ }));
 
     // A page, not a tab: the tab list is gone while it is up.
     expect(screen.queryAllByRole('tab')).toHaveLength(0);

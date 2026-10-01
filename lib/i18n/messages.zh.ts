@@ -27,6 +27,8 @@ export const zh: Record<MessageKey, string> = {
   // --- the Reading tab ------------------------------------------------------
   'panel.section.session': '朗读会话',
   'panel.default-voice': '默认音色',
+  'panel.voice.none': '未选择音色',
+  'panel.voice.none-meta': '当前会用浏览器语音朗读',
   'panel.configure': '配置服务',
   'panel.voice.change': '更换',
   'panel.no-provider': '尚未配置任何服务。打开「设置」选择一项。',

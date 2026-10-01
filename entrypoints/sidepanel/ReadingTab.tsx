@@ -168,8 +168,16 @@ export function ReadingTab({
               <SpeakerGlyph />
             </span>
             <span class="voice-card-text">
-              <span class="voice-card-name">{voiceLabel ?? t('panel.default-voice')}</span>
-              <span class="voice-card-meta">{voiceMeta(cloudConfig, providers, t)}</span>
+              {/*
+                A configuration with no voice chosen still reads — just not
+                with the service it names. Saying "default voice" and "runs on
+                this device" made that look like a working setup, which is why
+                the browser voice arriving instead looked like a fallback.
+              */}
+              <span class="voice-card-name">{voiceLabel ?? t('panel.voice.none')}</span>
+              <span class="voice-card-meta">
+                {voiceLabel ? voiceMeta(cloudConfig, providers, t) : t('panel.voice.none-meta')}
+              </span>
             </span>
             <span class="voice-card-action">{t('panel.voice.change')}</span>
           </button>

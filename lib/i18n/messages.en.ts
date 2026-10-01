@@ -34,6 +34,8 @@ export const en = {
   'panel.configure': 'Configure a service',
   'panel.voice.change': 'Change',
   'panel.default-voice': 'Default voice',
+  'panel.voice.none': 'No voice selected',
+  'panel.voice.none-meta': 'Reading in the browser voice for now',
   'panel.section.session': 'Reading session',
   'panel.sentence-progress': 'Sentence {index} of {total} at {rate}×',
   'panel.progress-label': '{percent} percent of the article read',

@@ -94,10 +94,20 @@ test.describe('reading a page with the browser voice', () => {
     await terminateServiceWorker(context, page);
 
     // A restored session always lands in `paused`: the reader is no longer
-    // mid-gesture, and chrome.tts would need a fresh call anyway. Seeing Play
-    // here proves the content script reconnected and got a new status, and the
-    // surviving highlight proves the snapshot carried the position.
+    // mid-gesture, and chrome.tts would need a fresh call anyway.
     await expect(control(page, 'Play')).toBeVisible();
+    // The surviving highlight proves the snapshot carried the position.
     expect(await sentenceHighlight(page)).toContain('first sentence');
+
+    // Pressing it is the part that the button appearing does *not* imply. The
+    // bar is drawn from the content script's own last state, so it looks
+    // identical whether or not the engine has anything to play — clicking is
+    // what asks the worker. Asserting only the button left "pressing play after
+    // a recycle does nothing" untested, which is exactly what a user found.
+    await control(page, 'Play').click();
+    await expect(control(page, 'Pause')).toBeVisible();
+    await expect
+      .poll(() => sentenceHighlight(page), { timeout: 10_000 })
+      .toContain('first sentence');
   });
 });

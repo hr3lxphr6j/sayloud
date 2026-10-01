@@ -2,6 +2,11 @@
  * The on-device engine, inside a nested worker in the offscreen document
  * (P4 spec §3.3).
  *
+ * This module is the worker's edges: it configures ONNX Runtime, points
+ * transformers.js at the chosen download source, and turns messages into calls
+ * on a `KokoroEngine`. The model itself lives in `lib/models/kokoro-engine.ts`,
+ * where it can be tested — a class buried in a worker module cannot be.
+ *
  * Three things about where this runs drive everything below.
  *
  * **It is a worker, not the offscreen document's main thread.** That thread
@@ -18,14 +23,8 @@
  * that downloads them, which is why `model-missing` exists at all.
  */
 import { env } from '@huggingface/transformers';
-import { KokoroTTS } from 'kokoro-js';
-import { concatPcm, KOKORO_SAMPLE_RATE, planPieces } from '~/lib/models/audio';
-import { abortError, type DeviceInfo, type RawPcm } from '~/lib/models/engine';
 import { installFetchPatch } from '~/lib/models/fetch-patch';
-import { ChinesePhonemizer } from '~/lib/models/phonemize/chinese';
-import { EnglishPhonemizer } from '~/lib/models/phonemize/english';
-import { isChinese, type Phonemizer } from '~/lib/models/phonemize/types';
-import { type ModelTier, modelById, tierById } from '~/lib/models/registry';
+import { KokoroEngine } from '~/lib/models/kokoro-engine';
 import { CANONICAL_HOST, type ModelSource } from '~/lib/models/urls';
 import {
   isWorkerRequest,
@@ -117,141 +116,6 @@ function configureSource(source: ModelSource, allowFallback: boolean): void {
   env.remoteHost = CANONICAL_HOST;
   env.remotePathTemplate = '{model}/resolve/{revision}/';
   installFetchPatch({ source, allowFallback });
-}
-
-/** One synthesis in flight, so a cancel can reach it. */
-interface InFlight {
-  readonly controller: AbortController;
-}
-
-/** The voice ids `kokoro-js` types as a union; ours come from its own list. */
-type GenerateOptions = NonNullable<Parameters<KokoroTTS['generate']>[1]>;
-
-class KokoroEngine {
-  private tts: KokoroTTS | null = null;
-  private tier: ModelTier | null = null;
-  private device: DeviceInfo['device'] = 'wasm';
-  private readonly inFlight = new Map<number, InFlight>();
-  /** Built on first use: only one of the two is ever needed. */
-  private english: Phonemizer | null = null;
-  private chinese: Phonemizer | null = null;
-
-  async load(modelId: string, tierId: string, device: DeviceInfo['device']): Promise<DeviceInfo> {
-    const model = modelById(modelId);
-    const tier = model ? tierById(model, tierId) : undefined;
-    if (!model || !tier) throw new Error(`unknown model or tier: ${modelId}/${tierId}`);
-
-    // Reuse the session when nothing about it changed. A seek, a new sentence
-    // and a voice change all call this, and rebuilding a 163 MB session for
-    // each would be the slowest thing in the extension.
-    if (this.tts && this.tier?.id === tier.id && this.device === device) {
-      return { device: this.device, sessionInitMs: 0 };
-    }
-
-    this.disposeSession();
-    const started = Date.now();
-    this.tts = await KokoroTTS.from_pretrained(model.repo, {
-      dtype: tier.engineArg as 'fp32' | 'fp16' | 'q8' | 'q4' | 'q4f16',
-      device,
-    });
-    this.tier = tier;
-    this.device = device;
-
-    return { device, sessionInitMs: Date.now() - started };
-  }
-
-  async synthesize(id: number, text: string, voiceId: string, lang: string): Promise<RawPcm> {
-    if (!this.tts) throw new Error('the model is not loaded');
-
-    const inFlight: InFlight = { controller: new AbortController() };
-    this.inFlight.set(id, inFlight);
-
-    try {
-      // Measured, not guessed: `planPieces` needs a token count, and the only
-      // way to get one is to phonemize and ask the tokenizer.
-      const pieces = await planPieces(text, async (piece) => {
-        const ipa = await this.phonemize(piece, lang);
-        return { ipa, tokens: this.countTokens(ipa) };
-      });
-
-      const chunks: Float32Array[] = [];
-      for (const piece of pieces) {
-        if (inFlight.controller.signal.aborted) throw abortError();
-        chunks.push(await this.render(piece, voiceId, lang));
-      }
-
-      return { pcm: concatPcm(chunks), sampleRate: KOKORO_SAMPLE_RATE };
-    } finally {
-      this.inFlight.delete(id);
-    }
-  }
-
-  cancel(id: number): void {
-    this.inFlight.get(id)?.controller.abort();
-  }
-
-  dispose(): void {
-    for (const inFlight of this.inFlight.values()) inFlight.controller.abort();
-    this.inFlight.clear();
-    this.disposeSession();
-  }
-
-  /** The IPA for one piece, through whichever pipeline the language needs. */
-  private async phonemize(text: string, lang: string): Promise<string> {
-    if (isChinese(lang)) {
-      this.chinese ??= new ChinesePhonemizer();
-      return this.chinese.phonemize(text, lang);
-    }
-    this.english ??= new EnglishPhonemizer();
-    return this.english.phonemize(text, lang);
-  }
-
-  /**
-   * How many tokens the model's tokenizer makes of this IPA.
-   *
-   * Without truncation, so this is the real length. `generate()` itself passes
-   * `truncation: true`, which is why the split exists at all: the model would
-   * otherwise cut an over-long sentence off mid-word and say nothing.
-   */
-  private countTokens(ipa: string): number {
-    const tts = this.tts;
-    if (!tts) throw new Error('the model is not loaded');
-    return tts.tokenizer(ipa, { truncation: false }).input_ids.dims.at(-1) ?? 0;
-  }
-
-  /**
-   * Audio for one piece.
-   *
-   * English goes through `generate()`, the library's own supported path: it
-   * validates the voice and phonemizes the way the model was trained. Chinese
-   * cannot — `generate()` rejects every voice outside its 28-voice English list
-   * (verification §1.1.1) — so it phonemizes here and enters through
-   * `generate_from_ids()`, which does no voice validation.
-   */
-  private async render(
-    piece: { text: string; ipa: string },
-    voiceId: string,
-    lang: string
-  ): Promise<Float32Array> {
-    const tts = this.tts;
-    if (!tts) throw new Error('the model is not loaded');
-    const options = { voice: voiceId } as GenerateOptions;
-
-    if (isChinese(lang)) {
-      const encoded = tts.tokenizer(piece.ipa, { truncation: false });
-      const audio = await tts.generate_from_ids(encoded.input_ids, options);
-      return audio.audio;
-    }
-
-    const audio = await tts.generate(piece.text, options);
-    return audio.audio;
-  }
-
-  private disposeSession(): void {
-    this.tts?.model?.dispose?.();
-    this.tts = null;
-    this.tier = null;
-  }
 }
 
 const engine = new KokoroEngine();

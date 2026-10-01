@@ -166,6 +166,7 @@ export class ReaderController {
     } catch (error) {
       // The extension was reloaded or disabled; there is nothing to talk to.
       console.warn('[SayLoud] cannot reach the service worker', error);
+      this.scheduleReconnect();
       return;
     }
 

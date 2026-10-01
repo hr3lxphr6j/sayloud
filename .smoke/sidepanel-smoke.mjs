@@ -332,14 +332,13 @@ check(
     (await providerEntry('browser').getAttribute('data-active')) === 'false'
 );
 await readingTab.click();
+// Activating a service is not the same as choosing what it should say: with no
+// voice picked the browser reads, so the card says that instead of naming a
+// service that will not be asked.
 check(
-  'the Reading tab reflects the activated provider and its timings',
-  (await page.getByText('OpenAI-compatible').count()) === 1 &&
-    (await page.getByText('Word by word').count()) === 1
-);
-check(
-  'the Reading tab falls back to the default voice',
-  (await page.getByText('Default voice').count()) === 1
+  'the Reading tab says the provider is active but has no voice yet',
+  (await page.getByText('No voice selected').count()) === 1 &&
+    (await page.getByText('Reading in the browser voice for now').count()) === 1
 );
 // --- Test Connection + the voice page against a local stub ------------------
 const server = createServer((request, response) => {
@@ -392,9 +391,13 @@ checkEqual('picking a voice persists it', voiceStore['sayloud:selected-voices'],
 });
 
 await leaveVoicePage();
+// Only now does the card describe the service: the voice is what decides which
+// one speaks, and with it chosen the timings line is about a real session.
 check(
-  'the Reading tab shows the voice that was picked',
-  (await page.getByText('af_bella').count()) === 1
+  'the Reading tab shows the voice that was picked, and what the service does',
+  (await page.getByText('af_bella').count()) === 1 &&
+    (await page.getByText('OpenAI-compatible').count()) === 1 &&
+    (await page.getByText('Word by word').count()) === 1
 );
 await settings();
 

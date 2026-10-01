@@ -115,8 +115,25 @@ export function ProviderConfigPanel({
    * `setActiveConfig` refuses a provider with nothing saved — the control is
    * disabled in that case, and this is the backstop — so a refusal only has to
    * leave the list as it was.
+   *
+   * Exception: the local provider gets a default config (first model, first
+   * tier) when activated with nothing saved, so the user does not have to click
+   * "Set as active" in the Models tab before the circle works here.
    */
   const activate = async (provider: ProviderId) => {
+    if (provider === 'local') {
+      const saved = (await store.getSavedConfigs()).local;
+      if (!saved) {
+        // Create a default config so the user can activate local without visiting
+        // the Models tab first. The first model and first tier are the defaults.
+        await store.saveConfig({
+          provider: 'local',
+          modelId: 'kokoro-82m',
+          tier: 'fp16',
+          device: 'auto',
+        });
+      }
+    }
     if (await store.setActiveConfig(provider)) onChanged();
   };
 

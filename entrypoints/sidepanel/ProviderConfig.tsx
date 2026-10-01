@@ -498,8 +498,10 @@ function ProviderForm({
         Test Connection is the only button left: the form saves itself when a
         field loses focus, and a key that is already saved is dropped from the
         link at the bottom. Neither needs a button of its own.
+
+        Local models have no API to test, so they get no button.
       */}
-      {provider && (
+      {provider && schema.id !== 'local' && (
         <div class="actions">
           <button type="button" class="button" disabled={testing} onClick={() => void onTest()}>
             {test.kind === 'running' ? t('provider.testing') : t('provider.test')}

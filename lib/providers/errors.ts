@@ -69,6 +69,20 @@ export function isAbortError(error: unknown): boolean {
   );
 }
 
+/**
+ * The rejection `isAbortError` recognises.
+ *
+ * Built by hand rather than by `AbortSignal.throwIfAborted()`, which is not in
+ * every engine this repo builds for, and named rather than typed because
+ * `isAbortError` is deliberately structural: a cancellation crosses contexts,
+ * where `instanceof` does not hold.
+ */
+export function abortError(): Error {
+  const error = new Error('aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
 /** Wrap a transport-level failure (`fetch` rejected) as a provider error. */
 export function networkError(cause: unknown): ProviderError {
   const message = cause instanceof Error ? cause.message : String(cause);

@@ -11,8 +11,27 @@
  * `FakeLocalEngine` is the one the e2e build uses, because CI cannot download a
  * 92–325 MB model and the whole point of the seam is that it does not have to.
  */
+import { abortError } from '../providers/errors';
 import type { Device } from './device';
 import type { ModelTier, OnDeviceFamily, OnDeviceModel } from './registry';
+
+/**
+ * The `name` an engine error carries when the worker behind it is gone.
+ *
+ * Told apart from an ordinary failure because the fix is different: a voice the
+ * model does not have is worth retrying with another voice, while a terminated
+ * worker can only answer with the same error forever, so the caller has to
+ * build a new engine instead of asking this one again.
+ *
+ * A string rather than a class because it travels back from a worker, where the
+ * prototypes do not survive structured cloning.
+ */
+export const WORKER_DEAD = 'worker-dead';
+
+/** Whether a thrown value means the engine's worker is gone. */
+export function isWorkerDeadError(error: unknown): boolean {
+  return error instanceof Error && error.name === WORKER_DEAD;
+}
 
 /** What a load actually did, for the model tab's "running on" line. */
 export interface DeviceInfo {
@@ -138,9 +157,11 @@ export class FakeLocalEngine implements OnDeviceEngine {
   }
 }
 
-/** An abort rejection the repo's `isAbortError` recognises. */
-export function abortError(): Error {
-  const error = new Error('aborted');
-  error.name = 'AbortError';
-  return error;
-}
+/**
+ * An abort rejection the repo's `isAbortError` recognises.
+ *
+ * Re-exported rather than defined here so the engine seam and the audio worker
+ * share one factory: two of them would be two things to keep in step with
+ * `isAbortError`.
+ */
+export { abortError };

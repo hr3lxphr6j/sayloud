@@ -97,9 +97,12 @@ describe('LocalProvider', () => {
       return engine;
     });
 
-    await expect(provider.synthesize(request(), CONFIG)).rejects.toThrow(
-      'the GPU process went away'
-    );
+    const error = await provider.synthesize(request(), CONFIG).catch((e: unknown) => e);
+
+    // Reported as a load failure, which is the sentence the panel has; the
+    // worker's own message survives as the detail.
+    expect(error).toMatchObject({ code: 'model-load-failed' });
+    expect((error as Error).message).toBe('the GPU process went away');
     expect(engines).toHaveLength(1);
 
     // The next sentence must not be answered by the engine that just died.

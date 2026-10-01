@@ -35,7 +35,7 @@ import {
 } from '../models/registry';
 import { modelKeysInCache, tierFilesPresent } from '../models/store';
 import type { ModelSource } from '../models/urls';
-import { ProviderError } from './errors';
+import { errorMessage, ProviderError } from './errors';
 import type {
   LocalConfig,
   Provider,
@@ -190,7 +190,14 @@ export class LocalProvider implements Provider {
       // failure — an unknown voice, a tier that will not load, an aborted
       // request — leaves the engine in place, because rebuilding it would pay
       // for the ONNX session a second time for an error that is not about it.
-      if (isWorkerDeadError(error)) this.engine = null;
+      if (isWorkerDeadError(error)) {
+        this.engine = null;
+        // Reported as a load failure rather than as itself: the code travels to
+        // the panel, which has a sentence for "the model could not be loaded"
+        // and none for a worker that stopped. The worker's own message is kept
+        // as the detail, since it is the only actionable half.
+        throw new ProviderError('model-load-failed', errorMessage(error), error);
+      }
       throw error;
     }
   }

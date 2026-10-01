@@ -95,6 +95,14 @@ function configureRuntime(): void {
       wasm: new URL(ortWasmUrl, self.location.href).href,
     };
   }
+
+  // ONNX Runtime logs at `warning` by default, and its warnings are performance
+  // notes: "some nodes were not assigned to the preferred execution providers"
+  // is the ordinary report for a WebGPU session, where shape ops go to the CPU
+  // on purpose. Chrome files anything an extension page logs under "Errors",
+  // so a note that is always true read as a defect the user was meant to act
+  // on. Failures still come through.
+  env.backends.onnx.logLevel = 'error';
 }
 
 /**

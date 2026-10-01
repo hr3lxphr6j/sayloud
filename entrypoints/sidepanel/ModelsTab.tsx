@@ -30,6 +30,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ConfigStore, SavedConfigs } from '~/lib/config-store';
 import { formatDecimalBytes } from '~/lib/format-bytes';
 import { type MessageKey, type Translator, useT } from '~/lib/i18n';
+import type { DevicePreference } from '~/lib/models/device';
 import { fileBytes } from '~/lib/models/downloader';
 import {
   type DeviceCaps,
@@ -97,7 +98,12 @@ export function ModelsTab({
         onSetActive={(model, tier) => void setActiveTier(store, model, tier, inUse, onChanged)}
         onChanged={onChanged}
       />
-      <StorageCard device={device} downloads={downloads} />
+      <StorageCard
+        device={device}
+        downloads={downloads}
+        preference={local?.device ?? 'auto'}
+        onSetDevice={(next) => void setDevicePreference(store, next, inUse, onChanged)}
+      />
     </div>
   );
 }
@@ -490,24 +496,51 @@ function TierRow({
 interface StorageCardProps {
   device: ReturnType<typeof useDevice>;
   downloads: ModelStoreView;
+  /** What the user asked for, which is not always what the probe resolves to. */
+  preference: DevicePreference;
+  onSetDevice: (device: DevicePreference) => void;
 }
 
 /**
- * What the machine can do, and what the two model buckets cost.
+ * What the machine can do, what it will actually use, and what the two model
+ * buckets cost.
  *
- * The device line reports what the engine *will* use, resolved from a real
- * probe, rather than what it used last: an offscreen document has no
- * `chrome.storage` to write such a record into, and a guess from the panel
- * would be a claim about a context it cannot see.
+ * The line below the control reports what the engine *will* use, resolved from
+ * a real probe, rather than what it used last: an offscreen document has no
+ * `chrome.storage` to write such a record into, and a guess from the panel would
+ * be a claim about a context it cannot see.
+ *
+ * The control exists because "auto" is a decision made from one capability
+ * check, and a capability check cannot see a driver bug. A GPU that advertises
+ * `shader-f16` and then produces distorted half-precision audio is a real thing
+ * to be caught by, and the only way to tell it apart from a bad download is to
+ * ask the CPU to run the same weights.
  */
-function StorageCard({ device, downloads }: StorageCardProps) {
+function StorageCard({ device, downloads, preference, onSetDevice }: StorageCardProps) {
   const t = useT();
   const usage = downloads.usage;
 
   return (
     <Card title={t('model.storage.title')}>
       <div class="row">
-        <span class="row-label">{t('field.device')}</span>
+        <label class="row-label" for="device-preference">
+          {t('field.device')}
+        </label>
+        <select
+          id="device-preference"
+          class="input select"
+          value={preference}
+          onChange={(event) =>
+            onSetDevice((event.currentTarget as HTMLSelectElement).value as DevicePreference)
+          }
+        >
+          <option value="auto">{t('model.device.option-auto')}</option>
+          <option value="webgpu">{t('model.device.option-webgpu')}</option>
+          <option value="wasm">{t('model.device.option-wasm')}</option>
+        </select>
+      </div>
+      <div class="row">
+        <span class="row-label">{t('model.device.resolved')}</span>
         <span class="row-value">{deviceText(device, t)}</span>
       </div>
       <p class="muted small">{t('model.device.help')}</p>
@@ -519,6 +552,31 @@ function StorageCard({ device, downloads }: StorageCardProps) {
       <p class="muted small">{t('model.voices.note')}</p>
     </Card>
   );
+}
+
+/**
+ * Save which backend to ask for, and re-point the active config at it.
+ *
+ * Written through the same path as a tier change, for the same reason: the
+ * router reads the *active* config, so saving alone would leave the next
+ * sentence on the old device. `device` travels to the offscreen document inside
+ * the provider config, so the change takes effect when the session reloads.
+ */
+async function setDevicePreference(
+  store: ConfigStore,
+  device: DevicePreference,
+  inUse: boolean,
+  onChanged: () => void
+): Promise<void> {
+  try {
+    const saved = (await store.getSavedConfigs()).local;
+    const config = { ...(saved ?? { provider: 'local' as const }), provider: 'local' as const };
+    await store.saveConfig({ ...config, device });
+    if (inUse) await store.setActiveConfig('local');
+    onChanged();
+  } catch (error) {
+    console.error('[SayLoud] cannot save the device preference', error);
+  }
 }
 
 /** The device line: the machine's own words when it has any. */

@@ -597,6 +597,23 @@ check(
   /^(WASM|WebGPU|Not loaded)/.test(deviceLine ?? ''),
   `device line was ${JSON.stringify(deviceLine)}`
 );
+// "Auto" is one capability check, and a capability check cannot see a driver
+// bug — so the choice has to be overridable, and the override has to persist
+// without a second step.
+const deviceSelect = page.locator('#device-preference');
+check('the model tab offers a device to run on', (await deviceSelect.count()) === 1);
+await deviceSelect.selectOption('wasm');
+await page.waitForTimeout(250);
+const storedDevice = await worker.evaluate(() =>
+  chrome.storage.local.get('sayloud:provider-configs')
+);
+checkEqual(
+  'choosing a device is written to the saved config',
+  storedDevice['sayloud:provider-configs']?.local?.device,
+  'wasm'
+);
+await deviceSelect.selectOption('auto');
+await page.waitForTimeout(250);
 check(
   'voices are fetched on demand, and say so instead of offering a dead button',
   (await page.getByText(/Voices are downloaded on demand/).count()) === 1 &&

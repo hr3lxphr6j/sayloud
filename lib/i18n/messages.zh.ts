@@ -226,6 +226,8 @@ export const zh: Record<MessageKey, string> = {
   'sideplayer.hint.no-voice.message': 'Chrome 没有安装适用于这个页面的语音。',
   'sideplayer.hint.tts-error.title': '语音失败',
   'sideplayer.hint.tts-error.message': 'Chrome 无法朗读这个页面。',
+  'sideplayer.hint.orphaned.title': 'SayLoud 已重新加载',
+  'sideplayer.hint.orphaned.message': '扩展在页面打开期间更新了，刷新本页即可继续朗读。',
 
   // --- the caption window ---------------------------------------------------
   'caption.counter': '第 {index} / {total} 句',

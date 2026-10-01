@@ -30,11 +30,7 @@ describe('preferredTier', () => {
     expect(preferredTier(KOKORO_82M, WASM)?.id).toBe('q8');
   });
 
-  it('picks fp16 on WebGPU with shader-f16', () => {
-    expect(preferredTier(KOKORO_82M, WEBGPU_F16)?.id).toBe('fp16');
-  });
-
-  it('picks fp32 on WebGPU without shader-f16', () => {
+  it('picks fp32 on a GPU that has no shader-f16', () => {
     expect(preferredTier(KOKORO_82M, WEBGPU)?.id).toBe('fp32');
   });
 
@@ -60,32 +56,53 @@ describe('preferredTier', () => {
     expect(preferredTier(flat, WASM)).toBeUndefined();
   });
 
-  it('prefers a tier whose requirement the machine does not meet, never', () => {
-    // The two questions have to stay coupled: a tier that needs a capability
-    // must not also be the preferred one somewhere that lacks it, or the
-    // recommendation becomes the bug.
+  it('picks fp32 for both WebGPU classes, never fp16', () => {
+    // Measured 2026-10-01 on an Apple M3, whose adapter does advertise
+    // `shader-f16`: fp16 on WebGPU distorted the audio and stopped part-way
+    // through the sentence, while the *same weights* on the CPU were flawless
+    // and fp32 on the same GPU was flawless too. V20 had measured fp16's speed
+    // and never its quality, which is how it became the recommendation.
+    expect(preferredTier(KOKORO_82M, WEBGPU_F16)?.id).toBe('fp32');
+    expect(preferredTier(KOKORO_82M, WEBGPU)?.id).toBe('fp32');
+  });
+
+  it('gives every device class a tier that is safe to pick', () => {
+    // The fallback is `tiers[0]`, and for a WebGPU machine that is q8 — the one
+    // tier WebGPU cannot use. So every class has to be covered by an explicit
+    // `preferredFor`, and none of them may be answered with a broken tier.
     for (const caps of [WASM, WEBGPU, WEBGPU_F16]) {
+      const cls = deviceClass(caps);
       const tier = preferredTier(KOKORO_82M, caps);
-      if (tier?.requires !== undefined) expect(caps[tier.requires]).toBe(true);
+      expect(tier?.preferredFor).toContain(cls);
+      expect(tier?.brokenOn?.includes(cls) ?? false).toBe(false);
     }
   });
 });
 
-describe('tier requirements', () => {
+describe('tiers a device class must avoid', () => {
   const tierOf = (id: string) => KOKORO_82M.tiers?.find((tier) => tier.id === id);
 
-  it('says fp16 needs shader-f16', () => {
-    // Without it the arithmetic overflows to `Inf` and then `NaN`, which arrives
-    // as distorted speech that stops part-way through the sentence — measured on
-    // a machine whose adapter lacked the extension, with `fp32` working
-    // perfectly on the same one. `preferredFor` cannot express this: it says
-    // which device a tier suits, not which one it *requires*.
-    expect(tierOf('fp16')?.requires).toBe('shaderF16');
+  it('marks fp16 broken on both WebGPU classes, and only those', () => {
+    expect(tierOf('fp16')?.brokenOn).toEqual(['webgpu-f16', 'webgpu']);
+    // The CPU is where it was measured to be correct — it is the control that
+    // identified the backend rather than the weights as the cause, so it has to
+    // stay usable there.
+    expect(tierOf('fp16')?.brokenOn ?? []).not.toContain('wasm');
   });
 
-  it('requires nothing of the tiers that run anywhere', () => {
-    expect(tierOf('q8')?.requires).toBeUndefined();
-    expect(tierOf('fp32')?.requires).toBeUndefined();
+  it('leaves the tiers that run anywhere unmarked', () => {
+    expect(tierOf('q8')?.brokenOn).toBeUndefined();
+    expect(tierOf('fp32')?.brokenOn).toBeUndefined();
+  });
+
+  it('never prefers a tier on a class it is broken for', () => {
+    // The two fields disagreeing would put "Recommended" and "distorts the
+    // audio" on the same row, and the recommendation would be the bug.
+    for (const tier of KOKORO_82M.tiers ?? []) {
+      for (const cls of tier.brokenOn ?? []) {
+        expect(tier.preferredFor?.includes(cls) ?? false).toBe(false);
+      }
+    }
   });
 });
 

@@ -271,7 +271,19 @@ export class PlaybackEngine {
 
   play(): void {
     if (this.phase === 'playing' || this.phase === 'loading') return;
-    if (this.sentences.length === 0) return;
+    if (this.sentences.length === 0) {
+      // Silent here is the hardest kind of report to act on: no error, no
+      // effect, and nothing anywhere to look at. It means this engine was
+      // rebuilt without a session — which is what happens when a snapshot was
+      // never written or could not be read — so the ids go in the log to tell
+      // those apart.
+      console.warn('[SayLoud] cannot play: this session has no sentences', {
+        docId: this.docId,
+        tabId: this.tabId,
+        phase: this.phase,
+      });
+      return;
+    }
 
     if (this.phase === 'ended') {
       // Pressing play after the end replays from the top.

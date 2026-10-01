@@ -24,6 +24,31 @@ function reloadExtension(): void {
   Object.defineProperty(browser.runtime, 'id', { configurable: true, value: undefined });
 }
 
+/**
+ * A port that records what it was sent, and can be made to fail the way a torn
+ * down one does.
+ */
+function fakePort() {
+  const sent: unknown[] = [];
+  let stale = false;
+
+  return {
+    port: {
+      postMessage(message: unknown) {
+        if (stale) throw new Error('Attempting to use a disconnected port object');
+        sent.push(message);
+      },
+      disconnect: () => {},
+      onMessage: { addListener: () => {} },
+      onDisconnect: { addListener: () => {} },
+    },
+    sent,
+    goStale: () => {
+      stale = true;
+    },
+  };
+}
+
 describe('ReaderController', () => {
   beforeEach(() => {
     // A live extension, whatever the previous test did to it: the id is a
@@ -61,6 +86,52 @@ describe('ReaderController', () => {
     controller.connect();
 
     expect(controller.getState().error).not.toBe('orphaned');
+
+    controller.dispose();
+  });
+
+  it('resends a command when the port turns out to be stale', () => {
+    // Chrome throws on a port it has already torn down, and the command that
+    // triggered it is whatever the reader just asked for. Dropping it there is
+    // what "the play button does nothing" looks like from outside: no error the
+    // user can see, and nothing to retry by hand.
+    const stale = fakePort();
+    stale.goStale();
+    const fresh = fakePort();
+    const ports = [stale, fresh];
+    let next = 0;
+    vi.spyOn(browser.runtime, 'connect').mockImplementation(
+      () => (ports[next++] ?? fresh).port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController();
+    controller.connect();
+    controller.sendCommand({ type: 'toggle' });
+
+    expect(stale.sent).toEqual([]);
+    expect(fresh.sent).toContainEqual({ type: 'toggle' });
+
+    controller.dispose();
+  });
+
+  it('gives up quietly when not even a fresh port takes the command', () => {
+    const stale = fakePort();
+    stale.goStale();
+    const alsoStale = fakePort();
+    alsoStale.goStale();
+    const ports = [stale, alsoStale];
+    let next = 0;
+    vi.spyOn(browser.runtime, 'connect').mockImplementation(
+      () =>
+        (ports[next++] ?? alsoStale).port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController();
+    controller.connect();
+
+    // Nothing to assert but the absence of a throw: the reader schedules a
+    // retry rather than propagating a port failure into the page.
+    expect(() => controller.sendCommand({ type: 'toggle' })).not.toThrow();
 
     controller.dispose();
   });

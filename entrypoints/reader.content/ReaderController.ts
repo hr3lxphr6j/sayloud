@@ -262,16 +262,33 @@ export class ReaderController {
 
   private post(command: EngineCommand): void {
     if (!this.port) this.connect();
+
+    if (this.tryPost(command)) return;
+
+    if (this.contextGone()) {
+      this.orphan();
+      return;
+    }
+
+    // A stale port is the one failure here that a new connection fixes, and the
+    // command is worth keeping: it is whatever the reader just asked for, so
+    // dropping it is indistinguishable from a bar that ignores clicks. That is
+    // the whole symptom — no error, no effect, and nothing to retry by hand.
+    console.warn('[SayLoud] the port was stale; reconnecting and resending');
+    this.port = null;
+    this.connect();
+    if (!this.tryPost(command)) this.scheduleReconnect();
+  }
+
+  /** Send once, reporting whether the port took it. */
+  private tryPost(command: EngineCommand): boolean {
+    if (!this.port) return false;
     try {
-      this.port?.postMessage(command);
-    } catch (error) {
-      if (this.contextGone()) {
-        this.orphan();
-        return;
-      }
-      console.warn('[SayLoud] command dropped', error);
-      this.port = null;
-      this.scheduleReconnect();
+      this.port.postMessage(command);
+      return true;
+    } catch {
+      // Chrome throws on a port it has already torn down.
+      return false;
     }
   }
 

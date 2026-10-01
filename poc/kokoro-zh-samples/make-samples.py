@@ -13,9 +13,8 @@ Two groups, two models:
   format argument is an inference.
 
   Group 2 — 阶段 2（V27）: v1.1-zh (bopomofo tokenizer, voice zf_001) fed the
-  official `ZHFrontend` output versus a 2a-style input (pinyin-pro readings,
-  no erhua, no large_pinyin). Compared against the v1.0 clips from group 1,
-  which is what ships today.
+  official `ZHFrontend` output. The 2a-style comparison clip was dropped — see
+  the note in `main`.
 
 Each clip records how many characters the tokenizer's normalizer *discarded* and
 a digest of the resulting ids. Two variants whose ids are identical cannot sound
@@ -137,65 +136,11 @@ def legacy_reference(texts):
 
 # --- the legacy reference (the training target) -----------------------------
 
-# --- the 2a-style bopomofo --------------------------------------------------
-
-def build_bopomofo_table(frontend):
-    """
-    syllable -> (initial, final) in ZHFrontend's own convention.
-
-    Reuses `_get_initials_finals` rather than reimplementing it, because that
-    method is where the `i` -> `ii` / `iii` substitution for z/c/s and zh/ch/sh/r
-    happens — reimplementing it is how you get `ㄗㄧ` instead of `ㄗㄭ`.
-    """
-    from pypinyin.constants import PINYIN_DICT
-    from misaki.zh_frontend import ZH_MAP
-
-    table = {}
-    for codepoint in PINYIN_DICT:
-        char = chr(codepoint)
-        try:
-            initials, finals = frontend._get_initials_finals(char)
-        except Exception:
-            continue
-        if len(initials) != 1 or len(finals) != 1:
-            continue
-        syllable = lazy_pinyin(char, style=Style.NORMAL)[0]
-        if not syllable:
-            continue
-        final = re.sub(r'\d$', '', finals[0])
-        ini = ZH_MAP.get(initials[0], '')
-        fin = ZH_MAP.get(final)
-        if fin is None:
-            continue
-        # pypinyin writes `ü` where the product's table writes `v`; key both the
-        # same way or every `nü`/`lüe` syllable misses the table.
-        table.setdefault(syllable.replace('ü', 'v'), (ini, fin))
-    return table
-
-
-def bopomofo_of(syllable_with_tone: str, table: dict) -> str:
-    tone = syllable_with_tone[-1]
-    # pinyin-pro writes the neutral tone as `0`; the v1.1-zh vocab has 1-5 and no
-    # `0`, so an unmapped `0` is silently deleted by the normalizer and the
-    # syllable loses its (already empty) tone mark — harmless here, but it also
-    # means the input no longer matches what the front end emits.
-    if tone == '0':
-        tone = '5'
-    key = syllable_with_tone[:-1].replace('ü', 'v')
-    entry = table.get(key)
-    if entry is None:
-        raise SystemExit(f'no bopomofo for syllable {key!r}')
-    return entry[0] + entry[1] + tone
-
-
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     from misaki.zh import ZHG2P
-    from misaki.zh_frontend import ZHFrontend
 
     g2p = ZHG2P(version='1.1', en_callable=lambda t: t)
-    frontend = ZHFrontend()
-    bopo = build_bopomofo_table(frontend)
 
     tok10 = Tokenizer(V10 / 'tokenizer.json', 'v1.0')
     tok11 = Tokenizer(V11 / 'tokenizer.json', 'v1.1-zh')
@@ -248,31 +193,29 @@ def main() -> None:
             'jieba 词边界 · 无变调 · 已删 U+032F · 标点紧邻',
             legacy[entry['text']], m10, tok10, 'v1.0 / zf_xiaobei')
 
-    # Group 2: v1.1-zh, official front end vs a 2a-style input.
+    # Group 2: v1.1-zh, official front end only.
+    #
+    # There used to be a second clip per sentence feeding a "2a-style" input —
+    # our own readings re-encoded as bopomofo — to preview how far phase 2a would
+    # land from the official front end. It is gone, deliberately.
+    #
+    # Building it needs a syllable→bopomofo table covering *every* reading, and
+    # enumerating pypinyin's single-character dictionary only yields each
+    # character's default reading, so 得's děi was simply absent and the run died
+    # on `no bopomofo for syllable 'dei'`. pypinyin's heteronym API does expose the
+    # rest, but its three styles disagree on list length for the same character
+    # (NORMAL gives ['de','dei'] where FINALS_TONE3 gives ['e2','e5','ei3']), so
+    # index-aligning them is not safe either.
+    #
+    # A correct table is T5's job, generated with the same care as
+    # pinyin-table.json, not something to improvise for a preview page.
     print('group 2 — v1.1-zh (zf_001)')
-    two_a = json.loads((HERE / 'two-a.json').read_text())
     for sid, entry in sentences.items():
         text = entry['text']
-
         phonemes, _ = g2p(text)
         add('v11', sid, text, entry['why'], 'v1.1-zh 官方 ZHFrontend',
             'sandhi + 儿化 + jieba 词性 + large_pinyin（目标）',
             phonemes, m11, tok11, 'v1.1-zh / zf_001')
-
-        # 2a-style: the readings our pipeline produces (pinyin-pro, sandhi on,
-        # patches applied), re-encoded as bopomofo and joined with `/` the way
-        # ZHFrontend joins words. The IPA has already folded the tones into
-        # arrows, so the readings come from two-a.json.
-        syllables = two_a[sid]['syllables']
-        lengths = two_a[sid]['wordLengths']
-        at = 0
-        encoded = []
-        for length in lengths:
-            encoded.append(''.join(bopomofo_of(s, bopo) for s in syllables[at:at + length]))
-            at += length
-        add('v11', sid, text, entry['why'], 'v1.1-zh 2a 式（我们的读音）',
-            'pinyin-pro 读音 + 注音符号 + `/` 分隔 + 一/不变调；无儿化、无 large_pinyin',
-            '/'.join(encoded), m11, tok11, 'v1.1-zh / zf_001')
 
     (HERE / 'samples.json').write_text(json.dumps(clips, ensure_ascii=False, indent=1))
     print(f'\nwrote samples.json ({len(clips)} clips) and {len(clips)} wavs to {OUT}')

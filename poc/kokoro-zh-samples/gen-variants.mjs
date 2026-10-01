@@ -10,12 +10,14 @@
  *
  *   现状               every deviation present (what we ship today)
  *   只修 A（jieba）      word-internal concatenation, words from jieba
- *   只修 A（ICU）         same, but words from Intl.Segmenter — the comparison
- *   只修 B 标点         punctuation flush instead of space-before-punctuation
- *   只修 C 变调         toneSandhi off
- *   只修 D 去标记       U+032F deleted
- *   全部对齐            A+B+C+D, jieba boundaries
- *   全部对齐+补丁        A+B+C+D plus the 还书 patch
+ *   对齐 A+B+D          A+B+D; toneSandhi deliberately untouched
+ *   对齐 A+B+D + 补丁    the above plus the patch table
+ *
+ * The sentences are the user's own reported failures rather than invented ones,
+ * because the invented ones turned out not to be audible. They exercise: an
+ * unwanted pause inside 人设 and 曾经 (A), 得 read as dé where it should be děi or
+ * a neutral de (E), punctuation that the model does not pause at (model-side),
+ * and 知识 which our G2P gets right and the model renders as 指示 (model-side).
  *
  * `现状` is not hand-written: it is asserted equal to the *real* exported
  * `hanToIpa` / `mapPunctuation` / `splitRuns` output, so a drift in either the
@@ -101,19 +103,6 @@ function jiebaWordLengths(han) {
   return lengths;
 }
 
-/** Word lengths from `Intl.Segmenter`, kept only as a comparison. */
-const segmenter = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
-function icuWordLengths(han) {
-  const lengths = [];
-  let total = 0;
-  for (const { segment } of segmenter.segment(han)) {
-    lengths.push([...segment].length);
-    total += [...segment].length;
-  }
-  if (total !== [...han].length) throw new Error(`Intl.Segmenter covered ${total}/${[...han].length}`);
-  return lengths;
-}
-
 /** Longest-match patch application — the shape the spec proposes for T3. */
 function applyPatches(han, syllables, patches) {
   const out = [...syllables];
@@ -134,7 +123,13 @@ function applyPatches(han, syllables, patches) {
   return out;
 }
 
-const PATCHES = { 还书: 'huan2 shu1' };
+const PATCHES = {
+  还书: 'huan2 shu1',
+  // 得 是系统性错误：pinyin-pro 在「V + 得 + 补语」结构里一律给 de2，
+  // 而它应该是轻声的 de（累得、跑得快、写得很好）或 děi（都得 = must）。
+  都得: 'dou1 dei3',
+  累得: 'lei4 de0',
+};
 
 /** The whole sentence, with the assembly strategy exposed too. */
 function phonemize(text, opts) {
@@ -188,9 +183,26 @@ function phonemize(text, opts) {
 // --- the samples ------------------------------------------------------------
 
 const SENTENCES = [
-  { id: 's1', text: '他是一个工程师，在图书馆工作。', why: '多字词（工程师 / 图书馆）→ 词边界的影响最大；逗号处听停顿' },
-  { id: 's2', text: '一石二鸟，一举两得。', why: '两个「一」→ 变调差异最容易听出来' },
-  { id: 's3', text: '他昨天去图书馆还书了。', why: '「还书」读错（hái 应为 huán）+ 多字词' },
+  {
+    id: 'r1',
+    text: '为了维持传奇潮男的人设，无论他想不想，都得常去夜场转悠……甚至连休息日都要练舞，累得他都快崩溃了。',
+    why: '用户报告：「人设」中间有不该有的停顿；「得」读成二声（应 děi / de）；「……」没停顿',
+  },
+  {
+    id: 'r2',
+    text: '他的母亲作为众阳之民，一直怀念着遗产之地曾经叫做“亚斯拉尼荒野”的时候，怀念着太阳。',
+    why: '用户报告：「曾经」二字中间有不该有的停顿',
+  },
+  {
+    id: 'r3',
+    text: '在众阳之民还生活在太阳之下的时代，长大成人的男孩要告别父母、远走他乡，但艾海亚打算留在村子和母亲一起生活。',
+    why: '用户报告：第一个「，」没停顿，和后面连起来读了',
+  },
+  {
+    id: 'r4',
+    text: '要了解的知识',
+    why: '用户报告：「知识」听起来像「指示」（注：我们的读音是对的，问题在模型）',
+  },
 ];
 
 const VARIANTS = [
@@ -207,24 +219,6 @@ const VARIANTS = [
     opts: { toneSandhi: true, stripMark: false, boundaries: jiebaWordLengths, trimOther: true, spaceBetweenParts: true },
   },
   {
-    id: 'fix-a-icu',
-    label: '只修 A（对照：Intl.Segmenter）',
-    note: '同上，但词边界用 Intl.Segmenter —— 听它把「工程师/图书馆」切碎成什么样',
-    opts: { toneSandhi: true, stripMark: false, boundaries: icuWordLengths, trimOther: true, spaceBetweenParts: true },
-  },
-  {
-    id: 'fix-b',
-    label: '只修 B 标点',
-    note: '标点紧邻前一个音素；其余不变',
-    opts: { toneSandhi: true, stripMark: false, boundaries: 'syllable', trimOther: false, spaceBetweenParts: false },
-  },
-  {
-    id: 'fix-d',
-    label: '只修 D 去标记',
-    note: '删掉 U+032F；其余不变（预期听不出差别，用来做对照）',
-    opts: { toneSandhi: true, stripMark: true, boundaries: 'syllable', trimOther: true, spaceBetweenParts: true },
-  },
-  {
     id: 'aligned',
     label: '对齐 A+B+D（保留变调）',
     note: '阶段 1 的目标。jieba 边界 + 删 U+032F + 标点紧邻，不动变调；读音仍用 pinyin-pro',
@@ -233,15 +227,8 @@ const VARIANTS = [
   {
     id: 'aligned-patched',
     label: '对齐 A+B+D + 补丁',
-    note: '在上一版基础上加多音字补丁表（还书 → huán shū）',
-    only: ['s3'],
+    note: '在上一版基础上加多音字补丁表（还书 / 都得 / 累得）',
     opts: { toneSandhi: true, stripMark: true, boundaries: jiebaWordLengths, trimOther: false, spaceBetweenParts: false, patches: PATCHES },
-  },
-  {
-    id: 'aligned-nosandhi',
-    label: '对齐 A+B+C+D（关变调，对照）',
-    note: '把变调也关掉 —— 原方案。现已知道 legacy 自己也不一致（词典里 56% 变调 / 44% 原调），所以这一项不列入阶段 1',
-    opts: { toneSandhi: false, stripMark: true, boundaries: jiebaWordLengths, trimOther: false, spaceBetweenParts: false },
   },
 ];
 

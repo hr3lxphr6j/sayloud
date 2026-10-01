@@ -286,7 +286,7 @@ export const zh: Record<MessageKey, string> = {
   'model.device.webgpu-named': 'WebGPU · {adapter}',
   'model.device.help': '下次加载模型时使用。',
   'model.device.resolved': '将运行于',
-  'model.device.option-auto': '自动选择（推荐）',
+  'model.device.option-auto': '自动（推荐）',
   'model.device.option-webgpu': 'WebGPU — 本机显卡',
   'model.device.option-wasm': 'CPU — 较慢，但一定可用',
 };

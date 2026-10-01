@@ -365,7 +365,7 @@ export const en = {
   // read as a claim that a model is already running there.
   'model.device.help': 'Used the next time the model loads.',
   'model.device.resolved': 'Will run on',
-  'model.device.option-auto': 'Choose automatically (recommended)',
+  'model.device.option-auto': 'Automatic (recommended)',
   'model.device.option-webgpu': 'WebGPU — this machine’s graphics',
   'model.device.option-wasm': 'CPU — slower, always works',
 } as const;

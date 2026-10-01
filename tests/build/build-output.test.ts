@@ -249,6 +249,26 @@ describe('the build output', () => {
     expect(statSync(join(OUTPUT_DIR, wasm[0] as string)).size).toBe(21_596_019);
   });
 
+  it('ships the glue module ONNX Runtime imports at runtime', () => {
+    // ORT assembles this path itself and `import()`s it, so no bundler sees the
+    // file and nothing else notices when it goes missing: the build stays green
+    // and the failure only appears on the first synthesis, as "no available
+    // backend found" — after a fallback to a jsdelivr URL that the extension's
+    // `script-src 'self'` blocks. That is exactly how it shipped once already.
+    const glue = FILES.filter((path) =>
+      /^assets\/ort-wasm-simd-threaded\.jsep-.*\.mjs$/.test(path)
+    );
+    expect(glue).toHaveLength(1);
+
+    const worker = FILES.find((path) => path.startsWith('assets/local.worker-'));
+    expect(worker).toBeDefined();
+    // The name the worker hands ORT has to be the name that was emitted: a URL
+    // pointing at nothing fails exactly like no URL at all.
+    expect(readFileSync(join(OUTPUT_DIR, worker as string), 'utf8')).toContain(
+      posix.basename(glue[0] as string)
+    );
+  });
+
   it('does not bundle the voice files, which are fetched at runtime', () => {
     // `kokoro-js` ships 54 of these in its npm package; they belong in Cache
     // Storage, and 28 MB in the extension package would be a mistake nobody

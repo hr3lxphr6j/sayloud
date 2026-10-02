@@ -29,12 +29,12 @@ importers:
       kokoro-js:
         specifier: 1.2.1
         version: 1.2.1
+      kuromoji:
+        specifier: 0.1.2
+        version: 0.1.2
       kuroshiro:
         specifier: ^1.2.0
         version: 1.2.0
-      kuroshiro-analyzer-kuromoji:
-        specifier: ^1.1.0
-        version: 1.1.0
       microsoft-cognitiveservices-speech-sdk:
         specifier: ^1.51.0
         version: 1.51.0
@@ -1596,9 +1596,6 @@ packages:
 
   kuromoji@0.1.2:
     resolution: {integrity: sha512-V0dUf+C2LpcPEXhoHLMAop/bOht16Dyr+mDiIE39yX3vqau7p80De/koFqpiTcL1zzdZlc3xuHZ8u5gjYRfFaQ==}
-
-  kuroshiro-analyzer-kuromoji@1.1.0:
-    resolution: {integrity: sha512-BSJFhpsQdPwfFLfjKxfLA9iL+/PC6LCR9vgwgb5Jc7jZwk9ilX8SAV6CwhAQZY611tiuhbB52ONYKDO8hgY1bA==}
 
   kuroshiro@1.2.0:
     resolution: {integrity: sha512-yBGCK9oDOY3LGZ/KXaN9m7ADcAuSczOR2FoMRYwHLUlis3/o/uxdMVROAjENFO0NQJgALhIdWxI/vIBVrMCk9w==}
@@ -3868,10 +3865,6 @@ snapshots:
       async: 2.6.4
       doublearray: 0.0.2
       zlibjs: 0.3.1
-
-  kuroshiro-analyzer-kuromoji@1.1.0:
-    dependencies:
-      kuromoji: 0.1.2
 
   kuroshiro@1.2.0:
     dependencies:

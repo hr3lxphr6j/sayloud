@@ -8,7 +8,7 @@
  * development — the extension still runs, just heavier or with 21 MB of runtime
  * one import away from a page that only draws a form.
  *
- * Two failures this is here to catch, both of which have real consequences:
+ * Four failures this is here to catch, all of which have real consequences:
  *
  * 1. **ONNX Runtime leaking into the service worker or the side panel.**
  *    `background.js` is 40 kB today; the transformers.js tree is 2.5 MB plus a
@@ -24,6 +24,14 @@
  * 3. **jieba's segmenter reaching a page that does not phonemize.** Its wasm is
  *    4 MB and its glue about 1.5 MB of the worker chunk. Same structural
  *    guarantee as ONNX Runtime, same reason to check it.
+ * 4. **An asset URL that resolved to `undefined`.** `import.meta.url` is what
+ *    names the emitted worker and ORT's wasm pair; a global `define` that
+ *    replaces `import.meta` — the tempting fix for the `[EMPTY_IMPORT_META]`
+ *    warning — leaves those names as unresolved `{}.ROLLDOWN_FILE_URL_*`
+ *    placeholders that evaluate to `undefined` at runtime. Nothing else in the
+ *    suite notices: the build stays green and the extension only fails on the
+ *    first sentence, as "the on-device worker stopped". The two tests at the end
+ *    of this file are the ones that would have caught it.
  *
  * Run with `pnpm test:build`, which builds first. It is deliberately not part
  * of `pnpm test`: that suite runs without a build, and a test that silently
@@ -58,13 +66,15 @@ const ORT_MARKERS = ['onnxruntime', 'InferenceSession', 'wasmPaths', 'ort-wasm']
 const JIEBA_MARKERS = ['jieba', 'jieba_rs_wasm_bg-'] as const;
 
 /**
- * Measured 28.9 MB: ONNX Runtime's 21.6 MB wasm, jieba's 4.0 MB wasm, the 2.5 MB
- * worker chunk, and the rest. It was 24.8 MB before the segmenter landed; the
- * bound moved by about what the wasm weighs, which is the point of keeping it
- * tight.
+ * Measured 46.8 MB: ONNX Runtime's 21.6 MB wasm, the 17.8 MB Japanese
+ * dictionary, jieba's 4.0 MB wasm, the 2.5 MB worker chunk, and the rest. It was
+ * 28.9 MB before the dictionary landed and 24.8 MB before the segmenter; each
+ * time the bound moved by about what the addition weighs, which is the point of
+ * keeping it tight. The twelve `kuromoji-dict/` files are fetched at runtime by
+ * the worker's tokenizer, so they are payload rather than an accident.
  */
-const MIN_BYTES = 27_000_000;
-const MAX_BYTES = 31_000_000;
+const MIN_BYTES = 44_000_000;
+const MAX_BYTES = 50_000_000;
 
 interface BuiltFile {
   /** Path relative to the output directory, POSIX-separated. */
@@ -334,5 +344,39 @@ describe('the build output', () => {
 
     expect(bytes).toBeGreaterThanOrEqual(MIN_BYTES);
     expect(bytes).toBeLessThanOrEqual(MAX_BYTES);
+  });
+
+  it('points the offscreen document at the worker that was emitted', () => {
+    // The worker's own name comes from `import.meta.url`, so a build that
+    // rewrites `import.meta` leaves it as an unresolved placeholder rather than
+    // a path — and `new Worker(new URL(undefined, …))` throws where the engine
+    // is assembled, before anything can report why. The user sees every
+    // synthesis fail with "the on-device worker stopped", which names the
+    // symptom and neither the cause nor this file.
+    //
+    // Asserted against the emitted name rather than merely "is a string": a URL
+    // pointing at a file that does not exist fails exactly like no URL at all.
+    const offscreen = entryGraph('offscreen.html');
+    const spawning = offscreen.filter((path) =>
+      /new Worker\(\s*new URL\(\s*["'`]\/assets\/local\.worker-/.test(readBuiltFile(path).text)
+    );
+
+    expect(spawning).toHaveLength(1);
+
+    const worker = FILES.find((path) => path.startsWith('assets/local.worker-'));
+    expect(worker).toBeDefined();
+    expect(readBuiltFile(spawning[0] as string).text).toContain(`/${worker as string}`);
+  });
+
+  it('leaves no emitted-asset placeholder unresolved', () => {
+    // The other half of the same failure, and the reason it is a test of its
+    // own: a placeholder that survives the build reads as `undefined` wherever
+    // it lands, so this catches the next asset to be named this way even though
+    // the test above only knows about the worker.
+    const placeholders = FILES.filter((path) => path.endsWith('.js')).filter((path) =>
+      readBuiltFile(path).text.includes('ROLLDOWN_FILE_URL_')
+    );
+
+    expect(placeholders).toEqual([]);
   });
 });

@@ -321,11 +321,17 @@ export class PlaybackEngine {
       // already updated lastPausedTimeMs by the time we get here (it's synchronous
       // through the message channel), so getCurrentTimeMs() returns the right value.
       this.resumeTimeMs = this.speaker.getCurrentTimeMs?.() ?? 0;
+      console.log('[SayLoud] paused at position', {
+        resumeTimeMs: this.resumeTimeMs,
+        index: this.index,
+        sentence: this.sentences[this.index]?.text.slice(0, 50),
+      });
     } else {
       // Browser voice doesn't support pause, so stop it. resumeTimeMs stays 0,
       // meaning it will restart from the beginning.
       this.resumeTimeMs = 0;
       this.speaker.stop();
+      console.log('[SayLoud] browser voice does not support pause, will restart from beginning');
     }
     this.setPhase('paused');
   }
@@ -471,6 +477,13 @@ export class PlaybackEngine {
       this.voice = voice;
       this.wordOffset = 0;
       this.charsRead = charsBefore(this.sentences, index);
+      console.log('[SayLoud] speaking sentence', {
+        index,
+        text: sentence.text.slice(0, 50),
+        resumeTimeMs: this.resumeTimeMs,
+        voice,
+        rate: this.rate,
+      });
       this.speaker.speak({
         text: sentence.text,
         voice,

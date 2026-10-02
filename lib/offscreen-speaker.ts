@@ -209,6 +209,11 @@ export class OffscreenSpeaker implements Speaker {
       await this.manager.sendCommand({ type: 'play', id, startTimeMs: resumeTimeMs ?? 0 });
       if (this.stale(generation)) return;
 
+      console.log('[SayLoud] offscreen play command sent', {
+        id,
+        startTimeMs: resumeTimeMs ?? 0,
+      });
+
       this.emit('start', undefined);
     } catch (error) {
       if (this.stale(generation)) return;
@@ -221,6 +226,9 @@ export class OffscreenSpeaker implements Speaker {
     // playback position regardless of which sentence is active.
     if (isOffscreenEvent(message) && message.type === 'paused') {
       this.lastPausedTimeMs = message.currentTimeMs;
+      console.log('[SayLoud] offscreen paused event received', {
+        currentTimeMs: message.currentTimeMs,
+      });
       return;
     }
 

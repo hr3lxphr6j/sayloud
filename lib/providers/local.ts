@@ -91,6 +91,7 @@ export interface LocalProviderDeps {
 export function voiceLanguage(voiceId: string): string | undefined {
   const prefix = voiceId.slice(0, 2);
   if (prefix === 'zf' || prefix === 'zm') return 'zh-CN';
+  if (prefix === 'jf' || prefix === 'jm') return 'ja-JP';
   if (prefix === 'af' || prefix === 'am') return 'en-US';
   if (prefix === 'bf' || prefix === 'bm') return 'en-GB';
   return undefined;

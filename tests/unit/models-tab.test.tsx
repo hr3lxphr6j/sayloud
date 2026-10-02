@@ -189,7 +189,7 @@ describe('the model cards', () => {
     renderTab();
     await screen.findByText('Kokoro 82M');
 
-    expect(screen.getByText(/en-US · en-GB · zh-CN · 36 voices/)).toBeTruthy();
+    expect(screen.getByText(/en-US · en-GB · zh-CN · ja · 41 voices/)).toBeTruthy();
     const licence = screen.getByRole('link', { name: 'Licence: Apache-2.0' });
     expect(licence.getAttribute('href')).toBe('https://www.apache.org/licenses/LICENSE-2.0');
   });

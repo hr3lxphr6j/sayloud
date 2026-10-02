@@ -34,6 +34,7 @@ export type WorkerRequest =
     }
   | { type: 'load'; id: number; modelId: string; tierId: string; device: Device }
   | { type: 'synthesize'; id: number; text: string; voiceId: string; lang: string }
+  | { type: 'phonemize-japanese-reply'; requestId: number; katakana: string }
   | { type: 'cancel'; id: number }
   | { type: 'dispose' };
 
@@ -42,6 +43,7 @@ export type WorkerReply =
   | { type: 'ready'; id: number }
   | { type: 'loaded'; id: number; info: DeviceInfo }
   | { type: 'pcm'; id: number; pcm: Float32Array; sampleRate: number }
+  | { type: 'phonemize-japanese-request'; requestId: number; text: string }
   | { type: 'error'; id: number; code: ProviderErrorCode; message: string };
 
 const REQUEST_TYPES: ReadonlySet<string> = new Set([
@@ -108,6 +110,13 @@ function isModelSource(value: unknown): value is ModelSource {
 /** True for a well-formed reply. */
 export function isWorkerReply(value: unknown): value is WorkerReply {
   const type = typeOf(value);
+  
+  // Special case: phonemize-japanese-request doesn't have an 'id' field
+  if (type === 'phonemize-japanese-request') {
+    const message = value as Record<string, unknown>;
+    return typeof message.requestId === 'number' && typeof message.text === 'string';
+  }
+  
   if (type === null || !isId((value as { id?: unknown }).id)) return false;
   const message = value as Record<string, unknown>;
 

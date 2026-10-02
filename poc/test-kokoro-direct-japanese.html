@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>测试 Kokoro 直接处理日语</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+      background: #0B0E14;
+      color: #F8FAFC;
+    }
+    button {
+      background: #38BDF8;
+      color: #0F172A;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+      margin: 0.5rem;
+    }
+    button:disabled {
+      opacity: 0.5;
+    }
+    .status {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #1E293B;
+      border: 1px solid #334155;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🇯🇵 测试 Kokoro 直接处理日语文本</h1>
+  <p>测试 kokoro-js 的 generate() 方法能否直接处理日语文本</p>
+  
+  <button onclick="testDirect()">测试：こんにちは (直接输入)</button>
+  <button onclick="testWithKana2IPA()">测试：用 kana2ipa 转 IPA</button>
+  
+  <div id="status" class="status">等待测试...</div>
+  
+  <script type="module">
+    import { KokoroTTS } from 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm';
+    
+    let tts = null;
+    
+    async function initTTS() {
+      if (!tts) {
+        document.getElementById('status').textContent = '加载 Kokoro 模型...';
+        tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
+          dtype: 'q8',
+          device: 'wasm',
+        });
+        document.getElementById('status').textContent = '✅ 模型加载完成';
+      }
+      return tts;
+    }
+    
+    window.testDirect = async function() {
+      try {
+        const tts = await initTTS();
+        document.getElementById('status').textContent = '合成中：直接输入假名...';
+        
+        const text = 'こんにちは';
+        const audio = await tts.generate(text, { voice: 'jf_alpha' });
+        
+        const wavData = createWav(audio.audio, 24000);
+        const audioBlob = new Blob([wavData], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        document.getElementById('status').innerHTML = `
+          ✅ 成功！<br>
+          输入：${text}<br>
+          音频长度：${audio.audio.length} 采样点<br>
+          <audio controls src="${audioUrl}"></audio>
+        `;
+      } catch (error) {
+        document.getElementById('status').textContent = '❌ 错误：' + error.message;
+        console.error(error);
+      }
+    };
+    
+    window.testWithKana2IPA = async function() {
+      try {
+        const tts = await initTTS();
+        document.getElementById('status').textContent = '步骤 1: 转换为 IPA...';
+        
+        // 调用服务器 API
+        const res = await fetch('http://localhost:8915/api/kana2ipa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kana: 'こんにちは' }),
+        });
+        const { ipa } = await res.json();
+        
+        document.getElementById('status').textContent = `步骤 2: 合成音频（IPA: ${ipa}）...`;
+        
+        const encoded = tts.tokenizer(ipa, { truncation: false });
+        const audio = await tts.generate_from_ids(encoded.input_ids, { voice: 'jf_alpha' });
+        
+        const wavData = createWav(audio.audio, 24000);
+        const audioBlob = new Blob([wavData], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        document.getElementById('status').innerHTML = `
+          ✅ 成功！<br>
+          IPA：${ipa}<br>
+          音频长度：${audio.audio.length} 采样点<br>
+          <audio controls src="${audioUrl}"></audio>
+        `;
+      } catch (error) {
+        document.getElementById('status').textContent = '❌ 错误：' + error.message;
+        console.error(error);
+      }
+    };
+    
+    function createWav(audioData, sampleRate) {
+      const numChannels = 1;
+      const bitsPerSample = 32;
+      const bytesPerSample = bitsPerSample / 8;
+      const blockAlign = numChannels * bytesPerSample;
+      const byteRate = sampleRate * blockAlign;
+      const dataSize = audioData.length * bytesPerSample;
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + dataSize, true);
+      writeString(view, 8, 'WAVE');
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 3, true);
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitsPerSample, true);
+      writeString(view, 36, 'data');
+      view.setUint32(40, dataSize, true);
+
+      for (let i = 0; i < audioData.length; i++) {
+        view.setFloat32(44 + i * 4, audioData[i], true);
+      }
+
+      return buffer;
+    }
+
+    function writeString(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+  </script>
+</body>
+</html>

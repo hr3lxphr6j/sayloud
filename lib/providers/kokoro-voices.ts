@@ -5,15 +5,19 @@
  * not need the model either — this is the list of what *could* be synthesized,
  * while "which of them are downloaded" is the model store's question.
  *
- * Only the 36 voices P4 can actually speak are here (spec §3.11.6). The
- * repository ships 54, but the other 18 are Japanese, Spanish, French, Hindi,
- * Italian and Portuguese, and each would need its own G2P — listing them would
- * only offer the user a voice that throws when it is used.
+ * Only the 41 voices that have G2P support are listed here (spec §3.11.6):
+ * - 28 English voices (American & British)
+ * - 8 Chinese voices
+ * - 5 Japanese voices
+ *
+ * The repository ships 54 voices total, but the other 13 (Spanish, French, Hindi,
+ * Italian, Portuguese) would each need their own G2P — listing them would only
+ * offer the user a voice that throws when used.
  *
  * The English half is generated from `kokoro-js`'s own `VOICES` metadata
  * (name, language, gender), which is also the list its `generate()` validates
- * against. The Chinese half is written out by hand: the repository publishes no
- * display name for those voices, only the id, so the label is the id's pinyin.
+ * against. The Chinese and Japanese halves are written out by hand: the repository
+ * publishes no display names for those voices, only the id.
  *
  * Loaded only by `listVoices()`, so the offscreen document — which only
  * synthesizes — never carries it.
@@ -287,4 +291,47 @@ export const CHINESE_VOICES: readonly Voice[] = [
  * nothing else, and SayLoud's rule is to highlight the whole sentence rather
  * than estimate where a word landed (spec §3.12).
  */
-export const KOKORO_VOICES: readonly Voice[] = [...ENGLISH_VOICES, ...CHINESE_VOICES];
+/** The 5 Japanese voices: 4 female, 1 male. */
+export const JAPANESE_VOICES: readonly Voice[] = [
+  {
+    id: 'jf_alpha',
+    name: 'Alpha',
+    lang: 'ja',
+    gender: 'female',
+    supportsTimings: false,
+  },
+  {
+    id: 'jf_gongitsune',
+    name: 'Gongitsune',
+    lang: 'ja',
+    gender: 'female',
+    supportsTimings: false,
+  },
+  {
+    id: 'jf_nezumi',
+    name: 'Nezumi',
+    lang: 'ja',
+    gender: 'female',
+    supportsTimings: false,
+  },
+  {
+    id: 'jf_tebukuro',
+    name: 'Tebukuro',
+    lang: 'ja',
+    gender: 'female',
+    supportsTimings: false,
+  },
+  {
+    id: 'jm_kumo',
+    name: 'Kumo',
+    lang: 'ja',
+    gender: 'male',
+    supportsTimings: false,
+  },
+];
+
+export const KOKORO_VOICES: readonly Voice[] = [
+  ...ENGLISH_VOICES,
+  ...CHINESE_VOICES,
+  ...JAPANESE_VOICES,
+];

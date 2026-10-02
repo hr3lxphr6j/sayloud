@@ -26,6 +26,7 @@ export type OffscreenCommand =
       id: string;
       text: string;
       voiceId: string;
+      lang: string;
       config: ProviderConfig;
     }
   | {
@@ -222,6 +223,7 @@ export function isOffscreenCommand(value: unknown): value is OffscreenCommand {
         isNonEmptyString(message.id) &&
         typeof message.text === 'string' &&
         typeof message.voiceId === 'string' &&
+        typeof message.lang === 'string' &&
         typeof message.config === 'object' &&
         message.config !== null
       );

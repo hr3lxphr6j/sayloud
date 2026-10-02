@@ -15,7 +15,7 @@ const POLICY = { persist: true, maxBytes: 200 * 1024 * 1024 };
 
 describe('isOffscreenCommand', () => {
   const valid: OffscreenCommand[] = [
-    { type: 'synthesize', id: 'a', text: 'hi', voiceId: 'v', config: CONFIG },
+    { type: 'synthesize', id: 'a', text: 'hi', voiceId: 'v', lang: 'en-US', config: CONFIG },
     { type: 'prefetch', items: [{ text: 'hi', voiceId: 'v' }], config: CONFIG },
     { type: 'prefetch', items: [], config: CONFIG },
     { type: 'play', id: 'a', startTimeMs: 0 },
@@ -35,12 +35,12 @@ describe('isOffscreenCommand', () => {
     ['an array', []],
     ['an unknown type', { type: 'explode' }],
     ['no type', { id: 'a' }],
-    ['a synthesize without text', { type: 'synthesize', id: 'a', voiceId: 'v', config: CONFIG }],
+    ['a synthesize without text', { type: 'synthesize', id: 'a', voiceId: 'v', lang: 'en-US', config: CONFIG }],
     [
       'a synthesize with a null config',
-      { type: 'synthesize', id: 'a', text: 'hi', voiceId: 'v', config: null },
+      { type: 'synthesize', id: 'a', text: 'hi', voiceId: 'v', lang: 'en-US', config: null },
     ],
-    ['a synthesize with an empty id', { type: 'synthesize', id: '', text: 'hi', voiceId: 'v' }],
+    ['a synthesize with an empty id', { type: 'synthesize', id: '', text: 'hi', voiceId: 'v', lang: 'en-US' }],
     ['a prefetch without items', { type: 'prefetch', config: CONFIG }],
     ['a prefetch with non-array items', { type: 'prefetch', items: 'nope', config: CONFIG }],
     [
@@ -64,7 +64,7 @@ describe('isOffscreenCommand', () => {
 
   it('accepts a zero-length synthesis, which the worker skips', () => {
     expect(
-      isOffscreenCommand({ type: 'synthesize', id: 'a', text: '', voiceId: 'v', config: CONFIG })
+      isOffscreenCommand({ type: 'synthesize', id: 'a', text: '', voiceId: 'v', lang: 'en-US', config: CONFIG })
     ).toBe(true);
   });
 });

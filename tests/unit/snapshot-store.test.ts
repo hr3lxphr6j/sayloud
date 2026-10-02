@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionSnapshot } from '~/lib/protocol';
 import { type SessionStorageArea, SNAPSHOT_KEY, SnapshotStore } from '~/lib/snapshot-store';
 
@@ -30,6 +30,7 @@ const SNAPSHOT: SessionSnapshot = {
   voice: 'Samantha',
   rate: 1.5,
   charsRead: 12,
+  resumeTimeMs: 0,
 };
 
 describe('SnapshotStore', () => {
@@ -39,6 +40,14 @@ describe('SnapshotStore', () => {
   beforeEach(() => {
     fake = fakeArea();
     store = new SnapshotStore(fake.area);
+    // Suppress console logs during tests
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('round-trips a session snapshot', async () => {
@@ -93,6 +102,7 @@ describe('SnapshotStore', () => {
         voice: '',
         rate: 1,
         charsRead: 0,
+        resumeTimeMs: 0,
       });
     });
 

@@ -332,16 +332,25 @@ async function initKuroshiro(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
       try {
+        console.log('[JapanesePhonemizer] Initializing kuroshiro...');
+        console.log('[JapanesePhonemizer] chrome.runtime available:', typeof chrome !== 'undefined' && !!chrome.runtime);
+        
+        const dictPath = '/kuromoji-dict/';
+        console.log('[JapanesePhonemizer] dictPath:', dictPath);
+        
         kuroshiroInstance = new Kuroshiro();
 
         await kuroshiroInstance.init(
           new KuromojiAnalyzer({
-            dictPath: '/kuromoji-dict/',
+            dictPath,
           })
         );
+        
+        console.log('[JapanesePhonemizer] Kuroshiro initialized successfully');
       } catch (error) {
         console.error('[JapanesePhonemizer] Failed to initialize kuroshiro:', error);
         kuroshiroInstance = null;
+        initPromise = null; // Reset so next call can retry
         throw error;
       }
     })();

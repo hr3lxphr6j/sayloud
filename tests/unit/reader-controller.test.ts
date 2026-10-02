@@ -169,6 +169,42 @@ describe('ReaderController', () => {
     document.body.innerHTML = '';
   });
 
+  it('turns a provider with no voice chosen into its own hint', () => {
+    // The engine names the unconfigured provider so a log says which service it
+    // was; the bar has no room for the name and the hint reads the same for all
+    // of them. The mapping is the whole point: the error arrives either way, and
+    // without it there is no hint to show and the user is back to a play button
+    // that does nothing.
+    document.body.innerHTML = '<article><p>One sentence here.</p></article>';
+
+    const port = fakePort();
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue(
+      port.port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController();
+    controller.connect();
+    port.receive({
+      type: 'status',
+      status: {
+        phase: 'error',
+        index: 0,
+        total: 0,
+        rate: 1,
+        voice: '',
+        charsRead: 0,
+        charsTotal: 0,
+        charsPerSec: 0,
+        error: 'no-voice-selected:dashscope',
+      },
+    });
+
+    expect(controller.getState().error).toBe('no-voice-selected');
+
+    controller.dispose();
+    document.body.innerHTML = '';
+  });
+
   it('sends stop command on dispose when playing', () => {
     // When the page navigates away, the content script is disposed and should
     // stop playback to prevent audio from continuing in the background.

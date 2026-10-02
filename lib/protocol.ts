@@ -5,6 +5,15 @@ export interface EngineSentence {
   lang: string;
 }
 
+/**
+ * Why the engine stopped.
+ *
+ * `no-voice-selected` carries the provider's name because the panel needs it to
+ * point at that provider's settings — which is why the check in `load` tests
+ * the value with `startsWith` rather than comparing it to a literal.
+ */
+export type EngineError = 'no-content' | 'no-voice' | 'tts-error' | `no-voice-selected:${string}`;
+
 export interface EngineStatus {
   phase: EnginePhase;
   index: number;
@@ -14,7 +23,7 @@ export interface EngineStatus {
   charsRead: number;
   charsTotal: number;
   charsPerSec: number;
-  error?: 'no-voice' | 'no-voice-selected' | 'tts-error' | 'no-content';
+  error?: EngineError;
 }
 
 export type EngineCommand =

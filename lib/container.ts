@@ -108,7 +108,7 @@ export function createApp(deps: AppDeps): AppContainer {
     speakers.refresh().catch((error: unknown) => {
       // If the provider has no voice selected, fail the engine immediately.
       console.error('[SayLoud] speaker refresh failed:', error);
-      engine.fail(error instanceof Error ? error.message : String(error));
+      engine.reportError(error instanceof Error ? error.message : String(error));
     }),
   ]).then(() => undefined);
 

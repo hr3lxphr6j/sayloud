@@ -38,7 +38,14 @@
  */
 import { cut } from '/tmp/jieba-check/node_modules/jieba-wasm/pkg/nodejs/jieba_rs_wasm.js';
 import { pinyin } from 'pinyin-pro';
-import { hanToIpa, mapPunctuation, retone, splitRuns, TONE_MAPPING } from '../../lib/models/phonemize/chinese.ts';
+import {
+  ChinesePhonemizer,
+  hanToIpa,
+  mapPunctuation,
+  retone,
+  splitRuns,
+  TONE_MAPPING,
+} from '../../lib/models/phonemize/chinese.ts';
 import { numbersToHan } from '../../lib/models/phonemize/numbers.ts';
 import table from '../../lib/models/phonemize/pinyin-table.json' with { type: 'json' };
 import { writeFileSync } from 'node:fs';
@@ -208,61 +215,73 @@ const SENTENCES = [
 const VARIANTS = [
   {
     id: 'current',
-    label: '现状（全部偏差）',
-    note: '每音节一空格 · 一/不 变调 · 保留 U+032F · 标点前有空格',
+    label: '修复前：每音节一空格',
+    note: '每音节一空格 · 一/不 变调 · 保留 U+032F · 标点前有空格 —— 用户报告「人设/曾经 中间有停顿」时的行为',
     opts: { toneSandhi: true, stripMark: false, boundaries: 'syllable', trimOther: true, spaceBetweenParts: true },
   },
   {
     id: 'fix-a',
-    label: '只修 A 词边界（jieba）',
-    note: '词内连写、词间空格，词边界用 jieba（训练时的分词器）；其余不变',
+    label: '只改词边界（jieba）',
+    note: '只把词边界换成 jieba（词内连写、词间空格）；其余不变。这是用户认定「最明显的优化」的那一项',
     opts: { toneSandhi: true, stripMark: false, boundaries: jiebaWordLengths, trimOther: true, spaceBetweenParts: true },
   },
   {
     id: 'aligned',
-    label: '对齐 A+B+D（保留变调）',
-    note: '阶段 1 的目标。jieba 边界 + 删 U+032F + 标点紧邻，不动变调；读音仍用 pinyin-pro',
+    label: '现在发布的版本（对齐 A+B+D）',
+    note: 'jieba 词边界 + 删 U+032F + 标点紧邻；不动变调。**就是线上跑的代码**',
     opts: { toneSandhi: true, stripMark: true, boundaries: jiebaWordLengths, trimOther: false, spaceBetweenParts: false },
   },
   {
     id: 'aligned-patched',
-    label: '对齐 A+B+D + 补丁',
-    note: '在上一版基础上加多音字补丁表（还书 / 都得 / 累得）',
+    label: '发布版 + 补丁（未上线）',
+    note: '在上一版基础上加多音字补丁表（还书 / 都得 / 累得）—— 补丁表已暂缓，这一行只是预览',
     opts: { toneSandhi: true, stripMark: true, boundaries: jiebaWordLengths, trimOther: false, spaceBetweenParts: false, patches: PATCHES },
   },
 ];
 
-// --- the anchor: 现状 must equal what the product actually produces ----------
+// --- the anchor: the harness must describe the pipeline that ships -----------
+//
+// This used to assert that the `现状` variant matched the product. It cannot any
+// more, and that is the point: the product *is* the aligned variant now, so the
+// anchor moved rather than being deleted.
+//
+// Leaving it as it was would have been the expensive mistake. The page would go
+// on presenting `现状` as what ships, and the user would be judging a pipeline
+// that no longer exists — the same shape of error as the corrupted legacy
+// reference, which produced a confident conclusion in the wrong direction. So
+// both halves are asserted: the harness's `aligned` must equal the real
+// `ChinesePhonemizer`, and the old `现状` must differ from it. A refactor that
+// quietly reverted the spacing would fail the second check.
+const shipped = new ChinesePhonemizer(async (text) => `«${text}»`);
 
-/** The product's `phonemize`, non-Latin path, transcribed from chinese.ts. */
-function productPhonemize(text) {
-  const mapped = mapPunctuation(numbersToHan(text));
-  const parts = [];
-  for (const run of splitRuns(mapped)) {
-    if (run.kind === 'han') {
-      const ipa = hanToIpa(run.text, text);
-      if (ipa !== '') parts.push(ipa);
-    } else if (run.kind === 'latin') {
-      parts.push(`«${run.text}»`);
-    } else {
-      const kept = keepPunctuation(run.text, true);
-      if (kept !== '') parts.push(kept);
-    }
-  }
-  return parts.join(' ').replace(/\s+/g, ' ').trim();
+const alignedOpts = VARIANTS.find((v) => v.id === 'aligned')?.opts;
+const beforeOpts = VARIANTS.find((v) => v.id === 'current')?.opts;
+if (alignedOpts === undefined || beforeOpts === undefined) {
+  throw new Error('the anchor needs both the `current` and `aligned` variants');
 }
 
 const mismatches = [];
 for (const sentence of SENTENCES) {
-  const mine = phonemize(sentence.text, VARIANTS[0].opts).phonemes;
-  const real = productPhonemize(sentence.text);
-  if (mine !== real) mismatches.push({ text: sentence.text, mine, real });
+  const real = await shipped.phonemize(sentence.text, 'zh-CN');
+  const aligned = phonemize(sentence.text, alignedOpts).phonemes;
+  const before = phonemize(sentence.text, beforeOpts).phonemes;
+
+  if (real !== aligned) {
+    mismatches.push({ text: sentence.text, why: 'harness ≠ product', aligned, real });
+  }
+  if (real === before) {
+    mismatches.push({ text: sentence.text, why: 'the product did not change', before, real });
+  }
 }
+
 if (mismatches.length > 0) {
-  console.error('现状 variant does not match the product:\n', JSON.stringify(mismatches, null, 2));
+  console.error('the harness no longer describes the product:\n', JSON.stringify(mismatches, null, 2));
   process.exit(1);
 }
-console.log(`anchor ok: 现状 == product output for all ${SENTENCES.length} sentences`);
+console.log(
+  `anchor ok: 对齐 A+B+D == the shipped ChinesePhonemizer on all ${SENTENCES.length} sentences,` +
+    ' and 修复前 differs from it'
+);
 
 // --- emit -------------------------------------------------------------------
 
@@ -288,25 +307,3 @@ for (const sentence of SENTENCES) {
 
 writeFileSync(new URL('./variants.json', import.meta.url), JSON.stringify(out, null, 1));
 console.log(`\nwrote variants.json (${out.length} entries)`);
-
-// --- the 2a readings --------------------------------------------------------
-//
-// Phase 2a is *not* the aligned format: v1.1-zh wants sandhi back on (spec
-// §4.4), and the patch table carries over (spec §4.5). Only the encoding
-// changes, from IPA to bopomofo. So the readings are taken with `toneSandhi:
-// true` and the patches applied, which is a combination no group-1 variant has.
-const twoA = {};
-for (const sentence of SENTENCES) {
-  const { syllables, wordLengths } = phonemize(sentence.text, {
-    toneSandhi: true,
-    stripMark: true,
-    boundaries: jiebaWordLengths,
-    trimOther: false,
-    spaceBetweenParts: false,
-    patches: PATCHES,
-  });
-  twoA[sentence.id] = { syllables, wordLengths };
-  console.log(`2a ${sentence.id} ${syllables.join(' ')}`);
-}
-writeFileSync(new URL('./two-a.json', import.meta.url), JSON.stringify(twoA, null, 1));
-console.log('wrote two-a.json');

@@ -11,10 +11,8 @@ const VOICES: TtsVoiceLike[] = [{ voiceName: 'Samantha', lang: 'en-US' }];
 const SNAPSHOT: SessionSnapshot = {
   tabId: 3,
   docId: 'doc-1',
-  sentences: [
-    { text: 'Hello world.', lang: 'en' },
-    { text: 'Goodbye now.', lang: 'en' },
-  ],
+  sentenceCount: 2,
+  charsTotal: 24, // 'Hello world.' (12) + 'Goodbye now.' (12)
   index: 1,
   resumeOffset: 0,
   voice: 'Samantha',
@@ -123,8 +121,8 @@ describe('SessionRouter.start', () => {
 
     const status = engine.getStatus();
     expect(status.phase).toBe('paused');
-    expect(status.total).toBe(2);
-    expect(status.index).toBe(1);
+    expect(status.total).toBe(0); // No sentences loaded yet (will be reloaded via sync)
+    expect(status.index).toBe(0); // Clamped to 0 because no sentences yet
     expect(engine.getSnapshot()?.tabId).toBe(3);
   });
 

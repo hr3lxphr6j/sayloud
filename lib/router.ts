@@ -57,7 +57,7 @@ export class SessionRouter {
       console.warn('[SayLoud] no session to restore', {
         found: snapshot !== null,
         tabId: snapshot?.tabId ?? null,
-        sentences: snapshot?.sentences.length ?? 0,
+        sentenceCount: snapshot?.sentenceCount ?? 0,
       });
     }
 

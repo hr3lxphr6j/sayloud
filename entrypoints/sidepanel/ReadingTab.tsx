@@ -259,7 +259,7 @@ export function ReadingTab({
             <p>
               {t('panel.sentence-progress', {
                 index: snapshot.index + 1,
-                total: snapshot.sentences.length,
+                total: snapshot.sentenceCount,
                 rate: snapshot.rate,
               })}
             </p>
@@ -295,13 +295,8 @@ function formatVolume(value: number): string {
 }
 
 function progressPercent(snapshot: SessionSnapshot): number {
-  if (snapshot.sentences.length === 0) return 0;
-  const charsTotal = snapshot.sentences.reduce(
-    (total, sentence) => total + sentence.text.length,
-    0
-  );
-  if (charsTotal === 0) return 0;
-  return Math.min(100, Math.round((snapshot.charsRead / charsTotal) * 100));
+  if (snapshot.sentenceCount === 0 || snapshot.charsTotal === 0) return 0;
+  return Math.min(100, Math.round((snapshot.charsRead / snapshot.charsTotal) * 100));
 }
 
 /**

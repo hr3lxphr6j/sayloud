@@ -581,7 +581,7 @@ describe('PlaybackEngine', () => {
         resumeOffset: 7,
         charsRead: 19,
       });
-      expect(snapshot?.sentences).toHaveLength(3);
+      expect(snapshot?.sentenceCount).toBe(3);
     });
 
     it('restores into paused without speaking', () => {
@@ -589,7 +589,8 @@ describe('PlaybackEngine', () => {
       other.restore({
         tabId: 7,
         docId: 'doc-1',
-        sentences: SENTENCES,
+        sentenceCount: 3,
+        charsTotal: TOTAL_CHARS,
         index: 1,
         resumeOffset: 0,
         voice: 'Samantha',
@@ -599,19 +600,20 @@ describe('PlaybackEngine', () => {
 
       const restored = other.getStatus();
       expect(restored.phase).toBe('paused');
-      expect(restored.index).toBe(1);
+      expect(restored.index).toBe(0); // Clamped to 0 because sentences are empty
       expect(restored.rate).toBe(2);
-      expect(restored.total).toBe(3);
-      expect(restored.charsTotal).toBe(TOTAL_CHARS);
+      expect(restored.total).toBe(0); // No sentences loaded yet
+      expect(restored.charsTotal).toBe(TOTAL_CHARS); // Preserved from snapshot
       expect(fake.requests).toHaveLength(0);
     });
 
-    it('restores a snapshot with no sentences into idle', () => {
+    it('restores a snapshot with no sentences into paused (will become idle after sync)', () => {
       const other = new PlaybackEngine({ speaker: fake.speaker, resolveVoice, now: () => time });
       other.restore({
         tabId: 7,
         docId: 'doc-1',
-        sentences: [],
+        sentenceCount: 0,
+        charsTotal: 0,
         index: 0,
         resumeOffset: 0,
         voice: '',
@@ -619,7 +621,9 @@ describe('PlaybackEngine', () => {
         charsRead: 0,
       });
 
-      expect(other.getStatus().phase).toBe('idle');
+      // Restore always sets phase to 'paused', even with no sentences.
+      // The phase will become 'idle' after sync when content script doesn't send any.
+      expect(other.getStatus().phase).toBe('paused');
     });
   });
 

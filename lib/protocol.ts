@@ -46,7 +46,10 @@ export type EngineEvent =
 export interface SessionSnapshot {
   tabId: number;
   docId: string;
-  sentences: EngineSentence[];
+  /** Number of sentences in the document. Used for progress display. */
+  sentenceCount: number;
+  /** Total characters across all sentences. Used for percentage calculation. */
+  charsTotal: number;
   index: number;
   resumeOffset: number;
   voice: string;

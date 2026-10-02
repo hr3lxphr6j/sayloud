@@ -6,7 +6,8 @@ import { type SessionStorageArea, SNAPSHOT_KEY, SnapshotStore } from '~/lib/snap
 const SNAPSHOT: SessionSnapshot = {
   tabId: 3,
   docId: 'doc-1',
-  sentences: [{ text: 'Hello world.', lang: 'en' }],
+  sentenceCount: 1,
+  charsTotal: 12, // 'Hello world.'
   index: 0,
   resumeOffset: 0,
   voice: 'Samantha',

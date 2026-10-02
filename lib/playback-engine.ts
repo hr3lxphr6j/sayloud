@@ -184,11 +184,21 @@ export class PlaybackEngine {
 
   /** Null when there is no session worth persisting. */
   getSnapshot(): SessionSnapshot | null {
-    if (this.sentences.length === 0) return null;
+    // If we have sentences loaded, use their actual count and total.
+    // If not (e.g., after restore but before sync), use the preserved charsTotal.
+    const sentenceCount = this.sentences.length;
+    const charsTotal = sentenceCount > 0 
+      ? this.sentences.reduce((total, s) => total + s.text.length, 0)
+      : this.charsTotal;
+
+    // Only return null if there's truly nothing (no sentences and no preserved state)
+    if (sentenceCount === 0 && charsTotal === 0) return null;
+
     return {
       tabId: this.tabId,
       docId: this.docId,
-      sentences: [...this.sentences],
+      sentenceCount,
+      charsTotal,
       index: this.index,
       resumeOffset: this.wordOffset,
       voice: this.voice,
@@ -203,12 +213,17 @@ export class PlaybackEngine {
    *
    * Always lands in `paused`: the user is no longer mid-gesture, and
    * `chrome.tts` would need a fresh call anyway.
+   *
+   * Note: Sentences are not restored from the snapshot (to minimize storage
+   * overhead). The engine will emit 'session-lost' on the next sync, prompting
+   * the content script to resend the document.
    */
   restore(snapshot: SessionSnapshot): void {
     this.speaker.stop();
-    this.sentences = [...snapshot.sentences];
-    this.charsTotal = this.sentences.reduce((sum, s) => sum + s.text.length, 0);
-    this.index = clampIndex(snapshot.index, this.sentences.length);
+    // Sentences are intentionally not restored; they will be reloaded via sync.
+    this.sentences = [];
+    this.charsTotal = snapshot.charsTotal;
+    this.index = clampIndex(snapshot.index, 0); // Will be clamped again when sentences arrive
     this.rate = clampRate(snapshot.rate);
     this.voice = snapshot.voice;
     this.charsRead = snapshot.charsRead;
@@ -221,7 +236,7 @@ export class PlaybackEngine {
     // Restore the audio playback position for cloud/local providers.
     // Browser voice will ignore this and always restart from the beginning.
     this.resumeTimeMs = snapshot.resumeTimeMs ?? 0;
-    this.setPhase(this.sentences.length === 0 ? 'idle' : 'paused');
+    this.setPhase('paused'); // Will be idle after sync if no sentences
   }
 
   dispose(): void {

@@ -97,7 +97,7 @@ export class SnapshotStore {
 }
 
 function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnapshot | null {
-  if (!value || typeof value !== 'object') {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     if (value !== undefined) {
       console.warn(`[SayLoud] snapshot parse failed (${source}): value is not an object`, {
         value,
@@ -107,42 +107,73 @@ function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnap
   }
   const raw = value as Record<string, unknown>;
 
-  if (!Array.isArray(raw.sentences)) {
-    console.warn(`[SayLoud] snapshot parse failed (${source}): sentences is not an array`, {
-      hasSentences: 'sentences' in raw,
-      sentencesType: typeof raw.sentences,
-    });
-    return null;
-  }
-  const sentences: EngineSentence[] = [];
-  let skipped = 0;
-  for (const item of raw.sentences) {
-    if (!item || typeof item !== 'object') {
-      skipped++;
-      continue;
+  // Backward compatibility: if the old format (with sentences array) is found,
+  // convert it to the new format.
+  if (Array.isArray(raw.sentences)) {
+    console.log(`[SayLoud] migrating old snapshot format from ${source}`);
+    const sentences: EngineSentence[] = [];
+    let skipped = 0;
+    for (const item of raw.sentences) {
+      if (!item || typeof item !== 'object') {
+        skipped++;
+        continue;
+      }
+      const entry = item as Record<string, unknown>;
+      if (typeof entry.text !== 'string' || entry.text.length === 0) {
+        skipped++;
+        continue;
+      }
+      sentences.push({ text: entry.text, lang: readString(entry.lang, 'en') });
     }
-    const entry = item as Record<string, unknown>;
-    if (typeof entry.text !== 'string' || entry.text.length === 0) {
-      skipped++;
-      continue;
+    
+    if (sentences.length === 0) {
+      console.warn(`[SayLoud] snapshot parse failed (${source}): no valid sentences`, {
+        rawCount: raw.sentences.length,
+        skipped,
+      });
+      return null;
     }
-    sentences.push({ text: entry.text, lang: readString(entry.lang, 'en') });
-  }
-  // A snapshot without sentences has nothing to resume.
-  if (sentences.length === 0) {
-    console.warn(`[SayLoud] snapshot parse failed (${source}): no valid sentences`, {
-      rawCount: raw.sentences.length,
-      skipped,
-      tabId: raw.tabId,
-      docId: raw.docId,
+
+    // Convert to new format
+    const charsTotal = sentences.reduce((sum, s) => sum + s.text.length, 0);
+    const snapshot = {
+      tabId: readNumber(raw.tabId, -1),
+      docId: readString(raw.docId, ''),
+      sentenceCount: sentences.length,
+      charsTotal,
+      index: readNumber(raw.index, 0),
+      resumeOffset: readNumber(raw.resumeOffset, 0),
+      voice: readString(raw.voice, ''),
+      rate: readNumber(raw.rate, 1),
+      charsRead: readNumber(raw.charsRead, 0),
+      resumeTimeMs: readNumber(raw.resumeTimeMs, 0),
+    };
+
+    console.log(`[SayLoud] migrated snapshot from ${source}`, {
+      tabId: snapshot.tabId,
+      docId: snapshot.docId,
+      sentenceCount: snapshot.sentenceCount,
+      charsTotal: snapshot.charsTotal,
     });
+
+    return snapshot;
+  }
+
+  // New format: just statistics, no sentences
+  const sentenceCount = readNumber(raw.sentenceCount, 0);
+  const charsTotal = readNumber(raw.charsTotal, 0);
+
+  // Reject snapshots with no sentences (nothing to restore)
+  if (sentenceCount === 0) {
+    console.warn(`[SayLoud] snapshot parse failed (${source}): sentenceCount is 0`);
     return null;
   }
 
   const snapshot = {
     tabId: readNumber(raw.tabId, -1),
     docId: readString(raw.docId, ''),
-    sentences,
+    sentenceCount,
+    charsTotal,
     index: readNumber(raw.index, 0),
     resumeOffset: readNumber(raw.resumeOffset, 0),
     voice: readString(raw.voice, ''),
@@ -154,7 +185,7 @@ function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnap
   console.log(`[SayLoud] snapshot loaded successfully from ${source}`, {
     tabId: snapshot.tabId,
     docId: snapshot.docId,
-    sentenceCount: sentences.length,
+    sentenceCount: snapshot.sentenceCount,
     index: snapshot.index,
     resumeTimeMs: snapshot.resumeTimeMs,
   });

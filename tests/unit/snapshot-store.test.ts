@@ -34,10 +34,8 @@ function fakeArea(initial: Record<string, unknown> = {}) {
 const SNAPSHOT: SessionSnapshot = {
   tabId: 3,
   docId: 'doc-1',
-  sentences: [
-    { text: 'Hello world.', lang: 'en' },
-    { text: 'Goodbye now.', lang: 'en' },
-  ],
+  sentenceCount: 2,
+  charsTotal: 24, // 'Hello world.' (12) + 'Goodbye now.' (12)
   index: 1,
   resumeOffset: 4,
   voice: 'Samantha',
@@ -112,17 +110,32 @@ describe('SnapshotStore', () => {
       }
     });
 
-    it('rejects a snapshot with no usable sentences', async () => {
-      let testSession = fakeArea({ [SNAPSHOT_KEY]: { ...SNAPSHOT, sentences: [] } });
-      let testLocal = fakeArea();
-      expect(await new SnapshotStore(testSession.area, testLocal.area).load()).toBeNull();
+    it('accepts old format snapshots and migrates them', async () => {
+      const oldFormat = {
+        ...SNAPSHOT,
+        sentences: [
+          { text: 'Hello world.', lang: 'en' },
+          { text: 'Goodbye now.', lang: 'en' },
+        ],
+        // Old format didn't have these fields
+        sentenceCount: undefined,
+        charsTotal: undefined,
+      };
+      delete (oldFormat as any).sentenceCount;
+      delete (oldFormat as any).charsTotal;
 
-      testSession = fakeArea({ [SNAPSHOT_KEY]: { ...SNAPSHOT, sentences: [{ text: '' }] } });
-      testLocal = fakeArea();
-      expect(await new SnapshotStore(testSession.area, testLocal.area).load()).toBeNull();
+      const testSession = fakeArea({ [SNAPSHOT_KEY]: oldFormat });
+      const testLocal = fakeArea();
+      const migrated = await new SnapshotStore(testSession.area, testLocal.area).load();
+
+      expect(migrated).toEqual({
+        ...SNAPSHOT,
+        sentenceCount: 2,
+        charsTotal: 24,
+      });
     });
 
-    it('drops malformed sentences and fills in defaults', async () => {
+    it('migrates old format with malformed sentences and fills in defaults', async () => {
       const testSession = fakeArea({
         [SNAPSHOT_KEY]: {
           sentences: [{ text: 'Keep me.' }, { text: 42 }, null, 'nope'],
@@ -136,7 +149,8 @@ describe('SnapshotStore', () => {
       expect(await new SnapshotStore(testSession.area, testLocal.area).load()).toEqual({
         tabId: -1,
         docId: '',
-        sentences: [{ text: 'Keep me.', lang: 'en' }],
+        sentenceCount: 1,
+        charsTotal: 8, // 'Keep me.'
         index: 0,
         resumeOffset: 0,
         voice: '',

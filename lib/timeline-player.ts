@@ -221,7 +221,15 @@ export class TimelinePlayer {
 
     this.clearTimingTimer();
     this.nextWordIndex = 0;
-    current.audio.currentTime = clampTime(startTimeMs, current.durationMs);
+    const clampedTime = clampTime(startTimeMs, current.durationMs);
+    current.audio.currentTime = clampedTime;
+
+    console.log('[SayLoud] timeline player play', {
+      id,
+      requestedStartTimeMs: startTimeMs,
+      clampedTimeSeconds: clampedTime,
+      durationMs: current.durationMs,
+    });
 
     // The ended handler is bound before `play()` because a zero-length clip can
     // end before the promise settles.

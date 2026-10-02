@@ -171,6 +171,15 @@ export class SpeakerRouter implements Speaker {
     this.active.prefetch?.(requests);
   }
 
+  pause(): void {
+    this.speaking = false;
+    this.active.pause?.();
+  }
+
+  getCurrentTimeMs(): number | undefined {
+    return this.active.getCurrentTimeMs?.();
+  }
+
   stop(): void {
     this.speaking = false;
     this.active.stop();

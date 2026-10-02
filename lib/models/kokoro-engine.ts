@@ -17,7 +17,8 @@ import { concatPcm, KOKORO_SAMPLE_RATE, planPieces } from './audio';
 import { abortError, type DeviceInfo, type RawPcm } from './engine';
 import { ChinesePhonemizer } from './phonemize/chinese';
 import { EnglishPhonemizer } from './phonemize/english';
-import { isChinese, type Phonemizer } from './phonemize/types';
+import { JapanesePhonemizer } from './phonemize/japanese';
+import { isChinese, isJapanese, type Phonemizer } from './phonemize/types';
 import { type ModelTier, modelById, tierById } from './registry';
 
 /** One synthesis in flight, so a cancel can reach it. */
@@ -33,9 +34,10 @@ export class KokoroEngine {
   private tier: ModelTier | null = null;
   private device: DeviceInfo['device'] = 'wasm';
   private readonly inFlight = new Map<number, InFlight>();
-  /** Built on first use: only one of the two is ever needed. */
+  /** Built on first use: only one of the three is ever needed. */
   private english: Phonemizer | null = null;
   private chinese: Phonemizer | null = null;
+  private japanese: Phonemizer | null = null;
   /**
    * Bumped by every `load`, so one that finishes late cannot install itself
    * over the session a newer call built.
@@ -121,6 +123,10 @@ export class KokoroEngine {
       this.chinese ??= new ChinesePhonemizer();
       return this.chinese.phonemize(text, lang);
     }
+    if (isJapanese(lang)) {
+      this.japanese ??= new JapanesePhonemizer();
+      return this.japanese.phonemize(text, lang);
+    }
     this.english ??= new EnglishPhonemizer();
     return this.english.phonemize(text, lang);
   }
@@ -143,9 +149,9 @@ export class KokoroEngine {
    *
    * English goes through `generate()`, the library's own supported path: it
    * validates the voice and phonemizes the way the model was trained. Chinese
-   * cannot — `generate()` rejects every voice outside its 28-voice English list
-   * (verification §1.1.1) — so it phonemizes here and enters through
-   * `generate_from_ids()`, which does no voice validation.
+   * and Japanese cannot — `generate()` rejects every voice outside its 28-voice
+   * English list (verification §1.1.1) — so they phonemize here and enter
+   * through `generate_from_ids()`, which does no voice validation.
    */
   private async render(
     piece: { text: string; ipa: string },
@@ -156,7 +162,7 @@ export class KokoroEngine {
     if (!tts) throw new Error('the model is not loaded');
     const options = { voice: voiceId } as GenerateOptions;
 
-    if (isChinese(lang)) {
+    if (isChinese(lang) || isJapanese(lang)) {
       const encoded = tts.tokenizer(piece.ipa, { truncation: false });
       const audio = await tts.generate_from_ids(encoded.input_ids, options);
       return audio.audio;

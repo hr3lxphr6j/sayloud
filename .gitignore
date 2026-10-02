@@ -17,3 +17,6 @@ node_modules/
 # Python bytecode from the vendored misaki transcription script.
 __pycache__/
 *.pyc
+
+# Kuromoji dictionaries (auto-generated on install)
+public/kuromoji-dict/

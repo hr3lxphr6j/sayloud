@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { KOKORO_82M } from '~/lib/models/registry';
-import { CHINESE_VOICES, ENGLISH_VOICES, KOKORO_VOICES } from '~/lib/providers/kokoro-voices';
+import { CHINESE_VOICES, ENGLISH_VOICES, JAPANESE_VOICES, KOKORO_VOICES } from '~/lib/providers/kokoro-voices';
 
 const ENGLISH_IDS = [
   'af_heart',
@@ -53,17 +53,30 @@ const CHINESE_IDS = [
   'zm_yunyang',
 ];
 
+const JAPANESE_IDS = [
+  'jf_alpha',
+  'jf_gongitsune',
+  'jf_nezumi',
+  'jf_tebukuro',
+  'jm_kumo',
+];
+
 describe('KOKORO_VOICES', () => {
-  it('holds the 36 voices the model can actually speak', () => {
-    expect(KOKORO_VOICES).toHaveLength(36);
+  it('holds the 41 voices the model can actually speak', () => {
+    expect(KOKORO_VOICES).toHaveLength(41);
     expect(ENGLISH_VOICES).toHaveLength(28);
     expect(CHINESE_VOICES).toHaveLength(8);
+    expect(JAPANESE_VOICES).toHaveLength(5);
   });
 
   it('matches the repository exactly, with nothing extra', () => {
-    // 54 voices ship; the 18 left out would each need their own G2P, so
+    // 54 voices ship; the 13 left out would each need their own G2P, so
     // offering them would only produce an error when one was picked.
-    expect(KOKORO_VOICES.map((voice) => voice.id)).toEqual([...ENGLISH_IDS, ...CHINESE_IDS]);
+    expect(KOKORO_VOICES.map((voice) => voice.id)).toEqual([
+      ...ENGLISH_IDS,
+      ...CHINESE_IDS,
+      ...JAPANESE_IDS,
+    ]);
   });
 
   it('gives every voice a unique id', () => {
@@ -84,15 +97,15 @@ describe('KOKORO_VOICES', () => {
 
   it('gives every voice a BCP-47 tag, a name and a gender', () => {
     for (const voice of KOKORO_VOICES) {
-      expect(voice.lang, voice.id).toMatch(/^[a-z]{2}-[A-Z]{2}$/);
+      expect(voice.lang, voice.id).toMatch(/^[a-z]{2}(-[A-Z]{2})?$/);
       expect(voice.name.length, voice.id).toBeGreaterThan(0);
       expect(['female', 'male'], voice.id).toContain(voice.gender);
     }
   });
 
   it('keeps the language and gender the id prefix implies', () => {
-    // `af` is American female and so on; `zf`/`zm` are Mandarin. The engine
-    // derives the phonemization path from this prefix, so a mismatch here
+    // `af` is American female and so on; `zf`/`zm` are Mandarin, `jf`/`jm` are Japanese.
+    // The engine derives the phonemization path from this prefix, so a mismatch here
     // would send a voice down the wrong pipeline.
     const expected: Record<string, { lang: string; gender: string }> = {
       af: { lang: 'en-US', gender: 'female' },
@@ -101,6 +114,8 @@ describe('KOKORO_VOICES', () => {
       bm: { lang: 'en-GB', gender: 'male' },
       zf: { lang: 'zh-CN', gender: 'female' },
       zm: { lang: 'zh-CN', gender: 'male' },
+      jf: { lang: 'ja', gender: 'female' },
+      jm: { lang: 'ja', gender: 'male' },
     };
 
     for (const voice of KOKORO_VOICES) {

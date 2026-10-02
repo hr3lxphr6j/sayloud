@@ -150,8 +150,8 @@ export const KOKORO_82M: OnDeviceModel = {
     name: 'Apache-2.0',
     url: 'https://www.apache.org/licenses/LICENSE-2.0',
   },
-  languages: ['en-US', 'en-GB', 'zh-CN'],
-  voiceCount: 36,
+  languages: ['en-US', 'en-GB', 'zh-CN', 'ja'],
+  voiceCount: 41,
   tiers: [
     {
       // Smallest, and the only sensible choice without WebGPU: the GPU cannot

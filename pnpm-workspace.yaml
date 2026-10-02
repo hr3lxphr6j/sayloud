@@ -10,8 +10,11 @@
 # `protobufjs` is a genuine runtime dependency of `onnxruntime-web`, but its
 # postinstall only prints a note about optional CLI dependencies.
 allowBuilds:
+  core-js-pure: true
   onnxruntime-node: false
   protobufjs: false
   sharp: false
 minimumReleaseAgeExclude:
   - '@wxt-dev/browser@0.3.4'
+patchedDependencies:
+  kuromoji@0.1.2: patches/kuromoji@0.1.2.patch

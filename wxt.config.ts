@@ -14,7 +14,9 @@ function e2eHostPermissions(): string[] {
 }
 
 export default defineConfig({
-  vite: () => ({ plugins: [preact()] }),
+  vite: () => ({
+    plugins: [preact()],
+  }),
   /**
    * Dev mode only, and not cosmetic.
    *

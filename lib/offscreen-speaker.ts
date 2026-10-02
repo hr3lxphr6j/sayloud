@@ -21,6 +21,7 @@ import {
   type SynthesizeReply,
 } from './offscreen-protocol';
 import { errorMessage } from './providers/errors';
+import { voiceLanguage } from './providers/local';
 import type { ProviderConfig } from './providers/types';
 import type { PrefetchRequest, Speaker, SpeakerEvents, SpeakRequest, WordSpan } from './speaker';
 
@@ -72,11 +73,11 @@ export class OffscreenSpeaker implements Speaker {
     this.events.addListener(this.onMessage);
   }
 
-  speak({ text, voice, rate, volume, resumeTimeMs }: SpeakRequest): void {
+  speak({ text, voice, rate, lang, volume, resumeTimeMs }: SpeakRequest): void {
     const generation = ++this.generation;
     const id = `sayloud-${++this.sequence}`;
     this.activeId = id;
-    void this.run(generation, id, text, voice, rate, volume, resumeTimeMs);
+    void this.run(generation, id, text, voice, rate, lang, volume, resumeTimeMs);
   }
 
   /**
@@ -175,6 +176,7 @@ export class OffscreenSpeaker implements Speaker {
     text: string,
     voice: string | undefined,
     rate: number,
+    lang: string,
     volume: number | undefined,
     resumeTimeMs: number | undefined
   ): Promise<void> {
@@ -186,6 +188,7 @@ export class OffscreenSpeaker implements Speaker {
         // The engine resolves a voice before it speaks, and refuses to speak
         // when it cannot; an empty id here would be a wiring bug.
         voiceId: voice ?? '',
+        lang,
         config: this.config,
       });
       if (this.stale(generation)) return;

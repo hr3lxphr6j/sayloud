@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日语假名 TTS 测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0B0E14;
+      color: #F8FAFC;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #38BDF8;
+    }
+
+    .subtitle {
+      color: #94A3B8;
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+
+    .section {
+      background: #1E293B;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: #38BDF8;
+    }
+
+    .input-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #CBD5E1;
+      font-size: 0.9rem;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 0.75rem;
+      background: #0F172A;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #F8FAFC;
+      font-family: monospace;
+      font-size: 0.95rem;
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #38BDF8;
+    }
+
+    .voice-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .voice-card {
+      background: #0F172A;
+      border: 2px solid #334155;
+      border-radius: 6px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .voice-card:hover {
+      border-color: #38BDF8;
+      transform: translateY(-2px);
+    }
+
+    .voice-card.selected {
+      border-color: #38BDF8;
+      background: #1E293B;
+    }
+
+    .voice-name {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .voice-desc {
+      font-size: 0.85rem;
+      color: #94A3B8;
+    }
+
+    button {
+      background: #38BDF8;
+      color: #0F172A;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      background: #22D3EE;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .ipa-display {
+      background: #0F172A;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: #22D3EE;
+      margin-top: 1rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .status {
+      padding: 0.75rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .status.info {
+      background: #1E293B;
+      border: 1px solid #38BDF8;
+      color: #38BDF8;
+    }
+
+    .status.success {
+      background: #064E3B;
+      border: 1px solid #10B981;
+      color: #10B981;
+    }
+
+    .status.error {
+      background: #450A0A;
+      border: 1px solid #EF4444;
+      color: #EF4444;
+    }
+
+    audio {
+      width: 100%;
+      margin-top: 1rem;
+      filter: invert(1) hue-rotate(180deg);
+    }
+
+    .example-texts {
+      display: grid;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .example-btn {
+      background: #1E293B;
+      border: 1px solid #334155;
+      color: #F8FAFC;
+      padding: 0.5rem 1rem;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    .example-btn:hover {
+      background: #334155;
+      border-color: #38BDF8;
+    }
+
+    .example-meaning {
+      color: #94A3B8;
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🇯🇵 日语假名 TTS 测试</h1>
+    <p class="subtitle">测试 kana2ipa + Kokoro 日语音色的效果</p>
+
+    <div class="section">
+      <div class="section-title">1. 输入假名文本</div>
+      <div class="input-group">
+        <label>输入纯假名文本（平假名或片假名）：</label>
+        <textarea id="kanaInput" placeholder="例如：こんにちは、せかい"></textarea>
+      </div>
+
+      <div class="example-texts">
+        <button class="example-btn" onclick="setExample('こんにちは、せかい')">
+          こんにちは、せかい
+          <div class="example-meaning">你好，世界</div>
+        </button>
+        <button class="example-btn" onclick="setExample('ありがとうございます')">
+          ありがとうございます
+          <div class="example-meaning">非常感谢</div>
+        </button>
+        <button class="example-btn" onclick="setExample('わたしはがくせいです')">
+          わたしはがくせいです
+          <div class="example-meaning">我是学生</div>
+        </button>
+        <button class="example-btn" onclick="setExample('きょうはいいてんきですね')">
+          きょうはいいてんきですね
+          <div class="example-meaning">今天天气真好呢</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">2. 选择日语音色</div>
+      <div class="voice-grid" id="voiceGrid"></div>
+    </div>
+
+    <div class="section">
+      <button id="synthesizeBtn" onclick="synthesize()">生成语音</button>
+      <div id="status"></div>
+      <div id="ipaDisplay"></div>
+      <div id="audioContainer"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">📝 说明</div>
+      <ul style="color: #94A3B8; font-size: 0.9rem; line-height: 1.8; margin-left: 1.5rem;">
+        <li>当前只支持<strong>纯假名</strong>输入（平假名或片假名）</li>
+        <li>使用 <code style="color: #22D3EE;">kana2ipa</code> 将假名转换为 IPA 音素</li>
+        <li>使用 Kokoro 的日语音色合成语音</li>
+        <li>如果效果好，再实现完整的汉字→假名转换（需要 ~10MB 词典）</li>
+      </ul>
+    </div>
+  </div>
+
+  <script type="module">
+    import { KokoroTTS } from 'https://cdn.jsdelivr.net/npm/kokoro-js@0.3.1/+esm';
+    import kana2ipa from 'https://cdn.jsdelivr.net/npm/kana2ipa@1.0.0/+esm';
+
+    // 日语音色列表
+    const japaneseVoices = [
+      { id: 'af_sky', name: 'Sky', desc: '女声 · 明朗' },
+      { id: 'jf_alpha', name: 'Alpha', desc: '女声 · 温和' },
+      { id: 'jm_travis', name: 'Travis', desc: '男声 · 沉稳' },
+    ];
+
+    let selectedVoice = 'af_sky';
+    let tts = null;
+
+    // 初始化音色选择
+    function initVoiceGrid() {
+      const grid = document.getElementById('voiceGrid');
+      japaneseVoices.forEach(voice => {
+        const card = document.createElement('div');
+        card.className = `voice-card ${voice.id === selectedVoice ? 'selected' : ''}`;
+        card.innerHTML = `
+          <div class="voice-name">${voice.name}</div>
+          <div class="voice-desc">${voice.desc}</div>
+        `;
+        card.onclick = () => selectVoice(voice.id);
+        grid.appendChild(card);
+      });
+    }
+
+    function selectVoice(voiceId) {
+      selectedVoice = voiceId;
+      document.querySelectorAll('.voice-card').forEach((card, i) => {
+        card.classList.toggle('selected', japaneseVoices[i].id === voiceId);
+      });
+    }
+
+    window.setExample = function(text) {
+      document.getElementById('kanaInput').value = text;
+    };
+
+    window.synthesize = async function() {
+      const kana = document.getElementById('kanaInput').value.trim();
+      const statusDiv = document.getElementById('status');
+      const ipaDiv = document.getElementById('ipaDisplay');
+      const audioDiv = document.getElementById('audioContainer');
+      const btn = document.getElementById('synthesizeBtn');
+
+      if (!kana) {
+        statusDiv.innerHTML = '<div class="status error">请输入假名文本</div>';
+        return;
+      }
+
+      try {
+        btn.disabled = true;
+        statusDiv.innerHTML = '<div class="status info">正在处理...</div>';
+        ipaDiv.innerHTML = '';
+        audioDiv.innerHTML = '';
+
+        // 1. 转换为 IPA
+        statusDiv.innerHTML = '<div class="status info">步骤 1/3: 转换假名为 IPA...</div>';
+        const ipa = kana2ipa(kana);
+        ipaDiv.innerHTML = `<div class="section-title">生成的 IPA:</div><div class="ipa-display">${ipa}</div>`;
+
+        // 2. 加载 Kokoro 模型
+        if (!tts) {
+          statusDiv.innerHTML = '<div class="status info">步骤 2/3: 加载 Kokoro 模型（首次加载需要约 30 秒）...</div>';
+          tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
+            dtype: 'q8',
+            device: 'wasm',
+          });
+        }
+
+        // 3. 合成语音
+        statusDiv.innerHTML = '<div class="status info">步骤 3/3: 合成语音...</div>';
+        const audio = await tts.generate(ipa, { voice: selectedVoice });
+
+        // 4. 显示音频
+        const audioBlob = new Blob([audio.audio], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audioDiv.innerHTML = `
+          <div class="section-title">生成的音频:</div>
+          <audio controls src="${audioUrl}"></audio>
+        `;
+
+        statusDiv.innerHTML = '<div class="status success">✓ 合成成功！音频长度：' + (audio.audio.length / 24000).toFixed(2) + ' 秒</div>';
+
+      } catch (error) {
+        console.error(error);
+        statusDiv.innerHTML = `<div class="status error">❌ 错误: ${error.message}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    // 初始化
+    initVoiceGrid();
+  </script>
+</body>
+</html>

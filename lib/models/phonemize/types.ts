@@ -32,3 +32,12 @@ export interface Phonemizer {
 export function isChinese(lang: string): boolean {
   return lang.toLowerCase().startsWith('zh');
 }
+
+/**
+ * True for a language whose text goes down the Japanese pipeline.
+ *
+ * Recognizes `ja` and `ja-JP`.
+ */
+export function isJapanese(lang: string): boolean {
+  return lang.toLowerCase().startsWith('ja');
+}

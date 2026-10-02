@@ -101,6 +101,7 @@ describe('OffscreenSpeaker', () => {
           id: utteranceId(channel.commands),
           text: 'hello',
           voiceId: 'v1',
+          lang: 'en-US',
           config: CONFIG,
         },
         { type: 'setRate', rate: 1.5 },

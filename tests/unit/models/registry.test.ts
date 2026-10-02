@@ -164,9 +164,9 @@ describe('the registry', () => {
   });
 
   it('counts only the voices it can synthesize', () => {
-    // 28 English plus 8 Chinese; the other 18 need a G2P per language.
-    expect(KOKORO_82M.voiceCount).toBe(36);
-    expect(KOKORO_82M.languages).toEqual(['en-US', 'en-GB', 'zh-CN']);
+    // 28 English plus 8 Chinese plus 5 Japanese; the other 13 need a G2P per language.
+    expect(KOKORO_82M.voiceCount).toBe(41);
+    expect(KOKORO_82M.languages).toEqual(['en-US', 'en-GB', 'zh-CN', 'ja']);
     expect(KOKORO_82M.voiceFile?.('zf_xiaoxiao')).toBe('voices/zf_xiaoxiao.bin');
   });
 });

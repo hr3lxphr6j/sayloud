@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日语假名 TTS 测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0B0E14;
+      color: #F8FAFC;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #38BDF8;
+    }
+
+    .subtitle {
+      color: #94A3B8;
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+
+    .section {
+      background: #1E293B;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: #38BDF8;
+    }
+
+    .input-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #CBD5E1;
+      font-size: 0.9rem;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 0.75rem;
+      background: #0F172A;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #F8FAFC;
+      font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
+      font-size: 1.1rem;
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #38BDF8;
+    }
+
+    .voice-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .voice-card {
+      background: #0F172A;
+      border: 2px solid #334155;
+      border-radius: 6px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .voice-card:hover {
+      border-color: #38BDF8;
+      transform: translateY(-2px);
+    }
+
+    .voice-card.selected {
+      border-color: #38BDF8;
+      background: #1E293B;
+    }
+
+    .voice-name {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .voice-desc {
+      font-size: 0.85rem;
+      color: #94A3B8;
+    }
+
+    button {
+      background: #38BDF8;
+      color: #0F172A;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+
+    button:hover:not(:disabled) {
+      background: #22D3EE;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .ipa-display {
+      background: #0F172A;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.95rem;
+      color: #22D3EE;
+      margin-top: 1rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .status {
+      padding: 0.75rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .status.info {
+      background: #1E293B;
+      border: 1px solid #38BDF8;
+      color: #38BDF8;
+    }
+
+    .status.success {
+      background: #064E3B;
+      border: 1px solid #10B981;
+      color: #10B981;
+    }
+
+    .status.error {
+      background: #450A0A;
+      border: 1px solid #EF4444;
+      color: #EF4444;
+    }
+
+    audio {
+      width: 100%;
+      margin-top: 1rem;
+      filter: invert(1) hue-rotate(180deg);
+    }
+
+    .example-texts {
+      display: grid;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .example-btn {
+      background: #1E293B;
+      border: 1px solid #334155;
+      color: #F8FAFC;
+      padding: 0.75rem 1rem;
+      text-align: left;
+      font-size: 1rem;
+      font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
+    }
+
+    .example-btn:hover {
+      background: #334155;
+      border-color: #38BDF8;
+    }
+
+    .example-kana {
+      font-size: 1.1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .example-meaning {
+      color: #94A3B8;
+      font-size: 0.85rem;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    code {
+      background: #0F172A;
+      padding: 0.2rem 0.4rem;
+      border-radius: 3px;
+      color: #22D3EE;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🇯🇵 日语假名 TTS 测试</h1>
+    <p class="subtitle">测试 kana2ipa + Kokoro 日语音色的效果（纯假名输入）</p>
+
+    <div class="section">
+      <div class="section-title">1. 输入假名文本</div>
+      <div class="input-group">
+        <label>输入纯假名文本（平假名或片假名）：</label>
+        <textarea id="kanaInput" placeholder="例如：こんにちは、せかい"></textarea>
+      </div>
+
+      <div class="example-texts" id="exampleTexts"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">2. 选择日语音色</div>
+      <div class="voice-grid" id="voiceGrid"></div>
+    </div>
+
+    <div class="section">
+      <button id="synthesizeBtn">生成语音</button>
+      <div id="status"></div>
+      <div id="ipaDisplay"></div>
+      <div id="audioContainer"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">📝 说明</div>
+      <ul style="color: #94A3B8; font-size: 0.9rem; line-height: 1.8; margin-left: 1.5rem;">
+        <li>当前只支持<strong>纯假名</strong>输入（平假名或片假名）</li>
+        <li>使用 <code>kana2ipa</code> 将假名转换为 IPA 音素</li>
+        <li>使用 Kokoro 的日语音色合成语音</li>
+        <li>首次加载模型需要约 30 秒（后续使用会缓存）</li>
+        <li><strong>目标</strong>：验证 kana2ipa 生成的 IPA 是否能被 Kokoro 正确合成</li>
+        <li>如果效果好，再实现完整的汉字→假名转换（需要 ~10MB 词典）</li>
+      </ul>
+    </div>
+  </div>
+
+  <script type="module">
+    import { KokoroTTS } from 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm';
+
+    // 示例文本
+    const examples = [
+      { kana: 'こんにちは、せかい', meaning: '你好，世界' },
+      { kana: 'ありがとうございます', meaning: '非常感谢' },
+      { kana: 'わたしはがくせいです', meaning: '我是学生' },
+      { kana: 'きょうはいいてんきですね', meaning: '今天天气真好呢' },
+      { kana: 'にほんごをべんきょうしています', meaning: '我正在学习日语' },
+    ];
+
+    // 日语音色列表
+    const japaneseVoices = [
+      { id: 'jf_alpha', name: 'Alpha (女)', desc: '温和 · 标准日语' },
+      { id: 'jf_gongitsune', name: 'Gongitsune (女)', desc: '活泼 · 权狐' },
+      { id: 'jf_nezumi', name: 'Nezumi (女)', desc: '清脆 · 老鼠' },
+      { id: 'jf_tebukuro', name: 'Tebukuro (女)', desc: '柔和 · 手套' },
+      { id: 'jm_kumo', name: 'Kumo (男)', desc: '沉稳 · 蜘蛛' },
+    ];
+
+    let selectedVoice = 'jf_alpha';
+    let tts = null;
+
+    // 初始化示例文本
+    function initExamples() {
+      const container = document.getElementById('exampleTexts');
+      examples.forEach(ex => {
+        const btn = document.createElement('button');
+        btn.className = 'example-btn';
+        btn.innerHTML = `
+          <div class="example-kana">${ex.kana}</div>
+          <div class="example-meaning">${ex.meaning}</div>
+        `;
+        btn.onclick = () => setExample(ex.kana);
+        container.appendChild(btn);
+      });
+    }
+
+    // 初始化音色选择
+    function initVoiceGrid() {
+      const grid = document.getElementById('voiceGrid');
+      japaneseVoices.forEach(voice => {
+        const card = document.createElement('div');
+        card.className = `voice-card ${voice.id === selectedVoice ? 'selected' : ''}`;
+        card.innerHTML = `
+          <div class="voice-name">${voice.name}</div>
+          <div class="voice-desc">${voice.desc}</div>
+        `;
+        card.onclick = () => selectVoice(voice.id);
+        grid.appendChild(card);
+      });
+    }
+
+    function selectVoice(voiceId) {
+      selectedVoice = voiceId;
+      document.querySelectorAll('.voice-card').forEach((card, i) => {
+        card.classList.toggle('selected', japaneseVoices[i].id === voiceId);
+      });
+    }
+
+    function setExample(text) {
+      document.getElementById('kanaInput').value = text;
+    }
+
+    async function synthesize() {
+      const kana = document.getElementById('kanaInput').value.trim();
+      const statusDiv = document.getElementById('status');
+      const ipaDiv = document.getElementById('ipaDisplay');
+      const audioDiv = document.getElementById('audioContainer');
+      const btn = document.getElementById('synthesizeBtn');
+
+      if (!kana) {
+        statusDiv.innerHTML = '<div class="status error">请输入假名文本</div>';
+        return;
+      }
+
+      try {
+        btn.disabled = true;
+        statusDiv.innerHTML = '<div class="status info">正在处理...</div>';
+        ipaDiv.innerHTML = '';
+        audioDiv.innerHTML = '';
+
+        // 1. 调用服务器 API 转换为 IPA
+        statusDiv.innerHTML = '<div class="status info">步骤 1/3: 转换假名为 IPA...</div>';
+        const ipaRes = await fetch('/api/kana2ipa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kana }),
+        });
+        
+        if (!ipaRes.ok) {
+          throw new Error('IPA 转换失败');
+        }
+        
+        const { ipa } = await ipaRes.json();
+        ipaDiv.innerHTML = `<div class="section-title">生成的 IPA:</div><div class="ipa-display">${ipa}</div>`;
+
+        // 2. 加载 Kokoro 模型
+        if (!tts) {
+          statusDiv.innerHTML = '<div class="status info">步骤 2/3: 加载 Kokoro 模型（首次加载需要约 30 秒）...</div>';
+          tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
+            dtype: 'q8',
+            device: 'wasm',
+          });
+        }
+
+        // 3. 合成语音
+        statusDiv.innerHTML = '<div class="status info">步骤 3/3: 合成语音...</div>';
+        
+        // 先尝试用 tokenizer 编码
+        const encoded = tts.tokenizer(ipa, { truncation: false });
+        const audio = await tts.generate_from_ids(encoded.input_ids, { voice: selectedVoice });
+
+        // 4. 创建 WAV 文件
+        const wavData = createWav(audio.audio, 24000);
+        const audioBlob = new Blob([wavData], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        audioDiv.innerHTML = `
+          <div class="section-title">生成的音频:</div>
+          <audio controls src="${audioUrl}"></audio>
+        `;
+
+        const duration = (audio.audio.length / 24000).toFixed(2);
+        statusDiv.innerHTML = `<div class="status success">✓ 合成成功！音频时长：${duration} 秒</div>`;
+
+      } catch (error) {
+        console.error(error);
+        statusDiv.innerHTML = `<div class="status error">❌ 错误: ${error.message}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // 创建 WAV 文件
+    function createWav(audioData, sampleRate) {
+      const numChannels = 1;
+      const bitsPerSample = 32; // Float32
+      const bytesPerSample = bitsPerSample / 8;
+      const blockAlign = numChannels * bytesPerSample;
+      const byteRate = sampleRate * blockAlign;
+      const dataSize = audioData.length * bytesPerSample;
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+
+      // RIFF header
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + dataSize, true);
+      writeString(view, 8, 'WAVE');
+
+      // fmt chunk
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true); // chunk size
+      view.setUint16(20, 3, true); // format (3 = IEEE float)
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitsPerSample, true);
+
+      // data chunk
+      writeString(view, 36, 'data');
+      view.setUint32(40, dataSize, true);
+
+      // audio data
+      for (let i = 0; i < audioData.length; i++) {
+        view.setFloat32(44 + i * 4, audioData[i], true);
+      }
+
+      return buffer;
+    }
+
+    function writeString(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    // 初始化
+    initExamples();
+    initVoiceGrid();
+    
+    // 绑定按钮事件
+    document.getElementById('synthesizeBtn').onclick = synthesize;
+  </script>
+</body>
+</html>

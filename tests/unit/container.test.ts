@@ -181,12 +181,13 @@ describe('createApp', () => {
     });
 
     // The provider config travels with the text, and the voice is the one the
-    // settings panel saved for that provider.
+    // settings panel saved for that provider. The lang comes from the sentence.
     expect(offscreen.commands[0]).toEqual({
       type: 'synthesize',
       id: offscreen.synthesizeIds()[0],
       text: 'hello',
       voiceId: 'longxiaochun',
+      lang: 'en-US',
       config: CLOUD_CONFIG,
     });
     expect(calls).toEqual([]);

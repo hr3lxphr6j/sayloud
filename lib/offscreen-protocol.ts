@@ -248,6 +248,13 @@ export function isOffscreenEvent(value: unknown): value is OffscreenEvent {
   const type = typeOf(value);
   if (type === null || !EVENT_TYPES.has(type)) return false;
   const message = value as Record<string, unknown>;
+  
+  // 'paused' event has no id field, as it reports global playback state
+  if (type === 'paused') {
+    return isFiniteNumber(message.currentTimeMs);
+  }
+  
+  // All other events require an id to correlate with a specific sentence
   if (!isNonEmptyString(message.id)) return false;
 
   switch (type) {

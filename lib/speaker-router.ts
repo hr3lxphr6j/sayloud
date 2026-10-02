@@ -165,7 +165,12 @@ export class SpeakerRouter implements Speaker {
 
   pause(): void {
     this.speaking = false;
-    this.active.pause?.();
+    if (this.active.pause) {
+      this.active.pause();
+    } else {
+      // Browser voice doesn't support pause, so stop it instead.
+      this.active.stop();
+    }
   }
 
   getCurrentTimeMs(): number | undefined {

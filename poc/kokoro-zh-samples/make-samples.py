@@ -225,6 +225,45 @@ def main() -> None:
             'sandhi + 儿化 + jieba 词性 + large_pinyin（目标）',
             phonemes, m11, tok11, f'v1.1-zh / {V11_VOICE}')
 
+    # Group 3: punctuation treatments, on one sentence.
+    #
+    # The question was whether replacing punctuation with spaces would make the
+    # model pause. Measured with a low-energy-gap metric, no treatment beats the
+    # `", "` we already emit — spaces give *less* silence (240ms total against
+    # 290ms), three spaces give less still (200ms), and repeating the mark does
+    # not scale either. But that metric has already failed once to match what the
+    # user hears (the pause inside 人设), so it goes on the page rather than being
+    # trusted.
+    #
+    # The Han part is generated once and reused, so the only variable is the
+    # punctuation between the two halves.
+    print('group 3 — 标点处理')
+    halves = ['今天天气不错', '我们去公园散步吧']
+    han = legacy_reference(halves)
+    TREATMENTS = [
+        ('现状：逗号 + 空格', ', ', '. '),
+        ('只用一个空格', ' ', ' '),
+        ('三个空格', '   ', '   '),
+        ('完全去掉', '', ''),
+        ('句号代替逗号', '. ', '. '),
+        ('分号', '; ', '. '),
+        ('破折号', '— ', '— '),
+    ]
+    for label, comma, period in TREATMENTS:
+        phonemes = han[halves[0]] + comma + han[halves[1]] + period
+        add(
+            'punct',
+            'p1',
+            '今天天气不错，我们去公园散步吧。',
+            '听逗号处（「不错」与「我们」之间）的停顿',
+            label,
+            '汉字段完全相同，只有标点写法不同',
+            phonemes,
+            m10,
+            tok10,
+            f'v1.0 / {V10_VOICE}',
+        )
+
     (HERE / 'samples.json').write_text(json.dumps(clips, ensure_ascii=False, indent=1))
     print(f'\nwrote samples.json ({len(clips)} clips) and {len(clips)} wavs to {OUT}')
 

@@ -124,14 +124,17 @@
       const nowPh = document.getElementById('now-ph');
       const nowTime = document.getElementById('now-time');
 
-      const SENTENCE_ORDER = ['r1', 'r2', 'r3', 'r4'];
+      const SENTENCE_ORDER = ['r1', 'r2', 'r3', 'r4', 'p1'];
+      const GROUP_ORDER = ['fmt', 'v11', 'punct'];
       const GROUP_TITLES = {
         fmt: '阶段 1 — 格式对齐',
         v11: '阶段 2',
+        punct: '标点处理（同一个句子，只改标点）',
       };
       const GROUP_INTROS = {
         fmt: '模型与音色不变，只改音素串。这一组回答「格式对齐这个方向对不对、哪一项在起作用」。',
         v11: '换了模型与音色，所以声音本身不同 —— 只判断自然度与读音，不要与上面的音色对比。',
+        punct: '一句话，汉字段完全相同，只有标点写法不同。用来回答「换成空格会不会有停顿」。',
       };
       // The rows worth listening to first; the rest are the per-factor breakdown.
       const HEADLINE = new Set([
@@ -146,7 +149,7 @@
       const groups = document.getElementById('groups');
       const state = { playing: null };
 
-      for (const group of ['fmt', 'v11']) {
+      for (const group of GROUP_ORDER) {
         const rows = clips.filter((c) => c.group === group);
         if (rows.length === 0) continue;
 

@@ -138,6 +138,19 @@ describe('PlaybackEngine', () => {
       expect(fake.requests[0]?.text).toBe('Farewell.');
     });
 
+    it('loads a recovered session without starting to speak', () => {
+      // The reader sends its document again after the worker lost the session.
+      // Speaking on arrival would swallow a pause the user asked for: recovering
+      // a session is not the same as asking it to play.
+      engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 1, rate: 1, resume: true });
+
+      expect(status().phase).toBe('paused');
+      expect(status().index).toBe(1);
+      expect(status().total).toBe(3);
+      expect(status().charsRead).toBe(12);
+      expect(fake.requests).toHaveLength(0);
+    });
+
     it('clamps an out-of-range start index', () => {
       engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 99, rate: 1 });
       expect(status().index).toBe(2);
@@ -258,6 +271,27 @@ describe('PlaybackEngine', () => {
 
       expect(status().phase).toBe('error');
       expect(status().error).toBe('tts-error');
+    });
+
+    it('carries the speaker’s own words, so a hint can name the cause', () => {
+      // Every cause — a rejected key, a 500, a model that was never downloaded —
+      // arrives as the same `tts-error`. The message is the only thing that
+      // tells them apart, and it is worth more to the reader than a translation
+      // of it would be.
+      fake.fire.start();
+      fake.fire.error('HTTP 403: invalid api key');
+
+      expect(status().errorMessage).toBe('HTTP 403: invalid api key');
+    });
+
+    it('drops the speaker’s words when a new session starts', () => {
+      fake.fire.start();
+      fake.fire.error('HTTP 403: invalid api key');
+
+      engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+
+      expect(status().error).toBeUndefined();
+      expect(status().errorMessage).toBeUndefined();
     });
   });
 
@@ -650,6 +684,28 @@ describe('PlaybackEngine', () => {
       // The phase will become 'idle' after sync when content script doesn't send any.
       expect(other.getStatus().phase).toBe('paused');
     });
+
+    it('does not write a snapshot the store would refuse to read back', () => {
+      const other = new PlaybackEngine({ speaker: fake.speaker, resolveVoice, now: () => time });
+      other.restore({
+        tabId: 7,
+        docId: 'doc-1',
+        sentenceCount: 3,
+        charsTotal: TOTAL_CHARS,
+        index: 1,
+        resumeOffset: 0,
+        voice: 'Samantha',
+        rate: 2,
+        charsRead: 12,
+      });
+
+      // A restored engine holds no sentences until its reader sends them back,
+      // and `parseSnapshot` rejects `sentenceCount: 0` on the way in. Writing
+      // that shape anyway overwrites the only record of the session with a
+      // value its own reader refuses — which is how a paused position is lost
+      // for good rather than merely delayed.
+      expect(other.getSnapshot()).toBeNull();
+    });
   });
 
   describe('sync', () => {
@@ -700,6 +756,20 @@ describe('PlaybackEngine', () => {
       engine.dispatch({ type: 'sync', docId: 'doc-1' });
 
       expect(events).not.toContainEqual({ type: 'session-lost' });
+    });
+  });
+
+  describe('play with no session', () => {
+    it('asks the reader to send the document again when play has nothing to play', () => {
+      // Pressing play is the one moment the reader is listening for an answer,
+      // and an engine rebuilt without sentences is the one case where it has to
+      // ask. Without it the click is swallowed: no error, no effect, nothing to
+      // retry — as far as the reader knows, it already sent its document.
+      events.length = 0;
+
+      engine.dispatch({ type: 'play' });
+
+      expect(events).toContainEqual({ type: 'session-lost' });
     });
   });
 

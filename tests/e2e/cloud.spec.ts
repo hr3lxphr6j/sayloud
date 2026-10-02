@@ -11,7 +11,7 @@
  */
 import type { Page, Worker } from '@playwright/test';
 import { BASE_URL, control, expect, test } from './fixtures';
-import { sentenceHighlight, wordHighlight } from './helpers';
+import { bubble, sentenceHighlight, wordHighlight } from './helpers';
 
 const TTS_BASE = `${BASE_URL}/tts/v1`;
 
@@ -188,7 +188,7 @@ test('highlights whole sentences when the endpoint reports no timings', async ({
   expect(await wordHighlight(page)).toBe('');
 });
 
-test('falls back to the browser voice when the service fails', async ({
+test('reports a failed service instead of falling back to the browser voice', async ({
   page,
   serviceWorker,
   activate,
@@ -199,10 +199,19 @@ test('falls back to the browser voice when the service fails', async ({
   await page.goto('/article.html');
   await activate();
 
-  // The session keeps going on chrome.tts rather than stopping on an error.
+  // The document arrives and the highlight follows it; what fails is the
+  // service that was asked to speak it.
   await expect.poll(() => sentenceHighlight(page), { timeout: 10_000 }).toContain('first sentence');
-  await expect(control(page, 'Pause')).toBeVisible();
-  await expect
-    .poll(() => sentenceHighlight(page), { timeout: 20_000 })
-    .toContain('second sentence');
+
+  // No fallback to `chrome.tts`. The user chose this provider, so the failure is
+  // reported and the decision to switch is theirs: reading on in the browser
+  // voice would hide a broken endpoint behind audio that sounds fine. The
+  // disabled play button is the same statement from the other side — there is no
+  // session to toggle until the provider works.
+  //
+  // The card's body is the service's own message, untranslated: it is the one
+  // thing that says whether this was a rejected key, a bad URL or a dead
+  // server, and no wording of ours can say it for it.
+  await expect(bubble(page)).toContainText('stub is failing on purpose');
+  await expect(control(page, 'Play')).toBeDisabled();
 });

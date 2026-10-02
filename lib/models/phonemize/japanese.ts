@@ -15,12 +15,7 @@
  */
 import Kuroshiro from 'kuroshiro';
 import KuromojiAnalyzer from '~/lib/vendor/kuroshiro-analyzer-kuromoji/index.js';
-import {
-  keepPunctuation,
-  normalizePunctuation,
-  phonemizeSpelled,
-  segmentText,
-} from './common';
+import { keepPunctuation, normalizePunctuation, phonemizeSpelled, segmentText } from './common';
 import { numbersToKanji } from './japanese-numbers';
 import type { Phonemizer } from './types';
 
@@ -403,7 +398,6 @@ export function kanaToIPA(kana: string): string {
 
   return ipa;
 }
-
 
 /**
  * Where the compiled kuromoji dictionary lives.

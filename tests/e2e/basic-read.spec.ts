@@ -41,9 +41,7 @@ test.describe('reading a page with the browser voice', () => {
     await expect
       .poll(
         async () => Number((await ring.getAttribute('aria-label'))?.match(/(\d+) percent/)?.[1]),
-        {
-          timeout: 15_000,
-        }
+        { timeout: 15_000 }
       )
       .toBeGreaterThan(0);
   });
@@ -109,5 +107,31 @@ test.describe('reading a page with the browser voice', () => {
     await expect
       .poll(() => sentenceHighlight(page), { timeout: 10_000 })
       .toContain('first sentence');
+  });
+
+  test('resumes from a pause that outlives the worker', async ({ page, context, activate }) => {
+    await page.goto('/article.html');
+    await activate();
+    await expect(control(page, 'Pause')).toBeVisible();
+    await expect
+      .poll(() => sentenceHighlight(page), { timeout: 10_000 })
+      .toContain('first sentence');
+    await page.waitForTimeout(2000);
+
+    await control(page, 'Pause').click();
+    await expect(control(page, 'Play')).toBeVisible();
+
+    await terminateServiceWorker(context, page);
+    // Long enough for the reader to have reconnected to the fresh worker — a
+    // user pausing for a minute is always past this point. The reconnection's
+    // `sync` is what has to bring the session back, and the window it lands in
+    // is the one that used to swallow the answer: `start()` had not subscribed
+    // to the engine yet, so the `session-lost` went nowhere and pressing play
+    // did nothing at all, for good.
+    await page.waitForTimeout(2500);
+
+    await control(page, 'Play').click();
+    await expect(control(page, 'Pause')).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => sentenceHighlight(page), { timeout: 10_000 }).not.toBe('');
   });
 });

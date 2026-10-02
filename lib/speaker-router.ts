@@ -81,48 +81,42 @@ export class SpeakerRouter implements Speaker {
    * Rejects when a cloud provider is selected but no voice is chosen, or when
    * the provider is unavailable, so the engine can fail with a clear error
    * message prompting the user to fix the issue. No automatic fallback to
-   * browser voice on cloud provider errors.
+   * browser voice on cloud provider errors: the errors travel to the caller.
    */
   async refresh(): Promise<void> {
-    try {
-      const config = await this.config.getConfig();
-      const provider = config?.provider ?? 'browser';
+    const config = await this.config.getConfig();
+    const provider = config?.provider ?? 'browser';
 
-      if (!config || provider === 'browser') {
-        this.useBrowser();
-        return;
-      }
-
-      const voice = await this.config.getSelectedVoice(provider);
-      if (!voice) {
-        // Cloud provider requires a voice selection - throw error without
-        // falling back to browser voice.
-        throw new Error(`no-voice-selected:${provider}`);
-      }
-
-      if (this.unchanged(config, voice)) return;
-
-      const speaker = this.createCloud(config);
-      if (!speaker) {
-        // Cloud provider is unavailable - throw error instead of falling back
-        throw new Error(`provider-unavailable:${provider}`);
-      }
-
-      const replaced = this.cloud;
-      // The selection is published before the switch: switching can hand the
-      // engine its next sentence, and that sentence has to be resolved with the
-      // voice that is about to speak it.
-      this.cloud = { config, speaker, voice };
-      this.switchTo(speaker);
-      // The replaced speaker has no caller left, so its runtime listener has to
-      // go with it. A speaker that is still the active one is not disposed: the
-      // factory is free to hand back the same object.
-      if (replaced && replaced.speaker !== speaker) replaced.speaker.dispose();
-    } catch (error) {
-      // Throw all errors to let the engine show a clear message.
-      // Do not fall back to browser voice on provider errors.
-      throw error;
+    if (!config || provider === 'browser') {
+      this.useBrowser();
+      return;
     }
+
+    const voice = await this.config.getSelectedVoice(provider);
+    if (!voice) {
+      // Cloud provider requires a voice selection - throw error without
+      // falling back to browser voice.
+      throw new Error(`no-voice-selected:${provider}`);
+    }
+
+    if (this.unchanged(config, voice)) return;
+
+    const speaker = this.createCloud(config);
+    if (!speaker) {
+      // Cloud provider is unavailable - throw error instead of falling back
+      throw new Error(`provider-unavailable:${provider}`);
+    }
+
+    const replaced = this.cloud;
+    // The selection is published before the switch: switching can hand the
+    // engine its next sentence, and that sentence has to be resolved with the
+    // voice that is about to speak it.
+    this.cloud = { config, speaker, voice };
+    this.switchTo(speaker);
+    // The replaced speaker has no caller left, so its runtime listener has to
+    // go with it. A speaker that is still the active one is not disposed: the
+    // factory is free to hand back the same object.
+    if (replaced && replaced.speaker !== speaker) replaced.speaker.dispose();
   }
 
   /**

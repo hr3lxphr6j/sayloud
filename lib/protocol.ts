@@ -24,10 +24,35 @@ export interface EngineStatus {
   charsTotal: number;
   charsPerSec: number;
   error?: EngineError;
+  /**
+   * The speaker's own words for `tts-error`, untranslated.
+   *
+   * A cloud service, an on-device model and `chrome.tts` all fail as the same
+   * `tts-error`, and each says something different: a status code, a rejected
+   * key, a model that was never downloaded. Carrying the message through is
+   * what lets the hint name the cause instead of guessing at it, and it travels
+   * as it came — rewording it in the interface language would drop the
+   * identifiers that make it worth showing at all.
+   */
+  errorMessage?: string;
 }
 
 export type EngineCommand =
-  | { type: 'load'; sentences: EngineSentence[]; startIndex: number; rate: number }
+  | {
+      type: 'load';
+      sentences: EngineSentence[];
+      startIndex: number;
+      rate: number;
+      /**
+       * Rebuild a session the engine already had, at that position.
+       *
+       * The reader sends this after `session-lost`, and the sentences have to
+       * land without starting to speak: the user may have paused deliberately,
+       * and recovering a session is not the same as asking it to play. Omitted
+       * for a fresh document, which starts reading on arrival.
+       */
+      resume?: boolean;
+    }
   | { type: 'play' }
   | { type: 'pause' }
   | { type: 'toggle' }
@@ -44,11 +69,12 @@ export type EngineEvent =
   /**
    * The engine has no session, and the reader believes it already sent one.
    *
-   * Only ever an answer to `sync`, and only when there is nothing to catch the
-   * reader up to. Without it both sides wait forever: the reader will not send
-   * `load` again because as far as it knows it already did, and the engine has
-   * nothing to speak. Reached when the worker was recycled and no usable
-   * snapshot was left behind.
+   * Sent either as an answer to `sync`, or when a `play` arrives with nothing to
+   * speak — both are moments where the engine cannot go on and the reader cannot
+   * tell. Without it both sides wait forever: the reader will not send `load`
+   * again because as far as it knows it already did, and the engine has nothing
+   * to speak. Reached when the worker was recycled and either no usable snapshot
+   * was left behind, or the snapshot it restored carries no sentences.
    */
   | { type: 'session-lost' };
 

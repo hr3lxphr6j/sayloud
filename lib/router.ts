@@ -41,6 +41,15 @@ export class SessionRouter {
 
   /** Restore a previous session and warm the voice cache. */
   async start(): Promise<void> {
+    // Subscribe before the first await. A reader reconnects ~250ms after its
+    // port died with the old worker — while this method is still waiting on the
+    // voice list — and its `sync` is the only thing that can rebuild a session
+    // the worker lost. An event emitted into an unsubscribed engine is gone for
+    // good: the reader believes it already sent its sentences, so it never asks
+    // again, and pressing play does nothing at all.
+    this.unsubscribe?.();
+    this.unsubscribe = this.engine.subscribe((event) => this.onEngineEvent(event));
+
     try {
       await this.voices.refresh();
     } catch (err) {
@@ -49,6 +58,12 @@ export class SessionRouter {
       console.error('[SayLoud] voice refresh failed:', err);
       this.engine.reportError(err instanceof Error ? err.message : String(err));
     }
+
+    // A reader may have rebuilt the session while this was still awaiting: its
+    // `sync` was answered with `session-lost`, it sent its sentences, and they
+    // are in the engine right now. Restoring a snapshot that carries no
+    // sentences over that would drop them — a recovery that undoes itself.
+    if (this.hasSession()) return;
 
     const snapshot = await this.snapshots.load();
     if (snapshot && snapshot.tabId >= 0) {
@@ -67,9 +82,6 @@ export class SessionRouter {
         sentenceCount: snapshot?.sentenceCount ?? 0,
       });
     }
-
-    this.unsubscribe?.();
-    this.unsubscribe = this.engine.subscribe((event) => this.onEngineEvent(event));
   }
 
   dispose(): void {
@@ -127,6 +139,13 @@ export class SessionRouter {
       this.engine.setTabId(tabId);
       // A cold cache would resolve to no voice and fail the load.
       if (this.voices.isEmpty) await this.voices.refresh();
+    } else if (message.type === 'sync' && this.activeTabId === null) {
+      // A reader reconnecting to a worker that lost its session is the only
+      // thing that can rebuild it, so this sync claims the session. Without it
+      // the `session-lost` the engine is about to answer with has no tab to go
+      // to, and the reader waits for an answer that was thrown away.
+      this.activeTabId = tabId;
+      this.engine.setTabId(tabId);
     }
 
     this.engine.dispatch(message);
@@ -148,9 +167,19 @@ export class SessionRouter {
   /** Fire-and-forget: persistence must never block message routing. */
   private persist(): void {
     const snapshot: SessionSnapshot | null = this.engine.getSnapshot();
+    // A null snapshot means "nothing to save", which is also what forgetting a
+    // session looks like. Only an idle engine justifies forgetting: a paused
+    // one without sentences is waiting for its reader to send them back, and
+    // the stored snapshot is the only record of where that session was.
+    if (snapshot === null && this.engine.getStatus().phase !== 'idle') return;
     void this.snapshots.save(snapshot).catch(() => {
       // Losing a snapshot only costs a resume position, never playback.
     });
+  }
+
+  /** Whether the engine is already holding a session worth keeping. */
+  private hasSession(): boolean {
+    return this.engine.getStatus().total > 0;
   }
 }
 

@@ -295,10 +295,11 @@ export const en = {
   'sideplayer.hint.no-voice.title': 'No browser voice',
   'sideplayer.hint.no-voice.message': 'Chrome has no voice installed for this page.',
   'sideplayer.hint.no-voice-selected.title': 'No voice selected',
-  'sideplayer.hint.no-voice-selected.message':
-    'Choose a voice in Settings to use this provider.',
-  'sideplayer.hint.tts-error.title': 'Voice failed',
-  'sideplayer.hint.tts-error.message': 'Chrome could not speak this page.',
+  'sideplayer.hint.no-voice-selected.message': 'Choose a voice in Settings to use this provider.',
+  'sideplayer.hint.tts-error.title': 'Playback failed',
+  // Only shown when the service reported nothing of its own; otherwise the card
+  // carries that message verbatim, whatever language it is in.
+  'sideplayer.hint.tts-error.message': 'The voice service returned an error.',
   'sideplayer.hint.orphaned.title': 'SayLoud was reloaded',
   'sideplayer.hint.orphaned.message':
     'Refresh this page to keep reading — the extension was updated underneath it.',

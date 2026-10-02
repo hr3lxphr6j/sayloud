@@ -21,11 +21,7 @@ const SNAPSHOT: SessionSnapshot = {
 };
 
 function fakeTts(): TtsApi {
-  return {
-    speak: vi.fn(),
-    stop: vi.fn(),
-    getVoices: vi.fn(async () => VOICES),
-  };
+  return { speak: vi.fn(), stop: vi.fn(), getVoices: vi.fn(async () => VOICES) };
 }
 
 function fakeArea(initial: Record<string, unknown> = {}): SessionStorageArea {
@@ -73,11 +69,7 @@ function fakePort(tabId: number) {
     },
     onDisconnect: () => {},
   };
-  return {
-    port,
-    sent,
-    send: (message: EngineCommand): void => onMessage?.(message),
-  };
+  return { port, sent, send: (message: EngineCommand): void => onMessage?.(message) };
 }
 
 /** Commands reach the engine in a microtask; the tests wait for that turn. */
@@ -123,7 +115,7 @@ describe('SessionRouter.start', () => {
     expect(status.phase).toBe('paused');
     expect(status.total).toBe(0); // No sentences loaded yet (will be reloaded via sync)
     expect(status.index).toBe(0); // Clamped to 0 because no sentences yet
-    expect(engine.getSnapshot()?.tabId).toBe(3);
+    expect(status.charsTotal).toBe(SNAPSHOT.charsTotal); // Kept for the panel
   });
 
   it('starts idle when nothing was persisted', async () => {
@@ -132,6 +124,88 @@ describe('SessionRouter.start', () => {
     await router.start();
 
     expect(engine.getStatus().phase).toBe('idle');
+  });
+});
+
+describe('SessionRouter recovery after a recycled worker', () => {
+  /**
+   * Hold the voice list until the test releases it.
+   *
+   * `start()` awaits this first, which is exactly the window a reconnecting
+   * reader fires its `sync` into: the port died with the old worker, the reader
+   * retries after 250ms, and the new worker is still restoring.
+   */
+  function gateVoices(tts: TtsApi): () => void {
+    let release!: () => void;
+    const pending = new Promise<TtsVoiceLike[]>((resolve) => {
+      release = () => resolve(VOICES);
+    });
+    tts.getVoices = vi.fn(() => pending);
+    return release;
+  }
+
+  it('answers a sync that arrives while start() is still restoring', async () => {
+    const { tts, router } = build();
+    const release = gateVoices(tts);
+
+    const port = fakePort(5);
+    router.handlePort(port.port);
+
+    const starting = router.start();
+    port.send({ type: 'sync', docId: 'doc-1' });
+    release();
+    await starting;
+    await tick();
+
+    // Without this answer the reader waits forever: it believes it already sent
+    // its sentences, so `session-lost` is the only thing that makes it send
+    // them again. Dropping it leaves an engine with nothing to play and a play
+    // button that does nothing at all.
+    expect(port.sent).toContainEqual({ type: 'session-lost' });
+  });
+
+  it('does not restore over a session the reader has already rebuilt', async () => {
+    const { engine, router, voices, tts } = build({ [SNAPSHOT_KEY]: SNAPSHOT });
+    await voices.refresh(); // Warm, so the reader's `load` is not held up by voices.
+    const release = gateVoices(tts);
+
+    const port = fakePort(3);
+    router.handlePort(port.port);
+
+    const starting = router.start();
+    port.send({
+      type: 'load',
+      sentences: [{ text: 'Hello world.', lang: 'en' }],
+      startIndex: 0,
+      rate: 1,
+    });
+    await tick();
+    expect(engine.getStatus().total).toBe(1);
+
+    release();
+    await starting;
+
+    // The reader got here first and sent its document. Restoring a snapshot
+    // that carries no sentences over it would drop them again — a recovery
+    // that undoes itself.
+    expect(engine.getStatus().total).toBe(1);
+  });
+
+  it('keeps the stored snapshot when a restored session has no sentences yet', async () => {
+    const { engine, router, snapshots } = build({ [SNAPSHOT_KEY]: SNAPSHOT });
+    await router.start();
+
+    const port = fakePort(3);
+    router.handlePort(port.port);
+    port.send({ type: 'play' });
+    await tick();
+    await tick();
+
+    // A paused engine without sentences is waiting for its reader, not
+    // finished. Forgetting the snapshot here throws away the only record of
+    // where the session was, and the next recycle has nothing left to restore.
+    expect(engine.getStatus().phase).toBe('paused');
+    expect(await snapshots.load()).not.toBeNull();
   });
 });
 

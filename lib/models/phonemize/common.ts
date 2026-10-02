@@ -18,18 +18,19 @@ export type ScriptRun =
 
 /**
  * Normalize full-width punctuation to ASCII equivalents.
- * 
+ *
  * **Key behavior**: Comma (，) becomes a **period** to force pausing.
  * This was chosen by listening tests in Chinese (P5 spec), and applies
  * to Japanese as well since both use Kokoro's same pause behavior.
- * 
+ *
  * Used by both Chinese and Japanese phonemizers before segmentation.
- * 
+ *
  * @param text Input text with potential full-width punctuation
- * @param lang Language code ('zh-CN', 'ja-JP', etc.) - currently unused but reserved for future language-specific rules
+ * @param _lang Language code ('zh-CN', 'ja-JP', ...) — accepted but unused; kept
+ *   for the language-specific rules that will hang off it.
  * @returns Text with normalized ASCII punctuation
  */
-export function normalizePunctuation(text: string, lang: string): string {
+export function normalizePunctuation(text: string, _lang: string): string {
   return (
     text
       .replaceAll('、', ', ')
@@ -60,14 +61,14 @@ export function normalizePunctuation(text: string, lang: string): string {
 
 /**
  * Segment text into script runs: Han/Kana/Latin/Other.
- * 
+ *
  * Each contiguous run of the same script type is grouped together.
  * This allows different phonemization strategies per script:
  * - Han (Chinese): pinyin-pro → IPA
- * - Kana (Japanese): direct mapping → IPA  
+ * - Kana (Japanese): direct mapping → IPA
  * - Latin: espeak spelled (phonemizeSpelled)
  * - Other: kept as-is if in Kokoro's punctuation set
- * 
+ *
  * @param text Input text (should already have normalized punctuation)
  * @returns Array of script runs
  */
@@ -120,22 +121,22 @@ export function segmentText(text: string): ScriptRun[] {
 
 /**
  * Phonemize Latin text by spelling it letter by letter via espeak.
- * 
+ *
  * Used for brand names, acronyms, and other Latin text in CJK context.
  * Examples:
  * - "API" → "eɪ piː aɪ"
  * - "ChatGPT" → espeak's attempt at the word
- * 
+ *
  * **Rule**: All-uppercase = spell out; contains lowercase = treat as word.
- * 
+ *
  * Dynamic import to avoid loading 1.3 MB of espeak wasm in tests that don't need it.
- * 
+ *
  * @param text Latin text to phonemize
  * @returns IPA phoneme string
  */
 export async function phonemizeSpelled(text: string): Promise<string> {
   const { isInitialism, phonemizeEnglish, phonemizeSpelled: spelled } = await import('./english');
-  
+
   // All uppercase = spell out letter by letter
   // Contains lowercase = treat as a word
   return isInitialism(text) ? spelled(text) : phonemizeEnglish(text);
@@ -143,24 +144,24 @@ export async function phonemizeSpelled(text: string): Promise<string> {
 
 /**
  * The punctuation marks that Kokoro's tokenizer recognizes.
- * 
+ *
  * Measured against tokenizer.json vocabulary during verification.
  * Only these ASCII marks survive into the final IPA.
  */
-const KOKORO_PUNCTUATION = new Set([' ', ',', '.', '!', '?', '-', ':', ';', '(', ')', '"', "'"]); // biome-ignore lint/style/useConst: frozen for clarity
+const KOKORO_PUNCTUATION = new Set([' ', ',', '.', '!', '?', '-', ':', ';', '(', ')', '"', "'"]);
 
 /**
  * Keep only punctuation that Kokoro understands.
- * 
+ *
  * Any mark not in the tokenizer's vocabulary is dropped, since Kokoro
  * cannot do anything with it anyway.
- * 
+ *
  * @param text Text containing potential punctuation
  * @returns Filtered text with only recognized punctuation
  */
 export function keepPunctuation(text: string): string {
   return text
     .split('')
-    .filter(char => KOKORO_PUNCTUATION.has(char))
+    .filter((char) => KOKORO_PUNCTUATION.has(char))
     .join('');
 }

@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  kuromoji@0.1.2: 72f580fc6e0ad17b360766ca3bc1c1361394a9f2d54adacb1f639f9c0174ce90
-
 importers:
 
   .:
@@ -3866,7 +3863,7 @@ snapshots:
 
   kolorist@1.8.0: {}
 
-  kuromoji@0.1.2(patch_hash=72f580fc6e0ad17b360766ca3bc1c1361394a9f2d54adacb1f639f9c0174ce90):
+  kuromoji@0.1.2:
     dependencies:
       async: 2.6.4
       doublearray: 0.0.2
@@ -3874,7 +3871,7 @@ snapshots:
 
   kuroshiro-analyzer-kuromoji@1.1.0:
     dependencies:
-      kuromoji: 0.1.2(patch_hash=72f580fc6e0ad17b360766ca3bc1c1361394a9f2d54adacb1f639f9c0174ce90)
+      kuromoji: 0.1.2
 
   kuroshiro@1.2.0:
     dependencies:

@@ -20,7 +20,12 @@ import { type CaptionState, CaptionWindow } from './CaptionWindow';
  * engine carries it as `no-voice-selected:<provider>` so a log says which
  * service is unconfigured, but the hint reads the same for all of them.
  */
-export type ReaderError = 'no-content' | 'no-voice' | 'no-voice-selected' | 'tts-error' | 'orphaned';
+export type ReaderError =
+  | 'no-content'
+  | 'no-voice'
+  | 'no-voice-selected'
+  | 'tts-error'
+  | 'orphaned';
 
 /** The word being spoken, as offsets into the sentence's own text. */
 export interface WordPosition {
@@ -34,6 +39,15 @@ export interface ReaderState {
   status: EngineStatus | null;
   hasContent: boolean;
   error: ReaderError | null;
+  /**
+   * What the failing service said, in its own words, or null.
+   *
+   * `error` names the kind of failure and picks the wording around it; this is
+   * the text inside that wording, and it is never translated. For a provider
+   * that is the difference between "playback failed" and "HTTP 403: invalid
+   * api key".
+   */
+  errorDetail: string | null;
   /** The reader scrolled away from the sentence being read. */
   scrolledAway: boolean;
   /**
@@ -129,6 +143,7 @@ export class ReaderController {
       status: null,
       hasContent: this.doc !== null,
       error: this.doc ? null : 'no-content',
+      errorDetail: null,
       scrolledAway: false,
       word: null,
       captionEnabled: false,
@@ -216,8 +231,12 @@ export class ReaderController {
    * `startIndex` is what separates a first send from a recovery: on a recovery
    * the reader resumes where it was, because losing the worker is not the same
    * as being asked to start over.
+   *
+   * `resume` carries the other half of that difference. A fresh document should
+   * start reading; a recovered one has to arrive without speaking, because the
+   * user may have paused on purpose and only they can say when to go on.
    */
-  private sendLoad(startIndex: number): void {
+  private sendLoad(startIndex: number, resume = false): void {
     if (!this.doc) return;
     this.loaded = true;
     this.post({
@@ -228,6 +247,7 @@ export class ReaderController {
       })),
       startIndex,
       rate: this.initialRate,
+      ...(resume ? { resume: true } : {}),
     });
   }
 
@@ -260,14 +280,14 @@ export class ReaderController {
 
   dispose(): void {
     this.disposed = true;
-    
+
     // Stop playback before cleaning up: when the page navigates away, the
     // content script is torn down but the engine session may still be playing.
     // Send the stop command before disconnecting the port.
     if (this.port && this.state.status && this.state.status.phase !== 'idle') {
       this.tryPost({ type: 'stop' });
     }
-    
+
     this.caption.close();
     this.unsubscribeSettings?.();
     this.unsubscribeSettings = null;
@@ -377,14 +397,23 @@ export class ReaderController {
       case 'word':
         this.onWord(event.index, event.charStart, event.charEnd);
         return;
-      case 'session-lost':
+      case 'session-lost': {
         // The worker was recycled and could not rebuild the session. Nothing
         // else will fix this: `loaded` is still true, so the sentences would
         // never be sent again, and the reader would sit there pressing a play
         // button that has nothing to play.
+        //
+        // No status has ever arrived, though, means this is the reader's own
+        // `load` crossing the answer on the way back — the engine is empty
+        // because it has not read the document yet, not because it lost it.
+        // Answering that with `resume` would stop the very reading it started.
+        const index = this.state.status?.index;
+        if (index === undefined) return;
+
         console.warn('[SayLoud] the worker lost the session; sending the document again');
-        this.sendLoad(this.state.status?.index ?? 0);
+        this.sendLoad(index, true);
         return;
+      }
       default:
         return;
     }
@@ -396,7 +425,17 @@ export class ReaderController {
     // belongs to it, and a stale one would mark the wrong text in the caption.
     const word =
       this.state.word !== null && this.state.word.index !== status.index ? null : this.state.word;
-    this.setState({ ...this.state, status, error, word });
+    this.setState({
+      ...this.state,
+      status,
+      error,
+      // Only the service's own failures carry a message. A missing voice or an
+      // unreadable page says everything it has to say in the hint itself, and
+      // keeping the last provider's text around would put it under the wrong
+      // heading.
+      errorDetail: error === 'tts-error' ? (status.errorMessage ?? null) : null,
+      word,
+    });
 
     if (status.phase === 'idle' || status.phase === 'ended') {
       this.highlighter.clear();

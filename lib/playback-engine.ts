@@ -317,16 +317,11 @@ export class PlaybackEngine {
     // 'paused' event with the current position, which we capture via event listener.
     if (this.speaker.pause) {
       this.speaker.pause();
-      console.log('[SayLoud] pause requested', {
-        index: this.index,
-        sentence: this.sentences[this.index]?.text.slice(0, 50),
-      });
     } else {
       // Browser voice doesn't support pause, so stop it. resumeTimeMs stays 0,
       // meaning it will restart from the beginning.
       this.resumeTimeMs = 0;
       this.speaker.stop();
-      console.log('[SayLoud] browser voice does not support pause, will restart from beginning');
     }
     this.setPhase('paused');
   }
@@ -472,13 +467,6 @@ export class PlaybackEngine {
       this.voice = voice;
       this.wordOffset = 0;
       this.charsRead = charsBefore(this.sentences, index);
-      console.log('[SayLoud] speaking sentence', {
-        index,
-        text: sentence.text.slice(0, 50),
-        resumeTimeMs: this.resumeTimeMs,
-        voice,
-        rate: this.rate,
-      });
       this.speaker.speak({
         text: sentence.text,
         voice,
@@ -604,9 +592,6 @@ export class PlaybackEngine {
       this.speaker.on('error', (message) => this.fail('tts-error', message)),
       this.speaker.on('paused', (currentTimeMs) => {
         this.resumeTimeMs = currentTimeMs;
-        console.log('[SayLoud] paused event received, updated resumeTimeMs', {
-          resumeTimeMs: this.resumeTimeMs,
-        });
       })
     );
   }

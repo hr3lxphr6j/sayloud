@@ -224,13 +224,6 @@ export class TimelinePlayer {
     const clampedTime = clampTime(startTimeMs, current.durationMs);
     current.audio.currentTime = clampedTime;
 
-    console.log('[SayLoud] timeline player play', {
-      id,
-      requestedStartTimeMs: startTimeMs,
-      clampedTimeSeconds: clampedTime,
-      durationMs: current.durationMs,
-    });
-
     // The ended handler is bound before `play()` because a zero-length clip can
     // end before the promise settles.
     current.audio.onended = () => this.onEnded(current.id);

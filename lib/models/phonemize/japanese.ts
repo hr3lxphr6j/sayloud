@@ -20,7 +20,6 @@ import {
   normalizePunctuation,
   phonemizeSpelled,
   segmentText,
-  type ScriptRun,
 } from './common';
 import type { Phonemizer } from './types';
 

@@ -21,7 +21,6 @@ import {
   type SynthesizeReply,
 } from './offscreen-protocol';
 import { errorMessage } from './providers/errors';
-import { voiceLanguage } from './providers/local';
 import type { ProviderConfig } from './providers/types';
 import type { PrefetchRequest, Speaker, SpeakerEvents, SpeakRequest, WordSpan } from './speaker';
 

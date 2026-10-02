@@ -222,6 +222,11 @@ export class OffscreenSpeaker implements Speaker {
   }
 
   private readonly onMessage = (message: unknown): void => {
+    console.log('[SayLoud] OffscreenSpeaker.onMessage received', { 
+      message, 
+      isOffscreenEvent: isOffscreenEvent(message),
+      type: isOffscreenEvent(message) ? (message as any).type : 'not-event'
+    });
     // Handle 'paused' events without checking activeId, as they report the
     // playback position regardless of which sentence is active.
     if (isOffscreenEvent(message) && message.type === 'paused') {
@@ -264,6 +269,7 @@ export class OffscreenSpeaker implements Speaker {
   }
 
   private emit<K extends keyof SpeakerEvents>(event: K, payload: SpeakerEvents[K]): void {
+    console.log('[SayLoud] OffscreenSpeaker emitting event', { event, payload });
     for (const handler of this.listeners.get(event) ?? []) {
       (handler as (value: SpeakerEvents[K]) => void)(payload);
     }

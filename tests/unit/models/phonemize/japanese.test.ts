@@ -165,3 +165,82 @@ describe('textToKatakana', () => {
     expect(result).toContain('、');
   });
 });
+
+describe('numerals', () => {
+  /**
+   * Reported against a real article: `２０２２年` came back as "とし".
+   *
+   * Two failures in one line. The digits were classified as `other` by the
+   * segmenter and then filtered out as punctuation, so nothing was ever spoken
+   * for them — and nothing was thrown either. And because the digits were split
+   * off into that other run, 「年」 reached kuroshiro on its own, where it reads
+   * とし; it only reads ねん with the number still in front of it. A test that
+   * only checked the number would have passed a fix that left this behind.
+   */
+  it('reads full-width digits and keeps them beside what they count', async () => {
+    const ipa = await phonemizeJapanese('２０２２年');
+
+    expect(ipa).toContain('niseɴni'); // 二千二十二 → ニセンニ…
+    expect(ipa).toContain('neɴ'); // 年 as ネン, which needs the digits in front
+    expect(ipa).not.toContain('toɕi'); // …not the とし a lone 年 gives
+  });
+
+  it('reads half-width digits the same as full-width ones', async () => {
+    // Both spellings reach the same reading; a page may use either.
+    expect(await phonemizeJapanese('2022年')).toBe(await phonemizeJapanese('２０２２年'));
+  });
+
+  it('reads the numbers out of the sentence that was reported', async () => {
+    const ipa = await phonemizeJapanese('資産３２億ドル、約４２００億円');
+
+    // 四千二百億 — ヨンセンニヒャクオク. Asserted on the half that has no
+    // palatalized mora: `KATAKANA_TO_IPA` has no two-character entries yet, so
+    // ヒャ is two morae today, and pinning the whole string here would make that
+    // fix look like a regression in this test.
+    expect(ipa).toContain('joɴseɴ');
+    // 億 follows the digits instead of being read on its own.
+    expect(ipa).toContain('oku');
+  });
+
+  it('reads a lone digit exactly', async () => {
+    // A single digit carries no palatalized mora, so this one can be asserted
+    // whole — and it pins the reading rather than merely its presence.
+    expect(await phonemizeJapanese('7')).toBe('nana');
+    expect(await phonemizeJapanese('７')).toBe('nana');
+  });
+});
+
+describe('numeral sound changes', () => {
+  /**
+   * kuromoji reads the kanji but not the changes that make the reading Japanese:
+   * 「三百」 is さん**び**ゃく, and it returns さんひゃく. Five cases, spelled out
+   * separately so a rule that quietly stops matching is visible as itself.
+   */
+  it('voices 百 after 三', async () => {
+    expect(await textToKatakana('三百')).toBe('サンビャク');
+  });
+
+  it('doubles 百 after 六 and 八', async () => {
+    expect(await textToKatakana('六百')).toBe('ロッピャク');
+    expect(await textToKatakana('八百')).toBe('ハッピャク');
+  });
+
+  it('voices 千 after 三', async () => {
+    expect(await textToKatakana('三千')).toBe('サンゼン');
+  });
+
+  it('doubles 千 after 八', async () => {
+    expect(await textToKatakana('八千')).toBe('ハッセン');
+  });
+
+  it('leaves the regular readings alone', async () => {
+    // The other seven hundreds and thousands do not change, and a fix that
+    // rewrote them all would be wrong in a way that still sounds like counting.
+    expect(await textToKatakana('百')).toBe('ヒャク');
+    expect(await textToKatakana('四百')).toBe('ヨンヒャク');
+    expect(await textToKatakana('五百')).toBe('ゴヒャク');
+    expect(await textToKatakana('千')).toBe('セン');
+    expect(await textToKatakana('四千')).toBe('ヨンセン');
+    expect(await textToKatakana('九千')).toBe('キュウセン');
+  });
+});

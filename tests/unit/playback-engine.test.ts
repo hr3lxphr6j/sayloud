@@ -164,6 +164,31 @@ describe('PlaybackEngine', () => {
       expect(fake.requests).toHaveLength(0);
     });
 
+    it('takes a no-voice-selected error from startup and refuses to load', () => {
+      // Reported rather than dispatched, because the router learns this before
+      // any sentence exists. Without it the engine would only find out in
+      // `speakCurrent`, and its own `no-voice` blames the language instead of
+      // the missing selection — the user is told to install a voice when they
+      // needed to pick one.
+      engine.reportError('no-voice-selected:dashscope');
+      engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+
+      expect(status().phase).toBe('error');
+      expect(status().error).toBe('no-voice-selected:dashscope');
+      expect(status().total).toBe(0);
+      expect(fake.requests).toHaveLength(0);
+    });
+
+    it('ignores a reported message that is not one of its own errors', () => {
+      // The callers log whatever they caught before calling, so an
+      // unrecognised message has already been said out loud. Adopting it here
+      // would put a cause in the status that the engine never established.
+      engine.reportError('provider-unavailable:dashscope');
+
+      expect(status().phase).not.toBe('error');
+      expect(status().error).toBeUndefined();
+    });
+
     it('replaces a session that is already playing', () => {
       engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
       engine.dispatch({

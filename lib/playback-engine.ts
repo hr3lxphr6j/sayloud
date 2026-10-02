@@ -10,6 +10,18 @@ import type { PrefetchRequest, Speaker } from './speaker';
 
 export type EngineError = NonNullable<EngineStatus['error']>;
 
+/**
+ * True for the one engine error that is produced outside the engine.
+ *
+ * `SpeakerRouter.refresh()` runs at startup, before any sentence exists, and is
+ * where a cloud provider with no voice chosen is discovered — it names the
+ * provider so the panel can link to that provider's settings. Every other
+ * `EngineError` is raised in here, where its cause is already known.
+ */
+export function isVoiceSelectionError(message: string): message is `no-voice-selected:${string}` {
+  return message.startsWith('no-voice-selected:');
+}
+
 /** Resolve the voice name to use for a language, or undefined when none fits. */
 export type VoiceResolver = (lang: string) => string | undefined;
 
@@ -94,6 +106,21 @@ export class PlaybackEngine {
   /** Bind the session to the tab that owns it, so snapshots carry the right id. */
   setTabId(tabId: number): void {
     this.tabId = tabId;
+  }
+
+  /**
+   * Report a failure that arrives as a message rather than a command.
+   *
+   * The engine cannot see that a provider has no voice chosen until
+   * `speakCurrent` resolves one — by which point the user has already pressed
+   * play, and the reason it shows them ("no usable voice") is about the wrong
+   * thing. Startup knows sooner and knows which provider, so it says so here.
+   *
+   * Messages that are not one of the engine's own errors are ignored rather
+   * than guessed at: the callers log what they caught either way.
+   */
+  reportError(message: string): void {
+    if (isVoiceSelectionError(message)) this.fail(message);
   }
 
   dispatch(command: EngineCommand): void {

@@ -56,6 +56,10 @@ export const HINTS: Record<ReaderError, { titleKey: MessageKey; messageKey: Mess
     titleKey: 'sideplayer.hint.no-voice.title',
     messageKey: 'sideplayer.hint.no-voice.message',
   },
+  'no-voice-selected': {
+    titleKey: 'sideplayer.hint.no-voice-selected.title',
+    messageKey: 'sideplayer.hint.no-voice-selected.message',
+  },
   'tts-error': {
     titleKey: 'sideplayer.hint.tts-error.title',
     messageKey: 'sideplayer.hint.tts-error.message',

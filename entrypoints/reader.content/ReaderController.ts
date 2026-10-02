@@ -9,13 +9,18 @@ import { buildReadingDoc, type ReadingDoc } from '~/lib/reading-doc';
 import type { Settings, SettingsStore } from '~/lib/settings-store';
 import { type CaptionState, CaptionWindow } from './CaptionWindow';
 
-/** Reasons the reader cannot read, each with its own bubble card. */
 /**
- * `'orphaned'` is the odd one out: the other three come from the engine, and
- * this one is the reader's own — the extension was reloaded under the page, so
- * there is no engine left to have an opinion about anything.
+ * Reasons the reader cannot read, each with its own bubble card.
+ *
+ * `'orphaned'` is the odd one out: the others come from the engine, and this
+ * one is the reader's own — the extension was reloaded under the page, so there
+ * is no engine left to have an opinion about anything.
+ *
+ * `'no-voice-selected'` reaches this tier stripped of its provider name: the
+ * engine carries it as `no-voice-selected:<provider>` so a log says which
+ * service is unconfigured, but the hint reads the same for all of them.
  */
-export type ReaderError = 'no-content' | 'no-voice' | 'tts-error' | 'orphaned';
+export type ReaderError = 'no-content' | 'no-voice' | 'no-voice-selected' | 'tts-error' | 'orphaned';
 
 /** The word being spoken, as offsets into the sentence's own text. */
 export interface WordPosition {
@@ -556,8 +561,13 @@ export class ReaderController {
 
 /** The engine's error, or `no-content` when there is nothing to read at all. */
 function errorFor(status: EngineStatus): ReaderError | null {
-  if (status.error === 'no-voice' || status.error === 'tts-error') return status.error;
-  if (status.error === 'no-content') return 'no-content';
+  const error = status.error;
+  if (error === undefined) return null;
+  if (error === 'no-voice' || error === 'tts-error') return error;
+  if (error === 'no-content') return 'no-content';
+  // The provider name has nowhere to go at this tier, and does not need to:
+  // the hint tells the user to pick a voice, not which service to pick it in.
+  if (error.startsWith('no-voice-selected:')) return 'no-voice-selected';
   return null;
 }
 

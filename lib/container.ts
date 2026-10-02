@@ -72,11 +72,7 @@ export function createApp(deps: AppDeps): AppContainer {
   const config = new ConfigStore(deps.storage.local);
   const settings = new SettingsStore(deps.storage.local, deps.storage.onChanged);
 
-  // Two separate browser speakers: one is the router's fallback delegate, the
-  // other is the engine's last resort when the cloud service fails. Sharing one
-  // would mean the engine's fallback is disposed along with the router.
   const browserSpeaker = new BrowserSpeaker(deps.tts);
-  const fallbackSpeaker = new BrowserSpeaker(deps.tts);
 
   const speakers = new SpeakerRouter({
     browser: browserSpeaker,
@@ -97,13 +93,7 @@ export function createApp(deps: AppDeps): AppContainer {
 
   const engine = new PlaybackEngine({
     speaker: speakers,
-    // A cloud service that fails — a bad key, an exhausted quota, a network
-    // that dropped — degrades to the browser voice rather than stopping.
-    fallbackSpeaker,
     resolveVoice: (lang) => speakers.resolveVoice(lang),
-    // The router answers with a cloud voice id while a provider is selected,
-    // which the browser speaker cannot use.
-    resolveFallbackVoice: (lang) => voices.resolve(lang),
   });
 
   const router = new SessionRouter({ engine, snapshots, voices });
@@ -115,7 +105,11 @@ export function createApp(deps: AppDeps): AppContainer {
     settings.load().catch((error: unknown) => {
       console.error('[SayLoud] cannot read the saved settings', error);
     }),
-    speakers.refresh(),
+    speakers.refresh().catch((error: unknown) => {
+      // If the provider has no voice selected, fail the engine immediately.
+      console.error('[SayLoud] speaker refresh failed:', error);
+      engine.fail(error instanceof Error ? error.message : String(error));
+    }),
   ]).then(() => undefined);
 
   return { router, voices, engine, snapshots, speakers, settings, ready };

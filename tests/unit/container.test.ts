@@ -263,7 +263,7 @@ describe('createApp', () => {
     ).toEqual(['hello', 'again']);
   });
 
-  it('degrades to the browser voice when the cloud voice fails', async () => {
+  it('stops when the cloud voice fails', async () => {
     const { tts, calls } = fakeTts();
     const offscreen = fakeOffscreen();
     const app = createApp({
@@ -293,15 +293,14 @@ describe('createApp', () => {
       message: 'the key is not valid',
     });
 
-    // The browser voice picks the sentence up instead of the session stopping.
+    // The engine fails instead of falling back to the browser voice.
     await vi.waitFor(() => {
-      expect(calls).toHaveLength(1);
+      expect(app.engine.getStatus().phase).toBe('error');
     });
-    expect(calls[0]?.options.voiceName).toBe('Samantha');
+    expect(calls).toHaveLength(0);
   });
 
-  it('uses the browser voice when a cloud provider has no voice selected', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('fails when a cloud provider has no voice selected', async () => {
     const { tts, calls } = fakeTts();
     const app = createApp({
       tts,
@@ -316,9 +315,11 @@ describe('createApp', () => {
     await app.router.start();
     app.engine.load([{ text: 'hello', lang: 'en-US' }], 0, 1);
 
+    await vi.waitFor(() => {
+      expect(app.engine.getStatus().phase).toBe('error');
+    });
     expect(app.speakers.isCloud).toBe(false);
-    expect(calls).toHaveLength(1);
-    warn.mockRestore();
+    expect(calls).toHaveLength(0);
   });
 
   it('uses the browser voice when this build has no offscreen document', async () => {

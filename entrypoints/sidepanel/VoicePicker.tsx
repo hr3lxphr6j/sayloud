@@ -94,6 +94,15 @@ export function VoicePicker({ schema, provider, config, store, onSaved }: VoiceP
 
   useEffect(() => () => inFlight.current?.cancel(), []);
 
+  // Auto-load voices when the component mounts or config changes
+  useEffect(() => {
+    if (status.kind === 'running') return;
+    if (voices === null || loadedKey !== configKey) {
+      void onLoad();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configKey]);
+
   const onLoad = async () => {
     const deadline = startDeadline(LOAD_TIMEOUT_MS);
     inFlight.current?.cancel();

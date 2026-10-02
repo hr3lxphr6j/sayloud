@@ -13,10 +13,8 @@
  * in the settings, and a browser voice is a name from `chrome.tts.getVoices()`.
  * Keeping both in one object is what keeps the speaker and the voice in step.
  *
- * A cloud provider with no voice selected falls back to the browser voice: the
- * configuration says where the audio should come from, but with no voice there
- * is nothing to ask for, and refusing to read at all would be worse than
- * reading in the browser's voice.
+ * A cloud provider with no voice selected throws an error: the user must choose
+ * a voice before playback can begin.
  */
 import type { ProviderConfig, ProviderId } from './providers/types';
 import type { PrefetchRequest, Speaker, SpeakerEvents, SpeakRequest } from './speaker';
@@ -80,10 +78,10 @@ export class SpeakerRouter implements Speaker {
   /**
    * Re-read the saved configuration and switch speakers if it changed.
    *
-   * Never rejects: the router is what the service worker awaits before it can
-   * read anything, so an unreadable configuration, or a cloud provider with no
-   * voice chosen, has to leave the browser voice in place rather than break
-   * playback.
+   * Rejects when a cloud provider is selected but no voice is chosen, or when
+   * the provider is unavailable, so the engine can fail with a clear error
+   * message prompting the user to fix the issue. No automatic fallback to
+   * browser voice on cloud provider errors.
    */
   async refresh(): Promise<void> {
     try {
@@ -97,21 +95,17 @@ export class SpeakerRouter implements Speaker {
 
       const voice = await this.config.getSelectedVoice(provider);
       if (!voice) {
-        // Only worth saying once per provider: this runs on every save.
-        if (!this.isCloud || this.provider !== provider) {
-          console.warn(`[SayLoud] no voice is selected for ${provider}; using the browser voice`);
-        }
-        this.useBrowser();
-        return;
+        // Cloud provider requires a voice selection - throw error without
+        // falling back to browser voice.
+        throw new Error(`no-voice-selected:${provider}`);
       }
 
       if (this.unchanged(config, voice)) return;
 
       const speaker = this.createCloud(config);
       if (!speaker) {
-        console.warn(`[SayLoud] the ${provider} provider is unavailable; using the browser voice`);
-        this.useBrowser();
-        return;
+        // Cloud provider is unavailable - throw error instead of falling back
+        throw new Error(`provider-unavailable:${provider}`);
       }
 
       const replaced = this.cloud;
@@ -125,11 +119,9 @@ export class SpeakerRouter implements Speaker {
       // factory is free to hand back the same object.
       if (replaced && replaced.speaker !== speaker) replaced.speaker.dispose();
     } catch (error) {
-      // The service worker awaits this before it will read anything, so it must
-      // not reject: a configuration that cannot be read, or a speaker that
-      // cannot be built, leaves the browser voice in place.
-      console.error('[SayLoud] cannot apply the saved provider configuration', error);
-      this.useBrowser();
+      // Throw all errors to let the engine show a clear message.
+      // Do not fall back to browser voice on provider errors.
+      throw error;
     }
   }
 

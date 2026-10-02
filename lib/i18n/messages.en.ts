@@ -291,6 +291,9 @@ export const en = {
   'sideplayer.hint.no-content.message': 'SayLoud found no readable text on this page.',
   'sideplayer.hint.no-voice.title': 'No browser voice',
   'sideplayer.hint.no-voice.message': 'Chrome has no voice installed for this page.',
+  'sideplayer.hint.no-voice-selected.title': 'No voice selected',
+  'sideplayer.hint.no-voice-selected.message':
+    'Choose a voice in Settings to use this provider.',
   'sideplayer.hint.tts-error.title': 'Voice failed',
   'sideplayer.hint.tts-error.message': 'Chrome could not speak this page.',
   'sideplayer.hint.orphaned.title': 'SayLoud was reloaded',

@@ -588,6 +588,13 @@ code {
   border-top: 1px solid var(--border);
 }
 
+.provider-divider {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  opacity: 0.6;
+}
+
 .provider-row {
   display: flex;
   align-items: center;

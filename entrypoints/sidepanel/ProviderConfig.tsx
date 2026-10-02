@@ -145,11 +145,19 @@ export function ProviderConfigPanel({
     if (await store.setActiveConfig(provider)) onChanged();
   };
 
+  // Custom ordering: browser first, local second, then a divider, then cloud providers
+  const orderedProviderIds: ProviderId[] = [
+    'browser',
+    'local',
+    // Cloud providers (all others)
+    ...PROVIDER_IDS.filter((id) => id !== 'browser' && id !== 'local'),
+  ];
+
   return (
     <>
       <p class="muted small">{t('provider.list.hint')}</p>
       <div class="provider-list" role="radiogroup" aria-label={t('provider.list.label')}>
-        {PROVIDER_IDS.map((id) => {
+        {orderedProviderIds.map((id, index) => {
           const schema = PROVIDER_SCHEMAS[id];
           const config = id === 'browser' ? null : (savedConfigs[id] ?? null);
           const expanded = open === id;
@@ -162,9 +170,13 @@ export function ProviderConfigPanel({
           // Models tab with a link to it from the Reading tab. Refusing here
           // only hid that step behind a disabled circle nobody could explain.
           const activatable = id === 'browser' || id === 'local' || config !== null;
+          // Show divider after local provider (index 1), before cloud providers
+          const showDivider = index === 1;
 
           return (
-            <div class="provider-entry" key={id} data-provider={id} data-active={inUse}>
+            <>
+              {showDivider && <hr class="provider-divider" />}
+              <div class="provider-entry" key={id} data-provider={id} data-active={inUse}>
               <div class="provider-row">
                 {/*
                   A real radio, not a button wearing the role: the circle is
@@ -234,6 +246,7 @@ export function ProviderConfigPanel({
                 </div>
               )}
             </div>
+            </>
           );
         })}
       </div>

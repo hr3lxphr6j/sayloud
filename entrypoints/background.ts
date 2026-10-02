@@ -81,9 +81,9 @@ export default defineBackground(() => {
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
     if (!(CONFIG_KEY in changes) && !(SELECTED_VOICES_KEY in changes)) return;
-    // A fixed configuration deserves another try on the provider, rather than
-    // staying on the browser voice the last failure degraded to.
-    void app.speakers.refresh().then(() => app.engine.retryPrimary());
+    void app.speakers.refresh().catch((error: unknown) => {
+      console.error('[SayLoud] cannot apply the saved provider configuration', error);
+    });
   });
 
   // Restores a session left behind by a recycled service worker. The router

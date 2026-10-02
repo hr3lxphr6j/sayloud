@@ -14,7 +14,7 @@ export interface EngineStatus {
   charsRead: number;
   charsTotal: number;
   charsPerSec: number;
-  error?: 'no-voice' | 'tts-error' | 'no-content';
+  error?: 'no-voice' | 'no-voice-selected' | 'tts-error' | 'no-content';
 }
 
 export type EngineCommand =

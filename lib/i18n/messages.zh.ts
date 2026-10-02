@@ -226,6 +226,8 @@ export const zh: Record<MessageKey, string> = {
   'sideplayer.hint.no-content.message': 'SayLoud 在这个页面上没有找到可读的正文。',
   'sideplayer.hint.no-voice.title': '没有可用的浏览器语音',
   'sideplayer.hint.no-voice.message': 'Chrome 没有安装适用于这个页面的语音。',
+  'sideplayer.hint.no-voice-selected.title': '未选择语音',
+  'sideplayer.hint.no-voice-selected.message': '请在设置中选择一个语音来使用此服务商。',
   'sideplayer.hint.tts-error.title': '语音失败',
   'sideplayer.hint.tts-error.message': 'Chrome 无法朗读这个页面。',
   'sideplayer.hint.orphaned.title': 'SayLoud 已重新加载',

@@ -2,7 +2,36 @@
  * Tests for Japanese phonemizer (misaki-compatible).
  */
 import { describe, it, expect } from 'vitest';
-import { kanaToIPA, phonemizeJapanese, textToKatakana } from '@/lib/models/phonemize/japanese';
+import {
+  KATAKANA_TO_IPA,
+  kanaToIPA,
+  phonemizeJapanese,
+  textToKatakana,
+} from '@/lib/models/phonemize/japanese';
+
+/**
+ * Every character Kokoro's tokenizer accepts, copied from the model's own
+ * `tokenizer.json` (115 tokens) so the check below needs no download.
+ *
+ * It matters because that tokenizer's normalizer is a `Replace` with an empty
+ * string: a character outside this set is **deleted**, not approximated. A
+ * table entry using one therefore loses part of a mora and reports nothing.
+ */
+const KOKORO_VOCABULARY = new Set([
+  ...'$;:,.!?—…"()“” ̃ʣʥʦʨᵝꭧAIOQSTWYᵊabcdefghijklmnopqrstuvwxyzɑɐɒæβɔɕçɖðʤəɚɛɜɟɡɥɨɪʝɯɰŋɳɲɴøɸθœɹɾɻʁɽʂʃʈʧʊʋʌɣɤχʎʒʔˈˌːʰʲ↓→↗↘ᵻ',
+]);
+
+describe('the katakana table', () => {
+  it('only spells with characters Kokoro has', () => {
+    const offenders = Object.entries(KATAKANA_TO_IPA).flatMap(([kana, ipa]) =>
+      [...ipa]
+        .filter((char) => !KOKORO_VOCABULARY.has(char))
+        .map((char) => `${kana} → ${ipa} (U+${char.codePointAt(0)?.toString(16)} is not in the vocabulary)`)
+    );
+
+    expect(offenders).toEqual([]);
+  });
+});
 
 describe('Japanese phonemizer', () => {
   describe('kanaToIPA', () => {
@@ -16,7 +45,18 @@ describe('Japanese phonemizer', () => {
 
     it('handles K-series', () => {
       expect(kanaToIPA('かきくけこ')).toBe('kakikukeko');
-      expect(kanaToIPA('がぎぐげご')).toBe('gagigugego');
+      expect(kanaToIPA('がぎぐげご')).toBe('ɡaɡiɡuɡeɡo');
+    });
+
+    it('writes the voiced velar with U+0261, not ASCII g', () => {
+      // ɡ here is U+0261 LATIN SMALL LETTER SCRIPT G, and the distinction is
+      // load-bearing rather than cosmetic: Kokoro's vocabulary contains U+0261
+      // and *not* U+0067, and its normalizer deletes characters it does not
+      // have. With an ASCII g, every ガ-row mora lost its consonant — が was
+      // read as あ — and nothing failed, because a deleted character is not an
+      // error. Asserted by code point, since the two glyphs are near-identical
+      // in most fonts and a later "typo fix" would silently undo this.
+      expect([...(kanaToIPA('が')[0] ?? '')][0]?.codePointAt(0)).toBe(0x261);
     });
 
     it('handles S-series with correct IPA', () => {
@@ -61,14 +101,14 @@ describe('Japanese phonemizer', () => {
       expect(kanaToIPA('こんにちは')).toBe('koɴniʨiha');
       
       // ありがとう (arigatou)
-      expect(kanaToIPA('ありがとう')).toBe('arigatou');
+      expect(kanaToIPA('ありがとう')).toBe('ariɡatou');
       
       // さようなら (sayounara)
       expect(kanaToIPA('さようなら')).toBe('sajounara');
     });
 
     it('handles mixed Hiragana and Katakana', () => {
-      expect(kanaToIPA('ひらがなとカタカナ')).toBe('hiraganatokatakana');
+      expect(kanaToIPA('ひらがなとカタカナ')).toBe('hiraɡanatokatakana');
     });
 
     it('preserves punctuation and spaces', () => {
@@ -92,8 +132,8 @@ describe('Japanese phonemizer', () => {
     it('phonemizes Kanji text', async () => {
       // 日本語 (nihongo - Japanese language)
       const result = await phonemizeJapanese('日本語');
-      // Expected: ニホンゴ → nihoɴgo
-      expect(result).toBe('nihoɴgo');
+      // Expected: ニホンゴ → nihoɴɡo (U+0261, see the code-point test above)
+      expect(result).toBe('nihoɴɡo');
     });
 
     it('phonemizes mixed Kanji and Kana', async () => {
@@ -193,13 +233,11 @@ describe('numerals', () => {
   it('reads the numbers out of the sentence that was reported', async () => {
     const ipa = await phonemizeJapanese('資産３２億ドル、約４２００億円');
 
-    // 四千二百億 — ヨンセンニヒャクオク. Asserted on the half that has no
-    // palatalized mora: `KATAKANA_TO_IPA` has no two-character entries yet, so
-    // ヒャ is two morae today, and pinning the whole string here would make that
-    // fix look like a regression in this test.
-    expect(ipa).toContain('joɴseɴ');
-    // 億 follows the digits instead of being read on its own.
-    expect(ipa).toContain('oku');
+    // 三十二億 — サン-ジュ-ウ-ニ-オク. ジュ is one mora now, so the digits, the
+    // counter and the palatalization are all visible in this one string.
+    expect(ipa).toContain('saɴʥuunioku');
+    // 四千二百億 — ヨン-セン-ニ-ヒャ-ク-オク.
+    expect(ipa).toContain('joɴseɴniçakuoku');
   });
 
   it('reads a lone digit exactly', async () => {
@@ -207,6 +245,50 @@ describe('numerals', () => {
     // whole — and it pins the reading rather than merely its presence.
     expect(await phonemizeJapanese('7')).toBe('nana');
     expect(await phonemizeJapanese('７')).toBe('nana');
+  });
+});
+
+describe('palatalized and foreign morae', () => {
+  /**
+   * The table had no two-character entries at all. `kanaToIPA` looks for them —
+   * the loop tries `char + next` before falling back — but the lookup could
+   * never match, so every pair was read as two morae: キャ was ki + ja.
+   */
+  it('reads a palatalized pair as one mora', () => {
+    expect(kanaToIPA('キャ')).toBe('kja');
+    expect(kanaToIPA('キュ')).toBe('kju');
+    expect(kanaToIPA('キョ')).toBe('kjo');
+    expect(kanaToIPA('リャ')).toBe('rja');
+  });
+
+  it('keeps the sibilants palatal rather than adding a glide', () => {
+    // ɕ ʥ ʨ are palatal already, so there is no j after them — the shape misaki
+    // uses, and the reason キャ and シャ do not look alike in IPA.
+    expect(kanaToIPA('シャ')).toBe('ɕa');
+    expect(kanaToIPA('ジュ')).toBe('ʥu');
+    expect(kanaToIPA('チョ')).toBe('ʨo');
+  });
+
+  it('reads the voiced palatals with ɡ, not g', () => {
+    expect(kanaToIPA('ギャ')).toBe('ɡja');
+    expect(kanaToIPA('ギュ')).toBe('ɡju');
+  });
+
+  it('reads a sokuon as the glottal stop the vocabulary holds', () => {
+    // Not a doubled consonant: misaki maps ッ to ʔ, and ʔ is what Kokoro has.
+    expect(kanaToIPA('ロッピャク')).toBe('roʔpjaku');
+  });
+
+  it('lengthens the vowel at a prolonged sound mark', () => {
+    expect(kanaToIPA('コーヒー')).toBe('koːhiː');
+  });
+
+  it('reads the foreign-word pairs', () => {
+    expect(kanaToIPA('クァ')).toBe('kwa');
+    // ASCII f, not ɸ, and taken from misaki rather than chosen: フ has always
+    // been `fu` here, and both characters are in the vocabulary.
+    expect(kanaToIPA('ファ')).toBe('fa');
+    expect(kanaToIPA('ティ')).toBe('ti');
   });
 });
 

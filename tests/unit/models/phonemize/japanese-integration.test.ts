@@ -44,7 +44,9 @@ describe('Japanese phonemizer integration', () => {
       const result2 = await phonemizer2.phonemize(text, 'ja-JP');
       
       expect(result1).toBe(result2);
-      expect(result1).toBe('arigatou');
+      // ɡ is U+0261, the one Kokoro's vocabulary holds; see the code-point test
+      // in `japanese.test.ts` for why the ASCII g is not an option.
+      expect(result1).toBe('ariɡatou');
     });
   });
 });

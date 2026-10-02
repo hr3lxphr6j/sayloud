@@ -415,12 +415,12 @@ describe('the provider list', () => {
       )
     ).toEqual([
       'browser',
+      'local',
       'dashscope',
       'volcengine',
       'openai-compat',
       'elevenlabs',
       'azure',
-      'local',
     ]);
   });
 

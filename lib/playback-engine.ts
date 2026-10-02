@@ -18,18 +18,7 @@ export type VoiceResolver = (lang: string) => string | undefined;
 
 export interface EngineDeps {
   speaker: Speaker;
-  /**
-   * Used when `speaker` reports a TTS error, so a failing cloud service
-   * degrades to the browser voice instead of stopping playback. The degrade
-   * lasts until the next session or `retryPrimary()`.
-   */
-  fallbackSpeaker?: Speaker;
   resolveVoice: VoiceResolver;
-  /**
-   * The voice resolver while the fallback speaks. Defaults to `resolveVoice`;
-   * needed when that one answers with voice ids only the primary understands.
-   */
-  resolveFallbackVoice?: VoiceResolver;
   now?: () => number;
 }
 
@@ -65,20 +54,10 @@ const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Scr
  */
 export class PlaybackEngine {
   private speaker: Speaker;
-  private readonly primarySpeaker: Speaker;
-  private readonly fallbackSpeaker: Speaker | undefined;
-  private readonly resolvePrimaryVoice: VoiceResolver;
-  private readonly resolveFallbackVoice: VoiceResolver;
+  private readonly resolveVoice: VoiceResolver;
   private readonly now: () => number;
   private readonly listeners = new Set<(event: EngineEvent) => void>();
   private readonly speakerSubscriptions: Array<() => void> = [];
-  /**
-   * Sticky for the rest of the session: a service that just failed is not
-   * retried on the next sentence, so a broken primary costs one failed
-   * utterance rather than one per sentence. A new session (`load`) or a
-   * configuration change (`retryPrimary`) tries the primary again.
-   */
-  private usingFallback = false;
 
   private phase: EnginePhase = 'idle';
   private sentences: EngineSentence[] = [];
@@ -106,10 +85,7 @@ export class PlaybackEngine {
 
   constructor(deps: EngineDeps) {
     this.speaker = deps.speaker;
-    this.primarySpeaker = deps.speaker;
-    this.fallbackSpeaker = deps.fallbackSpeaker;
-    this.resolvePrimaryVoice = deps.resolveVoice;
-    this.resolveFallbackVoice = deps.resolveFallbackVoice ?? deps.resolveVoice;
+    this.resolveVoice = deps.resolveVoice;
     this.now = deps.now ?? (() => Date.now());
 
     this.bindSpeakerEvents();
@@ -242,31 +218,19 @@ export class PlaybackEngine {
   dispose(): void {
     this.unbindSpeakerEvents();
     this.listeners.clear();
-    this.primarySpeaker.dispose();
-    this.fallbackSpeaker?.dispose();
+    this.speaker.dispose();
   }
 
-  /**
-   * Leave the fallback and speak through the primary again.
-   *
-   * Called when the provider configuration changes: whatever made the primary
-   * fail may have been fixed. A session mid-sentence replays that sentence on
-   * the primary; a paused one stays paused.
-   */
-  retryPrimary(): void {
-    if (!this.usingFallback) return;
-    const wasSpeaking = this.phase === 'playing' || this.phase === 'loading';
-    this.useSpeaker(this.primarySpeaker);
-    this.usingFallback = false;
-    if (wasSpeaking) this.speakCurrent();
-  }
-
-  load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
-    this.speaker.stop();
-    if (this.usingFallback) {
-      this.useSpeaker(this.primarySpeaker);
-      this.usingFallback = false;
+load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
+    // If the engine is in an error state due to configuration issues
+    // (e.g., no voice selected), don't allow loading new content.
+    // The user must fix the configuration first.
+    if (this.error && this.error.startsWith('no-voice-selected:')) {
+      console.warn('[SayLoud] cannot load: engine is in error state:', this.error);
+      return;
     }
+
+    this.speaker.stop();
     this.resetTiming();
     this.sentences = [...sentences];
     this.charsTotal = this.sentences.reduce((sum, s) => sum + s.text.length, 0);
@@ -455,7 +419,7 @@ export class PlaybackEngine {
       const sentence = this.sentences[index];
       if (!sentence || sentence.text.length === 0) continue;
 
-      const voice = this.resolveVoice(sentence.lang);
+      const voice = this.resolveVoiceForSentence(sentence.lang);
       if (voice === undefined) continue;
 
       requests.push({ text: sentence.text, voice });
@@ -470,7 +434,7 @@ export class PlaybackEngine {
       const sentence = this.sentences[index];
       if (!sentence || sentence.text.length === 0) continue;
 
-      const voice = this.resolveVoice(sentence.lang);
+      const voice = this.resolveVoiceForSentence(sentence.lang);
       if (voice === undefined) {
         this.index = index;
         this.voice = '';
@@ -549,34 +513,9 @@ export class PlaybackEngine {
       console.warn(`[SayLoud] the speaker reported: ${detail}`);
     }
 
-    // Only a TTS error is worth retrying on another speaker: no installed voice
-    // is a dead end for every speaker, and the UI has to say so.
-    if (this.fallbackSpeaker && error === 'tts-error' && !this.usingFallback) {
-      this.switchToFallback();
-      return;
-    }
-
     this.error = error;
     this.speaker.stop();
     this.setPhase('error');
-  }
-
-  /**
-   * Degrade to the fallback speaker and replay the sentence it dropped.
-   *
-   * The phase is left alone on purpose: the failed utterance never advanced the
-   * cursor, and dropping to `loading` would flash the play button's spinner.
-   */
-  private switchToFallback(): void {
-    const fallback = this.fallbackSpeaker;
-    if (!fallback) return;
-
-    console.warn('[SayLoud] speaker failed, falling back to the browser voice');
-    // Stopped, not disposed: the primary is tried again on the next session.
-    this.useSpeaker(fallback);
-    this.usingFallback = true;
-
-    this.speakCurrent();
   }
 
   /**
@@ -592,8 +531,8 @@ export class PlaybackEngine {
     this.bindSpeakerEvents();
   }
 
-  private resolveVoice(lang: string): string | undefined {
-    return this.usingFallback ? this.resolveFallbackVoice(lang) : this.resolvePrimaryVoice(lang);
+  private resolveVoiceForSentence(lang: string): string | undefined {
+    return this.resolveVoice(lang);
   }
 
   private bindSpeakerEvents(): void {

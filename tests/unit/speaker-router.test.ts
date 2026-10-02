@@ -199,8 +199,7 @@ describe('SpeakerRouter', () => {
       expect(router.resolveVoice('zh-CN')).toBe('longxiaochun');
     });
 
-    it('falls back to the browser voice when the provider has no voice', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    it('throws when the provider has no voice', async () => {
       router = new SpeakerRouter({
         browser: browser.speaker,
         config: fakeConfig(DASHSCOPE),
@@ -208,16 +207,12 @@ describe('SpeakerRouter', () => {
         resolveBrowserVoice: (lang) => `browser:${lang}`,
       });
 
-      await router.refresh();
+      await expect(router.refresh()).rejects.toThrow('no-voice-selected:dashscope');
 
       expect(router.isCloud).toBe(false);
-      expect(router.resolveVoice('en-US')).toBe('browser:en-US');
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('no voice is selected'));
-      warn.mockRestore();
     });
 
-    it('falls back to the browser voice when this build has no cloud speaker', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    it('throws an error when this build has no cloud speaker', async () => {
       router = new SpeakerRouter({
         browser: browser.speaker,
         config: fakeConfig(DASHSCOPE, { dashscope: 'longxiaochun' }),
@@ -225,11 +220,9 @@ describe('SpeakerRouter', () => {
         resolveBrowserVoice: (lang) => `browser:${lang}`,
       });
 
-      await router.refresh();
+      await expect(router.refresh()).rejects.toThrow('provider-unavailable:dashscope');
 
       expect(router.isCloud).toBe(false);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('unavailable'));
-      warn.mockRestore();
     });
 
     it('keeps the same cloud speaker when nothing changed', async () => {
@@ -318,8 +311,7 @@ describe('SpeakerRouter', () => {
       expect(created).toEqual([DASHSCOPE, ELEVEN]);
     });
 
-    it('survives storage that cannot be read', async () => {
-      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    it('throws an error when storage cannot be read', async () => {
       router = new SpeakerRouter({
         browser: browser.speaker,
         config: {
@@ -332,15 +324,12 @@ describe('SpeakerRouter', () => {
         resolveBrowserVoice: (lang) => `browser:${lang}`,
       });
 
-      await expect(router.refresh()).resolves.toBeUndefined();
+      await expect(router.refresh()).rejects.toThrow('storage is gone');
 
       expect(router.isCloud).toBe(false);
-      expect(router.resolveVoice('en-US')).toBe('browser:en-US');
-      error.mockRestore();
     });
 
-    it('survives a cloud speaker that cannot be built', async () => {
-      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    it('throws an error when a cloud speaker cannot be built', async () => {
       router = new SpeakerRouter({
         browser: browser.speaker,
         config: fakeConfig(DASHSCOPE, { dashscope: 'longxiaochun' }),
@@ -350,15 +339,12 @@ describe('SpeakerRouter', () => {
         resolveBrowserVoice: (lang) => `browser:${lang}`,
       });
 
-      await expect(router.refresh()).resolves.toBeUndefined();
+      await expect(router.refresh()).rejects.toThrow('the offscreen API is missing');
 
       expect(router.isCloud).toBe(false);
-      expect(router.resolveVoice('en-US')).toBe('browser:en-US');
-      error.mockRestore();
     });
 
-    it('survives a voice lookup that fails', async () => {
-      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    it('throws an error when a voice lookup fails', async () => {
       router = new SpeakerRouter({
         browser: browser.speaker,
         config: {
@@ -371,10 +357,9 @@ describe('SpeakerRouter', () => {
         resolveBrowserVoice: (lang) => `browser:${lang}`,
       });
 
-      await expect(router.refresh()).resolves.toBeUndefined();
+      await expect(router.refresh()).rejects.toThrow('storage is gone');
 
       expect(router.isCloud).toBe(false);
-      error.mockRestore();
     });
   });
 

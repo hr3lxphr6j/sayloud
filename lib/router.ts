@@ -41,7 +41,14 @@ export class SessionRouter {
 
   /** Restore a previous session and warm the voice cache. */
   async start(): Promise<void> {
-    await this.voices.refresh();
+    try {
+      await this.voices.refresh();
+    } catch (err) {
+      // If the provider has no voice selected, fail the engine immediately
+      // instead of waiting for a load command.
+      console.error('[SayLoud] voice refresh failed:', err);
+      this.engine.fail(err instanceof Error ? err.message : String(err));
+    }
 
     const snapshot = await this.snapshots.load();
     if (snapshot && snapshot.tabId >= 0) {

@@ -126,11 +126,11 @@ export function ReadingTab({
   // choose a voice on, and the panel says so instead of offering one.
   const cloudConfig = config !== null && config.provider !== 'browser' ? config : null;
 
-  // The session reports the voice the engine actually resolved, which is what
-  // is speaking; the configured one is what the next session will use. Either
-  // way it is an id, and the name is only known when that id was picked from a
-  // loaded list — a hand-typed id has nothing to look up, and shows as itself.
-  const speaking = snapshot?.voice || voice;
+  // Show the saved voice (what the user has configured), not the one currently
+  // playing. This ensures that when the user picks a new voice and returns to
+  // the reading tab, they see the updated selection immediately, rather than
+  // having to start playback first.
+  const speaking = voice || snapshot?.voice;
   const voiceLabel = speaking
     ? ((cloudConfig ? voiceNames[cloudConfig.provider]?.[speaking] : undefined) ?? speaking)
     : null;

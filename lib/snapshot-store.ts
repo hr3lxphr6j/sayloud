@@ -125,7 +125,7 @@ function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnap
       }
       sentences.push({ text: entry.text, lang: readString(entry.lang, 'en') });
     }
-    
+
     if (sentences.length === 0) {
       console.warn(`[SayLoud] snapshot parse failed (${source}): no valid sentences`, {
         rawCount: raw.sentences.length,

@@ -226,7 +226,10 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
       {hint && (
         <BubbleCard
           title={t(hint.titleKey)}
-          message={t(hint.messageKey)}
+          // The service's own words when it gave any: a translated guess would
+          // read better and say less, and the whole point of the hint is to say
+          // which service failed and how.
+          message={state.errorDetail ?? t(hint.messageKey)}
           onDismiss={() => setDismissed(state.error)}
         />
       )}

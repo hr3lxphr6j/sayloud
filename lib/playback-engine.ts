@@ -78,6 +78,8 @@ export class PlaybackEngine {
   private volume = 1;
   private voice = '';
   private error: EngineError | undefined;
+  /** The speaker's own message for the last failure, shown as it arrived. */
+  private errorDetail: string | undefined;
   private tabId = -1;
   private docId = '';
 
@@ -126,7 +128,7 @@ export class PlaybackEngine {
   dispatch(command: EngineCommand): void {
     switch (command.type) {
       case 'load':
-        this.load(command.sentences, command.startIndex, command.rate);
+        this.load(command.sentences, command.startIndex, command.rate, command.resume ?? false);
         return;
       case 'play':
         this.play();
@@ -182,26 +184,24 @@ export class PlaybackEngine {
       charsPerSec: this.charsPerSec(),
     };
     if (this.error) status.error = this.error;
+    if (this.errorDetail !== undefined) status.errorMessage = this.errorDetail;
     return status;
   }
 
   /** Null when there is no session worth persisting. */
   getSnapshot(): SessionSnapshot | null {
-    // If we have sentences loaded, use their actual count and total.
-    // If not (e.g., after restore but before sync), use the preserved charsTotal.
-    const sentenceCount = this.sentences.length;
-    const charsTotal = sentenceCount > 0 
-      ? this.sentences.reduce((total, s) => total + s.text.length, 0)
-      : this.charsTotal;
-
-    // Only return null if there's truly nothing (no sentences and no preserved state)
-    if (sentenceCount === 0 && charsTotal === 0) return null;
+    // A session without sentences is only half a session, and the store refuses
+    // to read one back (`parseSnapshot` rejects `sentenceCount: 0`). Writing
+    // that shape would overwrite the only record of where the session was with
+    // something its own reader will not accept — the write side and the read
+    // side have to agree on what a snapshot is.
+    if (this.sentences.length === 0) return null;
 
     return {
       tabId: this.tabId,
       docId: this.docId,
-      sentenceCount,
-      charsTotal,
+      sentenceCount: this.sentences.length,
+      charsTotal: this.sentences.reduce((total, s) => total + s.text.length, 0),
       index: this.index,
       resumeOffset: this.wordOffset,
       voice: this.voice,
@@ -218,8 +218,9 @@ export class PlaybackEngine {
    * `chrome.tts` would need a fresh call anyway.
    *
    * Note: Sentences are not restored from the snapshot (to minimize storage
-   * overhead). The engine will emit 'session-lost' on the next sync, prompting
-   * the content script to resend the document.
+   * overhead). The engine asks for them again — `session-lost` on the next sync,
+   * or on a play that has nothing to speak — and the content script resends the
+   * document.
    */
   restore(snapshot: SessionSnapshot): void {
     this.speaker.stop();
@@ -232,7 +233,7 @@ export class PlaybackEngine {
     this.charsRead = snapshot.charsRead;
     this.tabId = snapshot.tabId;
     this.docId = snapshot.docId;
-    this.error = undefined;
+    this.clearError();
     this.resetTiming();
     // `chrome.tts` cannot resume mid-sentence, so the word offset is dropped.
     this.wordOffset = 0;
@@ -248,11 +249,11 @@ export class PlaybackEngine {
     this.speaker.dispose();
   }
 
-load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
+  load(sentences: EngineSentence[], startIndex = 0, rate = 1, resume = false): void {
     // If the engine is in an error state due to configuration issues
     // (e.g., no voice selected), don't allow loading new content.
     // The user must fix the configuration first.
-    if (this.error && this.error.startsWith('no-voice-selected:')) {
+    if (this.error?.startsWith('no-voice-selected:')) {
       console.warn('[SayLoud] cannot load: engine is in error state:', this.error);
       return;
     }
@@ -266,7 +267,7 @@ load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
     this.charsRead = charsBefore(this.sentences, this.index);
     this.wordOffset = 0;
     this.resumeTimeMs = 0;
-    this.error = undefined;
+    this.clearError();
 
     if (this.sentences.length === 0) {
       this.fail('no-content');
@@ -282,6 +283,15 @@ load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
       return;
     }
 
+    // A recovered session lands where it was and waits there. Speaking on
+    // arrival would undo a pause the user asked for, and the only thing that
+    // can put these sentences back is the reader — so it has to be able to do
+    // that without the engine taking it as "play".
+    if (resume) {
+      this.setPhase('paused');
+      return;
+    }
+
     this.setPhase('loading');
     this.speakCurrent();
   }
@@ -289,16 +299,16 @@ load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
   play(): void {
     if (this.phase === 'playing' || this.phase === 'loading') return;
     if (this.sentences.length === 0) {
-      // Silent here is the hardest kind of report to act on: no error, no
-      // effect, and nothing anywhere to look at. It means this engine was
-      // rebuilt without a session — which is what happens when a snapshot was
-      // never written or could not be read — so the ids go in the log to tell
-      // those apart.
+      // Nothing to play, and the reader has no way to know: as far as it is
+      // concerned it already sent its document. Asking for it again is the only
+      // thing that can still turn this click into audio — so the ids go in the
+      // log, and `session-lost` goes back to the reader.
       console.warn('[SayLoud] cannot play: this session has no sentences', {
         docId: this.docId,
         tabId: this.tabId,
         phase: this.phase,
       });
+      this.emit({ type: 'session-lost' });
       return;
     }
 
@@ -311,7 +321,7 @@ load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
       this.resetTiming();
     }
 
-    this.error = undefined;
+    this.clearError();
     this.setPhase('loading');
     this.speakCurrent();
   }
@@ -392,7 +402,7 @@ load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
     this.sentences = [];
     this.index = 0;
     this.voice = '';
-    this.error = undefined;
+    this.clearError();
     this.charsTotal = 0;
     this.charsRead = 0;
     this.wordOffset = 0;
@@ -541,21 +551,18 @@ load(sentences: EngineSentence[], startIndex = 0, rate = 1): void {
     }
 
     this.error = error;
+    // Kept, not only logged: a console the reader never opens is not a report.
+    // The hint shows this text, which is the only part of a `tts-error` that
+    // says which service failed and why.
+    this.errorDetail = detail !== undefined && detail.length > 0 ? detail : undefined;
     this.speaker.stop();
     this.setPhase('error');
   }
 
-  /**
-   * Point the engine at `next`.
-   *
-   * Unbinding first means events still in flight from the outgoing speaker's
-   * utterance cannot move the cursor.
-   */
-  private useSpeaker(next: Speaker): void {
-    this.unbindSpeakerEvents();
-    this.speaker.stop();
-    this.speaker = next;
-    this.bindSpeakerEvents();
+  /** Forget the last failure, message and all: both belong to one attempt. */
+  private clearError(): void {
+    this.error = undefined;
+    this.errorDetail = undefined;
   }
 
   private resolveVoiceForSentence(lang: string): string | undefined {

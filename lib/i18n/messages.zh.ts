@@ -229,8 +229,9 @@ export const zh: Record<MessageKey, string> = {
   'sideplayer.hint.no-voice.message': 'Chrome 没有安装适用于这个页面的语音。',
   'sideplayer.hint.no-voice-selected.title': '未选择语音',
   'sideplayer.hint.no-voice-selected.message': '请在设置中选择一个语音来使用此服务商。',
-  'sideplayer.hint.tts-error.title': '语音失败',
-  'sideplayer.hint.tts-error.message': 'Chrome 无法朗读这个页面。',
+  'sideplayer.hint.tts-error.title': '播放失败',
+  // 只在服务本身没有返回任何信息时显示；否则卡片正文原样展示服务返回的内容。
+  'sideplayer.hint.tts-error.message': '语音服务返回了错误。',
   'sideplayer.hint.orphaned.title': 'SayLoud 已重新加载',
   'sideplayer.hint.orphaned.message': '扩展在页面打开期间更新了，刷新本页即可继续朗读。',
 

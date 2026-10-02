@@ -1,7 +1,7 @@
 /**
  * Tests for Japanese phonemizer (misaki-compatible).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   KATAKANA_TO_IPA,
   kanaToIPA,
@@ -26,7 +26,10 @@ describe('the katakana table', () => {
     const offenders = Object.entries(KATAKANA_TO_IPA).flatMap(([kana, ipa]) =>
       [...ipa]
         .filter((char) => !KOKORO_VOCABULARY.has(char))
-        .map((char) => `${kana} → ${ipa} (U+${char.codePointAt(0)?.toString(16)} is not in the vocabulary)`)
+        .map(
+          (char) =>
+            `${kana} → ${ipa} (U+${char.codePointAt(0)?.toString(16)} is not in the vocabulary)`
+        )
     );
 
     expect(offenders).toEqual([]);
@@ -99,10 +102,10 @@ describe('Japanese phonemizer', () => {
     it('converts common words correctly', () => {
       // こんにちは (konnichiwa)
       expect(kanaToIPA('こんにちは')).toBe('koɴniʨiha');
-      
+
       // ありがとう (arigatou)
       expect(kanaToIPA('ありがとう')).toBe('ariɡatou');
-      
+
       // さようなら (sayounara)
       expect(kanaToIPA('さようなら')).toBe('sajounara');
     });

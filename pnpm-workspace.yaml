@@ -16,5 +16,3 @@ allowBuilds:
   sharp: false
 minimumReleaseAgeExclude:
   - '@wxt-dev/browser@0.3.4'
-patchedDependencies:
-  kuromoji@0.1.2: patches/kuromoji@0.1.2.patch

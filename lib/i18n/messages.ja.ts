@@ -128,7 +128,8 @@ export const ja: Record<MessageKey, string> = {
   // writes nothing at all. The line has to say so, or a half-typed key looks
   // stored; the fields themselves carry the reason.
   'provider.not-saved': '保存されませんでした：{detail}',
-  'provider.not-saved-invalid': '保存されませんでした：ハイライトされたフィールドを修正してください。',
+  'provider.not-saved-invalid':
+    '保存されませんでした：ハイライトされたフィールドを修正してください。',
   'provider.delete-failed': '削除できませんでした：{detail}',
   'provider.access-declined':
     'SayLoudがサービスに接続するにはこのホストへのアクセスが必要です。プロンプトで許可してください。',
@@ -147,8 +148,7 @@ export const ja: Record<MessageKey, string> = {
     'ブラウザ内で実行されるため、テキストはマシンの外に出ません。初回のモデルダウンロードが必要です。',
   // The form for this provider has no fields on purpose: what it configures is
   // a download, and the Models tab is where download state can be shown.
-  'provider.local.notice':
-    'モデル、そのティア、実行デバイスはモデルタブで選択します。',
+  'provider.local.notice': 'モデル、そのティア、実行デバイスはモデルタブで選択します。',
   'provider.dashscope.label': 'DashScope（阿里云百炼）',
   'provider.dashscope.summary':
     'Alibaba Cloud Model Studio。CosyVoice v3以降は単語タイミングを報告します。',
@@ -203,7 +203,8 @@ export const ja: Record<MessageKey, string> = {
     '単語タイミングにはcosyvoice-v3以降のモデルが必要です。アダプターは自動的にword_timestamp_enabledを送信します。',
   'provider.dashscope.base-url.help':
     'リージョンホストを上書きします。例えばプロキシ経由で接続する場合に使用します。',
-  'provider.openai-compat.api-key.help': '認証不要のローカルサーバーの場合は空のままにしてください。',
+  'provider.openai-compat.api-key.help':
+    '認証不要のローカルサーバーの場合は空のままにしてください。',
   'provider.openai-compat.captioned-speech.help':
     'Kokoro-FastAPIのみ。単語タイミングを返します。標準エンドポイントは返しません。',
   'provider.openai-compat.extra-headers.help':
@@ -231,7 +232,8 @@ export const ja: Record<MessageKey, string> = {
   // the count is always known at the call site.
   'voice.count-one': '{count}個の音声。',
   'voice.count-many': '{count}個の音声。',
-  'voice.none-returned': 'このプロバイダーは音声を返しませんでした。モデルとベースURLを確認してください。',
+  'voice.none-returned':
+    'このプロバイダーは音声を返しませんでした。モデルとベースURLを確認してください。',
   'voice.id-label': '音声ID',
   'voice.id-placeholder': 'サービスが受け付ける任意の音声ID',
   'voice.use-id': 'このIDを使用',
@@ -276,13 +278,15 @@ export const ja: Record<MessageKey, string> = {
   // The local provider's own codes. They read differently from the cloud ones
   // on purpose: the fix is never a key or a quota, it is a download or a
   // setting, and every one of them points at something the user can do here.
-  'error.model-missing': 'このモデルはまだダウンロードされていません。モデルタブでダウンロードしてください。',
+  'error.model-missing':
+    'このモデルはまだダウンロードされていません。モデルタブでダウンロードしてください。',
   'error.model-host-unreachable':
     'どちらのダウンロードソースにも到達できませんでした。モデルタブで手動で選択してください。',
   'error.model-download-failed': 'ダウンロードが完了しませんでした。再試行してください。',
   'error.model-load-failed':
     'モデルを読み込めませんでした。不完全な可能性があります。削除して再度ダウンロードしてください。',
-  'error.device-unavailable': 'このマシンにはWebGPUがありません。デバイス設定をWASMに切り替えてください。',
+  'error.device-unavailable':
+    'このマシンにはWebGPUがありません。デバイス設定をWASMに切り替えてください。',
 
   // --- the bar on the page --------------------------------------------------
   'sideplayer.play': '再生',
@@ -295,14 +299,17 @@ export const ja: Record<MessageKey, string> = {
   'sideplayer.progress': '読み上げ進行度{percent}%',
   'sideplayer.progress-remaining': '読み上げ進行度{percent}%、{remaining}',
   'sideplayer.hint.no-content.title': '読み上げ可能なコンテンツなし',
-  'sideplayer.hint.no-content.message': 'SayLoudはこのページに読み上げ可能なテキストを見つけられませんでした。',
+  'sideplayer.hint.no-content.message':
+    'SayLoudはこのページに読み上げ可能なテキストを見つけられませんでした。',
   'sideplayer.hint.no-voice.title': 'ブラウザの音声なし',
   'sideplayer.hint.no-voice.message': 'Chromeにはこのページ用の音声がインストールされていません。',
   'sideplayer.hint.no-voice-selected.title': '音声未選択',
   'sideplayer.hint.no-voice-selected.message':
     'このプロバイダーを使用するには設定で音声を選択してください。',
-  'sideplayer.hint.tts-error.title': '音声失敗',
-  'sideplayer.hint.tts-error.message': 'Chromeはこのページを読み上げられませんでした。',
+  'sideplayer.hint.tts-error.title': '再生に失敗しました',
+  // サービス自体が何も返さなかったときだけ表示する。それ以外はカード本文に
+  // サービスからのメッセージをそのまま出す。
+  'sideplayer.hint.tts-error.message': '音声サービスがエラーを返しました。',
   'sideplayer.hint.orphaned.title': 'SayLoudが再読み込みされました',
   'sideplayer.hint.orphaned.message':
     'このページを更新して読み上げを続けてください。拡張機能が更新されました。',
@@ -366,7 +373,8 @@ export const ja: Record<MessageKey, string> = {
   'model.storage.note': 'モデルと音声。音声キャッシュは設定タブで集計されます。',
   // Voices are fetched one at a time, when a voice is first used; there is no
   // "download them all" control yet, and a line saying so beats a dead button.
-  'model.voices.note': '音声はオンデマンドでダウンロードされます。各音声の初回使用時にダウンロードされます。',
+  'model.voices.note':
+    '音声はオンデマンドでダウンロードされます。各音声の初回使用時にダウンロードされます。',
   'model.device.not-loaded': '未ロード',
   'model.device.wasm': 'WASM（GPU非搭載）',
   'model.device.webgpu': 'WebGPU',

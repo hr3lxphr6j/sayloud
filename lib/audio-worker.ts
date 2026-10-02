@@ -187,13 +187,14 @@ export class AudioWorker {
       case 'play':
         await this.play(command.id, command.startTimeMs);
         return undefined;
-      case 'pause':
+      case 'pause': {
         this.player.pause();
         // Report the current playback position so the engine can resume from
         // the exact position later.
         const currentTimeMs = this.player.getCurrentTimeMs() ?? 0;
         this.emit({ type: 'paused', currentTimeMs });
         return undefined;
+      }
       case 'setRate':
         this.player.setRate(command.rate);
         return undefined;
@@ -260,10 +261,7 @@ export class AudioWorker {
       if (!info) return undefined;
       if (this.stale(generation)) return undefined;
 
-      const reply: SynthesizeReply = {
-        durationMs: info.durationMs,
-        hasTimings: info.hasTimings,
-      };
+      const reply: SynthesizeReply = { durationMs: info.durationMs, hasTimings: info.hasTimings };
       this.emit({ type: 'ready', id: command.id, ...reply });
       return reply;
     } catch (error) {

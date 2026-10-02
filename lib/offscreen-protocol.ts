@@ -203,7 +203,13 @@ const COMMAND_TYPES: ReadonlySet<string> = new Set([
   'stop',
 ]);
 
-const EVENT_TYPES: ReadonlySet<string> = new Set(['ready', 'word', 'sentence-end', 'paused', 'error']);
+const EVENT_TYPES: ReadonlySet<string> = new Set([
+  'ready',
+  'word',
+  'sentence-end',
+  'paused',
+  'error',
+]);
 
 /**
  * True for a well-formed command.
@@ -250,12 +256,12 @@ export function isOffscreenEvent(value: unknown): value is OffscreenEvent {
   const type = typeOf(value);
   if (type === null || !EVENT_TYPES.has(type)) return false;
   const message = value as Record<string, unknown>;
-  
+
   // 'paused' event has no id field, as it reports global playback state
   if (type === 'paused') {
     return isFiniteNumber(message.currentTimeMs);
   }
-  
+
   // All other events require an id to correlate with a specific sentence
   if (!isNonEmptyString(message.id)) return false;
 

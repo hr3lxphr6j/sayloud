@@ -177,75 +177,75 @@ export function ProviderConfigPanel({
             <>
               {showDivider && <hr class="provider-divider" />}
               <div class="provider-entry" key={id} data-provider={id} data-active={inUse}>
-              <div class="provider-row">
-                {/*
+                <div class="provider-row">
+                  {/*
                   A real radio, not a button wearing the role: the circle is
                   one of N, and the browser's own grouping is what gives arrow
                   keys, the checked state and the disabled state for free. The
                   input is invisible and stretched over the label, which draws
                   the dot — so the hit target is the label, not the dot.
                 */}
-                <label class="provider-select">
-                  <input
-                    type="radio"
-                    class="provider-radio"
-                    name="sayloud-provider"
-                    checked={inUse}
-                    disabled={!activatable}
-                    aria-label={t('provider.use', { service: t(schema.labelKey) })}
-                    onChange={() => void activate(id)}
-                  />
-                  <StatusDot state={inUse ? 'active' : config ? 'configured' : 'empty'} />
-                </label>
-                <button
-                  type="button"
-                  class="provider-toggle"
-                  aria-expanded={expanded}
-                  aria-controls={expanded ? `provider-form-${id}` : undefined}
-                  onClick={() => setOpen(expanded ? null : id)}
-                >
-                  <span class="provider-row-text">
-                    <span class="provider-name">{t(schema.labelKey)}</span>
-                    <span class="provider-summary">
-                      {config
-                        ? t('provider.configured', {
-                            // The id is what is stored; the name is how the list
-                            // the user picked it from wrote it. Unknown voices —
-                            // typed in by id — keep the id, which is all we know.
-                            voice: voice
-                              ? (voiceNames[id]?.[voice] ?? voice)
-                              : t('panel.default-voice'),
-                          })
-                        : t(schema.summaryKey)}
+                  <label class="provider-select">
+                    <input
+                      type="radio"
+                      class="provider-radio"
+                      name="sayloud-provider"
+                      checked={inUse}
+                      disabled={!activatable}
+                      aria-label={t('provider.use', { service: t(schema.labelKey) })}
+                      onChange={() => void activate(id)}
+                    />
+                    <StatusDot state={inUse ? 'active' : config ? 'configured' : 'empty'} />
+                  </label>
+                  <button
+                    type="button"
+                    class="provider-toggle"
+                    aria-expanded={expanded}
+                    aria-controls={expanded ? `provider-form-${id}` : undefined}
+                    onClick={() => setOpen(expanded ? null : id)}
+                  >
+                    <span class="provider-row-text">
+                      <span class="provider-name">{t(schema.labelKey)}</span>
+                      <span class="provider-summary">
+                        {config
+                          ? t('provider.configured', {
+                              // The id is what is stored; the name is how the list
+                              // the user picked it from wrote it. Unknown voices —
+                              // typed in by id — keep the id, which is all we know.
+                              voice: voice
+                                ? (voiceNames[id]?.[voice] ?? voice)
+                                : t('panel.default-voice'),
+                            })
+                          : t(schema.summaryKey)}
+                      </span>
                     </span>
-                  </span>
-                  {inUse && <span class="pill active">{t('provider.active')}</span>}
-                  <span class="provider-chevron">
-                    <ChevronRight />
-                  </span>
-                </button>
-              </div>
+                    {inUse && <span class="pill active">{t('provider.active')}</span>}
+                    <span class="provider-chevron">
+                      <ChevronRight />
+                    </span>
+                  </button>
+                </div>
 
-              {/*
+                {/*
                 Keyed by provider so opening another row starts from a clean
                 form: the values, the inline errors and any test result all
                 belong to one provider.
               */}
-              {expanded && (
-                <div class="provider-form" id={`provider-form-${id}`}>
-                  <ProviderForm
-                    key={id}
-                    schema={schema}
-                    provider={id === 'browser' ? null : providers[id]}
-                    saved={config}
-                    active={inUse}
-                    store={store}
-                    onChanged={onChanged}
-                    permissions={permissions}
-                  />
-                </div>
-              )}
-            </div>
+                {expanded && (
+                  <div class="provider-form" id={`provider-form-${id}`}>
+                    <ProviderForm
+                      key={id}
+                      schema={schema}
+                      provider={id === 'browser' ? null : providers[id]}
+                      saved={config}
+                      active={inUse}
+                      store={store}
+                      onChanged={onChanged}
+                      permissions={permissions}
+                    />
+                  </div>
+                )}
+              </div>
             </>
           );
         })}

@@ -260,7 +260,7 @@ export class VolcengineProvider implements Provider {
 
     const responseText = await response.text();
     const stream = parseStream(responseText);
-    
+
     if (stream.error) {
       // The service also reports failures as a 200 whose frames carry a
       // non-success code, so the stream has to be checked too.

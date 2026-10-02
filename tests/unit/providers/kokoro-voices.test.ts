@@ -9,7 +9,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import { KOKORO_82M } from '~/lib/models/registry';
-import { CHINESE_VOICES, ENGLISH_VOICES, JAPANESE_VOICES, KOKORO_VOICES } from '~/lib/providers/kokoro-voices';
+import {
+  CHINESE_VOICES,
+  ENGLISH_VOICES,
+  JAPANESE_VOICES,
+  KOKORO_VOICES,
+} from '~/lib/providers/kokoro-voices';
 
 const ENGLISH_IDS = [
   'af_heart',
@@ -53,13 +58,7 @@ const CHINESE_IDS = [
   'zm_yunyang',
 ];
 
-const JAPANESE_IDS = [
-  'jf_alpha',
-  'jf_gongitsune',
-  'jf_nezumi',
-  'jf_tebukuro',
-  'jm_kumo',
-];
+const JAPANESE_IDS = ['jf_alpha', 'jf_gongitsune', 'jf_nezumi', 'jf_tebukuro', 'jm_kumo'];
 
 describe('KOKORO_VOICES', () => {
   it('holds the 41 voices the model can actually speak', () => {

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionSnapshot } from '~/lib/protocol';
 import {
-  type LocalStorageArea,
   type SessionStorageArea,
   SNAPSHOT_BACKUP_KEY,
   SNAPSHOT_KEY,
@@ -111,18 +110,17 @@ describe('SnapshotStore', () => {
     });
 
     it('accepts old format snapshots and migrates them', async () => {
-      const oldFormat = {
+      // The old format carried the sentences themselves and knew nothing about
+      // `sentenceCount` or `charsTotal`; the parser has to derive them.
+      const oldFormat: Record<string, unknown> = {
         ...SNAPSHOT,
         sentences: [
           { text: 'Hello world.', lang: 'en' },
           { text: 'Goodbye now.', lang: 'en' },
         ],
-        // Old format didn't have these fields
-        sentenceCount: undefined,
-        charsTotal: undefined,
       };
-      delete (oldFormat as any).sentenceCount;
-      delete (oldFormat as any).charsTotal;
+      delete oldFormat.sentenceCount;
+      delete oldFormat.charsTotal;
 
       const testSession = fakeArea({ [SNAPSHOT_KEY]: oldFormat });
       const testLocal = fakeArea();

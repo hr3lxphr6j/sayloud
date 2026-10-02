@@ -35,6 +35,7 @@ function stateOf(overrides: Partial<ReaderState> = {}): ReaderState {
     status: statusOf(),
     hasContent: true,
     error: null,
+    errorDetail: null,
     scrolledAway: false,
     word: null,
     captionEnabled: false,
@@ -334,6 +335,26 @@ describe('SidePlayer', () => {
     expect(screen.getByRole('status').textContent).toContain(en[HINTS['no-voice'].messageKey]);
   });
 
+  it('shows a playback failure with the service’s own words', () => {
+    renderPlayer(
+      stateOf({
+        status: statusOf({
+          phase: 'error',
+          error: 'tts-error',
+          errorMessage: 'HTTP 403: invalid api key',
+        }),
+        error: 'tts-error',
+        errorDetail: 'HTTP 403: invalid api key',
+      })
+    );
+
+    const card = screen.getByRole('status').textContent ?? '';
+    // The title is the reader's language; the body is what came back from the
+    // service, untranslated. Only one of the two can say which service failed.
+    expect(card).toContain(en['sideplayer.hint.tts-error.title']);
+    expect(card).toContain('HTTP 403: invalid api key');
+  });
+
   it('explains an unreadable page even before the engine answers', () => {
     renderPlayer(stateOf({ status: null, hasContent: false, error: 'no-content' }));
 
@@ -351,9 +372,7 @@ describe('SidePlayer', () => {
 
   it('shows the remaining time while the pointer is over the bar', () => {
     renderPlayer(
-      stateOf({
-        status: statusOf({ charsRead: 0, charsTotal: 9_000, charsPerSec: 12 }),
-      })
+      stateOf({ status: statusOf({ charsRead: 0, charsTotal: 9_000, charsPerSec: 12 }) })
     );
 
     fireEvent.mouseEnter(screen.getByRole('toolbar'));

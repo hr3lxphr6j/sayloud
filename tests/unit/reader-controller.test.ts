@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { ReaderController } from '~/entrypoints/reader.content/ReaderController';
+import type { EngineStatus } from '~/lib/protocol';
 
 /** The extension id, read before any test hides it. */
 const liveId: unknown = browser.runtime.id;
@@ -40,9 +41,7 @@ function fakePort() {
         sent.push(message);
       },
       disconnect: () => {},
-      onMessage: {
-        addListener: (listener: (message: unknown) => void) => listeners.add(listener),
-      },
+      onMessage: { addListener: (listener: (message: unknown) => void) => listeners.add(listener) },
       onDisconnect: { addListener: () => {} },
     },
     sent,
@@ -53,6 +52,25 @@ function fakePort() {
     receive: (message: unknown) => {
       for (const listener of [...listeners]) listener(message);
     },
+  };
+}
+
+/** A status the engine might announce, for the reader's own reading of it. */
+function statusOf(
+  phase: EngineStatus['phase'],
+  index: number,
+  overrides: Partial<EngineStatus> = {}
+): EngineStatus {
+  return {
+    phase,
+    index,
+    total: 3,
+    rate: 1,
+    voice: 'Samantha',
+    charsRead: 0,
+    charsTotal: 0,
+    charsPerSec: 0,
+    ...overrides,
   };
 }
 
@@ -160,10 +178,68 @@ describe('ReaderController', () => {
 
     expect(port.sent).toContainEqual(expect.objectContaining({ type: 'load' }));
 
+    // The engine answered once, which is what makes this a session to recover.
+    port.receive({ type: 'status', status: statusOf('playing', 1) });
     port.sent.length = 0;
     port.receive({ type: 'session-lost' });
 
-    expect(port.sent).toContainEqual(expect.objectContaining({ type: 'load' }));
+    // A recovery, not a fresh start: the engine has to take the sentences and
+    // keep the position, without speaking over a pause the user asked for.
+    expect(port.sent).toContainEqual(
+      expect.objectContaining({ type: 'load', startIndex: 1, resume: true })
+    );
+
+    controller.dispose();
+    document.body.innerHTML = '';
+  });
+
+  it('ignores a session-lost that arrives before the engine ever answered', () => {
+    // Booting a fresh worker: the reader sends its document with this very
+    // connection, and the empty engine's `session-lost` crosses that `load` on
+    // the way back. Treating it as a recovery would send a `resume` load that
+    // stops the reading the first `load` had just started.
+    document.body.innerHTML = '<article><p>One sentence here.</p></article>';
+
+    const port = fakePort();
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue(
+      port.port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController();
+    controller.connect();
+    port.sent.length = 0;
+
+    port.receive({ type: 'session-lost' });
+
+    expect(port.sent).toHaveLength(0);
+
+    controller.dispose();
+    document.body.innerHTML = '';
+  });
+
+  it('hands the hint the words the service failed with', () => {
+    document.body.innerHTML = '<article><p>One sentence here.</p></article>';
+
+    const port = fakePort();
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue(
+      port.port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController();
+    controller.connect();
+
+    port.receive({
+      type: 'status',
+      status: statusOf('error', 0, {
+        error: 'tts-error',
+        errorMessage: 'HTTP 403: invalid api key',
+      }),
+    });
+
+    // The reader's own state stays decoupled from the engine's shape: the hint
+    // gets the text, and the code that picked it is still `tts-error`.
+    expect(controller.getState().error).toBe('tts-error');
+    expect(controller.getState().errorDetail).toBe('HTTP 403: invalid api key');
 
     controller.dispose();
     document.body.innerHTML = '';

@@ -22,7 +22,7 @@
  */
 import { durationMsFor, pcmToWav } from '../models/audio';
 import type { Device, DevicePreference, DeviceProbe } from '../models/device';
-import { DeviceUnavailableError, resolveDevice } from '../models/device';
+import { DeviceUnavailableError, probeDevice, resolveDevice } from '../models/device';
 import type { ModelCacheStorage } from '../models/downloader';
 import { isWorkerDeadError, type OnDeviceEngine } from '../models/engine';
 import {
@@ -281,6 +281,5 @@ async function tierFor(model: OnDeviceModel, local: LocalConfig): Promise<ModelT
 
 /** Measure the machine's GPU, through the DOM's own WebGPU typings. */
 async function probeThisMachine(): Promise<DeviceProbe> {
-  const { probeDevice } = await import('../models/device');
   return probeDevice(navigator.gpu);
 }

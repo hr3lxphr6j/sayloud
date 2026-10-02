@@ -16,6 +16,10 @@ function e2eHostPermissions(): string[] {
 export default defineConfig({
   vite: () => ({
     plugins: [preact()],
+    define: {
+      // Suppress import.meta warning from kokoro-js with iife format
+      'import.meta': '{}',
+    },
   }),
   /**
    * Dev mode only, and not cosmetic.

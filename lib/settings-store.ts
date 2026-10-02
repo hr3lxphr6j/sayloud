@@ -17,7 +17,7 @@ import type { LocalStorageArea } from './config-store';
 
 export const SETTINGS_KEY = 'sayloud:settings';
 
-export type UiLang = 'auto' | 'en' | 'zh-CN';
+export type UiLang = 'auto' | 'en' | 'ja' | 'zh-CN';
 
 export interface CacheSettings {
   /** Off means memory only: saved audio is cleared and nothing new is written. */
@@ -147,7 +147,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function isUiLang(value: unknown): value is UiLang {
-  return value === 'auto' || value === 'en' || value === 'zh-CN';
+  return value === 'auto' || value === 'en' || value === 'ja' || value === 'zh-CN';
 }
 
 function booleanOr(value: unknown, fallback: boolean): boolean {

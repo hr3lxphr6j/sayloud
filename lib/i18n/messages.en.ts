@@ -70,6 +70,9 @@ export const en = {
   'settings.language.auto': 'Follow the browser',
   'settings.language.en': 'English',
   'settings.language.zh': '中文',
+  // Each option is written in its own language, so a reader who cannot read
+  // the current one can still find theirs.
+  'settings.language.ja': '日本語',
 
   // --- the cache card -------------------------------------------------------
   'settings.cache.title': 'Cache',

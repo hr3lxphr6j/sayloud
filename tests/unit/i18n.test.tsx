@@ -3,36 +3,95 @@ import { describe, expect, it } from 'vitest';
 import type { LocalStorageArea } from '~/lib/config-store';
 import { createTranslator, I18nProvider, resolveLang, useT, useUiLanguage } from '~/lib/i18n';
 import { en, type MessageKey } from '~/lib/i18n/messages.en';
+import { ja } from '~/lib/i18n/messages.ja';
 import { zh } from '~/lib/i18n/messages.zh';
 import { SETTINGS_KEY, SettingsStore, type StorageChangeApi } from '~/lib/settings-store';
 
-/** Every `{name}` in a message, so a translation cannot drop one. */
+/** Every "{name}" in a message, so a translation cannot drop one. */
 function placeholders(text: string): string[] {
   return [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1] as string).sort();
 }
+
+/**
+ * Every catalogue that is not the English source, named for the failure.
+ *
+ * "SayLoud" is a product, not an English word, and it appears in the Chinese
+ * copy unchanged. Two, not zero: a registry so the tests below can be written
+ * once rather than per language.
+ */
+const TRANSLATIONS = [
+  ['zh', zh],
+  ['ja', ja],
+] as const;
+
+/**
+ * Kana, Han or full-width punctuation: anything that cannot be in English.
+ *
+ * Used to catch prose that was copied from the English catalogue and never
+ * translated.
+ */
+const NON_LATIN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef]/;
+
+/**
+ * Words that only occur in English *prose*, never in a product name or a
+ * technical string.
+ *
+ * The catalogue is full of the latter — `WebGPU`, `MP3 16 kHz 32 kbit/s`,
+ * `Kokoro 82M`, `Hugging Face` — and every one of them is meant to read the
+ * same in all three languages. Counting words cannot tell those from a
+ * sentence (`MP3 16 kHz 32 kbit/s` is five), but a function word can: `No voice
+ * selected` and `Follow the browser` have one and the technical strings have
+ * none.
+ */
+const ENGLISH_PROSE =
+  /\b(?:the|a|an|is|are|was|be|been|to|of|in|on|at|for|with|and|or|not|no|this|that|these|those|your|you|it|its|will|can|cannot|has|have|do|does|when|while|than|then|as|by|from|into|over|out|up|down|more|less|all|any|some|each|every|other|another)\b/i;
 
 describe('the message catalogues', () => {
   const keys = Object.keys(en) as MessageKey[];
 
   it('translates every English key', () => {
-    // The `Record<MessageKey, string>` type on `zh` catches a missing key at
-    // typecheck time; this catches one that was added as an empty string.
-    for (const key of keys) expect(zh[key], key).toBeTruthy();
-  });
-
-  it('holds no key the English catalogue does not', () => {
-    expect(Object.keys(zh).sort()).toEqual([...keys].sort());
-  });
-
-  it('leaves no message empty in either language', () => {
-    for (const [key, value] of [...Object.entries(en), ...Object.entries(zh)]) {
-      expect(value.trim(), key).not.toBe('');
+    // The `Record<MessageKey, string>` type on each catalogue catches a missing
+    // key at typecheck time; this catches one that was added as an empty string.
+    for (const [name, catalogue] of TRANSLATIONS) {
+      for (const key of keys) expect(catalogue[key], `${name}: ${key}`).toBeTruthy();
     }
   });
 
-  it('keeps the placeholders of a message in both languages', () => {
+  it('holds no key the English catalogue does not', () => {
+    for (const [name, catalogue] of TRANSLATIONS) {
+      expect(Object.keys(catalogue).sort(), name).toEqual([...keys].sort());
+    }
+  });
+
+  it('leaves no message empty in any language', () => {
+    for (const [name, catalogue] of [['en', en], ...TRANSLATIONS] as const) {
+      for (const [key, value] of Object.entries(catalogue)) {
+        expect(value.trim(), `${name}: ${key}`).not.toBe('');
+      }
+    }
+  });
+
+  it('keeps the placeholders of a message in every language', () => {
     // A translation that drops `{name}` silently prints half a sentence.
-    for (const key of keys) expect(placeholders(zh[key]), key).toEqual(placeholders(en[key]));
+    for (const [name, catalogue] of TRANSLATIONS) {
+      for (const key of keys) {
+        expect(placeholders(catalogue[key]), `${name}: ${key}`).toEqual(placeholders(en[key]));
+      }
+    }
+  });
+
+  it('does not leave English prose untranslated', () => {
+    // The checks above cannot see the likeliest mistake of all: a message
+    // copied from English and never touched is a non-empty string with the
+    // right placeholders in the right number. This is about prose, so the
+    // product names and technical strings — which are meant to stay as they are
+    // — are not asked for kana or kanji.
+    for (const [name, catalogue] of TRANSLATIONS) {
+      for (const key of keys) {
+        if (!ENGLISH_PROSE.test(en[key])) continue;
+        expect(NON_LATIN.test(catalogue[key]), `${name}: ${key} = ${catalogue[key]}`).toBe(true);
+      }
+    }
   });
 });
 
@@ -40,6 +99,7 @@ describe('resolveLang', () => {
   it('uses the saved choice when there is one', () => {
     expect(resolveLang('en', 'zh-CN')).toBe('en');
     expect(resolveLang('zh-CN', 'en-US')).toBe('zh-CN');
+    expect(resolveLang('ja', 'en-US')).toBe('ja');
   });
 
   it('follows the browser for auto', () => {
@@ -47,6 +107,21 @@ describe('resolveLang', () => {
     expect(resolveLang('auto', 'zh-CN')).toBe('zh-CN');
     expect(resolveLang('auto', 'zh-TW')).toBe('zh-CN');
     expect(resolveLang('auto', 'ZH-cn')).toBe('zh-CN');
+  });
+
+  it('resolves a region-less or regional Japanese tag alike', () => {
+    expect(resolveLang('auto', 'ja')).toBe('ja');
+    expect(resolveLang('auto', 'ja-JP')).toBe('ja');
+    // Chrome reports `ja` for most Japanese installs, but not all of them.
+    expect(resolveLang('auto', 'JA-jp')).toBe('ja');
+  });
+
+  it('prefers a region over a language it has no catalogue for', () => {
+    // `zh-Hant` is Traditional, which the Simplified catalogue is not — but
+    // falling back to English would be worse for a reader who asked for
+    // Chinese of some kind. Japanese has no such split to worry about.
+    expect(resolveLang('auto', 'zh-Hant-TW')).toBe('zh-CN');
+    expect(resolveLang('auto', 'ja-JP-u-ca-japanese')).toBe('ja');
   });
 
   it('falls back to English for anything else', () => {
@@ -65,6 +140,7 @@ describe('createTranslator', () => {
   it('returns the message in the language it was built for', () => {
     expect(createTranslator('en')('sideplayer.play')).toBe('Play');
     expect(createTranslator('zh-CN')('sideplayer.play')).toBe('播放');
+    expect(createTranslator('ja')('sideplayer.play')).toBe(ja['sideplayer.play']);
   });
 
   it('fills in one parameter', () => {
@@ -218,6 +294,15 @@ describe('useUiLanguage', () => {
     render(<LanguageProbe settings={store} />);
 
     expect(await screen.findByText('zh-CN:zh-CN')).toBeTruthy();
+  });
+
+  it('reads a saved Japanese choice', async () => {
+    // `auto` never resolves to Japanese on a test machine, so a choice that was
+    // made in the settings is the only way this language is reached.
+    const store = new SettingsStore(fakeArea({ [SETTINGS_KEY]: { uiLang: 'ja' } }));
+    render(<LanguageProbe settings={store} />);
+
+    expect(await screen.findByText('ja:ja')).toBeTruthy();
   });
 
   it('saves a new choice and re-renders immediately', async () => {

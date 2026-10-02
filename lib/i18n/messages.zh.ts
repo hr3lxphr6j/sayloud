@@ -55,6 +55,7 @@ export const zh: Record<MessageKey, string> = {
   'settings.language.auto': '跟随浏览器',
   'settings.language.en': 'English',
   'settings.language.zh': '中文',
+  'settings.language.ja': '日本語',
 
   // --- the cache card -------------------------------------------------------
   'settings.cache.title': '缓存',

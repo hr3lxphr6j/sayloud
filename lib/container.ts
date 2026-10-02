@@ -68,7 +68,7 @@ export interface AppContainer {
  */
 export function createApp(deps: AppDeps): AppContainer {
   const voices = new VoiceCache(deps.tts);
-  const snapshots = new SnapshotStore(deps.storage.session);
+  const snapshots = new SnapshotStore(deps.storage.session, deps.storage.local);
   const config = new ConfigStore(deps.storage.local);
   const settings = new SettingsStore(deps.storage.local, deps.storage.onChanged);
 

@@ -1,6 +1,7 @@
 import type { EngineSentence, SessionSnapshot } from './protocol';
 
 export const SNAPSHOT_KEY = 'sayloud-session';
+export const SNAPSHOT_BACKUP_KEY = 'sayloud-session-backup';
 
 /** The slice of `chrome.storage.session` this module needs. */
 export interface SessionStorageArea {
@@ -9,34 +10,85 @@ export interface SessionStorageArea {
   remove(key: string): Promise<void>;
 }
 
+/** The slice of `chrome.storage.local` this module needs for backup. */
+export interface LocalStorageArea {
+  get(key: string): Promise<Record<string, unknown>>;
+  set(items: Record<string, unknown>): Promise<void>;
+}
+
 /**
- * Persists the session so a recycled service worker can pick it back up.
+ * Persists the session with dual-layer storage for reliability.
  *
- * `chrome.storage.session` is the right home: it survives worker recycling but
- * not a browser restart, which matches a reading session's lifetime. Values read
- * back are untrusted — storage is shared with older extension versions — so
- * everything is validated before use.
+ * Primary storage: `chrome.storage.session` - fast, in-memory, survives service
+ * worker recycling but not browser restart.
+ *
+ * Backup storage: `chrome.storage.local` - persistent, on-disk, survives browser
+ * restart and service worker termination.
+ *
+ * When loading, the session storage is checked first (fast path). If empty
+ * (service worker was terminated and session cleared), falls back to local
+ * storage and restores the session automatically.
+ *
+ * This solves the "long pause breaks playback" issue where Chrome terminates
+ * the service worker and clears session storage after 30 seconds of inactivity.
  */
 export class SnapshotStore {
-  constructor(private readonly area: SessionStorageArea) {}
+  constructor(
+    private readonly session: SessionStorageArea,
+    private readonly local: LocalStorageArea
+  ) {}
 
   async save(snapshot: SessionSnapshot | null): Promise<void> {
     if (snapshot) {
-      await this.area.set({ [SNAPSHOT_KEY]: snapshot });
+      // Dual-write: session for speed, local for durability
+      await Promise.all([
+        this.session.set({ [SNAPSHOT_KEY]: snapshot }),
+        this.local.set({ [SNAPSHOT_BACKUP_KEY]: snapshot }),
+      ]);
       return;
     }
-    await this.area.remove(SNAPSHOT_KEY);
+    // Clear both storages when session ends
+    // Note: session.remove is available, but local storage uses set with undefined
+    // to maintain compatibility with LocalStorageArea from config-store
+    await Promise.all([
+      this.session.remove(SNAPSHOT_KEY),
+      // Chrome storage API: setting undefined removes the key
+      this.local.set({ [SNAPSHOT_BACKUP_KEY]: undefined }),
+    ]);
   }
 
   async load(): Promise<SessionSnapshot | null> {
     try {
-      const stored = await this.area.get(SNAPSHOT_KEY);
+      // Try session storage first (fast path)
+      const stored = await this.session.get(SNAPSHOT_KEY);
       const hasKey = SNAPSHOT_KEY in stored;
-      console.log('[SayLoud] snapshot storage query result', {
+      console.log('[SayLoud] snapshot session storage query', {
         hasKey,
         valueType: hasKey ? typeof stored[SNAPSHOT_KEY] : 'undefined',
       });
-      return parseSnapshot(stored[SNAPSHOT_KEY]);
+
+      let snapshot = parseSnapshot(stored[SNAPSHOT_KEY], 'session');
+
+      // Fallback to local storage if session is empty
+      if (!snapshot) {
+        console.log('[SayLoud] session storage empty, trying local backup');
+        const backup = await this.local.get(SNAPSHOT_BACKUP_KEY);
+        const hasBackup = SNAPSHOT_BACKUP_KEY in backup;
+        console.log('[SayLoud] snapshot local storage query', {
+          hasKey: hasBackup,
+          valueType: hasBackup ? typeof backup[SNAPSHOT_BACKUP_KEY] : 'undefined',
+        });
+
+        snapshot = parseSnapshot(backup[SNAPSHOT_BACKUP_KEY], 'local');
+
+        // Restore to session storage for future fast access
+        if (snapshot) {
+          console.log('[SayLoud] restored snapshot from local backup to session');
+          await this.session.set({ [SNAPSHOT_KEY]: snapshot });
+        }
+      }
+
+      return snapshot;
     } catch (error) {
       console.error('[SayLoud] snapshot load failed with exception', error);
       return null;
@@ -44,15 +96,19 @@ export class SnapshotStore {
   }
 }
 
-function parseSnapshot(value: unknown): SessionSnapshot | null {
+function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnapshot | null {
   if (!value || typeof value !== 'object') {
-    console.warn('[SayLoud] snapshot parse failed: value is not an object', { value });
+    if (value !== undefined) {
+      console.warn(`[SayLoud] snapshot parse failed (${source}): value is not an object`, {
+        value,
+      });
+    }
     return null;
   }
   const raw = value as Record<string, unknown>;
 
   if (!Array.isArray(raw.sentences)) {
-    console.warn('[SayLoud] snapshot parse failed: sentences is not an array', {
+    console.warn(`[SayLoud] snapshot parse failed (${source}): sentences is not an array`, {
       hasSentences: 'sentences' in raw,
       sentencesType: typeof raw.sentences,
     });
@@ -74,7 +130,7 @@ function parseSnapshot(value: unknown): SessionSnapshot | null {
   }
   // A snapshot without sentences has nothing to resume.
   if (sentences.length === 0) {
-    console.warn('[SayLoud] snapshot parse failed: no valid sentences', {
+    console.warn(`[SayLoud] snapshot parse failed (${source}): no valid sentences`, {
       rawCount: raw.sentences.length,
       skipped,
       tabId: raw.tabId,
@@ -95,7 +151,7 @@ function parseSnapshot(value: unknown): SessionSnapshot | null {
     resumeTimeMs: readNumber(raw.resumeTimeMs, 0),
   };
 
-  console.log('[SayLoud] snapshot loaded successfully', {
+  console.log(`[SayLoud] snapshot loaded successfully from ${source}`, {
     tabId: snapshot.tabId,
     docId: snapshot.docId,
     sentenceCount: sentences.length,

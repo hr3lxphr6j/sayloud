@@ -78,19 +78,21 @@
     <main>
       <h1>Kokoro 中文发音试听</h1>
       <p class="sub">
-        同一个模型、同一个音色、同一句话，只改喂进去的音素串格式 —— 用来判断
-        P5 spec §1.2 的五个偏差到底哪个听得出来。
+        同一个模型、同一个音色、同一句话，只改喂进去的音素串格式。
+        「修复前」是用户报告缺陷时的行为，「现在发布的版本」是线上跑的代码 ——
+        两者逐字符不同（每句都会断言，见 harness 的 anchor）。
       </p>
 
       <div class="intro">
         <b>怎么听</b>
         <ol>
           <li>
-            每句先听三个：<b>现状</b> → <b>全部对齐</b> → <b>legacy 参考</b>（训练目标）。
-            最后一个是我们想靠近的对象。
+            每句先听两个：<b>修复前</b> → <b>现在发布的版本</b>。
+            这是实际改动的全部幅度。
           </li>
           <li>
-            有差别再往下听 <b>只修 A / B / C / D</b>，看是哪一项在起作用。
+            想拆开看是<b>哪一项</b>在起作用，听 <b>只改词边界（jieba）</b> ——
+            它与「修复前」只差词边界这一件事。
           </li>
           <li>
             最后听 <b>阶段 2</b>：v1.1-zh 换了模型和音色，与上面不是同一个声音，
@@ -127,23 +129,23 @@
       const SENTENCE_ORDER = ['r1', 'r2', 'r3', 'r4', 'p1'];
       const GROUP_ORDER = ['fmt', 'v11', 'punct'];
       const GROUP_TITLES = {
-        fmt: '阶段 1 — 格式对齐',
+        fmt: '词边界',
         v11: '阶段 2',
         punct: '标点处理（同一个句子，只改标点）',
       };
       const GROUP_INTROS = {
-        fmt: '模型与音色不变，只改音素串。这一组回答「格式对齐这个方向对不对、哪一项在起作用」。',
+        fmt: '模型与音色不变，只改音素串。「修复前」是用户报告缺陷时的行为，\n        「现在发布的版本」就是线上跑的那份代码。',
         v11: '换了模型与音色，所以声音本身不同 —— 只判断自然度与读音，不要与上面的音色对比。',
         punct: '一句话，汉字段完全相同，只有标点写法不同。用来回答「换成空格会不会有停顿」。',
       };
       // The rows worth listening to first; the rest are the per-factor breakdown.
       const HEADLINE = new Set([
-        '现状（全部偏差）',
-        '对齐 A+B+D（保留变调）',
-        '对齐 A+B+D + 补丁',
+        '修复前：每音节一空格',
+        '只改词边界（jieba）',
+        '现在发布的版本（对齐 A+B+D）',
+        '发布版 + 补丁（未上线）',
         'legacy 参考（训练目标）',
         'v1.1-zh 官方 ZHFrontend',
-        'v1.1-zh 2a 式（我们的读音）',
       ]);
 
       const groups = document.getElementById('groups');
@@ -180,15 +182,13 @@
           groups.append(whyEl);
 
           const table = document.createElement('table');
-          const baseline = sentenceRows.find((c) => c.label === '现状（全部偏差）')?.idsDigest;
+          const baseline = sentenceRows.find((c) => c.label === '修复前：每音节一空格')?.idsDigest;
 
           for (const clip of sentenceRows) {
             const tr = document.createElement('tr');
             if (HEADLINE.has(clip.label)) tr.classList.add('headline');
             const sameAsBaseline =
-              baseline &&
-              clip.idsDigest === baseline &&
-              clip.label !== '现状（全部偏差）';
+              baseline && clip.idsDigest === baseline && clip.label !== '修复前：每音节一空格';
             if (sameAsBaseline) tr.classList.add('noop');
 
             const playTd = document.createElement('td');

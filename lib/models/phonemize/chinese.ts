@@ -156,26 +156,41 @@ export function retone(ipa: string): string {
  * then reads as one rushed breath (spec §3.11.7).
  */
 export function mapPunctuation(text: string): string {
-  return text
-    .replaceAll('、', ', ')
-    .replaceAll('，', ', ')
-    .replaceAll('。', '. ')
-    .replaceAll('．', '. ')
-    .replaceAll('！', '! ')
-    .replaceAll('：', ': ')
-    .replaceAll('；', '; ')
-    .replaceAll('？', '? ')
-    .replaceAll('«', ' “')
-    .replaceAll('»', '” ')
-    .replaceAll('《', ' “')
-    .replaceAll('》', '” ')
-    .replaceAll('「', ' “')
-    .replaceAll('」', '” ')
-    .replaceAll('【', ' “')
-    .replaceAll('】', '” ')
-    .replaceAll('（', ' (')
-    .replaceAll('）', ') ')
-    .trim();
+  return (
+    text
+      .replaceAll('、', ', ')
+      // A comma becomes a **period**, not a comma.
+      //
+      // Chosen by listening, not by analysis. Measured with the low-energy-gap
+      // metric the two are nearly the same (the comma gives 290 ms of total
+      // silence in a test sentence, the period 270 ms, and the period's longest
+      // single gap is longer at 180 ms against 170 ms), so the metric could not
+      // have decided it — and it has already failed once to match what the user
+      // hears. The user listened to a page of seven punctuation treatments and
+      // picked this one.
+      //
+      // 顿号 is left as a comma: it is a shorter mark than 逗号, the page never
+      // tested it, and turning every separator into a full stop is a larger
+      // change than the one that was chosen.
+      .replaceAll('，', '. ')
+      .replaceAll('。', '. ')
+      .replaceAll('．', '. ')
+      .replaceAll('！', '! ')
+      .replaceAll('：', ': ')
+      .replaceAll('；', '; ')
+      .replaceAll('？', '? ')
+      .replaceAll('«', ' “')
+      .replaceAll('»', '” ')
+      .replaceAll('《', ' “')
+      .replaceAll('》', '” ')
+      .replaceAll('「', ' “')
+      .replaceAll('」', '” ')
+      .replaceAll('【', ' “')
+      .replaceAll('】', '” ')
+      .replaceAll('（', ' (')
+      .replaceAll('）', ') ')
+      .trim()
+  );
 }
 
 /**

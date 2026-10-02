@@ -151,8 +151,24 @@ describe('numbersToHan', () => {
 
 describe('mapPunctuation', () => {
   it('turns full-width punctuation into the ASCII the tokenizer has', () => {
-    expect(mapPunctuation('你好，世界。')).toBe('你好, 世界.');
     expect(mapPunctuation('真的吗？')).toBe('真的吗?');
+  });
+
+  it('turns a comma into a period, because the user chose that by listening', () => {
+    // Not a typo, and not derivable from the low-energy-gap metric: the two are
+    // nearly identical by that measure (comma 290 ms of total silence in a test
+    // sentence, period 270 ms, the period's longest gap longer at 180 ms against
+    // 170 ms), and the metric has already failed once to match what the user
+    // hears. A page of seven punctuation treatments was offered and this is the
+    // one that was picked.
+    expect(mapPunctuation('你好，世界。')).toBe('你好. 世界.');
+    expect(mapPunctuation('我还好，他不好。')).toBe('我还好. 他不好.');
+  });
+
+  it('leaves 顿号 as a comma', () => {
+    // A shorter mark than 逗号, never tested on the page, and turning every
+    // separator into a full stop is a larger change than the one that was chosen.
+    expect(mapPunctuation('读、写')).toBe('读, 写');
   });
 
   it('maps quotes and brackets', () => {

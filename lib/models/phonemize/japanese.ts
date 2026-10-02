@@ -313,11 +313,14 @@ export function kanaToIPA(kana: string): string {
 
 
 /**
- * Convert Kanji/mixed text to Katakana using kuroshiro.
+ * Where the compiled kuromoji dictionary lives.
  *
- * @param text - Japanese text (may contain Kanji)
- * @returns Katakana text
+ * A path inside the extension rather than a URL: the loader turns it into one,
+ * and which way it does that depends on where this code is running (see
+ * `lib/vendor/kuromoji/loader/BrowserDictionaryLoader.js`). The files come from
+ * `public/kuromoji-dict/`, populated by `scripts/setup-kuromoji-dict.mjs`.
  */
+const KUROMOJI_DICT_PATH = '/kuromoji-dict/';
 
 let kuroshiroInstance: Kuroshiro | null = null;
 let initPromise: Promise<void> | null = null;
@@ -332,25 +335,16 @@ async function initKuroshiro(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
       try {
-        console.log('[JapanesePhonemizer] Initializing kuroshiro...');
-        console.log('[JapanesePhonemizer] chrome.runtime available:', typeof chrome !== 'undefined' && !!chrome.runtime);
-        
-        const dictPath = '/kuromoji-dict/';
-        console.log('[JapanesePhonemizer] dictPath:', dictPath);
-        
         kuroshiroInstance = new Kuroshiro();
-
-        await kuroshiroInstance.init(
-          new KuromojiAnalyzer({
-            dictPath,
-          })
-        );
-        
-        console.log('[JapanesePhonemizer] Kuroshiro initialized successfully');
+        await kuroshiroInstance.init(new KuromojiAnalyzer({ dictPath: KUROMOJI_DICT_PATH }));
       } catch (error) {
-        console.error('[JapanesePhonemizer] Failed to initialize kuroshiro:', error);
+        // Left un-cached on purpose: the dictionary is a fetch, so a failure can
+        // be a transient one (a recycled worker, a download still in flight)
+        // and the next call deserves its own attempt rather than inheriting
+        // this one's failure forever.
+        console.error('[SayLoud] kuroshiro failed to initialize', error);
         kuroshiroInstance = null;
-        initPromise = null; // Reset so next call can retry
+        initPromise = null;
         throw error;
       }
     })();

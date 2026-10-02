@@ -29,27 +29,61 @@ export class SnapshotStore {
   }
 
   async load(): Promise<SessionSnapshot | null> {
-    const stored = await this.area.get(SNAPSHOT_KEY);
-    return parseSnapshot(stored[SNAPSHOT_KEY]);
+    try {
+      const stored = await this.area.get(SNAPSHOT_KEY);
+      const hasKey = SNAPSHOT_KEY in stored;
+      console.log('[SayLoud] snapshot storage query result', {
+        hasKey,
+        valueType: hasKey ? typeof stored[SNAPSHOT_KEY] : 'undefined',
+      });
+      return parseSnapshot(stored[SNAPSHOT_KEY]);
+    } catch (error) {
+      console.error('[SayLoud] snapshot load failed with exception', error);
+      return null;
+    }
   }
 }
 
 function parseSnapshot(value: unknown): SessionSnapshot | null {
-  if (!value || typeof value !== 'object') return null;
+  if (!value || typeof value !== 'object') {
+    console.warn('[SayLoud] snapshot parse failed: value is not an object', { value });
+    return null;
+  }
   const raw = value as Record<string, unknown>;
 
-  if (!Array.isArray(raw.sentences)) return null;
+  if (!Array.isArray(raw.sentences)) {
+    console.warn('[SayLoud] snapshot parse failed: sentences is not an array', {
+      hasSentences: 'sentences' in raw,
+      sentencesType: typeof raw.sentences,
+    });
+    return null;
+  }
   const sentences: EngineSentence[] = [];
+  let skipped = 0;
   for (const item of raw.sentences) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object') {
+      skipped++;
+      continue;
+    }
     const entry = item as Record<string, unknown>;
-    if (typeof entry.text !== 'string' || entry.text.length === 0) continue;
+    if (typeof entry.text !== 'string' || entry.text.length === 0) {
+      skipped++;
+      continue;
+    }
     sentences.push({ text: entry.text, lang: readString(entry.lang, 'en') });
   }
   // A snapshot without sentences has nothing to resume.
-  if (sentences.length === 0) return null;
+  if (sentences.length === 0) {
+    console.warn('[SayLoud] snapshot parse failed: no valid sentences', {
+      rawCount: raw.sentences.length,
+      skipped,
+      tabId: raw.tabId,
+      docId: raw.docId,
+    });
+    return null;
+  }
 
-  return {
+  const snapshot = {
     tabId: readNumber(raw.tabId, -1),
     docId: readString(raw.docId, ''),
     sentences,
@@ -58,7 +92,18 @@ function parseSnapshot(value: unknown): SessionSnapshot | null {
     voice: readString(raw.voice, ''),
     rate: readNumber(raw.rate, 1),
     charsRead: readNumber(raw.charsRead, 0),
+    resumeTimeMs: readNumber(raw.resumeTimeMs, 0),
   };
+
+  console.log('[SayLoud] snapshot loaded successfully', {
+    tabId: snapshot.tabId,
+    docId: snapshot.docId,
+    sentenceCount: sentences.length,
+    index: snapshot.index,
+    resumeTimeMs: snapshot.resumeTimeMs,
+  });
+
+  return snapshot;
 }
 
 function readNumber(value: unknown, fallback: number): number {

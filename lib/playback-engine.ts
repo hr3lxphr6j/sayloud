@@ -314,14 +314,13 @@ export class PlaybackEngine {
     if (this.phase !== 'playing' && this.phase !== 'loading') return;
     // Use pause() if the speaker supports it (cloud/local providers), otherwise
     // fall back to stop() (browser voice). Cloud/local providers will emit a
-    // 'paused' event with the current position, which we capture via getCurrentTimeMs().
+    // 'paused' event with the current position, which we capture immediately.
     if (this.speaker.pause) {
       this.speaker.pause();
-      // Give the speaker a moment to process the pause and emit the 'paused' event,
-      // then capture the position. This is necessary because the pause event is async.
-      setTimeout(() => {
-        this.resumeTimeMs = this.speaker.getCurrentTimeMs?.() ?? 0;
-      }, 10);
+      // Capture the position immediately. The 'paused' event from offscreen has
+      // already updated lastPausedTimeMs by the time we get here (it's synchronous
+      // through the message channel), so getCurrentTimeMs() returns the right value.
+      this.resumeTimeMs = this.speaker.getCurrentTimeMs?.() ?? 0;
     } else {
       // Browser voice doesn't support pause, so stop it. resumeTimeMs stays 0,
       // meaning it will restart from the beginning.

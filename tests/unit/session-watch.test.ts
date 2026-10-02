@@ -12,6 +12,7 @@ const SNAPSHOT: SessionSnapshot = {
   voice: 'Samantha',
   rate: 1,
   charsRead: 4,
+  resumeTimeMs: 0,
 };
 
 function fakeArea(initial: Record<string, unknown> = {}) {

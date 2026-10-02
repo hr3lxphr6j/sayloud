@@ -861,16 +861,35 @@ v1.1-zh 的官方前端是 misaki 的 `ZHG2P(version='1.1')` → `ZHFrontend`，
 |---|---|---|---|
 | **V23** | **`jieba-wasm` 在 offscreen 文档里可用**：3.83MB 的 wasm 能否进包、初始化耗时、`cut(text, true)` 的首次调用开销 | 阶段 1 #3 与阶段 2b 的**共同**前置（同一份依赖） | 若初始化太慢 → 惰性加载（首次真要分词时才载）；若体积不可接受 → 回退 `Intl.Segmenter`（已量出它比 jieba 差，见 §3.2）或「全连写」 |
 
-> **V23 预验（2026-10-01，普通页面，非 offscreen）**：web 构建在真 Chromium 里跑通，
-> 数据比预期好 —— `init()` **9ms**（wasm 从 `new URL('jieba_rs_wasm_bg.wasm', import.meta.url)` 取）、
-> 首次 `cut` **116ms**（wasm 内部惰性建词典）、后续 **0.02ms/次**（50 次共 1ms）、
-> `tag()` 可用、`还书` 在 `hmm:true` 下正确连成一个词。
+> **V23 结果（2026-10-01）—— 全部通过，但有一条残留**
 >
-> ⚠️ **但 web 构建必须显式 `await init()`**：它的 `cut` 依赖模块级 `wasm` 变量，
-> 未初始化就调用会抛（Node 构建是自动初始化的，所以**用 Node 测不出这个坑** ——
-> 阶段 1 的 `hanToIpa` 目前是同步的，接入时要处理这个异步初始化）。
-> 剩下没验的是：**WXT 构建会不会把 `.wasm` 正确发进包**（类似 P4 对 ORT wasm 的处理），
-> 以及 offscreen 文档里的行为。
+> **① 普通页面里跑通**：`init()` **9ms**、首次 `cut` **116ms**（wasm 内部惰性建词典）、
+> 后续 **0.02ms/次**（50 次共 1ms）、`tag()` 可用、`还书` 在 `hmm:true` 下正确连成一个词。
+>
+> **② WXT 会把 wasm 发进包，而且只发给 offscreen worker**：
+> `assets/jieba_rs_wasm_bg-qi1WFSCj.wasm`，**4,015,140 字节**；
+> 全包只有 `assets/local.worker-*.js` 一个文件包含 jieba 标记（background / reader /
+> sidepanel 都是 0）。包体积从 24.8 MB 涨到 **28.9 MB**，构建断言已随之更新
+> （并新增一条「jieba 只出现在 offscreen worker」的断言，与 ORT 那条同构）。
+>
+> **③ offscreen 文档里能取到并编译它**（生产构建 + 真 Chromium）：
+> 在 `chrome-extension://<id>/offscreen.html` 上下文里 `fetch` 得 `200 / 4,015,140 字节`，
+> `WebAssembly.compile` 成功，导出 `cut` / `cut_all` / `cut_for_search` / `tokenize` / `add_word`。
+> manifest 的 CSP 已有 `wasm-unsafe-eval`（P4 为 ORT 加的），无需改动。
+> 静态看 URL 也没问题：产物里是 `new URL('/assets/…wasm', self.location.href)` ——
+> **以扩展根为基准的绝对路径**，在 offscreen 文档和嵌套 worker 里解析结果相同。
+>
+> **④ 残留（未能验证）**：**嵌套 worker 里的 `init()` + `cut`**。
+> 它结构性地无法用 e2e 验证 —— e2e 构建把引擎换成 `FakeLocalEngine`，
+> 整棵 ORT + jieba 依赖树被 tree-shake 掉（e2e 包 **762 kB**，生产包 28.9 MB）。
+> 风险低的理由：同一个 origin、同一个 CSP、同一种「打包器发出资源 + 模块去 fetch」机制，
+> 而 ORT 的 wasm 在这条路上已被 P4 V15 实测跑通；jieba 的胶水代码已在 worker chunk 里
+> （构建断言保证）。但「低风险」不等于「已验证」——**首次真实合成时留意日志**。
+>
+> ⚠️ **接入时的坑（已在实现里处理）**：web 构建必须显式 `await init()`，
+> 它的 `cut` 依赖模块级 `wasm` 变量；而 **Node 构建没有默认导出、自初始化**，
+> 所以**用 Node 测不出这个坑**。两个构建的 init API 不同，代码必须兼容两者
+> （见 `ensureJieba`）。
 | **V24** | **阶段 1 的听感**（同一段文本，改动前 vs 改动后） | 阶段 1 的**唯一**判据（§3.7） | 按 A→B→C→D→E 顺序回滚 |
 | **V25** | **`large_pinyin` 差异表的实际体积与抽检准确率** | 阶段 2b 的前置 | 差异表过大 → 只取高频词 |
 | **V26** | **v1.1-zh fp32（324MB）在 offscreen 文档里**：内存占用、session 初始化耗时、RTF、**是否被 30 秒回收打断** | 决定阶段 2 能不能用 | 若被回收：播放前保活（P4 §3.12.3 已有该模式）；若内存不足：降级 wasm 或放弃阶段 2 |

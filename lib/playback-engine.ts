@@ -314,15 +314,10 @@ export class PlaybackEngine {
     if (this.phase !== 'playing' && this.phase !== 'loading') return;
     // Use pause() if the speaker supports it (cloud/local providers), otherwise
     // fall back to stop() (browser voice). Cloud/local providers will emit a
-    // 'paused' event with the current position, which we capture immediately.
+    // 'paused' event with the current position, which we capture via event listener.
     if (this.speaker.pause) {
       this.speaker.pause();
-      // Capture the position immediately. The 'paused' event from offscreen has
-      // already updated lastPausedTimeMs by the time we get here (it's synchronous
-      // through the message channel), so getCurrentTimeMs() returns the right value.
-      this.resumeTimeMs = this.speaker.getCurrentTimeMs?.() ?? 0;
-      console.log('[SayLoud] paused at position', {
-        resumeTimeMs: this.resumeTimeMs,
+      console.log('[SayLoud] pause requested', {
         index: this.index,
         sentence: this.sentences[this.index]?.text.slice(0, 50),
       });
@@ -606,7 +601,13 @@ export class PlaybackEngine {
       }),
       this.speaker.on('word', (span) => this.onWord(span)),
       this.speaker.on('end', () => this.onEnd()),
-      this.speaker.on('error', (message) => this.fail('tts-error', message))
+      this.speaker.on('error', (message) => this.fail('tts-error', message)),
+      this.speaker.on('paused', (currentTimeMs) => {
+        this.resumeTimeMs = currentTimeMs;
+        console.log('[SayLoud] paused event received, updated resumeTimeMs', {
+          resumeTimeMs: this.resumeTimeMs,
+        });
+      })
     );
   }
 

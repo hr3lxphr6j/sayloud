@@ -274,6 +274,7 @@ export class SpeakerRouter implements Speaker {
         this.speaking = false;
         this.emit('error', payload);
       }),
+      this.active.on('paused', (payload) => this.emit('paused', payload)),
     ];
     this.unbind = () => {
       for (const unsubscribe of subscriptions) unsubscribe();

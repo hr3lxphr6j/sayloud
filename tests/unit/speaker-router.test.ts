@@ -462,13 +462,13 @@ describe('SpeakerRouter', () => {
       const ownCloud = fakeSpeaker('cloud');
       const routed = routerOver(source, ownBrowser, ownCloud);
       await routed.refresh();
-      expect(ownCloud.listenerCount).toBe(4);
+      expect(ownCloud.listenerCount).toBe(5);
 
       state.config = null;
       await routed.refresh();
 
       expect(ownCloud.listenerCount).toBe(0);
-      expect(ownBrowser.listenerCount).toBe(4);
+      expect(ownBrowser.listenerCount).toBe(5);
     });
   });
 

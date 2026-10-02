@@ -1,7 +1,8 @@
 /**
  * Volcengine (火山引擎豆包) adapter (spec §2.2).
  *
- * Verified against the live API with a real key on 2026-09-29 (spec §6 V9):
+ * Verified against the live API with a real key on 2026-09-29 (spec §6 V9) and
+ * 2026-10-02 (word timings fix):
  *
  * - `POST {baseUrl}/api/v3/tts/unidirectional`, authenticated with the new
  *   console's `X-Api-Key` plus `X-Api-Resource-Id`. The old console's AppId +
@@ -10,16 +11,14 @@
  * - The body is HTTP chunked, one JSON object per line — **not** SSE, so there
  *   is no `data:` prefix to strip. Every frame is `{code, message, data}` with
  *   `data` holding base64 audio, and the stream ends on `code: 20000000`.
- * - With `enable_timestamp` the service adds a frame carrying
- *   `{sentence: {text, words: [{word, startTime, endTime, confidence}]}}`.
+ * - With `enable_timestamp: true` inside `audio_params`, the service adds a frame
+ *   carrying `{sentence: {text, words: [{word, startTime, endTime, confidence}]}}`.
  *   Times are in **seconds** and there are no character offsets, so the words
  *   are located by text. Only `seed-tts-1.0` reports them; 2.0 synthesizes but
  *   returns an empty `words` array, which leaves sentence-level highlight.
- *
- * The request body is the one part the spike did not record, so it is marked
- * `assumed:` below and Phase 4 has to confirm it against a live key. Where the
- * response is ambiguous the parser accepts aliases, so a mismatch degrades to
- * sentence-level highlight rather than losing the audio.
+ *   **CRITICAL**: `enable_timestamp` must be inside `audio_params`, not at the
+ *   `req_params` level — the wrong position causes the API to return an empty
+ *   `words` array even for seed-tts-1.0.
  */
 
 import { alignTimings } from './align-timings';
@@ -235,20 +234,21 @@ export class VolcengineProvider implements Provider {
         'X-Api-Resource-Id': resourceId,
         'X-Api-Request-Id': crypto.randomUUID(),
       },
-      // assumed: the whole request body. The spike recorded the response, the
-      // headers and the auth, but not the body it sent, so this shape — and in
-      // particular where `enable_timestamp` belongs — has to be confirmed
-      // against a live key in Phase 4. `additions` is the other field the
-      // service documents for extra parameters.
+      // Confirmed on 2026-10-02: enable_timestamp must be inside audio_params.
+      // Placing it at req_params level causes the API to return empty words arrays.
       body: JSON.stringify({
         user: { uid: 'sayloud' },
         req_params: {
           text: request.text,
           speaker: request.voiceId || defaultVoice(resourceId),
-          audio_params: { format: AUDIO_FORMAT, sample_rate: SAMPLE_RATE },
-          // Only 1.0 can answer with timings, so asking the other resources for
-          // them would only add a frame that carries nothing.
-          ...(supportsTimings(resourceId) ? { enable_timestamp: true } : {}),
+          audio_params: {
+            format: AUDIO_FORMAT,
+            sample_rate: SAMPLE_RATE,
+            // Only 1.0 can answer with timings, so asking the other resources for
+            // them would only add a frame that carries nothing.
+            // CRITICAL: enable_timestamp must be inside audio_params, not req_params!
+            ...(supportsTimings(resourceId) ? { enable_timestamp: true } : {}),
+          },
         },
       }),
       signal: request.signal,
@@ -258,7 +258,9 @@ export class VolcengineProvider implements Provider {
       throw mapVolcengineError(response.status, await response.text());
     }
 
-    const stream = parseStream(await response.text());
+    const responseText = await response.text();
+    const stream = parseStream(responseText);
+    
     if (stream.error) {
       // The service also reports failures as a 200 whose frames carry a
       // non-success code, so the stream has to be checked too.

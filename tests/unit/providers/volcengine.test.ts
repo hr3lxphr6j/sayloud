@@ -147,8 +147,7 @@ describe('synthesize', () => {
       req_params: {
         text: '你好世界',
         speaker: 'voice-1',
-        audio_params: { format: 'mp3', sample_rate: 24000 },
-        enable_timestamp: true,
+        audio_params: { format: 'mp3', sample_rate: 24000, enable_timestamp: true },
       },
     });
   });
@@ -172,8 +171,8 @@ describe('synthesize', () => {
       config({ resourceId: 'seed-tts-2.0' })
     );
 
-    expect(bodies[0]?.req_params?.enable_timestamp).toBe(true);
-    expect(bodies[1]?.req_params).not.toHaveProperty('enable_timestamp');
+    expect(bodies[0]?.req_params?.audio_params).toHaveProperty('enable_timestamp', true);
+    expect(bodies[1]?.req_params?.audio_params).not.toHaveProperty('enable_timestamp');
   });
 
   it('assembles the audio from the per-line base64 frames', async () => {

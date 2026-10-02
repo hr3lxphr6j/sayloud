@@ -46,6 +46,9 @@ function synthesize(
     id,
     text: 'hello',
     voiceId: 'v1',
+    // The worker forwards this to the provider untouched and none of these
+    // cases are about it; the ones that do care override it.
+    lang: 'en-US',
     config: CONFIG,
     ...overrides,
   };

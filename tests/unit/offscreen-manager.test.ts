@@ -31,6 +31,7 @@ const SYNTHESIZE: OffscreenCommand = {
   id: 's1',
   text: 'hello',
   voiceId: 'v1',
+  lang: 'en-US',
   config: { provider: 'dashscope', apiKey: 'k' },
 };
 

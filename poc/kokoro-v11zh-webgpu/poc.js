@@ -329,7 +329,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  say('FATAL ' + String(error), 'bad');
+  say(`FATAL ${String(error)}`, 'bad');
   window.__result = { fatal: String(error) };
   window.__done = true;
 });

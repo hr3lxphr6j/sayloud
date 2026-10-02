@@ -62,6 +62,8 @@ export interface SpeakerEvents {
   word: WordSpan;
   end: undefined;
   error: string;
+  /** Emitted when playback is paused, with the current position in milliseconds. */
+  paused: number;
 }
 
 export interface Speaker {

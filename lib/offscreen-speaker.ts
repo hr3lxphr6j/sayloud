@@ -229,6 +229,8 @@ export class OffscreenSpeaker implements Speaker {
       console.log('[SayLoud] offscreen paused event received', {
         currentTimeMs: message.currentTimeMs,
       });
+      // Emit to PlaybackEngine so it can update resumeTimeMs
+      this.emit('paused', message.currentTimeMs);
       return;
     }
 

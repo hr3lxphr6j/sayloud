@@ -17,7 +17,6 @@ import { concatPcm, KOKORO_SAMPLE_RATE, planPieces } from './audio';
 import { abortError, type DeviceInfo, type RawPcm } from './engine';
 import { ChinesePhonemizer } from './phonemize/chinese';
 import { EnglishPhonemizer } from './phonemize/english';
-import { JapanesePhonemizer } from './phonemize/japanese';
 import { isChinese, isJapanese, type Phonemizer } from './phonemize/types';
 import { type ModelTier, modelById, tierById } from './registry';
 
@@ -124,7 +123,12 @@ export class KokoroEngine {
       return this.chinese.phonemize(text, lang);
     }
     if (isJapanese(lang)) {
-      this.japanese ??= new JapanesePhonemizer();
+      // Lazy load Japanese phonemizer to avoid loading Kuroshiro/kuromoji
+      // until actually needed (they're heavy and may fail in some contexts)
+      if (!this.japanese) {
+        const { JapanesePhonemizer } = await import('./phonemize/japanese');
+        this.japanese = new JapanesePhonemizer();
+      }
       return this.japanese.phonemize(text, lang);
     }
     this.english ??= new EnglishPhonemizer();

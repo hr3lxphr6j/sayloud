@@ -202,7 +202,7 @@ const COMMAND_TYPES: ReadonlySet<string> = new Set([
   'stop',
 ]);
 
-const EVENT_TYPES: ReadonlySet<string> = new Set(['ready', 'word', 'sentence-end', 'error']);
+const EVENT_TYPES: ReadonlySet<string> = new Set(['ready', 'word', 'sentence-end', 'paused', 'error']);
 
 /**
  * True for a well-formed command.

@@ -956,25 +956,41 @@ v1.1-zh 的官方前端是 misaki 的 `ZHG2P(version='1.1')` → `ZHFrontend`，
 > 这是本仓库里已存在代码的范围明确改动，**不是架构级改动** —— 按有界路径做，
 > 不需要再写实现计划文档。
 
-#### T1 — 验证点（先做，阻塞后面）
+#### T1 — 验证点 ✅ **已完成（2026-10-02）**
 
-- **V23**：offscreen 文档里跑 `jieba-wasm`（仿 P4 T1 的探针方式）：能否进包、
-  初始化耗时、`cut(text, true)` 的首次调用开销。
-- 产出：结论回写 §5；若 V23 不成立，方案要改（§5 退路）。
+- **V23 通过**，完整结果见 §5。三条已验：普通页面跑通（init 9ms / 首次 cut 116ms /
+  后续 0.02ms）、**WXT 会把 wasm 发进包且只发给 offscreen worker**（4,015,140 字节，
+  包 24.8 → 28.9 MB）、**offscreen 文档能取到并编译它**（真 Chromium，200 +
+  `WebAssembly.compile` 成功）。
+- **一条残留**：嵌套 worker 里的 `init()` + `cut`。e2e 构建把引擎换成
+  `FakeLocalEngine`、整棵 ORT + jieba 依赖树被 tree-shake 掉（e2e 包 762 kB
+  vs 生产 28.9 MB），所以**结构性地无法覆盖**。风险低的理由写在 §5，但未验证。
 
-#### T2 — 词边界换成 jieba（唯一交付）
+#### T2 — 词边界换成 jieba ✅ **已完成（2026-10-02）**，commit `e4c51e3`
 
-- `lib/models/phonemize/chinese.ts`：`hanToIpa` 按 jieba 词切分音节数组，
-  **词内 `join('')`、词间 `join(' ')`**（§3.2）。
-- 接入 `jieba-wasm`，`cut(text, true)` —— **`hmm` 不能省**（§3.2）。
+- `hanToIpa` 按 jieba 词切分音节数组，**词内 `join('')`、词间 `join(' ')`**（§3.2）。
+- 接入 `jieba-wasm`，`cut(text, true)` —— **`hmm` 不能省**（§3.2）。已有一条
+  单测用「`hmm` 一关就分叉」的句子（`他昨天去图书馆还书了。`）钉住它。
 - 顺带（同一个函数、未被单独认定收益，**不要宣传**）：
   标点前不加空格（所有段直接拼接）、删 U+032F（已证 no-op）。
-- 更新既有单测断言 + 新增格式断言 + 字符集断言（§4.2.1）。
+- **接口决定**：`hanToIpa` 保持**同步**，词边界抽成可注入的 `WordBoundaries`；
+  异步初始化只在 `ChinesePhonemizer.phonemize`（已是 async），且仅在用默认实现时执行。
+  单测注入 `singleSyllableWords` 以不依赖 wasm。
+- **踩到的坑**：`jieba-wasm` 的两个构建 init API 不同 —— browser 构建必须显式
+  `await init()`，Node 构建**没有默认导出、自初始化**，所以纯 Node 测试会绿而
+  浏览器会抛（`ensureJieba` 兼容两者）。
+- 全套绿：biome / tsc / **1361 单测** / **10 条构建断言**（新增「jieba 只出现在
+  offscreen worker」一条，与 ORT 那条同构）。
 
-#### T3 — 验收
+#### T3 — 验收 ⏳ **待用户**
 
 - **V24**：用户试听。预期：真实例句上「jieba 是最明显的优化」（§1.7.2 已验）。
 - 若听感变差 → 回滚（改动集中在一个函数，回滚就是 revert）。
+
+> **试听页已与产物对齐**：`gen-variants.mjs` 的 anchor 现在断言
+> `对齐 A+B+D` **逐字符等于真实的 `ChinesePhonemizer`**，**并且**「修复前」与它
+> 不同。两句都要 —— 缺第一句就分不清页面是否在描述一条不存在的管线，
+> 缺第二句就分不清改动是否真的生效。
 
 ---
 

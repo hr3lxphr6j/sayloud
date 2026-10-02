@@ -8,11 +8,16 @@
  */
 import { isChinese, type Phonemizer } from './types';
 
+export type { WordBoundaries } from './chinese';
 export {
   ChinesePhonemizer,
+  ensureJieba,
   hanToIpa,
+  jiebaBoundaries,
+  joinByWords,
   mapPunctuation,
   retone,
+  singleSyllableWords,
   splitRuns,
   TONE_MAPPING,
   UnknownSyllableError,

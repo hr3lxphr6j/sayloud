@@ -1,14 +1,21 @@
 #!/usr/bin/env node
 /**
  * Copy kuromoji dictionary files to public directory.
- * 
+ *
  * This script is run automatically after `pnpm install` to ensure
  * Japanese text-to-speech has the dictionaries it needs for Kanji→Kana
  * conversion.
- * 
+ *
  * The dictionary files (~17MB) are excluded from git tracking but
  * regenerated on every install, so developers don't need to download
  * them manually.
+ *
+ * This is the only reason `kuromoji` is a dependency. The runtime code is
+ * vendored (`lib/vendor/kuromoji`), and the analyzer that used to pull this
+ * package in transitively is vendored too (`lib/vendor/kuroshiro-analyzer-kuromoji`),
+ * so the package is not imported anywhere — but its `dict/*.dat.gz` are the
+ * dictionary data the vendored loader reads at runtime. Removing it silently
+ * costs Japanese its dictionary, hence the explicit dependency.
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -29,7 +36,6 @@ function findKuromojiDict() {
 
   const entries = readdirSync(pnpmDir);
   const kuromojiEntry = entries.find(entry => entry.startsWith('kuromoji@'));
-  
   if (!kuromojiEntry) {
     console.warn('⚠️  kuromoji not found in node_modules, skipping dict setup');
     return null;

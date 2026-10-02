@@ -21,6 +21,7 @@ import {
   phonemizeSpelled,
   segmentText,
 } from './common';
+import { numbersToKanji } from './japanese-numbers';
 import type { Phonemizer } from './types';
 
 /**
@@ -353,8 +354,38 @@ async function initKuroshiro(): Promise<void> {
 }
 
 /**
+ * The numeral sound changes kuromoji does not make.
+ *
+ * It reads the characters one at a time, so 「三百」 comes back サンヒャク where
+ * the language says サンビャク. Five cases, and each is unambiguous in practice:
+ * ヒャク and セン only follow サン, ロク or ハチ inside a numeral, so there is no
+ * other word these patterns could belong to.
+ */
+const NUMERAL_SOUND_CHANGES: readonly (readonly [RegExp, string])[] = [
+  [/サンヒャク/g, 'サンビャク'],
+  [/ロクヒャク/g, 'ロッピャク'],
+  [/ハチヒャク/g, 'ハッピャク'],
+  [/サンセン/g, 'サンゼン'],
+  [/ハチセン/g, 'ハッセン'],
+];
+
+function fixNumeralSoundChanges(katakana: string): string {
+  let out = katakana;
+  for (const [pattern, replacement] of NUMERAL_SOUND_CHANGES) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+/**
  * Convert Japanese text (with Kanji) to Katakana.
  * Works in both worker and main thread contexts.
+ *
+ * Digits are read here as well as in `phonemizeJapanese`, and the duplication is
+ * on purpose: this function's contract is "the reading of this text", so a
+ * caller that passes it `2022年` should get ニセンニジュウニネン and not
+ * `2022ネン`. It costs nothing on the path that already converted them — the
+ * patterns no longer match.
  */
 export async function textToKatakana(text: string): Promise<string> {
   await initKuroshiro();
@@ -363,10 +394,12 @@ export async function textToKatakana(text: string): Promise<string> {
     throw new Error('Kuroshiro failed to initialize');
   }
 
-  return await kuroshiroInstance.convert(text, {
+  const katakana = await kuroshiroInstance.convert(numbersToKanji(text), {
     to: 'katakana',
     mode: 'normal',
   });
+
+  return fixNumeralSoundChanges(katakana);
 }
 
 /**
@@ -374,10 +407,11 @@ export async function textToKatakana(text: string): Promise<string> {
  *
  * Full pipeline:
  * 1. Normalize punctuation (full-width → ASCII, comma → period)
- * 2. Segment into Kana/Latin/Other runs
- * 3. Kana → Kanji conversion (kuroshiro) → IPA
- * 4. Latin → espeak spelled
- * 5. Other → keep recognized punctuation
+ * 2. Read the digits out as kanji, before segmentation can drop them
+ * 3. Segment into Kana/Han/Latin/Other runs
+ * 4. Kana and Han → katakana (kuroshiro + the numeral sound changes) → IPA
+ * 5. Latin → espeak spelled
+ * 6. Other → keep recognized punctuation
  *
  * @param text - Japanese text (may contain Kanji, Kana, Latin, or mixed)
  * @returns IPA phoneme string
@@ -386,8 +420,12 @@ export async function phonemizeJapanese(text: string): Promise<string> {
   // Step 1: Normalize punctuation
   const normalized = normalizePunctuation(text, 'ja-JP');
 
-  // Step 2: Segment into script runs
-  const runs = segmentText(normalized);
+  // Step 2: Turn digits into kanji *before* segmenting. A numeral belongs to no
+  // script this segmenter knows, so it would land in the `other` run and be
+  // filtered out as punctuation — unheard, and silently. Doing it here rather
+  // than per-run also keeps the numeral in the same Han run as what it counts,
+  // which is what decides how that reads (「年」 alone is とし, 「二十二年」 ネン).
+  const runs = segmentText(numbersToKanji(normalized));
 
   // Step 3-5: Process each run
   const parts: string[] = [];

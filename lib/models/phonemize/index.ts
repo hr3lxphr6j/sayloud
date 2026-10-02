@@ -24,6 +24,7 @@ export {
 } from './chinese';
 export { FakePhonemizer, type FakePhonemizerOptions, type PhonemizeCall } from './fake';
 export { JapanesePhonemizer, kanaToIPA, phonemizeJapanese, textToKatakana } from './japanese';
+export { intToKanji, numbersToKanji } from './japanese-numbers';
 export { intToHan, numbersToHan } from './numbers';
 export type { Phonemizer } from './types';
 export { isChinese, isJapanese } from './types';

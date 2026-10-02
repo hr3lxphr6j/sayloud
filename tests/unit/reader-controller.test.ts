@@ -168,4 +168,77 @@ describe('ReaderController', () => {
     controller.dispose();
     document.body.innerHTML = '';
   });
+
+  it('sends stop command on dispose when playing', () => {
+    // When the page navigates away, the content script is disposed and should
+    // stop playback to prevent audio from continuing in the background.
+    document.body.innerHTML = '<article><p>One sentence here.</p></article>';
+
+    const port = fakePort();
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue(
+      port.port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController();
+    controller.connect();
+
+    // Simulate the engine reporting it's playing
+    port.receive({
+      type: 'status',
+      status: {
+        phase: 'playing',
+        index: 0,
+        total: 1,
+        rate: 1,
+        voice: 'test-voice',
+        charsRead: 0,
+        charsTotal: 100,
+        charsPerSec: 10,
+      },
+    });
+
+    port.sent.length = 0;
+    controller.dispose();
+
+    // Should have sent stop command before disconnecting
+    expect(port.sent).toContainEqual({ type: 'stop' });
+
+    document.body.innerHTML = '';
+  });
+
+  it('does not send stop command on dispose when idle', () => {
+    // When not playing, dispose should not send unnecessary stop commands.
+    document.body.innerHTML = '<article><p>One sentence here.</p></article>';
+
+    const port = fakePort();
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue(
+      port.port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController();
+    controller.connect();
+
+    // Simulate the engine reporting it's idle
+    port.receive({
+      type: 'status',
+      status: {
+        phase: 'idle',
+        index: 0,
+        total: 1,
+        rate: 1,
+        voice: 'test-voice',
+        charsRead: 0,
+        charsTotal: 100,
+        charsPerSec: 0,
+      },
+    });
+
+    port.sent.length = 0;
+    controller.dispose();
+
+    // Should not send stop when already idle
+    expect(port.sent).not.toContainEqual({ type: 'stop' });
+
+    document.body.innerHTML = '';
+  });
 });

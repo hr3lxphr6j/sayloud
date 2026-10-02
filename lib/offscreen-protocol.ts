@@ -62,6 +62,7 @@ export type OffscreenEvent =
   | { type: 'ready'; id: string; durationMs: number; hasTimings: boolean }
   | { type: 'word'; id: string; charStart: number; charEnd: number }
   | { type: 'sentence-end'; id: string }
+  | { type: 'paused'; currentTimeMs: number }
   | { type: 'error'; id: string; code: OffscreenErrorCode; message: string };
 
 /**

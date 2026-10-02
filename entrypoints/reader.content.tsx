@@ -57,6 +57,14 @@ export default defineContentScript({
           />,
           container
         );
+        
+        // Ensure cleanup on page navigation: `pagehide` fires before the page
+        // unloads, giving us a chance to stop playback and disconnect cleanly.
+        const handlePageHide = () => {
+          controller.dispose();
+        };
+        window.addEventListener('pagehide', handlePageHide, { once: true });
+        
         return controller;
       },
       onRemove: (controller) => controller?.dispose(),

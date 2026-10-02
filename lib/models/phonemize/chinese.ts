@@ -375,13 +375,18 @@ export type LatinPhonemizer = (text: string) => Promise<string>;
 /**
  * The default Latin front end, imported on first use.
  *
+ * Two things are decided here, and both are about which of espeak's behaviours
+ * the run wants. An initialism is spelled letter by letter (`LLM` → the letters
+ * L-L-M); anything else is handed over as a word (`Agent` → `ˈeɪdʒənt`). The
+ * split is `isInitialism`'s, and its comment records the measurement.
+ *
  * A static import would put 1.3 MB of inlined espeak wasm into the module graph
  * of every test that touches Chinese phonemization, including the ones that
  * never see a Latin character.
  */
 async function defaultLatinPhonemizer(text: string): Promise<string> {
-  const { phonemizeSpelled } = await import('./english');
-  return phonemizeSpelled(text);
+  const { isInitialism, phonemizeEnglish, phonemizeSpelled } = await import('./english');
+  return isInitialism(text) ? phonemizeSpelled(text) : phonemizeEnglish(text);
 }
 
 export class ChinesePhonemizer {

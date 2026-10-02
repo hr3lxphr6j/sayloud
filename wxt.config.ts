@@ -16,10 +16,34 @@ function e2eHostPermissions(): string[] {
 export default defineConfig({
   vite: () => ({
     plugins: [preact()],
-    define: {
-      // Suppress import.meta warning from kokoro-js with iife format
-      'import.meta': '{}',
-    },
+    /**
+     * Do **not** add `define: { 'import.meta': '{}' }` here.
+     *
+     * It looks like a free win: kokoro-js is bundled as `iife`, `import.meta`
+     * is not valid there, and the build prints `[EMPTY_IMPORT_META]` saying
+     * exactly how to silence it. Doing so breaks the extension in a way that
+     * points nowhere near this file.
+     *
+     * `import.meta.url` is how Rolldown names emitted assets: it rewrites each
+     * one into a `{}.ROLLDOWN_FILE_URL_<hash>` placeholder and substitutes the
+     * real path in a later pass. A blanket `define` replaces `import.meta`
+     * first, so the placeholder survives into the bundle and evaluates to
+     * `undefined`. Two things silently lose their URL:
+     *
+     *   - `new Worker(new URL(…, import.meta.url))` in `models/worker-engine`
+     *     — the worker is never created, and every synthesis fails with
+     *     "the on-device worker stopped".
+     *   - ONNX Runtime's `wasmPaths` (local.worker.ts) — the wasm backend
+     *     cannot load even if the worker does start.
+     *
+     * The warning itself is harmless: nothing here needs `import.meta`, and the
+     * empty object is only reached inside kokoro-js's own iife bundle.
+     *
+     * After a build, no placeholder may survive anywhere in `.output`:
+     *   rg 'ROLLDOWN_FILE_URL' .output
+     * and the worker URL must be a real path, not `undefined`:
+     *   rg -o 'new Worker\(new URL\([^)]*' .output/chrome-mv3/chunks/offscreen-*.js
+     */
   }),
   /**
    * Dev mode only, and not cosmetic.

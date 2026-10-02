@@ -25,16 +25,33 @@ import { numbersToKanji } from './japanese-numbers';
 import type { Phonemizer } from './types';
 
 /**
- * Katakana to IPA mapping table.
- * Extracted from hexgrad/misaki ja.py M2P dictionary.
+ * Katakana to IPA: one entry per mora, and one per palatalized or foreign pair.
  *
- * Key differences from kana2ipa:
- * - 'は' → 'ha' (not 'ɰa')
- * - 'を' → 'o'
- * - Palatalized consonants: 'キャ' → 'kja' (not 'kʲa')
+ * Taken from hexgrad/misaki's `ja.py` M2P dictionary, because that is what
+ * Kokoro's Japanese was trained on — but **not verbatim**, and the difference is
+ * the whole reason this table is 193 entries rather than the 89 it used to be.
+ *
+ * Kokoro's tokenizer carries a `Replace` normalizer that deletes every character
+ * outside its vocabulary (`tokenizer.json`, 115 tokens). A symbol it does not
+ * know is therefore not approximated — it vanishes, taking the mora with it.
+ * Five groups of misaki symbols are not in that vocabulary, and each is written
+ * here as characters that are:
+ *
+ *   - `ᶄ` `ᶃ` `ᶀ` `ᶁ` `ᶆ` `ᶈ` `ᶉ` `ƫ` — the palatalized consonants, written with a
+ *     `j` glide: キャ is `kja`, ギャ is `ɡja`, リャ is `rja`.
+ *   - `K` and `G`, misaki's spellings for クァ/グァ — written `kw` and `ɡw`.
+ *   - ASCII `g`. The vocabulary holds `ɡ` (U+0261) and **not** `g`, so every
+ *     ガ-row mora was read as its vowel alone — ガ came out `a` — until this was
+ *     caught. That bug predates the palatalization work and is unrelated to it.
+ *
+ * `ッ` and `ー` are ordinary entries rather than special cases: misaki maps them
+ * to `ʔ` and `ː`, and both are in the vocabulary.
+ *
+ * Palatalization is a `j` glide and not `ʲ`: the earlier note here claimed
+ * misaki's `ᶄa` meant `kja`, but what it actually meant is that misaki's own
+ * symbol had to be replaced with something the tokenizer keeps.
  */
-const KATAKANA_TO_IPA: Record<string, string> = {
-  // Vowels
+export const KATAKANA_TO_IPA: Record<string, string> = {
   ァ: 'a',
   ア: 'a',
   ィ: 'i',
@@ -45,20 +62,16 @@ const KATAKANA_TO_IPA: Record<string, string> = {
   エ: 'e',
   ォ: 'o',
   オ: 'o',
-
-  // K-series
   カ: 'ka',
-  ガ: 'ga',
+  ガ: 'ɡa',
   キ: 'ki',
-  ギ: 'gi',
+  ギ: 'ɡi',
   ク: 'ku',
-  グ: 'gu',
+  グ: 'ɡu',
   ケ: 'ke',
-  ゲ: 'ge',
+  ゲ: 'ɡe',
   コ: 'ko',
-  ゴ: 'go',
-
-  // S-series
+  ゴ: 'ɡo',
   サ: 'sa',
   ザ: 'za',
   シ: 'ɕi',
@@ -69,8 +82,6 @@ const KATAKANA_TO_IPA: Record<string, string> = {
   ゼ: 'ze',
   ソ: 'so',
   ゾ: 'zo',
-
-  // T-series
   タ: 'ta',
   ダ: 'da',
   チ: 'ʨi',
@@ -81,16 +92,11 @@ const KATAKANA_TO_IPA: Record<string, string> = {
   デ: 'de',
   ト: 'to',
   ド: 'do',
-
-  // N-series
   ナ: 'na',
   ニ: 'ni',
   ヌ: 'nu',
   ネ: 'ne',
   ノ: 'no',
-  ン: 'ɴ',
-
-  // H-series
   ハ: 'ha',
   バ: 'ba',
   パ: 'pa',
@@ -106,37 +112,27 @@ const KATAKANA_TO_IPA: Record<string, string> = {
   ホ: 'ho',
   ボ: 'bo',
   ポ: 'po',
-
-  // M-series
   マ: 'ma',
   ミ: 'mi',
   ム: 'mu',
   メ: 'me',
   モ: 'mo',
-
-  // Y-series
   ャ: 'ja',
   ヤ: 'ja',
   ュ: 'ju',
   ユ: 'ju',
   ョ: 'jo',
   ヨ: 'jo',
-
-  // R-series
   ラ: 'ra',
   リ: 'ri',
   ル: 'ru',
   レ: 're',
   ロ: 'ro',
-
-  // W-series
   ヮ: 'wa',
   ワ: 'wa',
   ヰ: 'i',
   ヱ: 'e',
   ヲ: 'o',
-
-  // V-series
   ヴ: 'vu',
   ヵ: 'ka',
   ヶ: 'ke',
@@ -144,6 +140,111 @@ const KATAKANA_TO_IPA: Record<string, string> = {
   ヸ: 'vi',
   ヹ: 've',
   ヺ: 'vo',
+  イェ: 'je',
+  ウィ: 'wi',
+  ウゥ: 'wu',
+  ウェ: 'we',
+  ウォ: 'wo',
+  キィ: 'kji',
+  キェ: 'kje',
+  キャ: 'kja',
+  キュ: 'kju',
+  キョ: 'kjo',
+  ギィ: 'ɡji',
+  ギェ: 'ɡje',
+  ギャ: 'ɡja',
+  ギュ: 'ɡju',
+  ギョ: 'ɡjo',
+  クァ: 'kwa',
+  クィ: 'kwi',
+  クゥ: 'kwu',
+  クェ: 'kwe',
+  クォ: 'kwo',
+  クヮ: 'kwa',
+  グァ: 'ɡwa',
+  グィ: 'ɡwi',
+  グゥ: 'ɡwu',
+  グェ: 'ɡwe',
+  グォ: 'ɡwo',
+  グヮ: 'ɡwa',
+  シェ: 'ɕe',
+  シャ: 'ɕa',
+  シュ: 'ɕu',
+  ショ: 'ɕo',
+  ジェ: 'ʥe',
+  ジャ: 'ʥa',
+  ジュ: 'ʥu',
+  ジョ: 'ʥo',
+  スィ: 'si',
+  ズィ: 'zi',
+  チェ: 'ʨe',
+  チャ: 'ʨa',
+  チュ: 'ʨu',
+  チョ: 'ʨo',
+  ヂェ: 'ʥe',
+  ヂャ: 'ʥa',
+  ヂュ: 'ʥu',
+  ヂョ: 'ʥo',
+  ツァ: 'ʦa',
+  ツィ: 'ʦi',
+  ツェ: 'ʦe',
+  ツォ: 'ʦo',
+  ティ: 'ti',
+  テェ: 'tje',
+  テャ: 'tja',
+  テュ: 'tju',
+  テョ: 'tjo',
+  ディ: 'di',
+  デェ: 'dje',
+  デャ: 'dja',
+  デュ: 'dju',
+  デョ: 'djo',
+  トゥ: 'tu',
+  ドゥ: 'du',
+  ニィ: 'ɲi',
+  ニェ: 'ɲe',
+  ニャ: 'ɲa',
+  ニュ: 'ɲu',
+  ニョ: 'ɲo',
+  ヒィ: 'çi',
+  ヒェ: 'çe',
+  ヒャ: 'ça',
+  ヒュ: 'çu',
+  ヒョ: 'ço',
+  ビィ: 'bji',
+  ビェ: 'bje',
+  ビャ: 'bja',
+  ビュ: 'bju',
+  ビョ: 'bjo',
+  ピィ: 'pji',
+  ピェ: 'pje',
+  ピャ: 'pja',
+  ピュ: 'pju',
+  ピョ: 'pjo',
+  ファ: 'fa',
+  フィ: 'fi',
+  フェ: 'fe',
+  フォ: 'fo',
+  ミィ: 'mji',
+  ミェ: 'mje',
+  ミャ: 'mja',
+  ミュ: 'mju',
+  ミョ: 'mjo',
+  リィ: 'rji',
+  リェ: 'rje',
+  リャ: 'rja',
+  リュ: 'rju',
+  リョ: 'rjo',
+  ヴァ: 'va',
+  ヴィ: 'vi',
+  ヴェ: 've',
+  ヴォ: 'vo',
+  ヴャ: 'bja',
+  ヴュ: 'bju',
+  ヴョ: 'bjo',
+  ッ: 'ʔ',
+  ン: 'ɴ',
+  ー: 'ː',
 };
 
 /**
@@ -292,14 +393,6 @@ export function kanaToIPA(kana: string): string {
     // Single character
     if (char && KATAKANA_TO_IPA[char]) {
       ipa += KATAKANA_TO_IPA[char];
-    } else if (char === 'ッ') {
-      // Geminate consonant (sokuon) - handled by doubling next consonant
-      // For now, just skip it (proper handling needs context)
-      // TODO: implement gemination
-    } else if (char === 'ー') {
-      // Long vowel marker - handled by context
-      // For now, just skip it
-      // TODO: implement vowel lengthening
     } else if (char) {
       // Unknown character - keep as-is
       ipa += char;

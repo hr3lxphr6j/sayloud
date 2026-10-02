@@ -37,7 +37,14 @@ function fakeArea(initial: Record<string, unknown> = {}): SessionStorageArea {
       return { [key]: data.get(key) };
     },
     async set(items) {
-      for (const [key, value] of Object.entries(items)) data.set(key, value);
+      for (const [key, value] of Object.entries(items)) {
+        // Chrome storage API behavior: setting undefined removes the key
+        if (value === undefined) {
+          data.delete(key);
+        } else {
+          data.set(key, value);
+        }
+      }
     },
     async remove(key) {
       data.delete(key);
@@ -88,7 +95,7 @@ function build(initial: Record<string, unknown> = {}) {
     speaker: fakeSpeaker(),
     resolveVoice: (lang) => voices.resolve(lang),
   });
-  const snapshots = new SnapshotStore(fakeArea(initial));
+  const snapshots = new SnapshotStore(fakeArea(initial), fakeArea());
   const router = new SessionRouter({ engine, snapshots, voices });
 
   return { tts, voices, engine, snapshots, router };

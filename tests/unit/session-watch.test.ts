@@ -22,7 +22,14 @@ function fakeArea(initial: Record<string, unknown> = {}) {
       return { [key]: data.get(key) };
     },
     async set(items) {
-      for (const [key, value] of Object.entries(items)) data.set(key, value);
+      for (const [key, value] of Object.entries(items)) {
+        // Chrome storage API behavior: setting undefined removes the key
+        if (value === undefined) {
+          data.delete(key);
+        } else {
+          data.set(key, value);
+        }
+      }
     },
     async remove(key) {
       data.delete(key);
@@ -48,30 +55,46 @@ function fakeChanges() {
 
 describe('SessionWatch', () => {
   it('reads the snapshot the service worker published', async () => {
-    const fake = fakeArea({ [SNAPSHOT_KEY]: SNAPSHOT });
-    const watch = new SessionWatch(new SnapshotStore(fake.area), fakeChanges().changes);
+    const fakeSession = fakeArea({ [SNAPSHOT_KEY]: SNAPSHOT });
+    const fakeLocal = fakeArea();
+    const watch = new SessionWatch(
+      new SnapshotStore(fakeSession.area, fakeLocal.area),
+      fakeChanges().changes
+    );
 
     expect(await watch.load()).toEqual(SNAPSHOT);
   });
 
   it('reports no session when the snapshot is absent', async () => {
-    const fake = fakeArea();
-    const watch = new SessionWatch(new SnapshotStore(fake.area), fakeChanges().changes);
+    const fakeSession = fakeArea();
+    const fakeLocal = fakeArea();
+    const watch = new SessionWatch(
+      new SnapshotStore(fakeSession.area, fakeLocal.area),
+      fakeChanges().changes
+    );
 
     expect(await watch.load()).toBeNull();
   });
 
   it('ignores a snapshot that fails validation', async () => {
-    const fake = fakeArea({ [SNAPSHOT_KEY]: { tabId: 'three' } });
-    const watch = new SessionWatch(new SnapshotStore(fake.area), fakeChanges().changes);
+    const fakeSession = fakeArea({ [SNAPSHOT_KEY]: { tabId: 'three' } });
+    const fakeLocal = fakeArea();
+    const watch = new SessionWatch(
+      new SnapshotStore(fakeSession.area, fakeLocal.area),
+      fakeChanges().changes
+    );
 
     expect(await watch.load()).toBeNull();
   });
 
   it('calls the listener when the snapshot changes', () => {
-    const fake = fakeArea();
+    const fakeSession = fakeArea();
+    const fakeLocal = fakeArea();
     const changeApi = fakeChanges();
-    const watch = new SessionWatch(new SnapshotStore(fake.area), changeApi.changes);
+    const watch = new SessionWatch(
+      new SnapshotStore(fakeSession.area, fakeLocal.area),
+      changeApi.changes
+    );
     const listener = vi.fn();
 
     watch.subscribe(listener);
@@ -81,9 +104,13 @@ describe('SessionWatch', () => {
   });
 
   it('ignores changes to other keys in the session area', () => {
-    const fake = fakeArea();
+    const fakeSession = fakeArea();
+    const fakeLocal = fakeArea();
     const changeApi = fakeChanges();
-    const watch = new SessionWatch(new SnapshotStore(fake.area), changeApi.changes);
+    const watch = new SessionWatch(
+      new SnapshotStore(fakeSession.area, fakeLocal.area),
+      changeApi.changes
+    );
     const listener = vi.fn();
 
     watch.subscribe(listener);
@@ -93,9 +120,13 @@ describe('SessionWatch', () => {
   });
 
   it('ignores changes in another area', () => {
-    const fake = fakeArea();
+    const fakeSession = fakeArea();
+    const fakeLocal = fakeArea();
     const changeApi = fakeChanges();
-    const watch = new SessionWatch(new SnapshotStore(fake.area), changeApi.changes);
+    const watch = new SessionWatch(
+      new SnapshotStore(fakeSession.area, fakeLocal.area),
+      changeApi.changes
+    );
     const listener = vi.fn();
 
     watch.subscribe(listener);
@@ -105,9 +136,13 @@ describe('SessionWatch', () => {
   });
 
   it('stops listening once unsubscribed', () => {
-    const fake = fakeArea();
+    const fakeSession = fakeArea();
+    const fakeLocal = fakeArea();
     const changeApi = fakeChanges();
-    const watch = new SessionWatch(new SnapshotStore(fake.area), changeApi.changes);
+    const watch = new SessionWatch(
+      new SnapshotStore(fakeSession.area, fakeLocal.area),
+      changeApi.changes
+    );
     const listener = vi.fn();
 
     const unsubscribe = watch.subscribe(listener);

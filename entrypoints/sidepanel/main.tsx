@@ -40,7 +40,10 @@ render(
       probe: () => probeDevice(navigator.gpu),
     }}
     session={
-      new SessionWatch(new SnapshotStore(browser.storage.session), browser.storage.onChanged)
+      new SessionWatch(
+        new SnapshotStore(browser.storage.session, browser.storage.local),
+        browser.storage.onChanged
+      )
     }
   />,
   root

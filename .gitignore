@@ -20,3 +20,6 @@ __pycache__/
 
 # Kuromoji dictionaries (auto-generated on install)
 public/kuromoji-dict/
+
+# POC and test scripts
+poc/

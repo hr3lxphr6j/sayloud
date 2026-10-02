@@ -1,19 +1,24 @@
 /**
- * The phonemizer (P4 spec §3.11, §3.8.1).
+ * The phonemizer (P4 spec §3.11, P5 spec §3).
  *
- * The Chinese path is pure JavaScript — pinyin-pro plus a generated lookup
- * table — so it is tested for real here. The English path is espeak-ng's wasm;
- * only its language mapping and the *dispatch* are exercised, because loading
- * the wasm is exactly what `FakePhonemizer` exists to avoid. The real English
- * audio is covered by the manual acceptance run (spec §9).
+ * The Chinese path is pinyin-pro plus a generated lookup table plus jieba-wasm
+ * for word boundaries, so it is tested for real here — including the wasm, which
+ * loads in about 125 ms once (see `ensureJieba`). The English path is espeak-ng's
+ * wasm; only its language mapping and the *dispatch* are exercised, because
+ * loading the wasm is exactly what `FakePhonemizer` exists to avoid. The real
+ * English audio is covered by the manual acceptance run (spec §9).
  */
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { phonemizerFor } from '~/lib/models/phonemize';
 import {
   ChinesePhonemizer,
+  ensureJieba,
   hanToIpa,
+  jiebaBoundaries,
+  joinByWords,
   mapPunctuation,
   retone,
+  singleSyllableWords,
   splitRuns,
   TONE_MAPPING,
   UnknownSyllableError,
@@ -25,9 +30,6 @@ import { isChinese } from '~/lib/models/phonemize/types';
 import { KOKORO_VOCAB } from './kokoro-vocab';
 
 const ENTRIES = table as Record<string, string>;
-
-/** A Latin front end that never loads espeak, for the mixed-text tests. */
-const latin = async (text: string): Promise<string> => `«${text}»`;
 
 const TONE_LETTERS = ['˥', '˧', '˩'];
 const ARROWS = ['↓', '→', '↗', '↘'];
@@ -177,12 +179,18 @@ describe('splitRuns', () => {
 });
 
 describe('hanToIpa', () => {
+  // These exercise the syllable table, not the word boundaries, so they ask for
+  // one word per syllable: it keeps the expected strings about the syllables and
+  // keeps the 3.8 MB jieba wasm out of this file. The spacing itself is covered
+  // by the `word boundaries` block below.
+  const syllables = (han: string) => hanToIpa(han, han, singleSyllableWords);
+
   it('produces the verified IPA for a sentence', () => {
-    expect(hanToIpa('你好世界')).toBe('ni↓ xau̯↓ ʂɻ̩↘ ʨje↘');
+    expect(syllables('你好世界')).toBe('ni↓ xau↓ ʂɻ̩↘ ʨje↘');
   });
 
   it('gives the four tones four different shapes', () => {
-    const [first, second, third, fourth] = ['妈', '麻', '马', '骂'].map((c) => hanToIpa(c));
+    const [first, second, third, fourth] = ['妈', '麻', '马', '骂'].map(syllables);
     expect([first, second, third, fourth]).toEqual(['ma→', 'ma↗', 'ma↓', 'ma↘']);
     expect(new Set([first, second, third, fourth]).size).toBe(4);
   });
@@ -191,8 +199,8 @@ describe('hanToIpa', () => {
     // pinyin-pro reports the neutral tone as `0`; the table and TONE_MAPPING
     // use `5`. Skipping the mapping drops the tone *and* leaves the `0` in the
     // IPA, so the syllable would be read as a digit.
-    expect(hanToIpa('吗')).toBe('ma');
-    expect(hanToIpa('吗')).not.toContain('0');
+    expect(syllables('吗')).toBe('ma');
+    expect(syllables('吗')).not.toContain('0');
   });
 
   it('resolves a syllable spelled with ü', () => {
@@ -200,33 +208,92 @@ describe('hanToIpa', () => {
     // it `ü`, so the lookup has to translate. Without that these characters
     // vanish from the audio without an error — the verification script had
     // exactly this bug, and its five test sentences happened not to contain one.
-    expect(hanToIpa('女')).toBe('ny↓');
-    expect(hanToIpa('绿')).toBe('ly↘');
-    expect(hanToIpa('略')).toBe('lɥe↘');
-    expect(hanToIpa('虐')).toBe('nɥe↘');
+    expect(syllables('女')).toBe('ny↓');
+    expect(syllables('绿')).toBe('ly↘');
+    expect(syllables('略')).toBe('lɥe↘');
+    expect(syllables('虐')).toBe('nɥe↘');
+  });
+
+  it('deletes U+032F, as misaki does', () => {
+    // misaki's legacy path ends with `replace(chr(815), '')`. The tokenizer's
+    // normalizer would drop it anyway, but matching the training target exactly
+    // is what makes `compare-legacy-g2p.py` able to compare strictly rather than
+    // normalise the difference away. 好 has the mark (`xau̯`), 你 does not.
+    expect(syllables('好')).toBe('xau↓');
+    expect(syllables('好')).not.toContain('\u032F');
   });
 
   it('raises rather than returning nothing for a character it cannot read', () => {
     // U+3400 is in the Han range but absent from pinyin-pro's dictionary.
-    expect(() => hanToIpa('㐀')).toThrow(UnknownSyllableError);
-    expect(() => hanToIpa('你好㐀')).toThrow(/pinyin-pro could not read/);
+    expect(() => syllables('㐀')).toThrow(UnknownSyllableError);
+    expect(() => syllables('你好㐀')).toThrow(/pinyin-pro could not read/);
+  });
+});
+
+describe('joinByWords', () => {
+  it('concatenates inside a word and separates between words', () => {
+    expect(joinByWords(['ni↓', 'xau↓', 'ʂɻ̩↘', 'ʨje↘'], [2, 2], 'test')).toBe('ni↓xau↓ ʂɻ̩↘ʨje↘');
+  });
+
+  it('is the identity when every word is one syllable', () => {
+    expect(joinByWords(['a', 'b', 'c'], [1, 1, 1], 'test')).toBe('a b c');
+  });
+
+  it('refuses boundaries that do not cover the syllables', () => {
+    // The boundaries come from jieba and the syllables from pinyin-pro, so they
+    // can disagree. Slicing on a wrong boundary moves a syllable into the
+    // neighbouring word — audible, and silent about it.
+    expect(() => joinByWords(['a', 'b', 'c'], [2], 'test')).toThrow(/cover 2 of 3/);
+    expect(() => joinByWords(['a', 'b'], [1, 1, 1], 'test')).toThrow(/cover 3 of 2/);
+  });
+});
+
+describe('jieba word boundaries', () => {
+  beforeAll(async () => {
+    await ensureJieba();
+  });
+
+  it('groups a word into one unit, so no pause lands inside it', () => {
+    // The user's report: 人设 and 曾经 were being split, and the model paused
+    // between the characters. One word means one unit means no boundary.
+    expect(jiebaBoundaries('人设')).toEqual([2]);
+    expect(jiebaBoundaries('曾经')).toEqual([2]);
+    expect(jiebaBoundaries('你好世界')).toEqual([2, 2]);
+  });
+
+  it('leaves 还书 whole, which is what hmm: true buys', () => {
+    // jieba-wasm ships jieba-rs's dictionary, not Python jieba's dict.txt, and
+    // 还书 is where the two differ — but only with HMM off. `cut(text, false)`
+    // gives 还|书; Python's `jieba.lcut` has HMM on by default, so `cut(text,
+    // true)` is the matching call. Measured on 24 sentences they agree 24/24
+    // with HMM on and diverge on the first one with it off.
+    expect(jiebaBoundaries('他昨天去图书馆还书了。')).toEqual([1, 2, 1, 3, 2, 1, 1]);
   });
 });
 
 describe('ChinesePhonemizer', () => {
+  const latin = async (text: string): Promise<string> => `«${text}»`;
   const phonemizer = new ChinesePhonemizer(latin);
 
+  beforeAll(async () => {
+    await ensureJieba();
+  });
+
   it('reproduces the verified mixed pipeline', async () => {
-    // The spec's own §3.11.7 example, which exercises numerals, punctuation
-    // and the tone sandhi pinyin-pro applies to 增长 (zēng zhǎng, not cháng).
+    // The spec's own §3.11.7 example, which exercises numerals, punctuation and
+    // the tone sandhi pinyin-pro applies to 增长 (zēng zhǎng, not cháng). Note
+    // the spacing: one space between words, none inside them.
     await expect(phonemizer.phonemize('第 3 季度营收增长了 15.6%。', 'zh-CN')).resolves.toBe(
-      'ti↘ sa→n ʨi↘ tu↘ i↗ŋ ʂou̯→ ʦə→ŋ ꭧa↓ŋ lɤ pai̯↓ fə→n ꭧɻ̩→ ʂɻ̩↗ u↓ tjɛ↓n ljou̯↘ .'
+      'ti↘ sa→n ʨi↘tu↘ i↗ŋʂou→ ʦə→ŋꭧa↓ŋ lɤ pai↓fə→nꭧɻ̩→ʂɻ̩↗u↓ tjɛ↓nljou↘.'
     );
   });
 
   it('spells Latin runs out through the Latin front end', async () => {
+    // The spaces around `API` are the original text's, not ours — the runs are
+    // concatenated with nothing inserted, so the only spaces are the ones the
+    // text and the word boundaries already carry.
     await expect(phonemizer.phonemize('这里有个 API 接口。', 'zh-CN')).resolves.toBe(
-      'ꭧɤ↘ li↓ jou̯↓ kɤ↘ «API» ʨje→ kʰou̯↓ .'
+      'ꭧɤ↘li↓ jou↓kɤ↘ «API» ʨje→kʰou↓.'
     );
   });
 
@@ -234,11 +301,19 @@ describe('ChinesePhonemizer', () => {
     // `-` and `%` are not in Kokoro's vocabulary. Emitting them would be
     // pointless at best; the percent sign in particular is already spoken by
     // the numeral conversion.
-    await expect(phonemizer.phonemize('好-坏', 'zh-CN')).resolves.toBe('xau̯↓ xwai̯↘');
+    await expect(phonemizer.phonemize('好-坏', 'zh-CN')).resolves.toBe('xau↓xwai↘');
+  });
+
+  it('puts punctuation flush against the phoneme before it', async () => {
+    // misaki appends each non-Han segment verbatim, and `mapPunctuation` emits
+    // `", "` — the space comes *after* the mark. `parts.join(' ')` used to put
+    // one in front of every mark as well, which is the deviation the P5 spec
+    // calls B.
+    await expect(phonemizer.phonemize('你好世界。', 'zh-CN')).resolves.toBe('ni↓xau↓ ʂɻ̩↘ʨje↘.');
   });
 
   it('collapses whitespace', async () => {
-    await expect(phonemizer.phonemize('你好   世界', 'zh-CN')).resolves.toBe('ni↓ xau̯↓ ʂɻ̩↘ ʨje↘');
+    await expect(phonemizer.phonemize('你好   世界', 'zh-CN')).resolves.toBe('ni↓xau↓ ʂɻ̩↘ʨje↘');
   });
 
   it('survives being called concurrently', async () => {
@@ -249,8 +324,8 @@ describe('ChinesePhonemizer', () => {
       phonemizer.phonemize('你好世界。', 'zh-CN'),
       phonemizer.phonemize('妈麻马骂。', 'zh-CN'),
     ]);
-    expect(a).toBe('ni↓ xau̯↓ ʂɻ̩↘ ʨje↘ .');
-    expect(b).toBe('ma→ ma↗ ma↓ ma↘ .');
+    expect(a).toBe('ni↓xau↓ ʂɻ̩↘ʨje↘.');
+    expect(b).toBe('ma→ma↗ma↓ ma↘.');
   });
 
   it('returns nothing for text with nothing to say', async () => {

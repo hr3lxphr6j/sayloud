@@ -21,6 +21,9 @@
  *    of `voices/*.bin`. They are fetched at runtime into `kokoro-voices`, and a
  *    bundler that decides they are assets would add them to the package and
  *    make the extension ten times bigger.
+ * 3. **jieba's segmenter reaching a page that does not phonemize.** Its wasm is
+ *    4 MB and its glue about 1.5 MB of the worker chunk. Same structural
+ *    guarantee as ONNX Runtime, same reason to check it.
  *
  * Run with `pnpm test:build`, which builds first. It is deliberately not part
  * of `pnpm test`: that suite runs without a build, and a test that silently
@@ -43,9 +46,25 @@ const OUTPUT_DIR = resolve(process.cwd(), '.output/chrome-mv3');
  */
 const ORT_MARKERS = ['onnxruntime', 'InferenceSession', 'wasmPaths', 'ort-wasm'] as const;
 
-/** Measured 24.8 MB: a 21.6 MB wasm, a 2.5 MB worker chunk, and the rest. */
-const MIN_BYTES = 24_000_000;
-const MAX_BYTES = 26_000_000;
+/**
+ * Strings that only appear in a bundle carrying jieba's segmenter.
+ *
+ * `jieba` is the package's own name and `jieba_rs_wasm_bg-` is the hashed name
+ * of the binary it fetches, so together they cover both "the glue reached this
+ * chunk" and "this chunk knows where the wasm is". The second matters because
+ * the worker hands the name to `init()` itself — nothing else would notice if
+ * the two drifted apart.
+ */
+const JIEBA_MARKERS = ['jieba', 'jieba_rs_wasm_bg-'] as const;
+
+/**
+ * Measured 28.9 MB: ONNX Runtime's 21.6 MB wasm, jieba's 4.0 MB wasm, the 2.5 MB
+ * worker chunk, and the rest. It was 24.8 MB before the segmenter landed; the
+ * bound moved by about what the wasm weighs, which is the point of keeping it
+ * tight.
+ */
+const MIN_BYTES = 27_000_000;
+const MAX_BYTES = 31_000_000;
 
 interface BuiltFile {
   /** Path relative to the output directory, POSIX-separated. */
@@ -185,6 +204,13 @@ function carriesOrt(path: string): boolean {
   return ORT_MARKERS.some((marker) => text.includes(marker));
 }
 
+/** Whether this file's code mentions jieba. JavaScript only, as above. */
+function carriesJieba(path: string): boolean {
+  if (!path.endsWith('.js')) return false;
+  const { text } = readBuiltFile(path);
+  return JIEBA_MARKERS.some((marker) => text.includes(marker));
+}
+
 const manifest = JSON.parse(readBuiltFile('manifest.json').text) as {
   background?: { service_worker?: string; scripts?: string[] };
   side_panel?: { default_path?: string };
@@ -239,14 +265,41 @@ describe('the build output', () => {
     expect(FILES.filter(carriesOrt)).toEqual(carrying);
   });
 
-  it('ships the wasm the runtime loads, and only that one', () => {
+  it('ships the wasm the runtime loads, and only those', () => {
     const wasm = FILES.filter((path) => path.endsWith('.wasm'));
 
-    expect(wasm).toHaveLength(1);
-    // The jsep build covers both the WebGPU and the wasm backends, so a second
-    // binary would be 21 MB of dead weight (spec §1.4).
-    expect(wasm[0]).toMatch(/^assets\/ort-wasm-simd-threaded\.jsep-.*\.wasm$/);
-    expect(statSync(join(OUTPUT_DIR, wasm[0] as string)).size).toBe(21_596_019);
+    // Exactly two: ONNX Runtime's and jieba's. Both are singletons — the jsep
+    // build covers the WebGPU and wasm backends, so a second ORT binary would
+    // be 21 MB of dead weight (spec §1.4), and a second jieba binary would be
+    // 4 MB of the same.
+    expect(wasm).toHaveLength(2);
+
+    const ort = wasm.filter((path) => /ort-wasm-simd-threaded\.jsep-.*\.wasm$/.test(path));
+    expect(ort).toHaveLength(1);
+    expect(statSync(join(OUTPUT_DIR, ort[0] as string)).size).toBe(21_596_019);
+
+    const jieba = wasm.filter((path) => /jieba_rs_wasm_bg-.*\.wasm$/.test(path));
+    expect(jieba).toHaveLength(1);
+    expect(statSync(join(OUTPUT_DIR, jieba[0] as string)).size).toBe(4_015_140);
+  });
+
+  it('ships jieba exactly where it is needed: the offscreen worker', () => {
+    // Same structural guarantee as ONNX Runtime, and worth the same test: 4 MB
+    // of wasm plus its glue is too much to leave one stray import away from the
+    // side panel.
+    const carrying = FILES.filter(carriesJieba);
+
+    expect(carrying).toHaveLength(1);
+    expect(carrying[0]).toMatch(/^assets\/local\.worker-/);
+    expect(FILES.filter(carriesJieba)).toEqual(carrying);
+
+    // And the worker names the binary that was actually emitted. It hands the
+    // path to jieba's own `init()`, so nothing else would notice a rename.
+    const jiebaWasm = FILES.find((path) => /jieba_rs_wasm_bg-.*\.wasm$/.test(path));
+    expect(jiebaWasm).toBeDefined();
+    expect(readBuiltFile(carrying[0] as string).text).toContain(
+      posix.basename(jiebaWasm as string)
+    );
   });
 
   it('ships the glue module ONNX Runtime imports at runtime', () => {

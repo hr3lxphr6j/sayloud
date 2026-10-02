@@ -52,6 +52,7 @@ export interface AudioTimeline {
   stop(): void;
   setRate(rate: number): void;
   setVolume(volume: number): void;
+  getCurrentTimeMs(): number | undefined;
 }
 
 export interface AudioWorkerDeps {
@@ -188,6 +189,10 @@ export class AudioWorker {
         return undefined;
       case 'pause':
         this.player.pause();
+        // Report the current playback position so the engine can resume from
+        // the exact position later.
+        const currentTimeMs = this.player.getCurrentTimeMs() ?? 0;
+        this.emit({ type: 'paused', currentTimeMs });
         return undefined;
       case 'setRate':
         this.player.setRate(command.rate);

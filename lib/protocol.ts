@@ -52,4 +52,10 @@ export interface SessionSnapshot {
   voice: string;
   rate: number;
   charsRead: number;
+  /**
+   * Audio playback position within the current sentence, in milliseconds.
+   * Used to resume from the exact position when paused. Only meaningful for
+   * cloud and local providers; browser voice always restarts from the beginning.
+   */
+  resumeTimeMs?: number;
 }

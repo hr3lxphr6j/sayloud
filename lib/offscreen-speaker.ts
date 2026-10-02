@@ -59,6 +59,11 @@ export class OffscreenSpeaker implements Speaker {
   /** The utterance whose events are wanted; the id in the offscreen protocol. */
   private activeId: string | null = null;
   private sequence = 0;
+  /**
+   * The last known playback position from the offscreen document, in milliseconds.
+   * Updated by 'paused' events sent when the audio is paused.
+   */
+  private lastPausedTimeMs = 0;
 
   constructor(deps: OffscreenSpeakerDeps) {
     this.manager = deps.manager;
@@ -67,11 +72,11 @@ export class OffscreenSpeaker implements Speaker {
     this.events.addListener(this.onMessage);
   }
 
-  speak({ text, voice, rate, volume }: SpeakRequest): void {
+  speak({ text, voice, rate, volume, resumeTimeMs }: SpeakRequest): void {
     const generation = ++this.generation;
     const id = `sayloud-${++this.sequence}`;
     this.activeId = id;
-    void this.run(generation, id, text, voice, rate, volume);
+    void this.run(generation, id, text, voice, rate, volume, resumeTimeMs);
   }
 
   /**
@@ -94,6 +99,24 @@ export class OffscreenSpeaker implements Speaker {
     this.activeId = null;
     void this.manager.sendCommand({ type: 'stop' }, { create: false }).catch((error: unknown) => {
       console.warn('[SayLoud] could not stop the cloud voice', error);
+    });
+  }
+
+  /**
+   * Get the current playback position within the sentence, in milliseconds.
+   * Returns the position captured by the last pause event.
+   */
+  getCurrentTimeMs(): number | undefined {
+    return this.lastPausedTimeMs;
+  }
+
+  /**
+   * Pause the current utterance, preserving playback position for resume.
+   * The offscreen document will emit a 'paused' event with the current time.
+   */
+  pause(): void {
+    void this.manager.sendCommand({ type: 'pause' }, { create: false }).catch((error: unknown) => {
+      console.warn('[SayLoud] could not pause the cloud voice', error);
     });
   }
 
@@ -152,7 +175,8 @@ export class OffscreenSpeaker implements Speaker {
     text: string,
     voice: string | undefined,
     rate: number,
-    volume: number | undefined
+    volume: number | undefined,
+    resumeTimeMs: number | undefined
   ): Promise<void> {
     try {
       const reply = await this.manager.sendCommand({
@@ -182,7 +206,7 @@ export class OffscreenSpeaker implements Speaker {
         if (this.stale(generation)) return;
       }
 
-      await this.manager.sendCommand({ type: 'play', id, startTimeMs: 0 });
+      await this.manager.sendCommand({ type: 'play', id, startTimeMs: resumeTimeMs ?? 0 });
       if (this.stale(generation)) return;
 
       this.emit('start', undefined);
@@ -193,9 +217,19 @@ export class OffscreenSpeaker implements Speaker {
   }
 
   private readonly onMessage = (message: unknown): void => {
+    // Handle 'paused' events without checking activeId, as they report the
+    // playback position regardless of which sentence is active.
+    if (isOffscreenEvent(message) && message.type === 'paused') {
+      this.lastPausedTimeMs = message.currentTimeMs;
+      return;
+    }
+
     // Two filters, for two different mistakes: a message that is not an audio
     // event at all, and an event from a sentence the engine has moved on from.
-    if (!isOffscreenEvent(message) || message.id !== this.activeId) return;
+    // Type assertion is safe here because we've already filtered out 'paused' events.
+    if (!isOffscreenEvent(message)) return;
+    if (message.type === 'paused') return; // Already handled above
+    if (message.id !== this.activeId) return;
 
     switch (message.type) {
       case 'word': {

@@ -94,6 +94,12 @@ export class PlaybackEngine {
   private charsRead = 0;
   /** Offset of the last reported word inside the current sentence. */
   private wordOffset = 0;
+  /**
+   * Audio playback position within the current sentence when paused, in milliseconds.
+   * Used to resume from the exact position. Only meaningful for cloud and local
+   * providers; browser voice always restarts from the beginning.
+   */
+  private resumeTimeMs = 0;
 
   private spokenMs = 0;
   private runStartedAt: number | null = null;
@@ -188,6 +194,7 @@ export class PlaybackEngine {
       voice: this.voice,
       rate: this.rate,
       charsRead: this.charsRead,
+      resumeTimeMs: this.resumeTimeMs,
     };
   }
 
@@ -211,6 +218,9 @@ export class PlaybackEngine {
     this.resetTiming();
     // `chrome.tts` cannot resume mid-sentence, so the word offset is dropped.
     this.wordOffset = 0;
+    // Restore the audio playback position for cloud/local providers.
+    // Browser voice will ignore this and always restart from the beginning.
+    this.resumeTimeMs = snapshot.resumeTimeMs ?? 0;
     this.setPhase(this.sentences.length === 0 ? 'idle' : 'paused');
   }
 
@@ -249,6 +259,7 @@ export class PlaybackEngine {
     this.index = clampIndex(startIndex, this.sentences.length);
     this.charsRead = charsBefore(this.sentences, this.index);
     this.wordOffset = 0;
+    this.resumeTimeMs = 0;
     this.error = undefined;
 
     if (this.sentences.length === 0) {
@@ -290,6 +301,7 @@ export class PlaybackEngine {
       this.index = 0;
       this.charsRead = 0;
       this.wordOffset = 0;
+      this.resumeTimeMs = 0;
       this.resetTiming();
     }
 
@@ -300,7 +312,22 @@ export class PlaybackEngine {
 
   pause(): void {
     if (this.phase !== 'playing' && this.phase !== 'loading') return;
-    this.speaker.stop();
+    // Use pause() if the speaker supports it (cloud/local providers), otherwise
+    // fall back to stop() (browser voice). Cloud/local providers will emit a
+    // 'paused' event with the current position, which we capture via getCurrentTimeMs().
+    if (this.speaker.pause) {
+      this.speaker.pause();
+      // Give the speaker a moment to process the pause and emit the 'paused' event,
+      // then capture the position. This is necessary because the pause event is async.
+      setTimeout(() => {
+        this.resumeTimeMs = this.speaker.getCurrentTimeMs?.() ?? 0;
+      }, 10);
+    } else {
+      // Browser voice doesn't support pause, so stop it. resumeTimeMs stays 0,
+      // meaning it will restart from the beginning.
+      this.resumeTimeMs = 0;
+      this.speaker.stop();
+    }
     this.setPhase('paused');
   }
 
@@ -314,6 +341,7 @@ export class PlaybackEngine {
 
     this.index = clampIndex(index, this.sentences.length);
     this.wordOffset = 0;
+    this.resumeTimeMs = 0;
     this.charsRead = charsBefore(this.sentences, this.index);
 
     if (this.phase === 'playing' || this.phase === 'loading') {
@@ -450,7 +478,12 @@ export class PlaybackEngine {
         rate: this.rate,
         lang: sentence.lang,
         volume: this.volume,
+        resumeTimeMs: this.resumeTimeMs,
       });
+      // Clear the resume position after using it once, so the next sentence
+      // (or a seek/rate change that re-speaks the current one) starts from the
+      // beginning rather than jumping to a stale offset.
+      this.resumeTimeMs = 0;
       return;
     }
 

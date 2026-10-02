@@ -87,6 +87,7 @@ function harness(
     stop: vi.fn(),
     setRate: vi.fn(),
     setVolume: vi.fn(),
+    getCurrentTimeMs: vi.fn(() => 0),
     ...options.player,
   };
 
@@ -392,9 +393,10 @@ describe('AudioWorker', () => {
     });
 
     it('pauses', async () => {
-      const { worker, player } = harness();
+      const { worker, player, events } = harness();
       await worker.handleCommand({ type: 'pause' });
       expect(player.pause).toHaveBeenCalled();
+      expect(events).toContainEqual({ type: 'paused', currentTimeMs: 0 });
     });
 
     it('changes the rate', async () => {

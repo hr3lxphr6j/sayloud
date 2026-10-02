@@ -255,6 +255,14 @@ export class ReaderController {
 
   dispose(): void {
     this.disposed = true;
+    
+    // Stop playback before cleaning up: when the page navigates away, the
+    // content script is torn down but the engine session may still be playing.
+    // Send the stop command before disconnecting the port.
+    if (this.port && this.state.status && this.state.status.phase !== 'idle') {
+      this.tryPost({ type: 'stop' });
+    }
+    
     this.caption.close();
     this.unsubscribeSettings?.();
     this.unsubscribeSettings = null;

@@ -126,6 +126,7 @@ describe('PlaybackEngine', () => {
         rate: 1,
         lang: 'en',
         volume: 1,
+        resumeTimeMs: 0,
       });
     });
 

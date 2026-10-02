@@ -245,6 +245,15 @@ export class TimelinePlayer {
     this.current?.audio.pause();
   }
 
+  /**
+   * Get the current playback position within the loaded sentence, in milliseconds.
+   * Returns undefined if no audio is loaded.
+   */
+  getCurrentTimeMs(): number | undefined {
+    if (!this.current) return undefined;
+    return this.current.audio.currentTime * 1000;
+  }
+
   /** Pause and release the loaded sentence. Safe to call at any time. */
   stop(): void {
     this.clearTimingTimer();

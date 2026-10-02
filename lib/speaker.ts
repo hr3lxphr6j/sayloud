@@ -36,6 +36,13 @@ export interface SpeakRequest {
   lang: string;
   /** 0–1.5. A speaker that cannot go louder clamps it rather than refusing. */
   volume?: number;
+  /**
+   * Resume playback from this position within the sentence, in milliseconds.
+   * Used after pause to continue from where it left off. Only supported by
+   * cloud and local providers; browser voice ignores this and always starts
+   * from the beginning.
+   */
+  resumeTimeMs?: number;
 }
 
 /** A sentence to warm in the cache before it is needed (spec §5.3). */
@@ -71,6 +78,18 @@ export interface Speaker {
    * live and reads the next request's instead.
    */
   setVolume?(volume: number): void;
+  /**
+   * Get the current playback position within the sentence, in milliseconds.
+   * Optional: only meaningful for speakers that use an audio element (cloud and
+   * local providers). Browser voice has no seekable position and returns undefined.
+   */
+  getCurrentTimeMs?(): number | undefined;
+  /**
+   * Pause the current utterance without stopping it completely.
+   * Optional: speakers that don't support pausing (like browser voice) can use
+   * stop() instead, which will restart from the beginning on resume.
+   */
+  pause?(): void;
   stop(): void;
   on<K extends keyof SpeakerEvents>(
     event: K,

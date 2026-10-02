@@ -1,12 +1,27 @@
 /**
- * Japanese phonemizer for Kokoro (spec: TBD).
+ * Japanese phonemizer for Kokoro.
  *
- * Matches misaki's Japanese G2P implementation:
- * - Kanji → Kana: kuroshiro (via kuromoji) - runs in main thread
- * - Kana → IPA: M2P mapping table (extracted from hexgrad/misaki)
+ * Pipeline:
+ * 1. Normalize punctuation (full-width → ASCII, comma → period for pausing)
+ * 2. Segment into Kana/Latin/Other runs
+ * 3. Process each run:
+ *    - Kana → Kanji conversion (kuroshiro) → IPA mapping
+ *    - Latin → espeak spelled
+ *    - Other → keep recognized punctuation
+ * 4. Concatenate results
  *
+ * Matches misaki's Japanese G2P for Kana→IPA mapping.
  * Reference: https://github.com/hexgrad/misaki/blob/main/misaki/ja.py
  */
+import Kuroshiro from 'kuroshiro';
+import KuromojiAnalyzer from '~/lib/vendor/kuroshiro-analyzer-kuromoji/index.js';
+import {
+  keepPunctuation,
+  normalizePunctuation,
+  phonemizeSpelled,
+  segmentText,
+  type ScriptRun,
+} from './common';
 import type { Phonemizer } from './types';
 
 /**
@@ -303,8 +318,6 @@ export function kanaToIPA(kana: string): string {
  * @param text - Japanese text (may contain Kanji)
  * @returns Katakana text
  */
-import Kuroshiro from 'kuroshiro';
-import KuromojiAnalyzer from '~/lib/vendor/kuroshiro-analyzer-kuromoji/index.js';
 
 let kuroshiroInstance: Kuroshiro | null = null;
 let initPromise: Promise<void> | null = null;
@@ -358,15 +371,43 @@ export async function textToKatakana(text: string): Promise<string> {
  * Phonemize Japanese text for Kokoro.
  *
  * Full pipeline:
- * 1. Kanji → Katakana (kuroshiro)
- * 2. Katakana → IPA (kana-to-IPA mapping)
+ * 1. Normalize punctuation (full-width → ASCII, comma → period)
+ * 2. Segment into Kana/Latin/Other runs
+ * 3. Kana → Kanji conversion (kuroshiro) → IPA
+ * 4. Latin → espeak spelled
+ * 5. Other → keep recognized punctuation
  *
- * @param text - Japanese text (may contain Kanji, Kana, or mixed)
+ * @param text - Japanese text (may contain Kanji, Kana, Latin, or mixed)
  * @returns IPA phoneme string
  */
 export async function phonemizeJapanese(text: string): Promise<string> {
-  const katakana = await textToKatakana(text);
-  return kanaToIPA(katakana);
+  // Step 1: Normalize punctuation
+  const normalized = normalizePunctuation(text, 'ja-JP');
+
+  // Step 2: Segment into script runs
+  const runs = segmentText(normalized);
+
+  // Step 3-5: Process each run
+  const parts: string[] = [];
+
+  for (const run of runs) {
+    if (run.kind === 'kana' || run.kind === 'han') {
+      // Convert to Katakana (handles both Hiragana and Kanji)
+      const katakana = await textToKatakana(run.text);
+      const ipa = kanaToIPA(katakana);
+      if (ipa !== '') parts.push(ipa);
+    } else if (run.kind === 'latin') {
+      const ipa = await phonemizeSpelled(run.text);
+      if (ipa !== '') parts.push(ipa);
+    } else {
+      // Other: keep only recognized punctuation
+      const kept = keepPunctuation(run.text);
+      if (kept !== '') parts.push(kept);
+    }
+  }
+
+  // Concatenate without adding separators between runs
+  return parts.join('').replace(/\s+/g, ' ').trim();
 }
 
 /**

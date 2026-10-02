@@ -99,8 +99,8 @@ describe('Japanese phonemizer', () => {
     it('phonemizes mixed Kanji and Kana', async () => {
       // こんにちは、世界 (konnichiwa, sekai - Hello, world)
       const result = await phonemizeJapanese('こんにちは、世界');
-      // Expected: コンニチハ、セカイ → koɴniʨiha、sekai
-      expect(result).toBe('koɴniʨiha、sekai');
+      // Expected: コンニチハ、セカイ → koɴniʨiha, sekai (punctuation normalized)
+      expect(result).toBe('koɴniʨiha, sekai');
     });
 
     it('handles sentences with Kanji', async () => {
@@ -110,6 +110,41 @@ describe('Japanese phonemizer', () => {
       expect(result).toMatch(/^[a-zɕʨʦʥɴ]+$/);
       expect(result.length).toBeGreaterThan(10);
     });
+  });
+});
+
+describe('punctuation normalization', () => {
+  it('converts full-width comma to period (for pausing)', async () => {
+    const result = await phonemizeJapanese('こんにちは，世界');
+    // 全角逗号 ， → . (period for stronger pause)
+    expect(result).toContain('. ');
+  });
+
+  it('converts full-width period to ASCII period', async () => {
+    const result = await phonemizeJapanese('こんにちは。');
+    expect(result).toContain('.');
+  });
+
+  it('converts enumeration comma to ASCII comma', async () => {
+    const result = await phonemizeJapanese('りんご、バナナ、オレンジ');
+    // 顿号 、 → ,
+    expect(result).toContain(', ');
+  });
+});
+
+describe('Latin text handling', () => {
+  it('spells out all-uppercase acronyms', async () => {
+    const result = await phonemizeJapanese('APIを使う');
+    // API should be spelled: A-P-I (each letter separately)
+    // Result contains individual letters + Japanese part
+    expect(result).toContain('p'); // P is in there
+    expect(result).toContain('oɕiu'); // を使う part
+  });
+
+  it('treats mixed-case as words', async () => {
+    const result = await phonemizeJapanese('Chatを使う');
+    // "Chat" should be phonemized as a word, not spelled
+    expect(result).toMatch(/tʃ/); // Contains 'ch' sound
   });
 });
 

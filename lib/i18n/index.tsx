@@ -14,10 +14,11 @@ import { type ComponentChildren, createContext } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'preact/hooks';
 import { DEFAULT_SETTINGS, type SettingsStore, type UiLang } from '../settings-store';
 import { en, type MessageKey } from './messages.en';
+import { ja } from './messages.ja';
 import { zh } from './messages.zh';
 
-/** The two languages SayLoud ships. */
-export type Lang = 'en' | 'zh-CN';
+/** The languages SayLoud ships. */
+export type Lang = 'en' | 'ja' | 'zh-CN';
 
 /** What a message's `{placeholders}` can be filled with. */
 export type MessageParams = Record<string, string | number>;
@@ -27,7 +28,23 @@ export type Translator = (key: MessageKey, params?: MessageParams) => string;
 
 export type { MessageKey };
 
-const CATALOGUES: Record<Lang, Record<MessageKey, string>> = { en, 'zh-CN': zh };
+const CATALOGUES: Record<Lang, Record<MessageKey, string>> = { en, ja, 'zh-CN': zh };
+
+/**
+ * The language a browser language tag asks for, or `null` when none does.
+ *
+ * Only the primary subtag is read, so `ja`, `ja-JP` and `JA-jp` all land in the
+ * same place — the catalogues are not regional. `zh` is the exception worth
+ * naming: Simplified is what the catalogue holds, so Traditional and the
+ * region-less tag both map to it rather than falling through to English.
+ */
+function localeFrom(tag: string): Lang | null {
+  const primary = tag.toLowerCase().split('-')[0];
+  if (primary === 'zh') return 'zh-CN';
+  if (primary === 'ja') return 'ja';
+  if (primary === 'en') return 'en';
+  return null;
+}
 
 /**
  * The language to render in.
@@ -38,7 +55,7 @@ const CATALOGUES: Record<Lang, Record<MessageKey, string>> = { en, 'zh-CN': zh }
  */
 export function resolveLang(setting: UiLang, browserLang: string): Lang {
   if (setting !== 'auto') return setting;
-  return browserLang.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+  return localeFrom(browserLang) ?? 'en';
 }
 
 /** A translator for one language. Pure, so it can be passed into anything. */

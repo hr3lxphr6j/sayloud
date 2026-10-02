@@ -90,6 +90,7 @@ export function SettingsTab({
         >
           <option value="auto">{t('settings.language.auto')}</option>
           <option value="en">{t('settings.language.en')}</option>
+          <option value="ja">{t('settings.language.ja')}</option>
           <option value="zh-CN">{t('settings.language.zh')}</option>
         </select>
       </Card>

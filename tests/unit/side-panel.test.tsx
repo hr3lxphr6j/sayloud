@@ -144,7 +144,9 @@ describe('SidePanel', () => {
     await openSettings();
 
     const options = [...languageSelect().options].map((option) => option.value);
-    expect(options).toEqual(['auto', 'en', 'zh-CN']);
+    // The order is the `UiLang` union's own, so a language added to one without
+    // the other is caught here rather than by a user who cannot find theirs.
+    expect(options).toEqual(['auto', 'en', 'ja', 'zh-CN']);
   });
 
   it('shows the chosen voice the way the list named it, not by its id', async () => {

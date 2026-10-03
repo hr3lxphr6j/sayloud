@@ -219,9 +219,9 @@ describe('fetchDictionary', () => {
   });
 
   it('asks for dictionaries under the extension root by default', async () => {
-    // The same root-relative spelling the kuromoji dictionary uses
-    // (`lib/models/phonemize/japanese.ts`), which resolves against the
-    // extension's origin from a page and from a worker alike.
+    // Root-relative, so the same spelling resolves against the extension's
+    // origin from a page and from a worker alike — the arrangement the deleted
+    // kuromoji dictionary used first, and the one `public/dictionaries/` keeps.
     const fetch = fakeFetch({ '/dictionaries/lindera-ipadic-ja.bin.zst': { bytes: COMPRESSED } });
 
     await fetchDictionary('lindera-ipadic-ja', { fetch, cacheStorage: null });

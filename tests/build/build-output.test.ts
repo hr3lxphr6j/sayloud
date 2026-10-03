@@ -65,35 +65,51 @@ const ORT_MARKERS = ['onnxruntime', 'InferenceSession', 'wasmPaths', 'ort-wasm']
  *
  * Phase 7 moved this here from jieba, which the same test used to guard. The
  * JavaScript chain is no longer reachable from any entry point, so nothing in
- * the output mentions jieba at all — which is asserted by the count of wasm
- * files rather than by a marker, since the marker's absence is the point.
+ * the output mentions jieba at all — asserted by
+ * `carries no trace of the JavaScript phonemize chain` rather than by a marker
+ * here, since the marker's absence is the point.
  */
 const PHONEMIZE_MARKERS = ['phonemize_bg-'] as const;
 
 /**
- * Measured 57.7 MB: ONNX Runtime's 20.6 MB wasm, 16.9 MB of `kuromoji-dict/`
- * files, the 8.1 MB IPADic dictionary, the 5.1 MB phonemizer wasm, the 2.2 MB
- * kokoro worker chunk, the 1.6 MB Chinese word list, and the rest.
+ * Strings that only appear in a bundle carrying the JavaScript phonemize chain.
  *
- * **The drop phase 7 was expected to bring did not happen, and the reason is
- * worth keeping.** The prediction was that wiring the Rust phonemizer up would
- * remove kuromoji's 16.9 MB and jieba's 3.8 MB. It removed the 4.0 MB jieba wasm
- * and its glue — and added the 5.1 MB phonemizer wasm — but kuromoji's 16.9 MB
- * and the 1.6 MB word list are `public/` assets, which a bundler copies whether
- * or not anything imports them. So the build went 56,983,122 → 57,692,840 B
- * (+0.71 MB), and the 16.9 MB goes away when phase 8 deletes the directory
- * rather than when the import goes away. The JavaScript chain itself *is* gone:
- * no chunk in the output mentions kuromoji, kuroshiro or jieba.
- *
- * **This bound had already been exceeded before phase 6 touched it.** It was set
- * to 44-50 MB around a measurement of 46.8 MB and did not move when the IPADic
- * dictionary — 8.1 MB, and absent from the itemisation above until now — landed;
- * the build was 55.35 MB at the commit before the Chinese word list was added,
- * which is 5.35 MB past the ceiling. Nothing noticed because `pnpm test:build`
- * is opt-in and CI does not run it.
+ * Phase 8 deleted that chain, and the deletion is the one thing in this file
+ * that cannot be checked by a marker *being* present: a regression is these
+ * strings coming back. Three of them because the chain had three
+ * implementations, and one of those — `jieba-wasm` — is a package rather than a
+ * file, so it would return as a specifier in a chunk before it returned as
+ * anything else.
  */
-const MIN_BYTES = 55_000_000;
-const MAX_BYTES = 59_000_000;
+const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
+
+/**
+ * Measured 39.9 MB (38.05 MiB): ONNX Runtime's 20.6 MB wasm, the 8.5 MB IPADic
+ * dictionary, the 5.1 MB phonemizer wasm, the 2.2 MB kokoro worker chunk, the
+ * 1.6 MB Chinese word list, and the rest.
+ *
+ * **Phase 8 deleted the JavaScript chain, and the size fell by exactly the
+ * kuromoji dictionary: 57,692,840 → 39,900,884 B.** That drop is the dictionary
+ * to the byte, which is the lesson phase 7 wrote down here: a bundler copies
+ * everything in `public/` whether or not anything imports it, so removing dead
+ * *code* frees nothing and removing a `public/` asset frees all of it. The
+ * phonemizer wasm did not shrink either — dropping the duplicated
+ * `KOKORO_V1_VOCABULARY` changed its hash and not one byte of its length,
+ * because the string fitted inside the section's padding.
+ *
+ * The 1.6 MB Chinese word list stayed. It is not the deleted chain's: it is what
+ * the Rust frontend segments with, and it lives in `public/` for the same reason
+ * kuromoji's dictionary did.
+ *
+ * **This bound had been exceeded once before, and by more.** It was set to
+ * 44-50 MB around a measurement of 46.8 MB and did not move when the IPADic
+ * dictionary — 8.1 MB, and absent from the itemisation above until phase 6 —
+ * landed; the build was 55.35 MB at the commit before the Chinese word list was
+ * added, which is 5.35 MB past the ceiling. Nothing noticed because
+ * `pnpm test:build` is opt-in and CI does not run it.
+ */
+const MIN_BYTES = 38_000_000;
+const MAX_BYTES = 42_000_000;
 
 interface BuiltFile {
   /** Path relative to the output directory, POSIX-separated. */
@@ -357,6 +373,24 @@ describe('the build output', () => {
     // Storage, and 28 MB in the extension package would be a mistake nobody
     // notices until review.
     expect(FILES.filter((path) => path.endsWith('.bin'))).toEqual([]);
+  });
+
+  it('carries no trace of the JavaScript phonemize chain', () => {
+    // Phase 8 deleted the chain, its vendored kuromoji/kuroshiro copies and the
+    // 17 MB dictionary they read. Of those, only the dictionary was ever *in*
+    // this package — the code was never reachable from an entry point — so both
+    // halves are asserted, and they fail for different reasons: the directory is
+    // a `public/` asset coming back, the markers are an import coming back.
+    //
+    // JavaScript only, for the reason `carriesOrt` gives: a binary that happens
+    // to contain the word says nothing about what can be loaded.
+    const mentions = FILES.filter((path) => path.endsWith('.js')).filter((path) => {
+      const { text } = readBuiltFile(path);
+      return CHAIN_MARKERS.some((marker) => text.includes(marker));
+    });
+
+    expect(mentions).toEqual([]);
+    expect(FILES.filter((path) => path.startsWith('kuromoji-dict/'))).toEqual([]);
   });
 
   it('stays the size the spec measured', () => {

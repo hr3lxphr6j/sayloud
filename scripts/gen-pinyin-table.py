@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Regenerate `lib/models/phonemize/pinyin-table.json`.
+"""Regenerate `crates/phonemize/data/pinyin-table.json`.
 
 The Chinese half of the on-device phonemizer is a lookup table: one pinyin
-syllable in, one IPA template out, with `0` where the tone goes. The runtime
-never derives a syllable's IPA — it reads this file — so the table has to be
-generated from the real algorithm rather than hand-written. Hand-writing the
+syllable in, one IPA template out, with `0` where the tone goes. Neither side
+derives a syllable's IPA — the Rust frontend reads the transcribed form
+(`pinyin-syllables.txt`) — so the table has to be generated from the real
+algorithm rather than hand-written.
+
+It lives in the crate's data directory rather than beside a runtime that reads
+it, because since phase 8 nothing reads it at runtime: the JavaScript phonemize
+chain is gone, and `scripts/gen-pinyin-pro-data.mjs` is the only consumer. It
+transcribes this file into `pinyin-syllables.txt`, which is what the wasm
+actually embeds. Hand-writing the
 initial/final split is exactly the mistake this avoids: pypinyin's
 `to_finals(strict=True)` does a lot of normalisation (`iu` -> `iou`,
 `ui` -> `uei`, `un` -> `uen`/`ün`, the y/w non-strict initials) that is easy to
@@ -45,7 +52,7 @@ from pypinyin.contrib.tone_convert import to_normal  # noqa: E402
 from pypinyin.pinyin_dict import pinyin_dict  # noqa: E402
 from transcription import TONE_MAPPING, pinyin_to_ipa  # noqa: E402
 
-OUTPUT = os.path.join(HERE, "..", "lib", "models", "phonemize", "pinyin-table.json")
+OUTPUT = os.path.join(HERE, "..", "crates", "phonemize", "data", "pinyin-table.json")
 
 # The tone used to render a template before the tone is taken back out. Tone 1
 # is a single character (`˥`), so substituting it for the placeholder is

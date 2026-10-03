@@ -1,21 +1,21 @@
 //! Japanese G2P, without a dictionary.
 //!
 //! Everything here is a pure function, so these run everywhere — including where
-//! the 8.5 MB dictionary asset has not been built. The expectations are copied
-//! from `tests/unit/models/phonemize/japanese.test.ts`, which is the point: the
-//! same inputs have to produce the same strings on both sides, and a table or
-//! range that drifts shows up here as a failure naming the mora.
+//! the 8.5 MB dictionary asset has not been built. The expectations were copied
+//! from the JavaScript chain's `tests/unit/models/phonemize/japanese.test.ts`
+//! (deleted in phase 8) and live here now: the same inputs had to produce the
+//! same strings on both sides, and a table or range that drifts shows up here as
+//! a failure naming the mora.
 
 use std::collections::HashSet;
 
 use phonemize::backends::numbers::{int_to_kanji, numbers_to_kanji};
-use phonemize::frontends::ja_ipa::{
-    fix_numeral_sound_changes, kana_to_ipa, KATAKANA_TO_IPA, KOKORO_V1_VOCABULARY,
-};
+use phonemize::frontends::ja_ipa::{fix_numeral_sound_changes, kana_to_ipa, KATAKANA_TO_IPA};
 use phonemize::kana::{is_kanji, is_katakana, to_raw_katakana};
 use phonemize::text::{
     collapse_whitespace, keep_punctuation, normalize_punctuation, segment_text, ScriptRun,
 };
+use phonemize::vocab::{validate_phonemes, Vocab};
 
 // ---------------------------------------------------------------- the table
 
@@ -26,31 +26,24 @@ fn every_table_entry_only_spells_with_characters_kokoro_has() {
     // deleted character is not an error. ガ came out `a` for exactly this kind
     // of mistake until it was caught.
     //
-    // The vocabulary below is the copy the JavaScript test uses, not the model
-    // file, and the two are known to disagree: the copy contains the whole ASCII
-    // lowercase alphabet, while `lib/models/phonemize/japanese.ts` and spec §1.3
-    // both say the real vocabulary holds U+0261 and *not* ASCII `g`. So this
-    // check is a floor, not a proof — it cannot catch a character the copy has
-    // and the model does not. Deriving the vocabulary from `tokenizer.json` is
-    // phase 5's job (`src/vocab.rs`), and it is the reason that task exists.
-    let vocabulary: HashSet<char> = KOKORO_V1_VOCABULARY.chars().collect();
+    // The vocabulary is the model's own, from `src/vocab.rs` — phase 5 replaced
+    // the copy this test used to carry, which held the whole ASCII lowercase
+    // alphabet and so could not have caught ガ's ASCII `g`. Checking through the
+    // production gate rather than against a set built here makes this a proof
+    // rather than the floor that copy was: whitespace and the two combining marks
+    // the tokenizer strips are allowed for the same reason they are allowed in
+    // production.
     assert!(
-        vocabulary.contains(&'\u{261}'),
+        Vocab::V1_0.characters().any(|ch| ch == '\u{261}'),
         "the vocabulary should hold U+0261"
     );
 
     let offenders: Vec<String> = KATAKANA_TO_IPA
         .iter()
-        .flat_map(|(kana, ipa)| {
-            ipa.chars()
-                .filter(|ch| !vocabulary.contains(ch))
-                .map(|ch| {
-                    format!(
-                        "{kana} → {ipa} (U+{:04x} is not in the vocabulary)",
-                        ch as u32
-                    )
-                })
-                .collect::<Vec<_>>()
+        .filter_map(|(kana, ipa)| {
+            validate_phonemes(ipa, Vocab::V1_0)
+                .err()
+                .map(|error| format!("{kana} → {ipa}: {error}"))
         })
         .collect();
 

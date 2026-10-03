@@ -1,9 +1,11 @@
-//! The Chinese readings and IPA, against the JavaScript pipeline.
+//! The Chinese readings and IPA, against the corpus the JavaScript pipeline left
+//! behind.
 //!
 //! The corpus is `tests/fixtures/zh-parity.json`, generated from the JavaScript
-//! side by `tests/unit/models/phonemize/zh-parity.test.ts`. Both sides are pinned
-//! to it, so neither can drift alone — and it compares two things separately,
-//! because they fail separately:
+//! side by `tests/unit/models/phonemize/zh-parity.test.ts` before phase 8 deleted
+//! that chain. It is frozen: the generator is gone, so nothing can regenerate it,
+//! and this test is what keeps the Rust output pinned to it. It compares two
+//! things separately, because they fail separately:
 //!
 //! - `jsPinyin` is what `pinyin-pro` reports. A mismatch is the phrase tables, the
 //!   segmentation, or the 一/不/了/々 rules.

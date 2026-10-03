@@ -41,6 +41,10 @@
  *   dependency at runtime. The entry count is asserted, the way the pypinyin
  *   script asserts it, so a change of shape is loud here.
  *
+ *   It sits in the crate's data directory, not in the JavaScript phonemize
+ *   chain it used to live in: phase 8 deleted that chain, and this script is now
+ *   the only thing that reads the file.
+ *
  * Regenerate with:
  *
  *     node scripts/gen-pinyin-pro-data.mjs
@@ -75,8 +79,8 @@ const EXPECTED_VERSION = '3.29.4';
 const DICT_PROBABILITY = 2e-8;
 const RULE_PROBABILITY = 1e-12;
 
-/** The JavaScript side's syllable table. See the module doc for why it is read, not made. */
-const SYLLABLE_SOURCE = join(ROOT, 'lib', 'models', 'phonemize', 'pinyin-table.json');
+/** The syllable table `gen-pinyin-table.py` writes. See the module doc for why it is read, not made. */
+const SYLLABLE_SOURCE = join(ROOT, 'crates', 'phonemize', 'data', 'pinyin-table.json');
 const EXPECTED_SYLLABLES = 426;
 
 /**

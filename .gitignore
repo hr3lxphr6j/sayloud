@@ -18,12 +18,13 @@ node_modules/
 __pycache__/
 *.pyc
 
-# Kuromoji dictionaries (auto-generated on install)
-public/kuromoji-dict/
-
-# The Japanese dictionary for the Rust phonemizer, built by
-# scripts/setup-lindera-dict.sh on install. 8.5 MB of IPADic, regenerated rather
-# than tracked — the same arrangement as the kuromoji dictionaries above.
+# The Japanese and Chinese dictionaries for the Rust phonemizer, built by
+# scripts/setup-lindera-dict.sh and scripts/setup-jieba-dict.sh on install. 8.5 MB
+# of IPADic and 1.6 MB of jieba's word list, regenerated rather than tracked.
+#
+# The kuromoji dictionaries used to live here too, in `public/kuromoji-dict/`,
+# for the JavaScript phonemize chain. Phase 8 deleted that chain and the 17 MB
+# directory with it.
 public/dictionaries/
 
 # POC and test scripts

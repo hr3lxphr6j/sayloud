@@ -42,6 +42,10 @@
       "js": "ꭧɤ↘kɤ ɕja↘ŋmu↘ ti↘ ɕi↘ŋnə↗ŋ jou→xwa↘ xai↗jou↓ xə↓nta↘ kʰʊ→ŋʨjɛ→n"
     },
     {
+      "input": "你好世界123",
+      "js": "ni↓xau↓ ʂɻ̩↘ʨje↘ i↘pai↓ɚ↘ʂɻ̩↗ sa→n"
+    },
+    {
       "input": "我有3只猫",
       "js": "wo↓ jou↓ sa→nꭧɻ̩→ mau→"
     },

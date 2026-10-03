@@ -34,6 +34,8 @@
  *   kuromoji drops is not in the sound-change table either.
  */
 
+import { toHalfWidth } from './common';
+
 const DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'] as const;
 
 /** Unit for each four-digit group, from the lowest. */
@@ -114,11 +116,6 @@ export function intToKanji(raw: string): string {
 /** A fractional part is always read digit by digit: 15.6 is 十五点六. */
 function decimalToKanji(digits: string): string {
   return [...digits].map((digit) => kanjiDigit(Number(digit))).join('');
-}
-
-/** Full-width digits to ASCII, so one set of patterns covers both spellings. */
-function toHalfWidth(text: string): string {
-  return text.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
 }
 
 /**

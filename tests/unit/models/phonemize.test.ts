@@ -144,6 +144,16 @@ describe('numbersToHan', () => {
     expect(numbersToHan('1234567890123456789')).toBe('一二三四五六七八九零一二三四五六七八九');
   });
 
+  it('reads full-width digits the same as half-width ones', () => {
+    // A full-width digit is not `\d`, so it used to survive every rule here and
+    // then be dropped by the segmenter, which keeps only punctuation out of an
+    // `other` run. `２０２２年` reached the model as 年 alone — the same failure the
+    // Japanese path had, found the same way, and fixed the same way.
+    expect(numbersToHan('２０２２')).toBe('二千零二十二');
+    expect(numbersToHan('２０２２年')).toBe('二千零二十二年');
+    expect(numbersToHan('１０００')).toBe('一千');
+  });
+
   it('leaves text without digits alone', () => {
     expect(numbersToHan('你好')).toBe('你好');
   });

@@ -20,6 +20,8 @@
  *   Choosing between them needs context this layer does not have (spec §3.11.7).
  */
 
+import { toHalfWidth } from './common';
+
 const DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'] as const;
 
 /** Unit for each four-digit group, from the lowest. */
@@ -126,7 +128,7 @@ function decimalToHan(digits: string): string {
  * 十五点六% and the percent sign would then be dropped as punctuation.
  */
 export function numbersToHan(text: string): string {
-  return text
+  return toHalfWidth(text)
     .replace(/(\d+)\.(\d+)%/g, (_, whole: string, fraction: string) => {
       return `百分之${intToHan(whole)}点${decimalToHan(fraction)}`;
     })

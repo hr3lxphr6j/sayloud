@@ -244,21 +244,59 @@ fn phonemizes_a_whole_english_sentence_now_that_numerals_are_read() {
 }
 
 #[test]
-fn reports_a_language_whose_pipeline_is_not_built_yet() {
-    // `zh` passes the frontend check — v1.0 can speak it — and has no pipeline in
-    // this build. An error rather than an empty string, because an empty string
-    // is a sentence that plays as silence.
+fn every_language_the_frontend_lists_reaches_a_pipeline() {
+    // This test used to be `reports_a_language_whose_pipeline_is_not_built_yet`,
+    // asserting that `zh` came back `pipeline-not-implemented`. Phase 6 wired the
+    // last language, so there is no such language left, and what is worth
+    // checking now is the property that replaced it: every language the frontend
+    // table lists reaches a pipeline, and the only thing an unprepared instance
+    // is missing is a dictionary.
+    //
+    // Written as a loop over the table rather than as three assertions, so that
+    // adding a language to `supported_languages` without a pipeline shows up here
+    // as a `pipeline-not-implemented` failure rather than as a new test someone
+    // has to remember to write.
     let phonemizer = phonemize::Phonemizer::new();
+
+    for lang in ["zh-CN", "ja-JP"] {
+        let options = phonemize::PhonemizeOptions {
+            frontend: "kokoro-v1".to_string(),
+            lang: lang.to_string(),
+        };
+
+        // Not `pipeline-not-implemented`: the pipeline is there, the word list is
+        // not. The two are different problems with different fixes, which is the
+        // distinction `PhonemizeError` exists to make.
+        let error = phonemizer
+            .phonemize_with("你好", &options)
+            .expect_err("nothing was prepared");
+
+        assert_eq!(error.code(), "dictionary-not-loaded", "{lang}");
+    }
+
+    // English is the one that needs no preparation, because its dictionary is
+    // compiled in — so this is the arm where "wired up" and "ready" are the same
+    // thing.
     let options = phonemize::PhonemizeOptions {
         frontend: "kokoro-v1".to_string(),
-        lang: "zh-CN".to_string(),
+        lang: "en-US".to_string(),
+    };
+    assert!(phonemizer.phonemize_with("hello", &options).is_ok());
+}
+
+#[test]
+fn the_unwired_language_code_is_still_stable() {
+    // `pipeline-not-implemented` is unreachable through `phonemize_with` today —
+    // see the test above — but the variant stays as the honest answer for the
+    // next language added to `supported_languages` before its pipeline exists,
+    // and the JavaScript side switches on the code. Pinned directly, because no
+    // call can reach it.
+    let error = phonemize::PhonemizeError::NotImplemented {
+        lang: "xx".to_string(),
     };
 
-    let error = phonemizer
-        .phonemize_with("你好", &options)
-        .expect_err("Chinese has no pipeline yet");
-
     assert_eq!(error.code(), "pipeline-not-implemented");
+    assert!(error.to_string().contains("xx"));
 }
 
 #[test]

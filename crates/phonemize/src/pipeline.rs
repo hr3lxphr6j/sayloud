@@ -1,16 +1,21 @@
 //! The chain: text in, phonemes out.
 //!
 //! One function per `(frontend, lang)` pair today, because what a language needs
-//! is what differs: [`phonemize_ja`] has a dictionary to segment with and
-//! [`phonemize_en`] does not, and only the Japanese one reads a numeral as kanji.
-//! The steps around those differences are the same on both sides, and the order
-//! they run in is the same too — see [`phonemize_ja`]. A later phase turns this
-//! into a dispatch over the frontends and adds Chinese.
+//! is what differs: [`phonemize_ja`] has a dictionary to segment with,
+//! [`phonemize_en`] does not, and only [`phonemize_zh`] has word boundaries to
+//! respect and a Latin run to hand to another language's engine. The steps around
+//! those differences are the same on all three sides, and the order they run in is
+//! the same too — see [`phonemize_ja`]. A later phase turns this into a dispatch
+//! over the frontends.
 
 use crate::backends::g2p_en::{EnglishError, EnglishG2p};
 use crate::backends::numbers::numbers_to_kanji;
 use crate::backends::numbers_en::numbers_to_english;
+use crate::backends::numbers_zh::numbers_to_han;
+use crate::backends::pinyin::{ChinesePinyin, PinyinError};
 use crate::backends::segmenter_ja::{SegmenterError, SegmenterJa};
+use crate::backends::segmenter_zh::{SegmenterZh, SegmenterZhError};
+use crate::backends::zh_text::{self, ZhRun};
 use crate::frontends::ja_ipa::{fix_numeral_sound_changes, kana_to_ipa};
 use crate::text::{
     collapse_whitespace, keep_punctuation, normalize_punctuation, segment_text, ScriptRun,
@@ -19,8 +24,12 @@ use crate::text::{
 /// Why text could not be turned into phonemes.
 #[derive(Debug)]
 pub enum PipelineError {
-    /// The segmenter failed.
+    /// The Japanese segmenter failed.
     Segmenter(SegmenterError),
+    /// The Chinese segmenter failed.
+    ZhSegmenter(SegmenterZhError),
+    /// The Chinese readings or the word grouping failed.
+    Pinyin(PinyinError),
     /// The English backend failed.
     English(EnglishError),
 }
@@ -30,6 +39,8 @@ impl PipelineError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Segmenter(error) => error.code(),
+            Self::ZhSegmenter(error) => error.code(),
+            Self::Pinyin(error) => error.code(),
             Self::English(error) => error.code(),
         }
     }
@@ -39,6 +50,8 @@ impl std::fmt::Display for PipelineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Segmenter(error) => write!(f, "{error}"),
+            Self::ZhSegmenter(error) => write!(f, "{error}"),
+            Self::Pinyin(error) => write!(f, "{error}"),
             Self::English(error) => write!(f, "{error}"),
         }
     }
@@ -49,6 +62,18 @@ impl std::error::Error for PipelineError {}
 impl From<SegmenterError> for PipelineError {
     fn from(error: SegmenterError) -> Self {
         Self::Segmenter(error)
+    }
+}
+
+impl From<SegmenterZhError> for PipelineError {
+    fn from(error: SegmenterZhError) -> Self {
+        Self::ZhSegmenter(error)
+    }
+}
+
+impl From<PinyinError> for PipelineError {
+    fn from(error: PinyinError) -> Self {
+        Self::Pinyin(error)
     }
 }
 
@@ -223,6 +248,104 @@ pub fn phonemize_en(text: &str, english: Option<&EnglishG2p>) -> Result<Phonemiz
             }
             ScriptRun::Other(run_text) => parts.push(keep_punctuation(run_text)),
             ScriptRun::Han(_) | ScriptRun::Kana(_) => {}
+        }
+    }
+
+    Ok(Phonemized {
+        phonemes: collapse_whitespace(&parts.concat()),
+        warnings,
+    })
+}
+
+/// Chinese text to IPA, for the v1.0 frontend.
+///
+/// The same four steps as [`phonemize_ja`], in the same order and for the same
+/// reasons, with one of them doing more work:
+///
+/// 1. **Numerals first.** [`numbers_to_han`] turns `123` into 一百二十三 before
+///    anything looks at the text, because a digit belongs to no script the
+///    segmenter knows: it would land in an `other` run and be dropped as
+///    punctuation — unheard, and silently. The JavaScript applies it in the same
+///    place, inside the punctuation call: `mapPunctuation(numbersToHan(text))`.
+/// 2. **Then punctuation**, [`zh_text::map_punctuation`], which is where the
+///    pauses come from. It is not [`normalize_punctuation`]: `chinese.ts` maps
+///    the quotation marks to `“ ”` where `common.ts` maps them to `"`, and the
+///    tokenizer has all three, so this is a different phoneme string and not a
+///    cosmetic one.
+/// 3. **Then split into runs** — but with [`zh_text::split_runs`], not
+///    [`segment_text`]. The two disagree about `〇` and about kana, and the
+///    Chinese one is the one the JavaScript uses; see that module for which
+///    difference is audible.
+/// 4. **Then read each run out.**
+///
+/// # A Han run is read a word at a time
+///
+/// The syllables are [`ChinesePinyin`]'s, one per character, and the *boundaries*
+/// between them are [`SegmenterZh`]'s. Both are needed: misaki writes one space
+/// between words and Kokoro was trained on that, so one space per syllable made
+/// the model pause inside words (人设, 曾经). A mismatch between the two — the
+/// segmenter dropping a character, or the syllable table missing one — is refused
+/// rather than guessed at, because either would move a syllable into the
+/// neighbouring word.
+///
+/// # Latin runs go to the English engine, not to espeak
+///
+/// This is the one place the Rust pipeline deliberately does not reproduce the
+/// JavaScript. `chinese.ts` sends a Latin run to espeak, spelled out letter by
+/// letter when it is all capitals; this sends it to [`EnglishG2p`], which is CMU
+/// Dict plus a spelling rule, for the reasons phase 4 recorded. The two agree on
+/// initialisms and can disagree on a mixed-case word espeak would have invented a
+/// pronunciation for — which is the trade phase 4 chose on purpose, and it applies
+/// here unchanged because it is the same backend the Japanese pipeline already
+/// uses for the same runs. A word the dictionary does not have is dropped and
+/// warned about, not silently skipped.
+///
+/// # Whitespace
+///
+/// [`zh_text::keep_punctuation`] does **not** trim: the runs are concatenated
+/// with nothing between them, so a space that `map_punctuation` put after a comma
+/// is the only thing separating it from the next word. The single
+/// [`collapse_whitespace`] at the end handles the ends of the sentence — which is
+/// also what `ChinesePhonemizer.phonemize` does, in the same order.
+///
+/// `english` is `None` when the backend could not be built at all, which is a
+/// broken build rather than a normal state; see [`phonemize_ja`] for why that is a
+/// warning and not a failure.
+pub fn phonemize_zh(
+    text: &str,
+    segmenter: &SegmenterZh,
+    english: Option<&EnglishG2p>,
+) -> Result<Phonemized, PipelineError> {
+    let with_numerals = numbers_to_han(text);
+    let mapped = zh_text::map_punctuation(&with_numerals);
+    let runs = zh_text::split_runs(&mapped);
+
+    let chinese = ChinesePinyin::new();
+    let mut parts: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    for run in &runs {
+        match run {
+            ZhRun::Han(run_text) => {
+                // The boundaries first, so that a segmenter that lost a character
+                // is reported as that rather than as the syllable table missing
+                // one — the same order the JavaScript checks them in.
+                let lengths = segmenter.word_lengths(run_text)?;
+                parts.push(chinese.han_to_ipa_by_words(run_text, &lengths)?);
+            }
+            ZhRun::Latin(run_text) => {
+                let phonemes = match english {
+                    Some(english) => english.phonemize(run_text)?,
+                    None => String::new(),
+                };
+
+                if phonemes.is_empty() {
+                    warnings.push(no_pronunciation(run_text));
+                } else {
+                    parts.push(phonemes);
+                }
+            }
+            ZhRun::Other(run_text) => parts.push(zh_text::keep_punctuation(run_text)),
         }
     }
 

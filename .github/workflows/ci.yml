@@ -22,6 +22,10 @@ jobs:
         with:
           tool: wasm-pack
       - run: pnpm build:wasm
+      # The Rust half of the phonemizer has its own tests — the dictionary
+      # protocol, and later the pipeline's parity corpus. Nothing else runs them,
+      # and the side panel smoke test rotted once already while nothing ran it.
+      - run: cargo test --workspace
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

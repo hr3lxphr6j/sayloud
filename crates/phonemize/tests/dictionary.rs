@@ -1,0 +1,335 @@
+//! The dictionary protocol (spec §3.2), tested through the registry the wasm
+//! boundary is a thin wrapper around.
+//!
+//! Deliberately not through `Phonemizer`: its methods return `Result<_, JsValue>`,
+//! and constructing a `JsValue` on a non-wasm target panics. The wrapper itself
+//! is covered by the one test at the bottom, which only exercises the `Ok` path.
+
+use std::fs;
+use std::path::PathBuf;
+
+use phonemize::dictionary::{primary_language, DictionaryError, DictionaryRegistry};
+use phonemize::Phonemizer;
+
+/// The Japanese dictionary's name, as `required_dictionaries` spells it.
+const IPADIC: &str = "lindera-ipadic-ja";
+
+/// A path inside the repo, resolved from this crate rather than the cwd — `cargo
+/// test` runs with the package directory as the working directory.
+fn fixture(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures")
+        .join(name)
+}
+
+fn fixture_bytes(name: &str) -> Vec<u8> {
+    let path = fixture(name);
+    fs::read(&path).unwrap_or_else(|error| panic!("could not read {}: {error}", path.display()))
+}
+
+/// A registry that has been told which frontend and language to prepare for.
+fn declared(frontend: &str, lang: &str) -> DictionaryRegistry {
+    let mut registry = DictionaryRegistry::new();
+    registry
+        .declare_required(frontend, lang)
+        .unwrap_or_else(|error| panic!("declare_required({frontend}, {lang}): {error}"));
+    registry
+}
+
+#[test]
+fn japanese_needs_the_ipadic_dictionary() {
+    let registry = declared("kokoro-v1", "ja-JP");
+
+    assert_eq!(registry.required(), [IPADIC]);
+}
+
+#[test]
+fn english_needs_no_dictionary_yet() {
+    // espeak-ng's data files are compiled into the wasm (spec §2.3), so English
+    // is the case where `prepare` has nothing to fetch. It is also the case a
+    // broken implementation would get wrong by demanding a dictionary anyway.
+    assert!(declared("kokoro-v1", "en-US").required().is_empty());
+}
+
+#[test]
+fn chinese_needs_no_dictionary_yet() {
+    // The pinyin table and the segmenter are compiled in (spec §2.3). This test
+    // is a tripwire, not a spec: if the Chinese segmenter turns out to be
+    // lindera-cc-cedict rather than jieba-rs, this is the assertion that has to
+    // change, and changing it is the whole of what the JS side sees.
+    assert!(declared("kokoro-v1", "zh-CN").required().is_empty());
+    assert!(declared("kokoro-v11-zh", "zh-CN").required().is_empty());
+}
+
+#[test]
+fn the_frontend_decides_which_languages_are_speakable() {
+    // v1.1-zh has no Japanese frontend (spec §2.2, review focus #3).
+    let error = DictionaryRegistry::new()
+        .declare_required("kokoro-v11-zh", "ja-JP")
+        .expect_err("v1.1-zh cannot speak Japanese");
+
+    assert_eq!(
+        error,
+        DictionaryError::UnsupportedLanguage {
+            frontend: "kokoro-v11-zh".to_string(),
+            lang: "ja-JP".to_string(),
+        }
+    );
+}
+
+#[test]
+fn an_unknown_frontend_is_an_error_rather_than_an_empty_list() {
+    // The plan's version of this function had a `_ => {}` arm, which turns a
+    // typo into "needs nothing, loads nothing, fails later for no visible
+    // reason".
+    let error = DictionaryRegistry::new()
+        .declare_required("kokoro-v2", "en-US")
+        .expect_err("kokoro-v2 is not a frontend");
+
+    assert_eq!(
+        error,
+        DictionaryError::UnknownFrontend {
+            frontend: "kokoro-v2".to_string(),
+        }
+    );
+}
+
+#[test]
+fn the_language_tag_is_reduced_to_its_primary_subtag() {
+    assert_eq!(primary_language("ja-JP"), "ja");
+    assert_eq!(primary_language("JA"), "ja");
+    assert_eq!(primary_language("zh-Hant-TW"), "zh");
+    assert_eq!(primary_language("zh_CN"), "zh");
+    assert_eq!(primary_language("en"), "en");
+    assert_eq!(primary_language(""), "");
+}
+
+#[test]
+fn a_dictionary_is_decompressed_on_load() {
+    let mut registry = declared("kokoro-v1", "ja-JP");
+
+    registry
+        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .unwrap();
+    registry.finish().unwrap();
+
+    // The assertion that matters: what came back is the plaintext the reference
+    // `zstd` CLI compressed, byte for byte. A `load` that stored the compressed
+    // bytes would pass `finish` and fail here.
+    assert_eq!(
+        registry.get(IPADIC).unwrap(),
+        fixture_bytes("test-dict.json").as_slice()
+    );
+}
+
+#[test]
+fn loading_a_dictionary_nobody_asked_for_is_an_error() {
+    let mut registry = declared("kokoro-v1", "ja-JP");
+
+    let error = registry
+        .load("lindera-unidic-ja", &fixture_bytes("test-dict.json.zst"))
+        .expect_err("unidic was never declared");
+
+    // The message has to name what *was* declared, or the caller cannot tell a
+    // typo from a version skew.
+    assert_eq!(
+        error,
+        DictionaryError::UnknownDictionary {
+            name: "lindera-unidic-ja".to_string(),
+            declared: vec![IPADIC.to_string()],
+        }
+    );
+}
+
+#[test]
+fn bytes_that_are_not_a_zstd_frame_are_rejected_by_the_magic_number() {
+    let mut registry = declared("kokoro-v1", "ja-JP");
+
+    // A gzip file where a zstd one belongs — the mistake a build script makes.
+    let error = registry
+        .load(IPADIC, &[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00])
+        .expect_err("gzip is not zstd");
+
+    assert_eq!(
+        error,
+        DictionaryError::NotZstd {
+            name: IPADIC.to_string(),
+            leading: vec![0x1f, 0x8b, 0x08, 0x00],
+        }
+    );
+    // The message carries the bytes, because "not zstd" alone does not say
+    // whether the file was gzip, plain text or a redirect page.
+    assert!(error.to_string().contains("1f 8b 08 00"), "{error}");
+}
+
+#[test]
+fn an_empty_dictionary_is_rejected_rather_than_panicking() {
+    let mut registry = declared("kokoro-v1", "ja-JP");
+
+    // A zero-byte file is what a truncated fetch or a botched build leaves
+    // behind, and slicing the first four bytes would panic on it.
+    let error = registry.load(IPADIC, &[]).expect_err("empty is not zstd");
+
+    assert_eq!(
+        error,
+        DictionaryError::NotZstd {
+            name: IPADIC.to_string(),
+            leading: vec![],
+        }
+    );
+}
+
+#[test]
+fn a_frame_that_cannot_be_decoded_is_reported_as_a_decompression_failure() {
+    let mut registry = declared("kokoro-v1", "ja-JP");
+
+    // A real magic number, then noise: the header parses far enough to be
+    // recognisably zstd and then does not survive decoding. This is the shape of
+    // a file corrupted after it was compressed.
+    let mut corrupt = vec![0x28, 0xB5, 0x2F, 0xFD];
+    corrupt.extend_from_slice(&[0xff; 32]);
+
+    let error = registry
+        .load(IPADIC, &corrupt)
+        .expect_err("noise is not a frame");
+
+    assert!(
+        matches!(error, DictionaryError::Decompress { ref name, .. } if name == IPADIC),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn finishing_before_every_dictionary_arrived_names_the_missing_ones() {
+    let registry = declared("kokoro-v1", "ja-JP");
+
+    let error = registry.finish().expect_err("nothing was loaded");
+
+    assert_eq!(
+        error,
+        DictionaryError::Missing {
+            names: vec![IPADIC.to_string()]
+        }
+    );
+    assert!(error.to_string().contains(IPADIC), "{error}");
+}
+
+#[test]
+fn feeding_the_same_dictionary_twice_keeps_the_first_copy() {
+    let mut registry = declared("kokoro-v1", "ja-JP");
+    registry
+        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .unwrap();
+
+    // The second feed is garbage, and has to be *ignored* rather than decoded:
+    // `prepare` runs again every time the user switches voices, and
+    // re-decompressing 45.3 MB to get the same bytes back is the one cost this
+    // protocol can avoid for free. Rejecting the garbage is what proves the
+    // bytes were not decoded again.
+    registry.load(IPADIC, b"not a frame at all").unwrap();
+
+    assert_eq!(
+        registry.get(IPADIC).unwrap(),
+        fixture_bytes("test-dict.json").as_slice()
+    );
+}
+
+#[test]
+fn switching_language_back_does_not_demand_the_dictionary_again() {
+    let mut registry = declared("kokoro-v1", "ja-JP");
+    registry
+        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .unwrap();
+    registry.finish().unwrap();
+
+    // Chinese needs nothing, so this is the whole of a voice switch to Chinese.
+    registry.declare_required("kokoro-v1", "zh-CN").unwrap();
+    registry.finish().unwrap();
+
+    // And back. `load` is skipped by the wrapper here only if the bytes are
+    // already there — which `finish` is what checks.
+    registry.declare_required("kokoro-v1", "ja-JP").unwrap();
+    registry.finish().unwrap();
+}
+
+#[test]
+fn a_dictionary_stays_loadable_after_the_required_set_moved_on() {
+    let mut registry = declared("kokoro-v1", "ja-JP");
+
+    // Two `prepare` calls in flight at once — the caller has already asked about
+    // Chinese by the time Japanese's bytes arrive. The bytes are still wanted,
+    // so they must not be refused as unknown.
+    registry.declare_required("kokoro-v1", "zh-CN").unwrap();
+    registry
+        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .expect("declared earlier, still accepted");
+}
+
+#[test]
+fn every_failure_has_a_stable_code_for_the_javascript_side() {
+    // `lib/models/phonemize-dict.ts` switches on these, so a rename here is a
+    // silent behaviour change over there. Pinned deliberately.
+    let codes = [
+        (
+            DictionaryError::UnknownFrontend {
+                frontend: String::new(),
+            },
+            "unknown-frontend",
+        ),
+        (
+            DictionaryError::UnsupportedLanguage {
+                frontend: String::new(),
+                lang: String::new(),
+            },
+            "unsupported-language",
+        ),
+        (
+            DictionaryError::UnknownDictionary {
+                name: String::new(),
+                declared: Vec::new(),
+            },
+            "unknown-dictionary",
+        ),
+        (
+            DictionaryError::NotZstd {
+                name: String::new(),
+                leading: Vec::new(),
+            },
+            "dictionary-format",
+        ),
+        (
+            DictionaryError::Decompress {
+                name: String::new(),
+                detail: String::new(),
+            },
+            "dictionary-decompress",
+        ),
+        (
+            DictionaryError::Missing { names: Vec::new() },
+            "missing-dictionaries",
+        ),
+    ];
+
+    for (error, code) in codes {
+        assert_eq!(error.code(), code);
+        assert!(error.to_string().starts_with(code), "{error}");
+    }
+}
+
+#[test]
+fn the_wasm_boundary_exposes_the_protocol() {
+    // The only test that goes through `Phonemizer`, and it stays on the `Ok`
+    // path: an `Err` there would build a `JsValue`, which panics off wasm.
+    let mut phonemizer = Phonemizer::new();
+
+    assert_eq!(
+        phonemizer
+            .required_dictionaries("kokoro-v1", "ja-JP")
+            .unwrap(),
+        [IPADIC]
+    );
+    assert!(phonemizer
+        .required_dictionaries("kokoro-v1", "en-US")
+        .unwrap()
+        .is_empty());
+}

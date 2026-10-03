@@ -1,5 +1,11 @@
 # Phonemization Architecture
 
+> **Status (2026-10-03)**: this describes the **current JavaScript pipeline**. A
+> decision has been made to migrate the whole of it to a single Rust-compiled
+> wasm module; see `docs/superpowers/plans/2026-10-03-p6-rust-phonemize-spec.md`.
+> That spec is a design, not yet implemented — this document remains accurate
+> until the migration lands, and should be rewritten when it does.
+
 ## Overview
 
 Phonemization (text → IPA) only applies to **on-device Kokoro TTS**. Cloud providers (OpenAI, Volcengine, Azure, etc.) receive raw text and handle phonemization themselves.

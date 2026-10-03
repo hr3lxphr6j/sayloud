@@ -7,6 +7,7 @@
 
 pub mod g2p_en;
 pub mod numbers;
+pub mod numbers_en;
 pub mod segmenter_ja;
 
 pub use g2p_en::{EnglishError, EnglishG2p};

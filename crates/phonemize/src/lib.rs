@@ -6,9 +6,11 @@
 //!
 //! Japanese is the language that works end to end today: the dictionary
 //! protocol (§3.2) is what gets IPADic into the module, and [`pipeline`] is what
-//! turns text into phonemes with it. English arrives in phase 4, as the backend
-//! the Latin runs of a Japanese sentence go through — the dictionary it needs is
-//! compiled in, so there is nothing to fetch for it. Chinese arrives in phase 5.
+//! turns text into phonemes with it. English is wired as well — first as the
+//! backend the Latin runs of a Japanese sentence go through, then as a pipeline
+//! of its own once the numeral reading landed ([`pipeline::phonemize_en`]); the
+//! dictionary it needs is compiled in, so there is nothing to fetch for it.
+//! Chinese arrives in a later phase.
 
 use std::sync::OnceLock;
 
@@ -43,8 +45,7 @@ pub struct Phonemizer {
     /// evicted, so a second build could only arrive at the same object at the
     /// cost of another 45 MB of copying.
     japanese: Option<SegmenterJa>,
-    /// The English backend, built on the first Latin run rather than on
-    /// `prepare`.
+    /// The English backend, built on the first use rather than on `prepare`.
     ///
     /// It needs no dictionary — the CMU dictionary is compiled into this module
     /// — but building it parses that dictionary, which is 27 ms and ~13 MB in the
@@ -172,23 +173,20 @@ impl Phonemizer {
                 pipeline::phonemize_ja(text, segmenter, self.english())
                     .map_err(PhonemizeError::Pipeline)?
             }
-            // `zh` and `en` pass the frontend check above and have no pipeline
-            // yet — phase 5 and phase 6. An error rather than an empty string:
-            // a sentence that phonemizes to nothing plays as silence, and
-            // silence is exactly what this migration exists to stop producing
-            // quietly. `NotImplemented` also says which of the two things went
-            // wrong, which `UnsupportedLanguage` would not: the *frontend* can
-            // speak Chinese, this *build* cannot yet.
-            //
-            // `en` is the one worth spelling out, because the English backend is
-            // already here and wired for the Latin runs of a Japanese sentence.
-            // What a whole English *sentence* still needs is numeral reading:
-            // the CMU dictionary skips digits rather than reading them
-            // (measured: `I have 3 cats` → `aɪ hæv kˈæts`, the 3 gone), so
-            // wiring this before `numbers.rs` grows its 中日英 rules would be a
-            // regression against the espeak path, which reads the number out.
-            // A Latin run cannot contain a digit, which is why that path is
-            // wired and this one is not.
+            // English has no dictionary to wait for — the CMU dictionary is
+            // compiled in — so this arm needs no `prepare` and no `NotPrepared`
+            // check. The backend itself is still built lazily on the first call;
+            // see the `english` field.
+            "en" => {
+                pipeline::phonemize_en(text, self.english()).map_err(PhonemizeError::Pipeline)?
+            }
+            // `zh` passes the frontend check above and has no pipeline in this
+            // build. An error rather than an empty string: a sentence that
+            // phonemizes to nothing plays as silence, and silence is exactly what
+            // this migration exists to stop producing quietly. `NotImplemented`
+            // also says which of the two things went wrong, which
+            // `UnsupportedLanguage` would not: the *frontend* can speak Chinese,
+            // this *build* cannot yet.
             _ => {
                 return Err(PhonemizeError::NotImplemented {
                     lang: options.lang.clone(),

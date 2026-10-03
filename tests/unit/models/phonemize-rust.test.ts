@@ -288,18 +288,17 @@ describe('RustPhonemizer.phonemize', () => {
   it.skipIf(!hasDictionary)('reports a word the English dictionary does not have', async () => {
     const phonemizer = await prepared();
 
-    // CMU Dict has no `Kokoro`, so the word is dropped and the warning is the
-    // only thing that says so. It is also the assertion that the field is
-    // omitted when empty: the test above compares whole result objects and would
-    // fail if `warnings: []` were sent.
+    // Decision 1.B (Phase 4): OOV words are spelled letter by letter as a
+    // fallback instead of being silently dropped. CMU Dict has no `Kokoro`,
+    // so it's spelled K-O-K-O-R-O. The warning is no longer produced because
+    // the phonemize result is non-empty (the letters were spelled).
     const result = phonemizer.phonemize('Kokoroを使う', {
       frontend: 'kokoro-v1',
       lang: 'ja-JP',
     });
 
     expect(result).toEqual({
-      phonemes: 'oɕiu',
-      warnings: ['no English pronunciation for "Kokoro"'],
+      phonemes: 'kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊoɕiu',
     });
   });
 

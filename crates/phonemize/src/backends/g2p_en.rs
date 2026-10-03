@@ -128,12 +128,12 @@ impl EnglishG2p {
             // Space-separate each character so the dictionary reads them one at a time
             let letters: Vec<String> = run.chars().map(|ch| ch.to_string()).collect();
             let fallback = letters.join(" ");
-            let (fallback_tokens, _) = self
-                .phonemizer
-                .phonemize_with_prosody(&fallback)
-                .map_err(|error| EnglishError::Phonemize {
-                    detail: error.to_string(),
-                })?;
+            let (fallback_tokens, _) =
+                self.phonemizer
+                    .phonemize_with_prosody(&fallback)
+                    .map_err(|error| EnglishError::Phonemize {
+                        detail: error.to_string(),
+                    })?;
             return Ok(fallback_tokens.concat());
         }
 

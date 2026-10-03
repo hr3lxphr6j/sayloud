@@ -23,11 +23,13 @@ pub mod kana;
 pub mod pipeline;
 pub mod text;
 mod types;
+pub mod vocab;
 
 use backends::g2p_en::EnglishG2p;
 use backends::segmenter_ja::{SegmenterError, SegmenterJa};
 use dictionary::{DictionaryError, DictionaryRegistry, IPADIC_JA};
 use pipeline::PipelineError;
+use vocab::{validate_phonemes, Vocab, VocabError};
 
 pub use types::{FrontendId, PhonemeSpan, PhonemizeOptions, PhonemizeResult};
 
@@ -194,8 +196,25 @@ impl Phonemizer {
             }
         };
 
+        // The gate (spec §1.3, §4.2.1). Every pipeline ends here, so a frontend
+        // whose inventory does not match the phonemes fails loudly instead of
+        // losing the characters the tokenizer would silently delete.
+        //
+        // The frontend was already checked by `dictionary_names` above, so this
+        // lookup cannot fail — and an error rather than a panic, because a panic
+        // inside the wasm takes the worker with it.
+        let vocab = Vocab::for_frontend(&options.frontend).ok_or_else(|| {
+            PhonemizeError::Dictionary(DictionaryError::UnknownFrontend {
+                frontend: options.frontend.clone(),
+            })
+        })?;
+        // Repair before validating, so that a character the vocabulary cannot
+        // express is rewritten rather than reported — `ɚ` → `əɹ` for v1.1-zh.
+        let repaired = vocab.repair(&phonemes.phonemes);
+        validate_phonemes(&repaired, vocab).map_err(PhonemizeError::Vocab)?;
+
         Ok(PhonemizeResult {
-            phonemes: phonemes.phonemes,
+            phonemes: repaired.into_owned(),
             spans: None,
             warnings: phonemes.warnings,
         })
@@ -242,6 +261,9 @@ pub enum PhonemizeError {
     NotImplemented { lang: String },
     /// The pipeline itself failed.
     Pipeline(PipelineError),
+    /// The phonemes do not belong to the frontend's vocabulary, and the tokenizer
+    /// would drop the characters it does not know without saying so.
+    Vocab(VocabError),
 }
 
 impl PhonemizeError {
@@ -252,6 +274,7 @@ impl PhonemizeError {
             Self::NotPrepared { .. } => "dictionary-not-loaded",
             Self::NotImplemented { .. } => "pipeline-not-implemented",
             Self::Pipeline(error) => error.code(),
+            Self::Vocab(error) => error.code(),
         }
     }
 }
@@ -269,7 +292,14 @@ impl std::fmt::Display for PhonemizeError {
                 write!(f, "this build has no pipeline for {lang:?} yet")
             }
             Self::Pipeline(error) => write!(f, "{error}"),
+            Self::Vocab(error) => write!(f, "{error}"),
         }
+    }
+}
+
+impl From<VocabError> for PhonemizeError {
+    fn from(error: VocabError) -> Self {
+        Self::Vocab(error)
     }
 }
 

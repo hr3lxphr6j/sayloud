@@ -63,8 +63,13 @@ fn sentence_with_large_number() {
 
     assert_eq!(
         phonemize("The year 2024"),
-        "ðə jˈɪɹ tˈuː θˈaʊzənd ənd twˈɛntiː-fˈɔːɹ"
+        "ðə jˈɪɹ tˈuː θˈaʊzənd ənd twˈɛntiːfˈɔːɹ"
     );
+    // The hyphen in `num2words`' "twenty-four" is not in Kokoro's vocabulary, so
+    // `keep_punctuation` drops it and the two words run together — which is what
+    // the tokenizer has always done with it, since it would have deleted the
+    // character itself. Reading it as a word boundary instead would be a change
+    // to what the model hears, and is not this phase's question.
 }
 
 #[test]
@@ -104,5 +109,8 @@ fn splits_a_contraction_because_the_segmenter_does() {
     // word by construction — so a whole English sentence is what exposes it.
     // The fix belongs in the shared segmenter, which the Japanese side splits on
     // too, and is not this phase's work.
-    assert_eq!(phonemize("don't stop"), "dˈɑn'tˈiː stˈɑp");
+    //
+    // The apostrophe itself is gone from the output, because it is not in the
+    // vocabulary and the tokenizer would delete it — see `KOKORO_PUNCTUATION`.
+    assert_eq!(phonemize("don't stop"), "dˈɑntˈiː stˈɑp");
 }

@@ -224,7 +224,13 @@ pub fn collapse_whitespace(text: &str) -> String {
 }
 
 /// JavaScript's `\s`, which is a fixed set rather than a Unicode property.
-fn is_js_whitespace(ch: char) -> bool {
+///
+/// Public because the Chinese punctuation filter needs it and the two have to
+/// agree: `chinese.ts`'s `keepPunctuation` keeps `\s`, so a whitespace set that
+/// differed between the filter and the final collapse would be two answers to
+/// one question. `text.rs` is where the JavaScript's definition lives, and a
+/// second copy elsewhere would be the thing that drifts.
+pub fn is_js_whitespace(ch: char) -> bool {
     matches!(
         ch,
         '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'

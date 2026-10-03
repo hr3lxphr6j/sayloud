@@ -65,7 +65,7 @@ Node 环境，20 次平均，预热后（首次调用含 jieba / kuroshiro / esp
 
 **英文慢 47 倍不是跨 wasm 边界造成的**——中文的 jieba 同样是 wasm，50 字只要 0.07 ms。差距来自 espeak 自身的算法量（规则驱动的 G2P）。
 
-### 1.2 线程位置（现状，Rust 化后不变）
+### 1.2 线程位置（现状）
 
 ```
 sidepanel                    独立线程（UI）
@@ -79,7 +79,9 @@ offscreen 文档（主线程）       TimelinePlayer 的计时器 + 播放
 
 **因此**：Rust wasm 实例**必须建在这个 worker 里**。没有 `SharedArrayBuffer`（COOP/COEP 刻意未启用，见 `wxt.config.ts`），wasm 实例无法跨线程传递。
 
-**注意**：预处理与模型**共享同一线程**。所以预处理变慢的代价不是播放卡顿（那被 offscreen 主线程隔离着），而是**合成吞吐下降**、prefetch 跟不上、句间出现空隙。
+**注意**：预处理与模型**共享同一线程**。这是“预处理变慢”的代价所在——不是播放卡顿（那被 offscreen 主线程隔离着），而是**合成吞吐下降**、prefetch 跟不上、句间出现空隙。
+
+P6 要把这两者**拆成两个 worker**，理由见 §2.4。
 
 ### 1.3 模型侧的两套音素集
 
@@ -161,6 +163,44 @@ phonemize.wasm   (估算 ~3 MB，不含字典)
 **espeak 必须编进同一个 wasm**：否则 Rust 调它的 wasm 是又一次跨界，而英文恰是当前最慢的路径。
 
 **体积对照**：现在 = kuromoji JS + 17.8 MB 字典 + jieba wasm + espeak wasm；之后 = 一个 ~3 MB wasm + 按需的字典。
+
+### 2.4 Worker 拓扑：拆成两个
+
+**当前只有一个真 Worker**。`AudioWorker` 虽然叫 Worker，但它是主线程上的一个类（`lib/audio-worker.ts:131`），管着 prefetch 队列、generation 计数器、两套超时（`synthesizeTimeoutMs` / `localSynthesizeTimeoutMs`）。真正在 worker 里的只有 `local.worker.ts` 那一个，ONNX 和 phonemize 挤在一起。
+
+**目标**：
+
+```
+offscreen 主线程（AudioWorker 调度）
+  ├── phonemize worker    ← Rust wasm + 字典（CPU 密集）
+  └── kokoro worker       ← ONNX Runtime（GPU 密集）
+```
+
+两个 worker 都由 offscreen 创建，跟着 offscreen 一起被回收。**不让两个 worker 直接互连**——虽然 `MessageChannel` 能把 port 传给另一个 worker，但调度应该留在上层的 `AudioWorker` 里，那是它已经在做的事。
+
+**收益不在吞吐，在冷启动**：
+
+| 场景 | 单 worker | 双 worker | 改善 |
+|---|---|---|---|
+| 每句（播放中） | phonemize 0.07 + 合成 500 = 500.07 ms | 重叠 → 500 ms | 0.07 ms（**0.014%**） |
+| 冷启动 | 字典解压 ~100 ms **串在**模型 init 750 ms 之前 | `max(100, 750)` = 750 ms | **~100 ms（13%）** |
+
+流水线省下的就是 phonemize 本身的时间，而它只占 0.014%——所以**这次拆分的理由是冷启动、解耦与弹性，不是流水线吞吐**。和 §0.2 一样，写清楚是为了防止将来被误读成性能收益。
+
+**三条理由**：
+
+1. **冷启动并行**：字典解压（CPU）与模型 init（GPU/网络）真正并行。这是每次播放都要付的成本（§4.1 的 30 秒回收）。
+2. **解耦**：phonemize 是纯计算、无 I/O、无 GPU；模型是 GPU + 网络。失败模式、资源画像、生命周期都不同，同线程只是历史巧合。
+3. **未来弹性**：若 phonemize 之后变重（音调预测、大量用户规则），双 worker 是**唯一**能重叠的结构。现在做是设计成本，将来做是重构成本。
+
+**成本**：
+
+- 多一份 wasm 实例化（~30 ms）与一份 worker 堆
+- 每句多一次 postMessage 往返（几百字节，~0.1 ms）
+- 错误传播复杂化：`WorkerLocalEngine` 现在是一个整体，`failAll` 之类的逻辑要跟着拆
+- 调试时两个 worker 的 console 分在两个上下文
+
+**附带的好处**：`LocalProvider.synthesize` 不再是“phonemize + 合成”的黑盒，而是两步显式调用——正好与 §3.1 的 `phonemize(text, options)` 接口对上。
 
 ---
 
@@ -418,7 +458,7 @@ it('matches the JavaScript chain it replaces', async () => {
 | 13 | 替换字典作用在**文本层** | 用户 |
 | 14 | 正则用 **`regex` crate**（无 lookaround） | 用户 |
 | 15 | 用户规则 > 系统规则 | 设计推导 |
-| 16 | 预处理**保留在嵌套 worker**，与模型同线程 | 现状，不变 |
+| 16 | phonemize 与模型**拆成两个 worker**，调度留在上层 | 用户（2026-10-03） |
 | 17 | 预定义前端，不做任意步骤组合 | 设计推导 |
 
 ---
@@ -433,6 +473,7 @@ it('matches the JavaScript chain it replaces', async () => {
 | V4 | OPFS 缓存是否必要 | 取决于 V1+V2 的结果 | 冷启动总时长实测 |
 | V5 | v1.1-zh 的 `int8`(121.5 MB) 是否可用 | 决定两个模型能否同时在内存里（415 MB → 213 MB） | 加载并听一次，与 P5 §2.2 同法 |
 | V6 | `ɚ` → `əɹ` 替换的听感 | 影响英文在 v1.1-zh 下的正确性 | 合成对比 |
+| V7 | 双 worker 的冷启动实际省下多少 | §2.4 的收益表基于估算（字典解压 ~100 ms 与模型 init 750 ms 串行） | 量两个 worker 各自就绪的时间差 |
 
 **V1 是唯一挡住开工的**——如果 lindera 要建索引，§4.3 的自建格式就从"要求"变成"必须做"，工作量差别很大。
 

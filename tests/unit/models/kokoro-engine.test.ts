@@ -23,6 +23,28 @@ function fakeSession() {
   return { session: { model: { dispose } }, dispose };
 }
 
+/**
+ * A session that can actually speak.
+ *
+ * The tokenizer reports one token per character, so a count is readable in an
+ * assertion without a real vocabulary; `generate` and `generate_from_ids`
+ * return distinguishable sample values, which is what says which path a
+ * language took.
+ */
+function speakingSession() {
+  const dispose = vi.fn();
+  const generate = vi.fn(async () => ({ audio: new Float32Array([1, 1]) }));
+  const generateFromIds = vi.fn(async () => ({ audio: new Float32Array([2]) }));
+  const tokenizer = vi.fn((text: string) => ({ input_ids: { dims: [1, text.length] } }));
+  const session = {
+    model: { dispose },
+    generate,
+    generate_from_ids: generateFromIds,
+    tokenizer,
+  };
+  return { session, dispose, generate, generateFromIds, tokenizer };
+}
+
 /** A promise whose settling this test decides. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -30,6 +52,19 @@ function deferred<T>() {
     resolve = res;
   });
   return { promise, resolve };
+}
+
+/** Let every microtask queued by the engine run. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** An engine whose model is loaded and whose session is the given one. */
+async function speaking(session: unknown): Promise<InstanceType<typeof KokoroEngine>> {
+  fromPretrained.mockResolvedValue(session);
+  const engine = new KokoroEngine();
+  await engine.load('kokoro-82m', 'fp16', 'wasm');
+  return engine;
 }
 
 describe('KokoroEngine.load', () => {
@@ -125,5 +160,115 @@ describe('KokoroEngine.load', () => {
       'unknown model or tier'
     );
     expect(fromPretrained).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * What the engine does with pieces that are already phonemized.
+ *
+ * The two paths are the whole reason a piece carries both its text and its IPA:
+ * English goes in as text so `kokoro-js` phonemizes it the way the model was
+ * trained, and Chinese and Japanese go in as IPA because `generate()` rejects
+ * every voice outside its own 28-voice English list.
+ */
+describe('KokoroEngine.synthesize', () => {
+  const PIECES = [
+    { text: 'hello', ipa: 'həlˈoʊ' },
+    { text: ' world', ipa: ' wˈɜːld' },
+  ];
+
+  beforeEach(() => {
+    fromPretrained.mockReset();
+  });
+
+  it('renders every piece and joins them into one buffer', async () => {
+    const session = speakingSession();
+    const engine = await speaking(session.session);
+
+    const pcm = await engine.synthesize(1, PIECES, 'af_heart', 'en-US');
+
+    expect(session.generate).toHaveBeenCalledTimes(2);
+    // Same sample rate by construction, so the concatenation is exact.
+    expect(pcm.sampleRate).toBe(24_000);
+    expect([...pcm.pcm]).toEqual([1, 1, 1, 1]);
+  });
+
+  it('speaks English through the library\u2019s own front end', async () => {
+    // The reason a piece carries its text at all. `generate()` applies the
+    // number, punctuation and character substitutions Kokoro was trained on;
+    // re-implementing them here is how the two would drift apart.
+    const session = speakingSession();
+    const engine = await speaking(session.session);
+
+    await engine.synthesize(1, [PIECES[0] as (typeof PIECES)[number]], 'af_heart', 'en-GB');
+
+    expect(session.generate).toHaveBeenCalledWith('hello', { voice: 'af_heart' });
+    expect(session.generateFromIds).not.toHaveBeenCalled();
+  });
+
+  it('speaks Chinese and Japanese from the IPA', async () => {
+    // `generate()` validates the voice against its own list of 28 English
+    // voices, so these two languages cannot use it at all.
+    const session = speakingSession();
+    const engine = await speaking(session.session);
+
+    await engine.synthesize(1, [PIECES[0] as (typeof PIECES)[number]], 'zf_xiaobei', 'zh-CN');
+    await engine.synthesize(2, [PIECES[0] as (typeof PIECES)[number]], 'jf_alpha', 'ja-JP');
+
+    expect(session.tokenizer).toHaveBeenNthCalledWith(1, 'həlˈoʊ', { truncation: false });
+    expect(session.generateFromIds).toHaveBeenCalledTimes(2);
+    expect(session.generate).not.toHaveBeenCalled();
+  });
+
+  it('stops rendering the pieces still to come once it is cancelled', async () => {
+    const session = speakingSession();
+    const engine = await speaking(session.session);
+    const first = deferred<{ audio: Float32Array<ArrayBuffer> }>();
+    session.generate.mockReturnValueOnce(first.promise);
+
+    const synthesis = engine.synthesize(7, PIECES, 'af_heart', 'en-US');
+    await tick();
+    engine.cancel(7);
+    first.resolve({ audio: new Float32Array([1]) });
+
+    await expect(synthesis).rejects.toThrow('aborted');
+    // The second piece is not rendered: the caller has moved on, and rendering
+    // it would occupy the device for audio nobody will play.
+    expect(session.generate).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses to speak before a model is loaded', async () => {
+    const engine = new KokoroEngine();
+
+    await expect(engine.synthesize(1, PIECES, 'af_heart', 'en-US')).rejects.toThrow(
+      'the model is not loaded'
+    );
+  });
+});
+
+/**
+ * The count the coordinator cuts a sentence with.
+ *
+ * Without truncation on purpose: `generate()` passes `truncation: true`, so a
+ * count taken that way would come back clamped at the limit and a sentence over
+ * it would look exactly like one at it.
+ */
+describe('KokoroEngine.countTokens', () => {
+  beforeEach(() => {
+    fromPretrained.mockReset();
+  });
+
+  it('counts the whole string, not a truncated one', async () => {
+    const session = speakingSession();
+    const engine = await speaking(session.session);
+
+    expect(engine.countTokens('həlˈoʊ')).toBe(6);
+    expect(session.tokenizer).toHaveBeenCalledWith('həlˈoʊ', { truncation: false });
+  });
+
+  it('refuses to count before a model is loaded', () => {
+    const engine = new KokoroEngine();
+
+    expect(() => engine.countTokens('həlˈoʊ')).toThrow('the model is not loaded');
   });
 });

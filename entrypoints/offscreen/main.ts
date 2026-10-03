@@ -17,7 +17,11 @@ import { CachePolicy, pullCachePolicy } from '~/lib/cache-policy';
 import type { OnDeviceEngine } from '~/lib/models/engine';
 import { pullModelSource } from '~/lib/models/source-channel';
 import type { ModelSource } from '~/lib/models/urls';
-import { createLocalWorker, WorkerLocalEngine } from '~/lib/models/worker-engine';
+import {
+  createKokoroWorker,
+  createPhonemizeWorker,
+  WorkerLocalEngine,
+} from '~/lib/models/worker-engine';
 import {
   isCacheCleared,
   isCachePolicyMessage,
@@ -75,13 +79,23 @@ function localProvider(): LocalProvider {
  * The `import()` is dynamic and the whole branch is compiled out of a shipped
  * build, so a release cannot accidentally carry a synthesiser that only makes
  * silence.
+ *
+ * Both workers are started here, and both belong to the one engine: it is what
+ * decides which of them does what (P6 spec §2.4), and it tears both down when
+ * either one dies. Starting them anywhere else would put that policy in two
+ * places.
  */
 async function buildEngine(source: ModelSource, allowFallback: boolean): Promise<OnDeviceEngine> {
   if (import.meta.env.MODE === 'e2e') {
     const { FakeLocalEngine } = await import('~/lib/models/engine');
     return new FakeLocalEngine();
   }
-  return new WorkerLocalEngine({ worker: createLocalWorker(), source, allowFallback });
+  return new WorkerLocalEngine({
+    worker: createKokoroWorker(),
+    phonemizeWorker: createPhonemizeWorker(),
+    source,
+    allowFallback,
+  });
 }
 
 const cache = new CacheManager();

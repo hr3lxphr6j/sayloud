@@ -33,7 +33,7 @@ export default defineConfig({
      *   - `new Worker(new URL(…, import.meta.url))` in `models/worker-engine`
      *     — the worker is never created, and every synthesis fails with
      *     "the on-device worker stopped".
-     *   - ONNX Runtime's `wasmPaths` (local.worker.ts) — the wasm backend
+     *   - ONNX Runtime's `wasmPaths` (kokoro.worker.ts) — the wasm backend
      *     cannot load even if the worker does start.
      *
      * The warning itself is harmless: nothing here needs `import.meta`, and the

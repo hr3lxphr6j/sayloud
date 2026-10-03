@@ -15,6 +15,7 @@
  * it through its `prebuild` hook.
  */
 
+import type { FrontendId } from './frontend';
 import {
   type DictionaryCacheStorage,
   DictionaryLoadError,
@@ -24,8 +25,14 @@ import {
 } from './phonemize-dict';
 import init, { type InitInput, Phonemizer as WasmPhonemizer } from './phonemize-wasm/phonemize';
 
-/** The phoneme inventory to produce. Follows the chosen voice, not the text. */
-export type FrontendId = 'kokoro-v1' | 'kokoro-v11-zh';
+/**
+ * The phoneme inventory to produce. Follows the chosen voice, not the text.
+ *
+ * Declared in `./frontend` so the model registry can name one without reaching
+ * this module's wasm; re-exported because this is where a caller of the
+ * phonemizer expects to find it.
+ */
+export type { FrontendId };
 
 export interface PhonemizeOptions {
   readonly frontend: FrontendId;

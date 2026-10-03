@@ -980,7 +980,14 @@ git commit -m "feat(p6): integrate lindera IPADic for Japanese segmentation"
 ---
 
 
-## 阶段 4：英文 espeak-ng 集成
+## 阶段 4：英文 G2P 集成
+
+> ⚠️ **本节已作废（2026-10-03）**：下面写的 espeak-ng C 源码编译路线经实测不可行
+> （`espeak-ng-sys` 在 crates.io 不存在；wasm32 没有 libc、宿主 `ar` 写不出可链接的归档；
+> espeak 需要文件系统读自己的数据；纯 Rust 移植是 GPL-3.0）。
+> **实际落地的是 piper-plus-g2p（MIT，CMU Dict）**，见
+> `p6-phase4-corrections.md` §六（实施记录）与 `p6-espeak-alternatives-final.md`（评估）。
+> 下面保留原文只为记录当时的设计，不要照着做。
 
 ### 任务 4.1：espeak-ng C 源码编译
 

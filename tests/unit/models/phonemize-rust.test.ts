@@ -132,9 +132,10 @@ describe('RustPhonemizer.prepare', () => {
   });
 
   it('fetches nothing for a language that needs no dictionary', async () => {
-    // English's espeak data is compiled into the wasm (spec §2.3). A `prepare`
-    // that demanded a dictionary anyway would fail here, and would also make
-    // every English voice unplayable.
+    // English's CMU dictionary is compiled into the wasm (spec §2.3), the way
+    // espeak's data was meant to be. A `prepare` that demanded a dictionary
+    // anyway would fail here, and would also make every English voice
+    // unplayable.
     const { phonemizer, fetch } = phonemizerWith();
     await phonemizer.ready;
 
@@ -270,6 +271,35 @@ describe('RustPhonemizer.phonemize', () => {
 
     expect(phonemizer.phonemize('経営', { frontend: 'kokoro-v1', lang: 'ja-JP' })).toEqual({
       phonemes: 'keiei',
+    });
+  });
+
+  it.skipIf(!hasDictionary)('phonemizes a Latin run instead of passing it through', async () => {
+    const phonemizer = await prepared();
+    const options = { frontend: 'kokoro-v1', lang: 'ja-JP' } as const;
+
+    // Phase 3 handed the characters through, which is what these two samples
+    // used to record as a divergence. The corpus says the same thing on the Rust
+    // side; this says it survives the boundary.
+    expect(phonemizer.phonemize('Chatを使う', options)).toEqual({ phonemes: 'tʃˈætoɕiu' });
+    expect(phonemizer.phonemize('あQい', options)).toEqual({ phonemes: 'akjˈuːi' });
+  });
+
+  it.skipIf(!hasDictionary)('reports a word the English dictionary does not have', async () => {
+    const phonemizer = await prepared();
+
+    // CMU Dict has no `Kokoro`, so the word is dropped and the warning is the
+    // only thing that says so. It is also the assertion that the field is
+    // omitted when empty: the test above compares whole result objects and would
+    // fail if `warnings: []` were sent.
+    const result = phonemizer.phonemize('Kokoroを使う', {
+      frontend: 'kokoro-v1',
+      lang: 'ja-JP',
+    });
+
+    expect(result).toEqual({
+      phonemes: 'oɕiu',
+      warnings: ['no English pronunciation for "Kokoro"'],
     });
   });
 

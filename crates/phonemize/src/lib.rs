@@ -6,7 +6,11 @@
 //!
 //! Japanese is the language that works end to end today: the dictionary
 //! protocol (§3.2) is what gets IPADic into the module, and [`pipeline`] is what
-//! turns text into phonemes with it. Chinese and English arrive in phases 4-6.
+//! turns text into phonemes with it. English arrives in phase 4, as the backend
+//! the Latin runs of a Japanese sentence go through — the dictionary it needs is
+//! compiled in, so there is nothing to fetch for it. Chinese arrives in phase 5.
+
+use std::sync::OnceLock;
 
 use wasm_bindgen::prelude::*;
 
@@ -18,6 +22,7 @@ pub mod pipeline;
 pub mod text;
 mod types;
 
+use backends::g2p_en::EnglishG2p;
 use backends::segmenter_ja::{SegmenterError, SegmenterJa};
 use dictionary::{DictionaryError, DictionaryRegistry, IPADIC_JA};
 use pipeline::PipelineError;
@@ -38,6 +43,18 @@ pub struct Phonemizer {
     /// evicted, so a second build could only arrive at the same object at the
     /// cost of another 45 MB of copying.
     japanese: Option<SegmenterJa>,
+    /// The English backend, built on the first Latin run rather than on
+    /// `prepare`.
+    ///
+    /// It needs no dictionary — the CMU dictionary is compiled into this module
+    /// — but building it parses that dictionary, which is 27 ms and ~13 MB in the
+    /// wasm. A Japanese sentence with no Latin text in it never uses it, and
+    /// most of them have none, so the cost is paid by the text that asks for it.
+    ///
+    /// `None` inside the cell is a build that cannot phonemize English at all;
+    /// see `pipeline::phonemize_ja` for why that is a warning rather than an
+    /// error.
+    english: OnceLock<Option<EnglishG2p>>,
 }
 
 #[wasm_bindgen]
@@ -152,15 +169,26 @@ impl Phonemizer {
                         .ok_or_else(|| PhonemizeError::NotPrepared {
                             lang: options.lang.clone(),
                         })?;
-                pipeline::phonemize_ja(text, segmenter).map_err(PhonemizeError::Pipeline)?
+                pipeline::phonemize_ja(text, segmenter, self.english())
+                    .map_err(PhonemizeError::Pipeline)?
             }
             // `zh` and `en` pass the frontend check above and have no pipeline
-            // yet — phase 5 and phase 4. An error rather than an empty string:
+            // yet — phase 5 and phase 6. An error rather than an empty string:
             // a sentence that phonemizes to nothing plays as silence, and
             // silence is exactly what this migration exists to stop producing
             // quietly. `NotImplemented` also says which of the two things went
             // wrong, which `UnsupportedLanguage` would not: the *frontend* can
             // speak Chinese, this *build* cannot yet.
+            //
+            // `en` is the one worth spelling out, because the English backend is
+            // already here and wired for the Latin runs of a Japanese sentence.
+            // What a whole English *sentence* still needs is numeral reading:
+            // the CMU dictionary skips digits rather than reading them
+            // (measured: `I have 3 cats` → `aɪ hæv kˈæts`, the 3 gone), so
+            // wiring this before `numbers.rs` grows its 中日英 rules would be a
+            // regression against the espeak path, which reads the number out.
+            // A Latin run cannot contain a digit, which is why that path is
+            // wired and this one is not.
             _ => {
                 return Err(PhonemizeError::NotImplemented {
                     lang: options.lang.clone(),
@@ -169,9 +197,21 @@ impl Phonemizer {
         };
 
         Ok(PhonemizeResult {
-            phonemes,
+            phonemes: phonemes.phonemes,
             spans: None,
+            warnings: phonemes.warnings,
         })
+    }
+
+    /// The English backend, built on first use.
+    ///
+    /// `OnceLock` rather than a field built in `build_backends`, because that
+    /// runs on every `prepare` and this costs 27 ms and ~13 MB of hash map even
+    /// for text that never contains a Latin character. The failure is cached too
+    /// — a build whose embedded dictionary will not parse fails the same way
+    /// every time, and retrying it per sentence would only be slower.
+    fn english(&self) -> Option<&EnglishG2p> {
+        self.english.get_or_init(|| EnglishG2p::new().ok()).as_ref()
     }
 
     /// Build the segmenters the last `required_dictionaries` asked for.

@@ -10,6 +10,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      # The Chinese pinyin tables and the two Kokoro vocabularies are generated
+      # from `pinyin-pro` and from the measured tokenizer vocabularies, and they
+      # are committed. The tests pin the *committed* data, so they cannot notice
+      # that it no longer matches the dependency it came from — a `pinyin-pro`
+      # bump that changes a reading would leave every test green and the data
+      # stale. Both scripts have a `--check` mode for exactly that, and this is
+      # the only place it runs. They need `node_modules`, hence the position.
+      - run: node scripts/gen-pinyin-pro-data.mjs --check
+      - run: node scripts/gen-kokoro-vocab.mjs --check
       # The phonemize wrapper imports wasm-pack's output, and `pnpm build` runs
       # the wasm build through its `prebuild` hook — so the Rust toolchain is a
       # build dependency of this repo now, not just a local convenience.

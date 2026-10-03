@@ -10,6 +10,18 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      # The phonemize wrapper imports wasm-pack's output, and `pnpm build` runs
+      # the wasm build through its `prebuild` hook — so the Rust toolchain is a
+      # build dependency of this repo now, not just a local convenience.
+      # This has to run before `typecheck` and `test`: both read the generated
+      # `.d.ts` and load the generated `.wasm`.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - run: pnpm build:wasm
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

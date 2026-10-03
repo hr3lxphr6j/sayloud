@@ -168,9 +168,26 @@ fn run_push(run: &mut ScriptRun, ch: char) {
 
 /// The punctuation marks Kokoro's tokenizer recognises.
 ///
-/// Measured against `tokenizer.json` during P5 verification. Anything else is
-/// dropped, since Kokoro cannot do anything with it anyway.
-const KOKORO_PUNCTUATION: &[char] = &[' ', ',', '.', '!', '?', '-', ':', ';', '(', ')', '"', '\''];
+/// Measured against `tokenizer.json`'s vocabulary during P5 verification — the
+/// same measurement `KEPT_PUNCTUATION` in `lib/models/phonemize/chinese.ts` came
+/// from, and the same one `tests/unit/models/kokoro-vocab.ts` keeps a copy of.
+/// Anything else is dropped, since Kokoro can do nothing with it anyway.
+///
+/// **`-` and `'` used to be in this list, and neither is in the vocabulary.**
+/// The vocabulary has `—` (U+2014, EM DASH) and no hyphen-minus, and no
+/// apostrophe at all; the JavaScript side's comment says so in as many words.
+/// Both were reaching the output and being deleted by the tokenizer's normaliser
+/// — which is why nothing noticed until the vocabulary gate (spec §1.3) started
+/// checking the output against the vocabulary and refused `don't stop`. The
+/// audible result is unchanged either way, because the tokenizer was already
+/// dropping them; what changes is that `PhonemizeResult::phonemes` now really is
+/// "exactly what goes into the tokenizer", as its doc comment claims.
+///
+/// `tests/vocab.rs` asserts every character here is in both vocabularies, so this
+/// list cannot drift from the measurement again.
+const KOKORO_PUNCTUATION: &[char] = &[
+    ' ', '$', ';', ':', ',', '.', '!', '?', '—', '…', '"', '(', ')', '“', '”',
+];
 
 /// Keep only the punctuation Kokoro understands.
 pub fn keep_punctuation(text: &str) -> String {

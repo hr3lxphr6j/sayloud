@@ -66,15 +66,29 @@ const ORT_MARKERS = ['onnxruntime', 'InferenceSession', 'wasmPaths', 'ort-wasm']
 const JIEBA_MARKERS = ['jieba', 'jieba_rs_wasm_bg-'] as const;
 
 /**
- * Measured 46.8 MB: ONNX Runtime's 21.6 MB wasm, the 17.8 MB Japanese
- * dictionary, jieba's 4.0 MB wasm, the 2.5 MB worker chunk, and the rest. It was
- * 28.9 MB before the dictionary landed and 24.8 MB before the segmenter; each
- * time the bound moved by about what the addition weighs, which is the point of
- * keeping it tight. The twelve `kuromoji-dict/` files are fetched at runtime by
- * the worker's tokenizer, so they are payload rather than an accident.
+ * Measured 57.0 MB: ONNX Runtime's 20.6 MB wasm, 16.9 MB of `kuromoji-dict/`
+ * files, the 8.1 MB IPADic dictionary, jieba's 3.8 MB wasm, the 2.5 MB worker
+ * chunk, the 1.6 MB Chinese word list, and the rest. It was 28.9 MB before the
+ * IPADic dictionary landed and 24.8 MB before the segmenter; each time the bound
+ * moved by about what the addition weighs, which is the point of keeping it
+ * tight. The dictionaries and the twelve `kuromoji-dict/` files are fetched at
+ * runtime, so they are payload rather than an accident.
+ *
+ * **This bound had already been exceeded before phase 6 touched it.** It was set
+ * to 44-50 MB around a measurement of 46.8 MB and did not move when the IPADic
+ * dictionary — 8.1 MB, and absent from the itemisation above until now — landed;
+ * the build was 55.35 MB at the commit before the Chinese word list was added,
+ * which is 5.35 MB past the ceiling. Nothing noticed because `pnpm test:build`
+ * is opt-in and CI does not run it. Phase 6 added 1.6 MB on top of that, and the
+ * bound now brackets what the build actually is.
+ *
+ * Expect it to fall sharply in phase 7: the Rust phonemizer is not reachable
+ * from an entrypoint yet, so the JavaScript chain it replaces is still bundled —
+ * the 16.9 MB of kuromoji files and jieba's 3.8 MB wasm both go away when the
+ * worker switches over (spec §2.3).
  */
-const MIN_BYTES = 44_000_000;
-const MAX_BYTES = 50_000_000;
+const MIN_BYTES = 55_000_000;
+const MAX_BYTES = 59_000_000;
 
 interface BuiltFile {
   /** Path relative to the output directory, POSIX-separated. */

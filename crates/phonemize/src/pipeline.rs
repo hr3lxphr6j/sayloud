@@ -1,13 +1,15 @@
 //! The chain: text in, phonemes out.
 //!
-//! One function per `(frontend, lang)` pair today, because one pair is all that
-//! exists. Phase 5 turns this into a dispatch over the frontends and adds
-//! Chinese; the shape of the Japanese path below is the shape it takes.
-//!
-//! The order of the steps is not free — see [`phonemize_ja`].
+//! One function per `(frontend, lang)` pair today, because what a language needs
+//! is what differs: [`phonemize_ja`] has a dictionary to segment with and
+//! [`phonemize_en`] does not, and only the Japanese one reads a numeral as kanji.
+//! The steps around those differences are the same on both sides, and the order
+//! they run in is the same too — see [`phonemize_ja`]. A later phase turns this
+//! into a dispatch over the frontends and adds Chinese.
 
 use crate::backends::g2p_en::{EnglishError, EnglishG2p};
 use crate::backends::numbers::numbers_to_kanji;
+use crate::backends::numbers_en::numbers_to_english;
 use crate::backends::segmenter_ja::{SegmenterError, SegmenterJa};
 use crate::frontends::ja_ipa::{fix_numeral_sound_changes, kana_to_ipa};
 use crate::text::{
@@ -155,13 +157,88 @@ pub fn phonemize_ja(
     })
 }
 
+/// English text to IPA, for the v1.0 frontend.
+///
+/// The same four steps as [`phonemize_ja`], in the same order and for the same
+/// reasons:
+///
+/// 1. **Normalize punctuation**.
+/// 2. **Expand numerals before segmentation.** A digit belongs to no script the
+///    segmenter knows, so it would land in the `other` run and be dropped as
+///    punctuation — unheard, and silently. [`numbers_to_english`] is the step
+///    that keeps `I have 3 cats` from losing the 3, and it is why this function
+///    could not be written before it: the CMU dictionary skips a digit rather
+///    than reading it, so a whole English sentence used to be a regression
+///    against espeak, which reads the number out.
+/// 3. **Then split into script runs.**
+/// 4. **Then read each run out.** A `Latin` run goes to `english`, and an `other`
+///    run keeps only the punctuation Kokoro can use.
+///
+/// # What is dropped
+///
+/// A `Han` or `Kana` run is dropped rather than read: this is the English
+/// pipeline, so `hello 世界` is English text with a word in a script this
+/// frontend has no reading for, and a character Kokoro cannot use is worth less
+/// than the sentence around it. Nothing else here is silent — a word the CMU
+/// dictionary does not have is spelled out letter by letter rather than dropped
+/// (see [`EnglishG2p::phonemize`]).
+///
+/// # Known gap: an apostrophe splits a word
+///
+/// `segment_text` sends `'` and `-` to an `other` run, so `don't` reaches the
+/// dictionary as `don` and `t`, and the `t` is then read as the letter
+/// (`dˈɑn'tˈiː`). A hyphen has the same shape and a benign outcome — `well-known`
+/// is read as the two words it is made of — but a contraction is one word and is
+/// not. Neither can show up in the Latin runs of a Japanese sentence, where a run
+/// is one word by construction, so a whole English sentence is what exposes it.
+/// The fix belongs in the shared segmenter and not here: the Japanese side splits
+/// on the same rule, and the two have to agree on what a run is before their
+/// output can be compared.
+///
+/// `english` is `None` when the backend could not be built at all, which is a
+/// broken build rather than a normal state: the dictionary is compiled in. It is
+/// still not fatal here, because one unusable English word must not cost the
+/// user the sentence around it.
+pub fn phonemize_en(text: &str, english: Option<&EnglishG2p>) -> Result<Phonemized, PipelineError> {
+    let normalized = normalize_punctuation(text);
+    let with_numerals = numbers_to_english(&normalized);
+    let runs = segment_text(&with_numerals);
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    for run in &runs {
+        match run {
+            ScriptRun::Latin(run_text) => {
+                let phonemes = match english {
+                    Some(english) => english.phonemize(run_text)?,
+                    None => String::new(),
+                };
+
+                if phonemes.is_empty() {
+                    warnings.push(no_pronunciation(run_text));
+                } else {
+                    parts.push(phonemes);
+                }
+            }
+            ScriptRun::Other(run_text) => parts.push(keep_punctuation(run_text)),
+            ScriptRun::Han(_) | ScriptRun::Kana(_) => {}
+        }
+    }
+
+    Ok(Phonemized {
+        phonemes: collapse_whitespace(&parts.concat()),
+        warnings,
+    })
+}
+
 /// What the caller is told about a run that produced nothing.
 ///
 /// The word is in the message because that is the only part a reader can act on
 /// — it is the word to add to a dictionary, or the word that came out missing.
 /// The wording is stable so a test can look for it, and it names the language
 /// rather than the mechanism: which engine had no entry is an implementation
-/// detail, and the user is looking at an English word in a Japanese sentence.
+/// detail, and the user is looking at an English word in a sentence.
 fn no_pronunciation(run: &str) -> String {
     format!("no English pronunciation for {run:?}")
 }

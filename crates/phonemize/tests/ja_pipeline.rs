@@ -221,31 +221,33 @@ fn an_initialism_is_never_dropped() {
 }
 
 #[test]
-fn reports_a_whole_english_sentence_as_not_wired_up_yet() {
-    // A whole English *sentence* is not this phase's work: it needs numeral
-    // reading, and the CMU dictionary skips digits rather than reading them, so
-    // `I have 3 cats` would lose the 3. The Latin runs of a Japanese sentence do
-    // not have that problem — a digit is never part of a Latin run — which is why
-    // that path is wired and this one is not. The error is the point: an empty
-    // string here would be a sentence that plays as silence.
+fn phonemizes_a_whole_english_sentence_now_that_numerals_are_read() {
+    // A whole English *sentence* was not phase 4's work: it needs numeral
+    // reading, because the CMU dictionary skips digits rather than reading them,
+    // so `I have 3 cats` would have lost the 3. The Latin runs of a Japanese
+    // sentence never had that problem — a digit is never part of a Latin run —
+    // which is why that path was wired and this one was not. `numbers_en.rs` is
+    // the missing half, so the sentence is now read out. The full coverage of
+    // this path is in `en_g2p.rs`; what this pins is that the dispatch in
+    // `lib.rs` no longer reports it as unimplemented.
     let phonemizer = phonemize::Phonemizer::new();
     let options = phonemize::PhonemizeOptions {
         frontend: "kokoro-v1".to_string(),
         lang: "en-US".to_string(),
     };
 
-    let error = phonemizer
+    let result = phonemizer
         .phonemize_with("hello world", &options)
-        .expect_err("English has no whole-sentence pipeline yet");
+        .expect("English has a whole-sentence pipeline now");
 
-    assert_eq!(error.code(), "pipeline-not-implemented");
+    assert_eq!(result.phonemes, "həlˈoʊ wˈɜːld");
 }
 
 #[test]
 fn reports_a_language_whose_pipeline_is_not_built_yet() {
-    // `zh` and `en` pass the frontend check — v1.0 can speak both — and have no
-    // pipeline in this build. An error rather than an empty string, because an
-    // empty string is a sentence that plays as silence.
+    // `zh` passes the frontend check — v1.0 can speak it — and has no pipeline in
+    // this build. An error rather than an empty string, because an empty string
+    // is a sentence that plays as silence.
     let phonemizer = phonemize::Phonemizer::new();
     let options = phonemize::PhonemizeOptions {
         frontend: "kokoro-v1".to_string(),

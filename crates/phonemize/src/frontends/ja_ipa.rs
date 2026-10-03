@@ -5,19 +5,20 @@
 //! for text with kanji in it, or directly for text that is already kana — the
 //! mapping to phonemes is a table lookup.
 //!
-//! It mirrors `kanaToIPA` and `fixNumeralSoundChanges` in
-//! `lib/models/phonemize/japanese.ts`, and it mirrors them *exactly*: the output
-//! of the two pipelines is compared character for character
-//! (`tests/ja_parity.rs`), so "close enough" is a failing test.
+//! It is a port of `kanaToIPA` and `fixNumeralSoundChanges` from the JavaScript
+//! chain's `japanese.ts`, and it was ported *exactly*: the output is compared
+//! character for character against the corpus that pipeline produced
+//! (`tests/ja_pipeline.rs`), so "close enough" is a failing test. The JavaScript
+//! file itself was deleted in phase 8, so it is cited as the provenance of the
+//! behaviour rather than as something to read.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::kana::to_raw_katakana;
 
-/// Re-exported so the table and the vocabulary it is constrained by are
-/// reachable from the frontend they belong to.
-pub use crate::frontends::ja_ipa_table::{KATAKANA_TO_IPA, KOKORO_V1_VOCABULARY};
+/// Re-exported so the table is reachable from the frontend it belongs to.
+pub use crate::frontends::ja_ipa_table::KATAKANA_TO_IPA;
 
 /// The numeral sound changes the dictionary does not make.
 ///
@@ -56,7 +57,7 @@ pub fn fix_numeral_sound_changes(katakana: &str) -> String {
 ///
 /// Lookup is longest-match-first with a two-character lookahead, so キャ is
 /// `kja` and not `ki` + `ja`. A character with no entry is passed through
-/// unchanged, which is also what the JavaScript does; the vocabulary gate
+/// unchanged, which is also what the JavaScript did; the vocabulary gate
 /// (spec §1.3, phase 5) is what turns that from a silent passthrough into a
 /// checkable property.
 pub fn kana_to_ipa(kana: &str) -> String {

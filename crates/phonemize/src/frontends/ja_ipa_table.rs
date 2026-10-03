@@ -1,4 +1,4 @@
-//! The Japanese katakana→IPA table, generated from the TypeScript original.
+//! The Japanese katakana→IPA table, generated from the crate's data file.
 //!
 //! **Do not edit by hand.** Regenerate with:
 //!
@@ -6,13 +6,13 @@
 //! python3 scripts/gen-ja-ipa-table.py
 //! ```
 //!
-//! Source of truth: `KATAKANA_TO_IPA` in `lib/models/phonemize/japanese.ts`.
-//! `tests/unit/models/phonemize/ja-table-parity.test.ts` reads this file back and
+//! Source of truth: `crates/phonemize/data/ja-ipa-table.json`.
+//! `crates/phonemize/tests/ja_ipa_table_parity.rs` reads that file back and
 //! asserts the two tables still agree, so an edit on one side alone fails there.
 
 /// One mora (or palatalized/foreign two-mora pair) and the phonemes it spells.
 ///
-/// Lookup is longest-match-first, exactly as the JavaScript loop is: a two
+/// Lookup is longest-match-first, exactly as the JavaScript loop was: a two
 /// character key wins over the first character's own entry, which is what makes
 /// キャ `kja` rather than `ki` + `ja`.
 pub const KATAKANA_TO_IPA: &[(&str, &str)] = &[
@@ -210,16 +210,3 @@ pub const KATAKANA_TO_IPA: &[(&str, &str)] = &[
     ("\u{30f3}", "\u{0274}"),
     ("\u{30fc}", "\u{02d0}"),
 ];
-
-/// Every character Kokoro v1.0's tokenizer accepts, copied from the model's own
-/// `tokenizer.json`.
-///
-/// It is here, next to the table, because the constraint it exists for is a
-/// property of the pair: the tokenizer's normalizer is a `Replace` with an empty
-/// string, so a character outside this set is **deleted**, not approximated.
-/// A table entry using one therefore loses part of a mora and reports nothing.
-/// `every_table_entry_only_spells_with_characters_kokoro_has` is the check.
-///
-/// Phase 5's vocabulary gate will own this set for real; it is duplicated from
-/// the JavaScript test for now so the table can be checked before that exists.
-pub const KOKORO_V1_VOCABULARY: &str = "$;:,.!?\u{2014}\u{2026}\"()\u{201c}\u{201d} \u{0303}\u{02a3}\u{02a5}\u{02a6}\u{02a8}\u{1d5d}\u{ab67}AIOQSTWY\u{1d4a}abcdefghijklmnopqrstuvwxyz\u{0251}\u{0250}\u{0252}\u{00e6}\u{03b2}\u{0254}\u{0255}\u{00e7}\u{0256}\u{00f0}\u{02a4}\u{0259}\u{025a}\u{025b}\u{025c}\u{025f}\u{0261}\u{0265}\u{0268}\u{026a}\u{029d}\u{026f}\u{0270}\u{014b}\u{0273}\u{0272}\u{0274}\u{00f8}\u{0278}\u{03b8}\u{0153}\u{0279}\u{027e}\u{027b}\u{0281}\u{027d}\u{0282}\u{0283}\u{0288}\u{02a7}\u{028a}\u{028b}\u{028c}\u{0263}\u{0264}\u{03c7}\u{028e}\u{0292}\u{0294}\u{02c8}\u{02cc}\u{02d0}\u{02b0}\u{02b2}\u{2193}\u{2192}\u{2197}\u{2198}\u{1d7b}";

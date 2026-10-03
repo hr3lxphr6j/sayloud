@@ -3,7 +3,7 @@
 **日期**: 2026-10-03
 **范围**: 计划阶段 6（任务 6.1–6.5：jieba 分词、数字转换、标点与 run 切分、完整管道、对照测试）
 **状态**: **已实施**，测试全绿（Rust 128 → 168，TS 1461 → 1466）
-**结论**: `lang="zh"` 不再报错，中文管道端到端可用，与 JS 前端在 46 条语料上逐字符相同。
+**结论**: `lang="zh"` 不再报错，中文管道端到端可用，与 JS 前端在 47 条语料上逐字符相同。
 计划里两处技术前提需要修正（见 §二、§五），另发现一个**既有**的构建体积上限早已失效（见 §八）。
 
 计划原文：`2026-10-03-p6-rust-phonemize-implementation.md` §阶段 6（1595 行起）。
@@ -87,7 +87,7 @@ JS 侧的分词是 `jieba-wasm`（就是 `jieba-rs` 编译成 wasm），换词�
 
 移植前做过一次性交叉验证：`jieba-rs` 0.11.0 + 这份词典 vs `jieba-wasm` 2.4.0，
 98 条语料（阶段 5 的 45 条 + 53 条新写）**98/98 分词完全相同**。那份语料是临时实验、
-没有提交；**持续生效**的检查是 46 条管道语料（分词错了会表现为空格错了）。
+没有提交；**持续生效**的检查是 47 条管道语料（分词错了会表现为空格错了）。
 
 **顺带发现**：`jieba-rs` 0.11 的 `cut` 返回 `Vec<Token>` 而不是它自己文档里的 `Vec<&str>`，
 而且它文档里的例子（`我们中出了一个叛徒` → `我们|中|出|了|一个|叛徒`）**已经过时**——
@@ -146,7 +146,7 @@ JS 链式   一 . 百分之二点三        ← 正确
 
 后果：混排文本的**逐字符对照不可能成立**。所以：
 
-- **对照语料里没有拉丁字符**（46 条全是汉字/数字/标点）。生成器注入的 latin phonemizer
+- **对照语料里没有拉丁字符**（47 条全是汉字/数字/标点）。生成器注入的 latin phonemizer
   是**抛异常**的，任何一个拉丁字符进来都会让生成失败，而不是静默产出一条没法对照的样本。
 - 混排用**结构**断言：`你好ABC世界` 的输出 == `你好` + `ABC` + `世界` 三次调用的拼接。
   这条性质（「run 之间不插入任何东西」）才是必须成立的，而它成立。
@@ -158,7 +158,7 @@ JS 链式   一 . 百分之二点三        ← 正确
 
 ## 六、对照结果
 
-**语料**：`crates/phonemize/tests/fixtures/zh-frontend-parity.json`，46 条，
+**语料**：`crates/phonemize/tests/fixtures/zh-frontend-parity.json`，47 条，
 由 `tests/unit/models/phonemize/zh-frontend-parity.test.ts` 用**生产的** `ChinesePhonemizer`
 生成。两侧都钉在这份语料上（JS 侧检查自己仍然产出 `js`，Rust 侧检查自己产出同样的串），
 所以谁也不能单方面漂移。
@@ -226,7 +226,7 @@ jieba 4.0 + worker 2.5 = 45.9，与 46.8 自洽，说明那次测量发生在 IP
 | `crates/phonemize/src/backends/numbers_zh.rs` | `numbers.ts` 的移植（四次顺序扫描） |
 | `crates/phonemize/src/backends/zh_text.rs` | `chinese.ts` 的文本层（标点/run/保留标点） |
 | `crates/phonemize/tests/zh_pipeline.rs` | 中文管道集成测试（9 条） |
-| `crates/phonemize/tests/fixtures/zh-frontend-parity.json` | 46 条管道对照语料 |
+| `crates/phonemize/tests/fixtures/zh-frontend-parity.json` | 47 条管道对照语料 |
 | `tests/unit/models/phonemize/zh-frontend-parity.test.ts` | 语料生成器 + JS 侧钉子 |
 | `scripts/setup-jieba-dict.sh` | 下载/校验/压缩词典资产 |
 

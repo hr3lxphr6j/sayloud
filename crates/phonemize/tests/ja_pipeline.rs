@@ -4,12 +4,13 @@
 //!
 //! - the segmenter tests say what the dictionary reads a word as, which is where
 //!   a lindera or IPADic change would show up;
-//! - the parity corpus says the whole pipeline still produces the same phonemes
-//!   as the JavaScript one, which is the P6 acceptance criterion (§0.4).
+//! - the parity corpus says the whole pipeline still produces the phonemes the
+//!   JavaScript one produced, which is the P6 acceptance criterion (§0.4).
 //!
 //! The corpus is `tests/fixtures/ja-parity.json`, generated from the JavaScript
-//! pipeline by `tests/unit/models/phonemize/ja-parity.test.ts`. Both sides are
-//! pinned to it, so neither can drift alone.
+//! pipeline by `tests/unit/models/phonemize/ja-parity.test.ts` before phase 8
+//! deleted that chain. It is frozen — the generator is gone — so this test is what
+//! keeps the Rust output pinned to it.
 
 mod common;
 

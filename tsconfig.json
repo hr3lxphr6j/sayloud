@@ -4,7 +4,8 @@
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
     // The Chinese syllable table is generated data (`scripts/gen-pinyin-table.py`)
-    // and shipped as JSON, so the runtime can read it without a code generator.
+    // and read by `scripts/gen-pinyin-pro-data.mjs`; `resolveJsonModule` is here
+    // for the corpus fixtures the parity tests import.
     "resolveJsonModule": true
   }
 }

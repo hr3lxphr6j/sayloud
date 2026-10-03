@@ -106,6 +106,29 @@ P6 要把这两者**拆成两个 worker**，理由见 §2.4。
 
 **词表闸门**：每个 frontend 一份 vocab，输出前统一校验。**一处校验覆盖两个模型三种语言**，而不是每条路径各写一遍——2026-10-03 在日语 path 上已经踩过一次同类问题（`KANA_TO_IPA` 里写了 ASCII `g`，而 vocab 只有 `ɡ` U+0261，导致整个ガ行读成ア行），spec `P5 §4.2.1` 也把它写成了硬要求。
 
+### 1.4 lindera 加载实测（2026-10-03，V1）
+
+在 Node 里用 `lindera-wasm` 6.2.0 的 `initSync` + `loadDictionaryFromBytes` 跑通，词典用 GitHub Releases 的 `lindera-ipadic-6.2.0.zip`：
+
+| 阶段 | 耗时 |
+|---|---|
+| wasm `initSync` | 2.9 ms（1.7 MB） |
+| 读 9 个文件（Node 磁盘读） | 8.9 ms（45.3 MB） |
+| **`loadDictionaryFromBytes`** | **9.6 ms** |
+| `TokenizerBuilder.build` | 7.9 ms |
+| tokenize（热，200 次平均） | 0.106 ms/句 |
+
+**三条结论**：
+
+1. **能从本地字节加载**，不必走它默认的 OPFS 下载流程——`loadDictionaryFromBytes` 接受 9 个 `Uint8Array`，来源不限。这是“字典打包进扩展”这条决策能落地的前提。
+2. **加载不建索引**。45.3 MB 只要 9.6 ms（~4.7 GB/s），这是指针/切片设置的速度；若在构建 trie 或填充 HashMap，这个数字会是几百毫秒。**§4.3 的「解压即可用」lindera 天然满足，不需要自建格式。**
+3. **体积比现在小**。zip 10 MB / 解压 45.3 MB，对比 kuromoji 的 17.8 MB（gzip）——省 44%。
+
+读音质量与 kuromoji 同源（两者都是 `mecab-ipadic-2.7.0`，lindera 用的版本是 `-20250920`，更新）：
+`経営 → 名詞,サ変接続,*,*,*,*,経営,ケイエイ,ケイエイ`。
+
+**附**：同一个 release 里还有 `lindera-cc-cedict-6.2.0.zip` = 6.92 MB（中文分词词典）。P6 里中文分词原计划用 `jieba-rs`，现在多了一个选项，留到实现阶段决定。
+
 ---
 
 ## 2. 架构
@@ -356,11 +379,12 @@ impl Phonemizer {
 |---|---|---|
 | offscreen / worker 创建 | ~10 ms | |
 | wasm 实例化（~3 MB） | ~10–30 ms | Chrome 缓存编译产物（`compileStreaming`） |
-| fetch 字典（本地协议，压缩态） | ~10 ms | `chrome-extension://` 是本地读取，非网络 |
-| 拷进 wasm 堆 | ~5 ms | 拷贝的是压缩态，不是解压后 |
-| **zstd 解压** | **~30–60 ms** | 50 MB @ ~1.5 GB/s（估算，待实测） |
-| **建索引** | **0（要求）** | 见 §4.3 |
-| **合计** | **~70–120 ms** | 目标 ≤ 100 ms |
+| fetch 字典（本地协议，压缩态） | ~10 ms | `chrome-extension://` 是本地读取，非网络；10 MB |
+| 拷进 wasm 堆 | ~5 ms | 拷贝的是压缩态 10 MB，不是解压后 45.3 MB |
+| **zstd 解压** | **~30 ms** | 45.3 MB @ ~1.5 GB/s（估算，V2 待实测） |
+| **`loadDictionaryFromBytes`** | **9.6 ms** | **实测 §1.4** |
+| **`TokenizerBuilder.build`** | **7.9 ms** | **实测 §1.4** |
+| **合计** | **~75–105 ms** | 目标 ≤ 100 ms；原估算未计入后两项 |
 
 ### 4.3 格式要求：**解压即可用**
 
@@ -376,7 +400,7 @@ impl Phonemizer {
 | 语言 | 形态 | 状态 |
 |---|---|---|
 | 中文 | 词表排序 + 二分；多音字差异表同理 | ✅ 可控 |
-| 日语 | **待确认**：kuromoji 现在的 MeCab 格式 trie 是预编译的，但连接代价矩阵加载时要初始化；lindera 的格式需实测 | ⚠️ 见 §7 |
+| 日语 | ✅ **已验证**：lindera 的 `loadDictionaryFromBytes` 用 9.6 ms 加载 45.3 MB（§1.4）——trie 与连接矩阵都是预构建的，加载即指针设置 | ✅ |
 | 英文 | espeak 的规则表，本来就是查表 | ✅ 可控 |
 
 ### 4.4 另外三条
@@ -460,6 +484,8 @@ it('matches the JavaScript chain it replaces', async () => {
 | 15 | 用户规则 > 系统规则 | 设计推导 |
 | 16 | phonemize 与模型**拆成两个 worker**，调度留在上层 | 用户（2026-10-03） |
 | 17 | 预定义前端，不做任意步骤组合 | 设计推导 |
+| 18 | 日语词典用 **lindera 的现成 9 文件格式**，不自建 | V1 实测（§1.4） |
+| 19 | 词典自 GitHub Releases 取预构建 zip，**离线构建步骤省略** | V1 实测（§1.4） |
 
 ---
 
@@ -467,7 +493,7 @@ it('matches the JavaScript chain it replaces', async () => {
 
 | # | 问题 | 为什么重要 | 怎么验 |
 |---|---|---|---|
-| **V1** | **lindera 加载 IPADic 是否建索引、耗时多少** | 冷启动路径上唯一未量化的环节；决定日语词典用现成方案还是自建格式 | 跑 lindera-wasm 的最小例子，量 `loadDictionaryFromBytes` 到可查询的耗时 |
+| ~~V1~~ | ~~lindera 加载 IPADic 是否建索引、耗时多少~~ | **已验证 2026-10-03**（§1.4）：不建索引（9.6 ms / 45.3 MB）、能本地加载、体积 10 MB 反比现在小 | 已完成 |
 | V2 | zstd 解压 50 MB 的实际耗时 | §4.2 的估算基于 1.5 GB/s，需实测 | 构造同规模的压缩块计时 |
 | V3 | 单 wasm 的实际体积 | §2.3 估 ~3 MB，需要真实数字 | 编译后量 |
 | V4 | OPFS 缓存是否必要 | 取决于 V1+V2 的结果 | 冷启动总时长实测 |
@@ -475,7 +501,7 @@ it('matches the JavaScript chain it replaces', async () => {
 | V6 | `ɚ` → `əɹ` 替换的听感 | 影响英文在 v1.1-zh 下的正确性 | 合成对比 |
 | V7 | 双 worker 的冷启动实际省下多少 | §2.4 的收益表基于估算（字典解压 ~100 ms 与模型 init 750 ms 串行） | 量两个 worker 各自就绪的时间差 |
 
-**V1 是唯一挡住开工的**——如果 lindera 要建索引，§4.3 的自建格式就从"要求"变成"必须做"，工作量差别很大。
+**V1 已通过**（§1.4）：lindera 不建索引、能本地加载、体积比现在小。开工的阻塞项已解除——剩下的 V2（zstd 实测）与 V7（双 worker 冷启动）都是动手后顺手能量的，不再是前提。
 
 ---
 

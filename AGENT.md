@@ -163,7 +163,8 @@ entrypoints/                  # 扩展入口
   │   └── VoicePicker.tsx
   └── offscreen/              # Offscreen document
       ├── main.ts             # Offscreen manager
-      └── local.worker.ts     # Kokoro worker
+      ├── kokoro.worker.ts    # Kokoro worker（ONNX 会话）
+      └── phonemize.worker.ts # 音素 worker（Rust wasm + 字典）
 
 tests/
   ├── unit/                   # 单元测试（Vitest + happy-dom）

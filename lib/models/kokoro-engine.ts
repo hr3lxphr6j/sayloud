@@ -11,14 +11,19 @@
  *
  * Nothing here knows about messages. The worker owns the protocol and the
  * ONNX Runtime configuration; this owns the model.
+ *
+ * Since phase 7 it also owns no phonemization at all. What arrives is text that
+ * has already been phonemized and already been cut to fit the model's limit,
+ * because cutting needs a token count (here) and phonemizing needs a dictionary
+ * (in the other worker). That leaves this class with exactly the model, which is
+ * the split `kokoro.worker.ts` is named after.
  */
 import { KokoroTTS } from 'kokoro-js';
-import { concatPcm, KOKORO_SAMPLE_RATE, planPieces } from './audio';
+import { concatPcm, KOKORO_SAMPLE_RATE } from './audio';
 import { abortError, type DeviceInfo, type RawPcm } from './engine';
-import { ChinesePhonemizer } from './phonemize/chinese';
-import { EnglishPhonemizer } from './phonemize/english';
-import { isChinese, isJapanese, type Phonemizer } from './phonemize/types';
+import { isChinese, isJapanese } from './language';
 import { type ModelTier, modelById, tierById } from './registry';
+import type { SynthesizePiece } from './worker-protocol';
 
 /** One synthesis in flight, so a cancel can reach it. */
 interface InFlight {
@@ -33,10 +38,6 @@ export class KokoroEngine {
   private tier: ModelTier | null = null;
   private device: DeviceInfo['device'] = 'wasm';
   private readonly inFlight = new Map<number, InFlight>();
-  /** Built on first use: only one of the three is ever needed. */
-  private english: Phonemizer | null = null;
-  private chinese: Phonemizer | null = null;
-  private japanese: Phonemizer | null = null;
   /**
    * Bumped by every `load`, so one that finishes late cannot install itself
    * over the session a newer call built.
@@ -80,26 +81,46 @@ export class KokoroEngine {
     return { device, sessionInitMs: Date.now() - started };
   }
 
-  async synthesize(id: number, text: string, voiceId: string, lang: string): Promise<RawPcm> {
+  /**
+   * How many tokens the model's tokenizer makes of this IPA.
+   *
+   * Without truncation, so this is the real length. `generate()` itself passes
+   * `truncation: true`, which is why the split exists at all: the model would
+   * otherwise cut an over-long sentence off mid-word and say nothing.
+   *
+   * Public because the coordinator is what cuts a sentence to fit — it is the
+   * only place that can reach both this count and the phonemes it is a count
+   * of.
+   */
+  countTokens(ipa: string): number {
+    const tts = this.tts;
+    if (!tts) throw new Error('the model is not loaded');
+    return tts.tokenizer(ipa, { truncation: false }).input_ids.dims.at(-1) ?? 0;
+  }
+
+  /**
+   * Audio for a sentence that has already been phonemized and cut up.
+   *
+   * `id` is the request's, so a cancel that arrives mid-sentence reaches the
+   * pieces still to come rather than only the one being rendered.
+   */
+  async synthesize(
+    id: number,
+    pieces: readonly SynthesizePiece[],
+    voiceId: string,
+    lang: string
+  ): Promise<RawPcm> {
     if (!this.tts) throw new Error('the model is not loaded');
 
     const inFlight: InFlight = { controller: new AbortController() };
     this.inFlight.set(id, inFlight);
 
     try {
-      // Measured, not guessed: `planPieces` needs a token count, and the only
-      // way to get one is to phonemize and ask the tokenizer.
-      const pieces = await planPieces(text, async (piece) => {
-        const ipa = await this.phonemize(piece, lang);
-        return { ipa, tokens: this.countTokens(ipa) };
-      });
-
       const chunks: Float32Array[] = [];
       for (const piece of pieces) {
         if (inFlight.controller.signal.aborted) throw abortError();
         chunks.push(await this.render(piece, voiceId, lang));
       }
-
       return { pcm: concatPcm(chunks), sampleRate: KOKORO_SAMPLE_RATE };
     } finally {
       this.inFlight.delete(id);
@@ -116,49 +137,23 @@ export class KokoroEngine {
     this.disposeSession();
   }
 
-  /** The IPA for one piece, through whichever pipeline the language needs. */
-  private async phonemize(text: string, lang: string): Promise<string> {
-    if (isChinese(lang)) {
-      this.chinese ??= new ChinesePhonemizer();
-      return this.chinese.phonemize(text, lang);
-    }
-    if (isJapanese(lang)) {
-      // Lazy load Japanese phonemizer to avoid loading Kuroshiro/kuromoji
-      // until actually needed (they're heavy and may fail in some contexts)
-      if (!this.japanese) {
-        const { JapanesePhonemizer } = await import('./phonemize/japanese');
-        this.japanese = new JapanesePhonemizer();
-      }
-      return this.japanese.phonemize(text, lang);
-    }
-    this.english ??= new EnglishPhonemizer();
-    return this.english.phonemize(text, lang);
-  }
-
-  /**
-   * How many tokens the model's tokenizer makes of this IPA.
-   *
-   * Without truncation, so this is the real length. `generate()` itself passes
-   * `truncation: true`, which is why the split exists at all: the model would
-   * otherwise cut an over-long sentence off mid-word and say nothing.
-   */
-  private countTokens(ipa: string): number {
-    const tts = this.tts;
-    if (!tts) throw new Error('the model is not loaded');
-    return tts.tokenizer(ipa, { truncation: false }).input_ids.dims.at(-1) ?? 0;
-  }
-
   /**
    * Audio for one piece.
    *
    * English goes through `generate()`, the library's own supported path: it
-   * validates the voice and phonemizes the way the model was trained. Chinese
-   * and Japanese cannot — `generate()` rejects every voice outside its 28-voice
-   * English list (verification §1.1.1) — so they phonemize here and enter
-   * through `generate_from_ids()`, which does no voice validation.
+   * phonemizes the way the model was trained — espeak plus the number,
+   * punctuation and character substitutions `kokoro-js` applies afterwards —
+   * and re-implementing that here is how the two would drift apart. Chinese and
+   * Japanese cannot: `generate()` rejects every voice outside its 28-voice
+   * English list (verification §1.1.1), so their IPA enters through
+   * `generate_from_ids()`, which does no voice validation.
+   *
+   * That is also why a piece carries both its text and its IPA rather than
+   * whichever half its language needs: the split is by language, and the
+   * language is the caller's to know.
    */
   private async render(
-    piece: { text: string; ipa: string },
+    piece: SynthesizePiece,
     voiceId: string,
     lang: string
   ): Promise<Float32Array> {

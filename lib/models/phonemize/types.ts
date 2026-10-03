@@ -22,22 +22,6 @@ export interface Phonemizer {
   phonemize(text: string, lang: string): Promise<string>;
 }
 
-/**
- * True for a language whose text goes down the Chinese pipeline.
- *
- * Only the primary subtag matters: `zh`, `zh-CN`, `zh-Hans` and `zh-TW` all
- * take the same path — P4's table is Mandarin, and the traditional/simplified
- * split is a writing system rather than a pronunciation.
- */
-export function isChinese(lang: string): boolean {
-  return lang.toLowerCase().startsWith('zh');
-}
-
-/**
- * True for a language whose text goes down the Japanese pipeline.
- *
- * Recognizes `ja` and `ja-JP`.
- */
-export function isJapanese(lang: string): boolean {
-  return lang.toLowerCase().startsWith('ja');
-}
+// Re-exported rather than declared here since phase 7: the kokoro engine needs
+// them and must not reach into this directory, which phase 8 deletes.
+export { isChinese, isJapanese } from '../language';

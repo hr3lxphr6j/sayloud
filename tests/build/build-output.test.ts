@@ -21,9 +21,9 @@
  *    of `voices/*.bin`. They are fetched at runtime into `kokoro-voices`, and a
  *    bundler that decides they are assets would add them to the package and
  *    make the extension ten times bigger.
- * 3. **jieba's segmenter reaching a page that does not phonemize.** Its wasm is
- *    4 MB and its glue about 1.5 MB of the worker chunk. Same structural
- *    guarantee as ONNX Runtime, same reason to check it.
+ * 3. **The phonemizer reaching a page that does not phonemize.** Its wasm is
+ *    5 MB and its glue another 12 kB. Same structural guarantee as ONNX
+ *    Runtime, same reason to check it.
  * 4. **An asset URL that resolved to `undefined`.** `import.meta.url` is what
  *    names the emitted worker and ORT's wasm pair; a global `define` that
  *    replaces `import.meta` — the tempting fix for the `[EMPTY_IMPORT_META]`
@@ -55,37 +55,42 @@ const OUTPUT_DIR = resolve(process.cwd(), '.output/chrome-mv3');
 const ORT_MARKERS = ['onnxruntime', 'InferenceSession', 'wasmPaths', 'ort-wasm'] as const;
 
 /**
- * Strings that only appear in a bundle carrying jieba's segmenter.
+ * Strings that only appear in a bundle carrying the Rust phonemizer.
  *
- * `jieba` is the package's own name and `jieba_rs_wasm_bg-` is the hashed name
- * of the binary it fetches, so together they cover both "the glue reached this
- * chunk" and "this chunk knows where the wasm is". The second matters because
- * the worker hands the name to `init()` itself — nothing else would notice if
- * the two drifted apart.
+ * `phonemize_bg-` is the hashed name of the wasm module, which the glue that
+ * loads it names — so this covers both "the glue reached this chunk" and "this
+ * chunk knows where the wasm is". The second matters because the module is
+ * instantiated by the glue itself: a rename would leave the build green and
+ * only show up on the first sentence, as "the phonemizer was not initialised".
+ *
+ * Phase 7 moved this here from jieba, which the same test used to guard. The
+ * JavaScript chain is no longer reachable from any entry point, so nothing in
+ * the output mentions jieba at all — which is asserted by the count of wasm
+ * files rather than by a marker, since the marker's absence is the point.
  */
-const JIEBA_MARKERS = ['jieba', 'jieba_rs_wasm_bg-'] as const;
+const PHONEMIZE_MARKERS = ['phonemize_bg-'] as const;
 
 /**
- * Measured 57.0 MB: ONNX Runtime's 20.6 MB wasm, 16.9 MB of `kuromoji-dict/`
- * files, the 8.1 MB IPADic dictionary, jieba's 3.8 MB wasm, the 2.5 MB worker
- * chunk, the 1.6 MB Chinese word list, and the rest. It was 28.9 MB before the
- * IPADic dictionary landed and 24.8 MB before the segmenter; each time the bound
- * moved by about what the addition weighs, which is the point of keeping it
- * tight. The dictionaries and the twelve `kuromoji-dict/` files are fetched at
- * runtime, so they are payload rather than an accident.
+ * Measured 57.7 MB: ONNX Runtime's 20.6 MB wasm, 16.9 MB of `kuromoji-dict/`
+ * files, the 8.1 MB IPADic dictionary, the 5.1 MB phonemizer wasm, the 2.2 MB
+ * kokoro worker chunk, the 1.6 MB Chinese word list, and the rest.
+ *
+ * **The drop phase 7 was expected to bring did not happen, and the reason is
+ * worth keeping.** The prediction was that wiring the Rust phonemizer up would
+ * remove kuromoji's 16.9 MB and jieba's 3.8 MB. It removed the 4.0 MB jieba wasm
+ * and its glue — and added the 5.1 MB phonemizer wasm — but kuromoji's 16.9 MB
+ * and the 1.6 MB word list are `public/` assets, which a bundler copies whether
+ * or not anything imports them. So the build went 56,983,122 → 57,692,840 B
+ * (+0.71 MB), and the 16.9 MB goes away when phase 8 deletes the directory
+ * rather than when the import goes away. The JavaScript chain itself *is* gone:
+ * no chunk in the output mentions kuromoji, kuroshiro or jieba.
  *
  * **This bound had already been exceeded before phase 6 touched it.** It was set
  * to 44-50 MB around a measurement of 46.8 MB and did not move when the IPADic
  * dictionary — 8.1 MB, and absent from the itemisation above until now — landed;
  * the build was 55.35 MB at the commit before the Chinese word list was added,
  * which is 5.35 MB past the ceiling. Nothing noticed because `pnpm test:build`
- * is opt-in and CI does not run it. Phase 6 added 1.6 MB on top of that, and the
- * bound now brackets what the build actually is.
- *
- * Expect it to fall sharply in phase 7: the Rust phonemizer is not reachable
- * from an entrypoint yet, so the JavaScript chain it replaces is still bundled —
- * the 16.9 MB of kuromoji files and jieba's 3.8 MB wasm both go away when the
- * worker switches over (spec §2.3).
+ * is opt-in and CI does not run it.
  */
 const MIN_BYTES = 55_000_000;
 const MAX_BYTES = 59_000_000;
@@ -228,11 +233,11 @@ function carriesOrt(path: string): boolean {
   return ORT_MARKERS.some((marker) => text.includes(marker));
 }
 
-/** Whether this file's code mentions jieba. JavaScript only, as above. */
-function carriesJieba(path: string): boolean {
+/** Whether this file's code mentions the phonemizer. JavaScript only, as above. */
+function carriesPhonemizer(path: string): boolean {
   if (!path.endsWith('.js')) return false;
   const { text } = readBuiltFile(path);
-  return JIEBA_MARKERS.some((marker) => text.includes(marker));
+  return PHONEMIZE_MARKERS.some((marker) => text.includes(marker));
 }
 
 const manifest = JSON.parse(readBuiltFile('manifest.json').text) as {
@@ -284,7 +289,7 @@ describe('the build output', () => {
     const carrying = offscreen.filter(carriesOrt);
 
     expect(carrying).toHaveLength(1);
-    expect(carrying[0]).toMatch(/^assets\/local\.worker-/);
+    expect(carrying[0]).toMatch(/^assets\/kokoro\.worker-/);
     // And it is *only* there: no other file in the package contains a marker.
     expect(FILES.filter(carriesOrt)).toEqual(carrying);
   });
@@ -292,38 +297,39 @@ describe('the build output', () => {
   it('ships the wasm the runtime loads, and only those', () => {
     const wasm = FILES.filter((path) => path.endsWith('.wasm'));
 
-    // Exactly two: ONNX Runtime's and jieba's. Both are singletons — the jsep
-    // build covers the WebGPU and wasm backends, so a second ORT binary would
-    // be 21 MB of dead weight (spec §1.4), and a second jieba binary would be
-    // 4 MB of the same.
+    // Exactly two: ONNX Runtime's and the phonemizer's. Both are singletons —
+    // the jsep build covers the WebGPU and wasm backends, so a second ORT
+    // binary would be 21 MB of dead weight (spec §1.4), and a second phonemizer
+    // binary would be 5 MB of the same. jieba's is no longer here at all, which
+    // is the whole of phase 7's effect on this list.
     expect(wasm).toHaveLength(2);
 
     const ort = wasm.filter((path) => /ort-wasm-simd-threaded\.jsep-.*\.wasm$/.test(path));
     expect(ort).toHaveLength(1);
     expect(statSync(join(OUTPUT_DIR, ort[0] as string)).size).toBe(21_596_019);
 
-    const jieba = wasm.filter((path) => /jieba_rs_wasm_bg-.*\.wasm$/.test(path));
-    expect(jieba).toHaveLength(1);
-    expect(statSync(join(OUTPUT_DIR, jieba[0] as string)).size).toBe(4_015_140);
+    const phonemize = wasm.filter((path) => /phonemize_bg-.*\.wasm$/.test(path));
+    expect(phonemize).toHaveLength(1);
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(5_081_554);
   });
 
-  it('ships jieba exactly where it is needed: the offscreen worker', () => {
-    // Same structural guarantee as ONNX Runtime, and worth the same test: 4 MB
+  it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {
+    // Same structural guarantee as ONNX Runtime, and worth the same test: 5 MB
     // of wasm plus its glue is too much to leave one stray import away from the
-    // side panel.
-    const carrying = FILES.filter(carriesJieba);
+    // side panel. And since phase 7 the engine cannot speak without it — the
+    // kokoro worker is handed phonemes and has no way to make any.
+    const carrying = FILES.filter(carriesPhonemizer);
 
     expect(carrying).toHaveLength(1);
-    expect(carrying[0]).toMatch(/^assets\/local\.worker-/);
-    expect(FILES.filter(carriesJieba)).toEqual(carrying);
+    expect(carrying[0]).toMatch(/^assets\/phonemize\.worker-/);
+    expect(FILES.filter(carriesPhonemizer)).toEqual(carrying);
 
-    // And the worker names the binary that was actually emitted. It hands the
-    // path to jieba's own `init()`, so nothing else would notice a rename.
-    const jiebaWasm = FILES.find((path) => /jieba_rs_wasm_bg-.*\.wasm$/.test(path));
-    expect(jiebaWasm).toBeDefined();
-    expect(readBuiltFile(carrying[0] as string).text).toContain(
-      posix.basename(jiebaWasm as string)
-    );
+    // And the glue names the binary that was actually emitted. Nothing else
+    // would notice a rename: the build stays green and the wasm is simply not
+    // there when the first sentence asks for it.
+    const wasm = FILES.find((path) => /phonemize_bg-.*\.wasm$/.test(path));
+    expect(wasm).toBeDefined();
+    expect(readBuiltFile(carrying[0] as string).text).toContain(posix.basename(wasm as string));
   });
 
   it('ships the glue module ONNX Runtime imports at runtime', () => {
@@ -337,7 +343,7 @@ describe('the build output', () => {
     );
     expect(glue).toHaveLength(1);
 
-    const worker = FILES.find((path) => path.startsWith('assets/local.worker-'));
+    const worker = FILES.find((path) => path.startsWith('assets/kokoro.worker-'));
     expect(worker).toBeDefined();
     // The name the worker hands ORT has to be the name that was emitted: a URL
     // pointing at nothing fails exactly like no URL at all.
@@ -360,26 +366,31 @@ describe('the build output', () => {
     expect(bytes).toBeLessThanOrEqual(MAX_BYTES);
   });
 
-  it('points the offscreen document at the worker that was emitted', () => {
-    // The worker's own name comes from `import.meta.url`, so a build that
-    // rewrites `import.meta` leaves it as an unresolved placeholder rather than
-    // a path — and `new Worker(new URL(undefined, …))` throws where the engine
-    // is assembled, before anything can report why. The user sees every
-    // synthesis fail with "the on-device worker stopped", which names the
-    // symptom and neither the cause nor this file.
+  it('points the offscreen document at both workers that were emitted', () => {
+    // The workers' names come from `import.meta.url`, so a build that rewrites
+    // `import.meta` leaves them as unresolved placeholders rather than paths —
+    // and `new Worker(new URL(undefined, …))` throws where the engine is
+    // assembled, before anything can report why. The user sees every synthesis
+    // fail with "the on-device worker stopped", which names the symptom and
+    // neither the cause nor this file.
     //
-    // Asserted against the emitted name rather than merely "is a string": a URL
-    // pointing at a file that does not exist fails exactly like no URL at all.
+    // Both are checked, and checked against the emitted names rather than
+    // merely "is a string": a URL pointing at a file that does not exist fails
+    // exactly like no URL at all, and since phase 7 the engine cannot speak
+    // without the second one.
     const offscreen = entryGraph('offscreen.html');
     const spawning = offscreen.filter((path) =>
-      /new Worker\(\s*new URL\(\s*["'`]\/assets\/local\.worker-/.test(readBuiltFile(path).text)
+      /new Worker\(\s*new URL\(\s*["'`]\/assets\/[a-z]+\.worker-/.test(readBuiltFile(path).text)
     );
 
     expect(spawning).toHaveLength(1);
 
-    const worker = FILES.find((path) => path.startsWith('assets/local.worker-'));
-    expect(worker).toBeDefined();
-    expect(readBuiltFile(spawning[0] as string).text).toContain(`/${worker as string}`);
+    const text = readBuiltFile(spawning[0] as string).text;
+    for (const name of ['kokoro', 'phonemize']) {
+      const worker = FILES.find((path) => path.startsWith(`assets/${name}.worker-`));
+      expect(worker).toBeDefined();
+      expect(text).toContain(`/${worker as string}`);
+    }
   });
 
   it('leaves no emitted-asset placeholder unresolved', () => {

@@ -88,6 +88,28 @@ tar = "0.4"
 # and that wording is what the English pipeline's tests pin.
 num2words = "1.2.0"
 
+# Chinese word segmentation (phase 6). The JavaScript side uses `jieba-wasm`,
+# which is this crate compiled to wasm, so the boundaries match the training
+# target rather than approximating it — see `chinese.ts`'s `jiebaBoundaries`.
+# A one-off cross-check before the port was written found this crate and
+# `jieba-wasm` 2.4.0 segmenting a 98-sentence corpus identically on all 98; the
+# committed check is the 46-sentence pipeline corpus, where a wrong boundary shows
+# up as a wrong space (`crates/phonemize/tests/zh_pipeline.rs`).
+#
+# **`default-features = false` is required, not tidy.** The default feature is
+# `default-dict`, which embeds `src/data/dict.txt` through `include-flate` — and
+# that crate decompresses with the C `zstd` crate at runtime, so `zstd-sys` ends
+# up in the wasm. `zstd-sys` archives its wasm objects with the host `ar`, which
+# only understands Mach-O; it writes an archive with no members and the link then
+# fails on every `ZSTD_*` symbol (`undefined symbol: ZSTD_freeDCtx`, reproduced
+# 2026-10-03). This is the same failure the `ruzstd` note above describes, and
+# the same answer: keep the C zstd out of the build. The dictionary arrives
+# through the registry instead, like IPADic — see `scripts/setup-jieba-dict.sh`.
+#
+# The HMM model and the segmentation algorithm are not behind that feature, so
+# disabling it costs nothing but the embedded dictionary.
+jieba-rs = { version = "0.11", default-features = false }
+
 [dev-dependencies]
 # The parity corpus is JSON, and so is the option object that crosses the wasm
 # boundary. Already in the dependency graph through lindera, so this costs no

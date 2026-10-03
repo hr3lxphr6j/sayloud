@@ -14,6 +14,9 @@ use phonemize::Phonemizer;
 /// The Japanese dictionary's name, as `required_dictionaries` spells it.
 const IPADIC: &str = "lindera-ipadic-ja";
 
+/// The Chinese dictionary's name, as `required_dictionaries` spells it.
+const JIEBA: &str = "jieba-zh-dict";
+
 /// A path inside the repo, resolved from this crate rather than the cwd — `cargo
 /// test` runs with the package directory as the working directory.
 fn fixture(name: &str) -> PathBuf {
@@ -52,13 +55,20 @@ fn english_needs_no_dictionary_yet() {
 }
 
 #[test]
-fn chinese_needs_no_dictionary_yet() {
-    // The pinyin table and the segmenter are compiled in (spec §2.3). This test
-    // is a tripwire, not a spec: if the Chinese segmenter turns out to be
-    // lindera-cc-cedict rather than jieba-rs, this is the assertion that has to
-    // change, and changing it is the whole of what the JS side sees.
-    assert!(declared("kokoro-v1", "zh-CN").required().is_empty());
-    assert!(declared("kokoro-v11-zh", "zh-CN").required().is_empty());
+fn chinese_needs_the_jieba_dictionary() {
+    // The pinyin tables are compiled in, but the word list is not. This test was
+    // written as a tripwire for exactly this decision — its comment said "if the
+    // Chinese segmenter turns out to be lindera-cc-cedict rather than jieba-rs,
+    // this is the assertion that has to change" — and what it caught was a
+    // different answer to the same question: jieba-rs, with its dictionary
+    // shipped as an asset rather than compiled in, because the crate's
+    // `default-dict` feature cannot link for wasm (see
+    // `scripts/setup-jieba-dict.sh`).
+    //
+    // Both frontends, because the choice of Chinese *script* is the frontend's
+    // business and not the dictionary's: v1.0 and v1.1-zh read the same words.
+    assert_eq!(declared("kokoro-v1", "zh-CN").required(), [JIEBA]);
+    assert_eq!(declared("kokoro-v11-zh", "zh-CN").required(), [JIEBA]);
 }
 
 #[test]
@@ -242,14 +252,38 @@ fn switching_language_back_does_not_demand_the_dictionary_again() {
         .unwrap();
     registry.finish().unwrap();
 
-    // Chinese needs nothing, so this is the whole of a voice switch to Chinese.
-    registry.declare_required("kokoro-v1", "zh-CN").unwrap();
+    // English needs nothing, so this is the whole of a voice switch to English.
+    registry.declare_required("kokoro-v1", "en-US").unwrap();
     registry.finish().unwrap();
 
     // And back. `load` is skipped by the wrapper here only if the bytes are
     // already there — which `finish` is what checks.
     registry.declare_required("kokoro-v1", "ja-JP").unwrap();
     registry.finish().unwrap();
+}
+
+#[test]
+fn a_voice_switch_between_two_languages_that_need_dictionaries() {
+    // The case the registry exists for: Japanese and Chinese both want bytes, and
+    // the bytes arrive while the other language's request is in flight. `load` is
+    // not scoped to the current declaration for that reason — see
+    // `a_dictionary_stays_loadable_after_the_required_set_moved_on`.
+    let mut registry = declared("kokoro-v1", "ja-JP");
+    registry
+        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .unwrap();
+    registry.finish().unwrap();
+
+    registry.declare_required("kokoro-v1", "zh-CN").unwrap();
+    registry
+        .load(JIEBA, &fixture_bytes("test-dict.json.zst"))
+        .unwrap();
+    registry.finish().unwrap();
+
+    assert_eq!(
+        registry.get(JIEBA),
+        Some(fixture_bytes("test-dict.json").as_slice())
+    );
 }
 
 #[test]
@@ -262,6 +296,14 @@ fn a_dictionary_stays_loadable_after_the_required_set_moved_on() {
     registry.declare_required("kokoro-v1", "zh-CN").unwrap();
     registry
         .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .expect("declared earlier, still accepted");
+
+    // And the mirror image, so the test is about the rule and not about one
+    // direction of it: Chinese's bytes arriving after the question moved back to
+    // Japanese are accepted too.
+    registry.declare_required("kokoro-v1", "ja-JP").unwrap();
+    registry
+        .load(JIEBA, &fixture_bytes("test-dict.json.zst"))
         .expect("declared earlier, still accepted");
 }
 

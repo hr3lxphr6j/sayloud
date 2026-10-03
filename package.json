@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "postinstall": "wxt prepare && node scripts/setup-kuromoji-dict.mjs && (./scripts/setup-lindera-dict.sh || echo '\u26a0\ufe0f  the Japanese dictionary was not built; the Japanese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-lindera-dict.sh')"
+    "postinstall": "wxt prepare && node scripts/setup-kuromoji-dict.mjs && (./scripts/setup-lindera-dict.sh || echo '\u26a0\ufe0f  the Japanese dictionary was not built; the Japanese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-lindera-dict.sh') && (./scripts/setup-jieba-dict.sh || echo '\u26a0\ufe0f  the Chinese dictionary was not built; the Chinese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-jieba-dict.sh')"
   },
   "devDependencies": {
     "@babel/core": "^8.0.6",

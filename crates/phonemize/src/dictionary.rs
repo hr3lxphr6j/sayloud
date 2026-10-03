@@ -27,6 +27,19 @@ pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 /// loaded.
 pub const IPADIC_JA: &str = "lindera-ipadic-ja";
 
+/// The Chinese dictionary's name, as the JavaScript side sees it.
+///
+/// jieba's word-frequency list, uncompressed to text and handed to `jieba-rs`.
+/// A dictionary rather than a compiled-in table for the reason phase 6 measured:
+/// the crate's `default-dict` feature embeds exactly this file, through
+/// `include-flate`, and that path pulls in the C `zstd` crate at runtime, which
+/// cannot link for `wasm32-unknown-unknown` on macOS (see
+/// `scripts/setup-jieba-dict.sh`). Shipping it as an asset also keeps 4.8 MB of
+/// dictionary out of a wasm that is otherwise 4.2 MB.
+///
+/// 1.6 MB compressed, built by `scripts/setup-jieba-dict.sh`.
+pub const JIEBA_ZH: &str = "jieba-zh-dict";
+
 /// What each frontend can speak (spec §2.2).
 ///
 /// The frontend is the model's phoneme inventory, and the two do not cover the
@@ -43,9 +56,9 @@ pub fn supported_languages(frontend: &str) -> Option<&'static [&'static str]> {
 
 /// The dictionaries one language needs, by primary subtag.
 ///
-/// Empty is a real answer, not a stub: the Chinese pinyin table and the English
-/// espeak-ng data are compiled into the wasm (spec §2.3), so those two languages
-/// fetch nothing today.
+/// Empty is a real answer, not a stub: the English CMU dictionary and the
+/// Chinese pinyin tables are compiled into the wasm (spec §2.3), so English
+/// fetches nothing.
 ///
 /// `None` means "not a language this pipeline knows", which is different from
 /// "needs nothing" — the caller checks the frontend's language list first.
@@ -54,7 +67,12 @@ fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
         // IPADic: prebuilt trie + connection matrix, ~10 MB compressed and
         // 45.3 MB in memory (spec §1.4).
         "ja" => Some(&[IPADIC_JA]),
-        "zh" | "en" => Some(&[]),
+        // jieba's word list: plain text, 1.6 MB compressed and 4.8 MB in memory,
+        // read by `jieba-rs` rather than by a dictionary builder. It is the one
+        // part of Chinese that is not compiled in, because the only way
+        // `jieba-rs` can embed it cannot link for wasm (see [`JIEBA_ZH`]).
+        "zh" => Some(&[JIEBA_ZH]),
+        "en" => Some(&[]),
         _ => None,
     }
 }

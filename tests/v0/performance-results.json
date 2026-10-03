@@ -1,0 +1,104 @@
+{
+  "meta": {
+    "generatedAt": "2026-10-03T08:46:29.874Z",
+    "package": "@piper-plus/g2p",
+    "packageVersion": "0.4.2",
+    "node": "v26.10.0",
+    "iterations": 20,
+    "sampleLength": 50,
+    "targets": {
+      "loadMs": 100,
+      "zhMsPerSentence": 1,
+      "jaMsPerSentence": 1,
+      "enMsPerSentence": 5,
+      "memoryMb": 50
+    },
+    "note": "This package ships no wasm; \"load\" is ES module import time plus per-language construction."
+  },
+  "load": {
+    "moduleImportMs": 4.2057,
+    "targetMs": 100,
+    "pass": true
+  },
+  "languages": {
+    "zh": {
+      "initMs": 0.0135,
+      "status": "ok",
+      "mode": "fallback",
+      "error": null,
+      "output": "人工智能技术正在快速发展并且深刻改变着我们日常生活的方方面面今天天气非常好我们一起去公园散步吧很开心",
+      "outputLength": 50,
+      "stats": {
+        "iterations": 20,
+        "minMs": 0.0018,
+        "medianMs": 0.002,
+        "trimmedMeanMs": 0.002,
+        "maxMs": 0.0087
+      },
+      "targetMs": 1,
+      "pass": true,
+      "meaningful": false,
+      "meaningfulNote": "zh ran in character-passthrough fallback mode; it emits no phonemes, so this timing measures string iteration rather than G2P."
+    },
+    "ja": {
+      "initMs": 0.0869,
+      "status": "blocked",
+      "mode": null,
+      "error": "openjtalkModule is required. Pass it via new JapaneseG2P({ openjtalkModule }) or initialize({ openjtalkModule }).",
+      "stats": null,
+      "targetMs": 1,
+      "pass": false,
+      "meaningful": false
+    },
+    "en": {
+      "initMs": 0.0041,
+      "status": "ok",
+      "mode": "rule-based (pure JS)",
+      "error": null,
+      "output": "ˈɑːɹtəfˈɪʃəl ɪntˈɛlədʒəns ɪz ˈædvˈænkˈɪŋ ɹˈæpˈɪdlj tədˈeɪ",
+      "outputLength": 57,
+      "stats": {
+        "iterations": 20,
+        "minMs": 0.0188,
+        "medianMs": 0.039,
+        "trimmedMeanMs": 0.0354,
+        "maxMs": 0.1526
+      },
+      "targetMs": 5,
+      "pass": true,
+      "meaningful": true
+    }
+  },
+  "memory": {
+    "rssMb": 18.42,
+    "heapTotalMb": 9.14,
+    "heapUsedMb": 6.14,
+    "externalMb": 2.06,
+    "arrayBuffersMb": 0.13,
+    "heapUsedTargetMb": 50,
+    "pass": true
+  },
+  "verdict": {
+    "checks": {
+      "load": true,
+      "zh": true,
+      "ja": false,
+      "en": true,
+      "memory": true
+    },
+    "passed": 4,
+    "total": 5,
+    "passRate": 0.8,
+    "meetsBriefThreshold": true,
+    "meaningfulChecks": {
+      "load": true,
+      "zh": false,
+      "ja": false,
+      "en": true,
+      "memory": true
+    },
+    "meaningfulPassed": 3,
+    "meaningfulTotal": 5,
+    "meaningfulPassRate": 0.6
+  }
+}

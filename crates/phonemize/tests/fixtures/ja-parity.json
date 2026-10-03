@@ -1,0 +1,171 @@
+{
+  "generatedBy": "tests/unit/models/phonemize/ja-parity.test.ts",
+  "samples": [
+    {
+      "input": "こんにちは",
+      "js": "koɴniʨiha"
+    },
+    {
+      "input": "ありがとう",
+      "js": "ariɡatou"
+    },
+    {
+      "input": "さようなら",
+      "js": "sajounara"
+    },
+    {
+      "input": "ひらがなとカタカナ",
+      "js": "hiraɡanatokatakana"
+    },
+    {
+      "input": "経営",
+      "js": "keiei"
+    },
+    {
+      "input": "学校",
+      "js": "ɡaʔkou"
+    },
+    {
+      "input": "新聞",
+      "js": "ɕiɴbuɴ"
+    },
+    {
+      "input": "東京",
+      "js": "toukjou"
+    },
+    {
+      "input": "日本語",
+      "js": "nihoɴɡo"
+    },
+    {
+      "input": "日本",
+      "js": "niʔpoɴ"
+    },
+    {
+      "input": "がっこう",
+      "js": "ɡaʔkou"
+    },
+    {
+      "input": "コーヒー",
+      "js": "koːhiː"
+    },
+    {
+      "input": "しんぶん",
+      "js": "ɕiɴbuɴ"
+    },
+    {
+      "input": "きゃく",
+      "js": "kjaku"
+    },
+    {
+      "input": "しゃしん",
+      "js": "ɕaɕiɴ"
+    },
+    {
+      "input": "インターネット",
+      "js": "iɴtaːneʔto"
+    },
+    {
+      "input": "キャンプ",
+      "js": "kjaɴpu"
+    },
+    {
+      "input": "2022年",
+      "js": "niseɴniʥuunineɴ"
+    },
+    {
+      "input": "三百",
+      "js": "saɴbjaku"
+    },
+    {
+      "input": "六百",
+      "js": "roʔpjaku"
+    },
+    {
+      "input": "八百",
+      "js": "haʔpjaku"
+    },
+    {
+      "input": "三千",
+      "js": "saɴzeɴ"
+    },
+    {
+      "input": "8000",
+      "js": "haʔseɴ"
+    },
+    {
+      "input": "10001",
+      "js": "iʨimaɴiʨi"
+    },
+    {
+      "input": "15.6%",
+      "js": "ʥuuɡoteɴrokupaːseɴto"
+    },
+    {
+      "input": "２０２２年",
+      "js": "niseɴniʥuunineɴ"
+    },
+    {
+      "input": "こんにちは、せかい。",
+      "js": "koɴniʨiha, sekai."
+    },
+    {
+      "input": "「はい」",
+      "js": "\"hai\""
+    },
+    {
+      "input": "ほんとう？",
+      "js": "hoɴtou?"
+    },
+    {
+      "input": "東京は日本の首都です。",
+      "js": "toukjouhaniʔpoɴnoɕutodesu."
+    },
+    {
+      "input": "こんにちは、世界",
+      "js": "koɴniʨiha, sekai"
+    },
+    {
+      "input": "今日は良い天気ですね",
+      "js": "kjouharjouiteɴkidesune"
+    },
+    {
+      "input": "わたしは",
+      "js": "wataɕiha"
+    },
+    {
+      "input": "りんご、バナナ、オレンジ",
+      "js": "riɴɡo, banana, oreɴʥi"
+    },
+    {
+      "input": "7",
+      "js": "nana"
+    },
+    {
+      "input": "八千",
+      "js": "haʔseɴ"
+    },
+    {
+      "input": "資産３２億ドル、約４２００億円",
+      "js": "ɕisaɴsaɴʥuuniokudoru, jakujoɴseɴniçakuokueɴ"
+    },
+    {
+      "input": "APIを使う",
+      "js": "ɐ pˈiː ˈaɪoɕiu",
+      "rust": "APIoɕiu",
+      "divergence": "Latin runs are passed through, not phonemized: espeak arrives in phase 4. The JavaScript spells API with espeak; Rust keeps the letters, which for an acronym Kokoro's vocabulary already holds as phonemes is close to the same sound — and is not silent."
+    },
+    {
+      "input": "Chatを使う",
+      "js": "tʃˈætoɕiu",
+      "rust": "Chatoɕiu",
+      "divergence": "Same as APIを使う: espeak is phase 4. Here the pass-through is further from the JavaScript, because Chat is a word rather than an acronym and the letters are not how it is said."
+    },
+    {
+      "input": "あQい",
+      "js": "akjˈuːi",
+      "rust": "aQi",
+      "divergence": "Same as APIを使う: Q is a Latin run, so it is passed through where the JavaScript phonemizes it with espeak."
+    }
+  ]
+}

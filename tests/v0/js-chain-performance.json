@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "generatedAt": "2026-10-03T08:49:17.965Z",
+    "subject": "lib/models/phonemize/ (the chain that ships today)",
+    "node": "v26.10.0",
+    "iterations": 20,
+    "sampleLength": 50
+  },
+  "languages": {
+    "zh": {
+      "minMs": 0.0635,
+      "medianMs": 0.0892,
+      "trimmedMeanMs": 0.0875,
+      "maxMs": 0.1142
+    },
+    "ja": {
+      "minMs": 0.1269,
+      "medianMs": 0.1781,
+      "trimmedMeanMs": 0.1825,
+      "maxMs": 0.5139
+    },
+    "en": {
+      "minMs": 3.1377,
+      "medianMs": 3.633,
+      "trimmedMeanMs": 3.8346,
+      "maxMs": 5.6763
+    }
+  }
+}

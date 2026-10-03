@@ -30,3 +30,24 @@ serde-wasm-bindgen = "0.6"
 # reference `zstd -19` CLI — with no C toolchain. It is decode-only, which is all
 # the wasm does. Cost: ~120 ms for a 45 MB dictionary, measured in wasm.
 ruzstd = "0.9"
+
+# Japanese segmentation (spec §1.4). `default-features = false` is required
+# rather than tidy: the default feature is `mmap`, and there is nothing to memory
+# map on `wasm32-unknown-unknown`. The dictionary crate is a direct dependency as
+# well because `lindera::dictionary::Dictionary` is a type *alias* for
+# `lindera_dictionary::dictionary::Dictionary`, and building one from bytes means
+# naming its component types — `lindera` re-exports `Dictionary` and `Metadata`
+# and nothing else. See `src/backends/segmenter_ja.rs` for why that is necessary
+# at all: the crate has no `load_from_bytes`.
+lindera = { version = "6.2", default-features = false }
+lindera-dictionary = { version = "6.2", default-features = false }
+# The dictionary ships as one asset, so the nine files lindera wants are wrapped
+# in a tar archive. A transport wrapper, not a format: the bytes inside are
+# lindera's own.
+tar = "0.4"
+
+[dev-dependencies]
+# The parity corpus is JSON, and so is the option object that crosses the wasm
+# boundary. Already in the dependency graph through lindera, so this costs no
+# extra build.
+serde_json = "1"

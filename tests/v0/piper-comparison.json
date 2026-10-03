@@ -1,0 +1,587 @@
+{
+  "meta": {
+    "generatedAt": "2026-10-03T08:49:17.963Z",
+    "package": "@piper-plus/g2p",
+    "packageVersion": "0.4.2",
+    "node": "v26.10.0",
+    "sampleCount": 3,
+    "perLanguage": {
+      "zh": 10,
+      "ja": 10,
+      "en": 10
+    },
+    "piperInitErrors": [
+      "ja G2P.create failed: openjtalkModule is required. Pass it via new JapaneseG2P({ openjtalkModule }) or initialize({ openjtalkModule })."
+    ]
+  },
+  "comparison": {
+    "zh": [
+      {
+        "input": "你好",
+        "jsChain": {
+          "output": "ni↓xau↓",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "你",
+            "好"
+          ],
+          "joined": "你好",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "今天天气很好",
+        "jsChain": {
+          "output": "ʨi→ntʰjɛ→ntʰjɛ→nʨʰi↘ xə↓n xau↓",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "今",
+            "天",
+            "天",
+            "气",
+            "很",
+            "好"
+          ],
+          "joined": "今天天气很好",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "我喜欢编程",
+        "jsChain": {
+          "output": "wo↓ ɕi↓xwan pjɛ→nꭧʰə↗ŋ",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "我",
+            "喜",
+            "欢",
+            "编",
+            "程"
+          ],
+          "joined": "我喜欢编程",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "中文测试",
+        "jsChain": {
+          "output": "ꭧʊ→ŋwə↗n ʦʰɤ↘ʂɻ̩↘",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "中",
+            "文",
+            "测",
+            "试"
+          ],
+          "joined": "中文测试",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "数字123",
+        "jsChain": {
+          "output": "ʂu↘ʦɹ̩↘ i↘pai↓ɚ↘ʂɻ̩↗ sa→n",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "数",
+            "字",
+            "1",
+            "2",
+            "3"
+          ],
+          "joined": "数字123",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "标点符号！",
+        "jsChain": {
+          "output": "pjau→tjɛ↓nfu↗xau↘!",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "标",
+            "点",
+            "符",
+            "号",
+            "！"
+          ],
+          "joined": "标点符号！",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "混合text测试",
+        "jsChain": {
+          "output": "xwə↘nxɤ↗tˈɛkstʦʰɤ↘ʂɻ̩↘",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "混",
+            "合",
+            "t",
+            "e",
+            "x",
+            "t",
+            "测",
+            "试"
+          ],
+          "joined": "混合text测试",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "长句子用于测试性能表现",
+        "jsChain": {
+          "output": "ꭧʰa↗ŋ ʨy↘ʦɹ̩ jʊ↘ŋy↗ ʦʰɤ↘ʂɻ̩↘ ɕi↘ŋnə↗ŋ pjau↓ɕjɛ↘n",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "长",
+            "句",
+            "子",
+            "用",
+            "于",
+            "测",
+            "试",
+            "性",
+            "能",
+            "表",
+            "现"
+          ],
+          "joined": "长句子用于测试性能表现",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "简短",
+        "jsChain": {
+          "output": "ʨjɛ↓ntwa↓n",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "简",
+            "短"
+          ],
+          "joined": "简短",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "经营管理",
+        "jsChain": {
+          "output": "ʨi→ŋi↗ŋ kwa↓nli↓",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "经",
+            "营",
+            "管",
+            "理"
+          ],
+          "joined": "经营管理",
+          "error": null
+        },
+        "identical": false
+      }
+    ],
+    "ja": [
+      {
+        "input": "こんにちは",
+        "jsChain": {
+          "output": "koɴniʨiha",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "今日はいい天気ですね",
+        "jsChain": {
+          "output": "kjouhaiiteɴkidesune",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "経営",
+        "jsChain": {
+          "output": "keiei",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "テスト",
+        "jsChain": {
+          "output": "tesuto",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "ありがとう",
+        "jsChain": {
+          "output": "ariɡatou",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "日本語",
+        "jsChain": {
+          "output": "nihoɴɡo",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "カタカナ",
+        "jsChain": {
+          "output": "katakana",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "ひらがな",
+        "jsChain": {
+          "output": "hiraɡana",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "漢字",
+        "jsChain": {
+          "output": "kaɴʥi",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      },
+      {
+        "input": "お元気ですか",
+        "jsChain": {
+          "output": "oɡeɴkidesuka",
+          "error": null
+        },
+        "piper": {
+          "tokens": null,
+          "joined": null,
+          "error": "not initialised (see errors)"
+        },
+        "identical": false
+      }
+    ],
+    "en": [
+      {
+        "input": "hello",
+        "jsChain": {
+          "output": "həlˈoʊ",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "h",
+            "ə",
+            "l",
+            "ˈ",
+            "o",
+            "ʊ"
+          ],
+          "joined": "həlˈoʊ",
+          "error": null
+        },
+        "identical": true
+      },
+      {
+        "input": "world",
+        "jsChain": {
+          "output": "wˈɜːld",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "w",
+            "ˈ",
+            "ɜ",
+            "ː",
+            "l",
+            "d"
+          ],
+          "joined": "wˈɜːld",
+          "error": null
+        },
+        "identical": true
+      },
+      {
+        "input": "test",
+        "jsChain": {
+          "output": "tˈɛst",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "t",
+            "ˈ",
+            "ɛ",
+            "s",
+            "t"
+          ],
+          "joined": "tˈɛst",
+          "error": null
+        },
+        "identical": true
+      },
+      {
+        "input": "never",
+        "jsChain": {
+          "output": "nˈɛvɚ",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "n",
+            "ˈ",
+            "ɛ",
+            "v",
+            "ɚ"
+          ],
+          "joined": "nˈɛvɚ",
+          "error": null
+        },
+        "identical": true
+      },
+      {
+        "input": "hello world",
+        "jsChain": {
+          "output": "həlˈoʊ wˈɜːld",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "h",
+            "ə",
+            "l",
+            "ˈ",
+            "o",
+            "ʊ",
+            " ",
+            "w",
+            "ˈ",
+            "ɜ",
+            "ː",
+            "l",
+            "d"
+          ],
+          "joined": "həlˈoʊ wˈɜːld",
+          "error": null
+        },
+        "identical": true
+      },
+      {
+        "input": "The quick brown fox",
+        "jsChain": {
+          "output": "ðə kwˈɪk bɹˈaʊn fˈɑːks",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "ð",
+            "ə",
+            " ",
+            "k",
+            "w",
+            "ˈ",
+            "ɪ",
+            "k",
+            " ",
+            "b",
+            "ɹ",
+            "ˈ",
+            "o",
+            "ʊ",
+            "n",
+            " ",
+            "f",
+            "ˈ",
+            "ɑ",
+            "k",
+            "s"
+          ],
+          "joined": "ðə kwˈɪk bɹˈoʊn fˈɑks",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "testing",
+        "jsChain": {
+          "output": "tˈɛstɪŋ",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "t",
+            "ˈ",
+            "ɛ",
+            "s",
+            "t",
+            "ˈ",
+            "ɪ",
+            "ŋ"
+          ],
+          "joined": "tˈɛstˈɪŋ",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "phoneme",
+        "jsChain": {
+          "output": "fˈoʊniːm",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "f",
+            "ˈ",
+            "ɑ",
+            "n",
+            "ˈ",
+            "ɛ",
+            "m",
+            "ˈ",
+            "ɛ"
+          ],
+          "joined": "fˈɑnˈɛmˈɛ",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "synthesis",
+        "jsChain": {
+          "output": "sˈɪnθəsˌɪs",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "s",
+            "ˈ",
+            "ɪ",
+            "n",
+            "θ",
+            "ə",
+            "s",
+            "ɪ",
+            "s"
+          ],
+          "joined": "sˈɪnθəsɪs",
+          "error": null
+        },
+        "identical": false
+      },
+      {
+        "input": "text to speech",
+        "jsChain": {
+          "output": "tˈɛkst tə spˈiːtʃ",
+          "error": null
+        },
+        "piper": {
+          "tokens": [
+            "t",
+            "ˈ",
+            "ɛ",
+            "k",
+            "s",
+            "t",
+            " ",
+            "t",
+            "u",
+            "ː",
+            " ",
+            "s",
+            "p",
+            "ˈ",
+            "i",
+            "ː",
+            "t",
+            "ʃ"
+          ],
+          "joined": "tˈɛkst tuː spˈiːtʃ",
+          "error": null
+        },
+        "identical": false
+      }
+    ]
+  }
+}

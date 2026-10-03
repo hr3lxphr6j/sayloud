@@ -19,6 +19,14 @@ use ruzstd::decoding::StreamingDecoder;
 /// The zstd frame magic number (RFC 8878 §3.1.1), as it appears on the wire.
 pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
+/// The Japanese dictionary's name, as the JavaScript side sees it.
+///
+/// A constant rather than a literal in two places, because the pipeline and the
+/// name list have to agree on it and nothing else would notice if they stopped:
+/// the registry would hand the bytes to no one and `finish` would report them
+/// loaded.
+pub const IPADIC_JA: &str = "lindera-ipadic-ja";
+
 /// What each frontend can speak (spec §2.2).
 ///
 /// The frontend is the model's phoneme inventory, and the two do not cover the
@@ -45,7 +53,7 @@ fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
     match language {
         // IPADic: prebuilt trie + connection matrix, ~10 MB compressed and
         // 45.3 MB in memory (spec §1.4).
-        "ja" => Some(&["lindera-ipadic-ja"]),
+        "ja" => Some(&[IPADIC_JA]),
         "zh" | "en" => Some(&[]),
         _ => None,
     }

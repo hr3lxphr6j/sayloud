@@ -21,6 +21,11 @@ __pycache__/
 # Kuromoji dictionaries (auto-generated on install)
 public/kuromoji-dict/
 
+# The Japanese dictionary for the Rust phonemizer, built by
+# scripts/setup-lindera-dict.sh on install. 8.5 MB of IPADic, regenerated rather
+# than tracked — the same arrangement as the kuromoji dictionaries above.
+public/dictionaries/
+
 # POC and test scripts
 poc/
 

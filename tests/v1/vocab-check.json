@@ -1,0 +1,2403 @@
+{
+  "meta": {
+    "generatedAt": "2026-10-03T09:22:45.488Z",
+    "package": "piper-plus",
+    "packageVersion": "0.7.0",
+    "wasmBuild": "multilingual (features: ja, zh, ko, es, fr, pt, sv)",
+    "node": "v26.10.0",
+    "sampleCount": 30,
+    "perLanguage": {
+      "zh": 10,
+      "ja": 10,
+      "en": 10
+    },
+    "wasmTimings": {
+      "wasmBytes": 60077874,
+      "instantiateMs": 18.639,
+      "constructMs": 14.567
+    },
+    "wasmSupportedLanguages": [
+      "en",
+      "ja",
+      "zh"
+    ],
+    "zhEnDispatchEnabled": true,
+    "notes": [
+      "Chinese is measured twice: as shipped (no pinyin dictionary ships in the npm tarball, so the phonemizer stays in its initial passthrough state) and with TONE3 dictionaries derived from upstream by scripts/convert-pinyin-tone3.mjs.",
+      "The wasm build does not include English at all: the `multilingual` feature list is [ja, zh, ko, es, fr, pt, sv], so English falls back to character-level passthrough. English is handled by the JS layer in piper-plus itself.",
+      "v0G2P is copied from tests/v0/piper-comparison.json (@piper-plus/g2p@0.4.2).",
+      "Language detection is not reliable on its own: `detectLanguage` answers \"zh\" for every kanji-only string (経営, 日本語, 漢字, 東京, ...). The `language` argument to phonemize() does override it -- every Japanese sample here is phonemized with an explicit \"ja\" hint, which is the only reason kanji-only samples produced Japanese readings. The `detected` field records what auto-detection would have chosen."
+    ],
+    "perLanguageSummary": {
+      "zh": {
+        "asShipped": {
+          "passthrough": 10
+        },
+        "withZhDict": {
+          "ipa-differs": 10
+        }
+      },
+      "ja": {
+        "asShipped": {
+          "ipa-differs": 10
+        },
+        "withZhDict": null
+      },
+      "en": {
+        "asShipped": {
+          "passthrough": 10
+        },
+        "withZhDict": null
+      }
+    }
+  },
+  "vocabSizes": {
+    "v1.0": 115,
+    "v1.1-zh": 172
+  },
+  "method": "Two independent measurements. (1) character-set diff of the wasm output against each vocabulary, run on both the raw PUA form (what a model config would have to key on) and the PUA-expanded form. (2) the vocabulary is used as the wasm phoneme_id_map, so the encoder's own lookup reports how many phonemes it cannot resolve -- the encoder replaces those with the PAD token.",
+  "languages": {
+    "zh": {
+      "wasmCharsRaw": [
+        "!",
+        "1",
+        "2",
+        "3",
+        "e",
+        "f",
+        "i",
+        "k",
+        "l",
+        "n",
+        "p",
+        "t",
+        "u",
+        "x",
+        "ɕ",
+        "ɤ",
+        "ɨ",
+        "ʂ",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "wasmCharsPuaExpanded": [
+        "!",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "_",
+        "a",
+        "e",
+        "f",
+        "i",
+        "k",
+        "l",
+        "n",
+        "o",
+        "p",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "x",
+        "y",
+        "ŋ",
+        "ɕ",
+        "ə",
+        "ɛ",
+        "ɤ",
+        "ɨ",
+        "ɻ",
+        "ʂ",
+        "ʊ",
+        "ʰ",
+        "̩"
+      ],
+      "jsChainChars": [
+        " ",
+        "!",
+        "a",
+        "f",
+        "i",
+        "j",
+        "k",
+        "l",
+        "n",
+        "o",
+        "p",
+        "s",
+        "t",
+        "u",
+        "w",
+        "x",
+        "y",
+        "ŋ",
+        "ɕ",
+        "ə",
+        "ɚ",
+        "ɛ",
+        "ɤ",
+        "ɹ",
+        "ɻ",
+        "ʂ",
+        "ʊ",
+        "ʦ",
+        "ʨ",
+        "ʰ",
+        "ˈ",
+        "̩",
+        "→",
+        "↓",
+        "↗",
+        "↘",
+        "ꭧ"
+      ],
+      "jsChainMissingFromV1": [
+        "̩"
+      ],
+      "jsChainMissingFromV11zh": [
+        "ɚ",
+        "ɤ",
+        "ɻ",
+        "̩",
+        "→",
+        "↓",
+        "↗",
+        "↘",
+        "ꭧ"
+      ],
+      "againstWasm": {
+        "v1.0": {
+          "rawForm": {
+            "missing": [
+              "1",
+              "2",
+              "3",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "missingCount": 30,
+            "wasmCharCount": 45,
+            "missingRatio": 0.6667
+          },
+          "puaExpandedForm": {
+            "missing": [
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "_",
+              "̩"
+            ],
+            "missingCount": 7,
+            "wasmCharCount": 34,
+            "missingRatio": 0.2059
+          }
+        },
+        "v1.1-zh": {
+          "rawForm": {
+            "missing": [
+              "ɤ",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "missingCount": 28,
+            "wasmCharCount": 45,
+            "missingRatio": 0.6222
+          },
+          "puaExpandedForm": {
+            "missing": [
+              "_",
+              "ɤ",
+              "ɻ",
+              "̩"
+            ],
+            "missingCount": 4,
+            "wasmCharCount": 34,
+            "missingRatio": 0.1176
+          }
+        }
+      }
+    },
+    "ja": {
+      "wasmCharsRaw": [
+        "U",
+        "[",
+        "]",
+        "a",
+        "d",
+        "e",
+        "g",
+        "h",
+        "i",
+        "j",
+        "k",
+        "n",
+        "o",
+        "r",
+        "s",
+        "t",
+        "w",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "wasmCharsPuaExpanded": [
+        "N",
+        "U",
+        "[",
+        "]",
+        "_",
+        "a",
+        "c",
+        "d",
+        "e",
+        "g",
+        "h",
+        "i",
+        "j",
+        "k",
+        "l",
+        "n",
+        "o",
+        "r",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "y"
+      ],
+      "jsChainChars": [
+        "a",
+        "d",
+        "e",
+        "h",
+        "i",
+        "j",
+        "k",
+        "n",
+        "o",
+        "r",
+        "s",
+        "t",
+        "u",
+        "ɡ",
+        "ɴ",
+        "ʥ",
+        "ʨ"
+      ],
+      "jsChainMissingFromV1": [],
+      "jsChainMissingFromV11zh": [],
+      "againstWasm": {
+        "v1.0": {
+          "rawForm": {
+            "missing": [
+              "U",
+              "[",
+              "]",
+              "g",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "missingCount": 9,
+            "wasmCharCount": 22,
+            "missingRatio": 0.4091
+          },
+          "puaExpandedForm": {
+            "missing": [
+              "N",
+              "U",
+              "[",
+              "]",
+              "_",
+              "g"
+            ],
+            "missingCount": 6,
+            "wasmCharCount": 24,
+            "missingRatio": 0.25
+          }
+        },
+        "v1.1-zh": {
+          "rawForm": {
+            "missing": [
+              "U",
+              "[",
+              "]",
+              "g",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "missingCount": 9,
+            "wasmCharCount": 22,
+            "missingRatio": 0.4091
+          },
+          "puaExpandedForm": {
+            "missing": [
+              "N",
+              "U",
+              "[",
+              "]",
+              "_",
+              "g"
+            ],
+            "missingCount": 6,
+            "wasmCharCount": 24,
+            "missingRatio": 0.25
+          }
+        }
+      }
+    },
+    "en": {
+      "wasmCharsRaw": [
+        " ",
+        "T",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "k",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "q",
+        "r",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "x",
+        "y"
+      ],
+      "wasmCharsPuaExpanded": [
+        " ",
+        "T",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "k",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "q",
+        "r",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "x",
+        "y"
+      ],
+      "jsChainChars": [
+        " ",
+        "a",
+        "b",
+        "d",
+        "f",
+        "h",
+        "i",
+        "k",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "s",
+        "t",
+        "v",
+        "w",
+        "ð",
+        "ŋ",
+        "ɑ",
+        "ə",
+        "ɚ",
+        "ɛ",
+        "ɜ",
+        "ɪ",
+        "ɹ",
+        "ʃ",
+        "ʊ",
+        "ˈ",
+        "ˌ",
+        "ː",
+        "θ"
+      ],
+      "jsChainMissingFromV1": [],
+      "jsChainMissingFromV11zh": [
+        "ɚ"
+      ],
+      "againstWasm": {
+        "v1.0": {
+          "rawForm": {
+            "missing": [
+              "g"
+            ],
+            "missingCount": 1,
+            "wasmCharCount": 25,
+            "missingRatio": 0.04
+          },
+          "puaExpandedForm": {
+            "missing": [
+              "g"
+            ],
+            "missingCount": 1,
+            "wasmCharCount": 25,
+            "missingRatio": 0.04
+          }
+        },
+        "v1.1-zh": {
+          "rawForm": {
+            "missing": [
+              "g"
+            ],
+            "missingCount": 1,
+            "wasmCharCount": 25,
+            "missingRatio": 0.04
+          },
+          "puaExpandedForm": {
+            "missing": [
+              "g"
+            ],
+            "missingCount": 1,
+            "wasmCharCount": 25,
+            "missingRatio": 0.04
+          }
+        }
+      }
+    }
+  },
+  "vocabAsIdMap": {
+    "note": "droppedRatio is the share of phonemes the vocabulary cannot resolve, measured with the vocabulary itself as phoneme_id_map (the encoder replaces unresolvable phonemes with PAD). `asShipped` is the package as delivered; `zhWithDictionary` installs the TONE3 pinyin dictionaries first and is only meaningful for zh.",
+    "v1.0": {
+      "mapSize": 117,
+      "constructMs": 0.728
+    },
+    "v1.1-zh": {
+      "mapSize": 174,
+      "constructMs": 1.664
+    },
+    "languages": {
+      "zh": [
+        {
+          "input": "你好",
+          "wasmTokens": [
+            "n",
+            "i",
+            "tone2",
+            "x",
+            "aʊ",
+            "tone3"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 2,
+              "covered": 0,
+              "dropped": 2,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 2,
+              "covered": 0,
+              "dropped": 2,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 6,
+              "covered": 3,
+              "dropped": 3,
+              "droppedRatio": 0.5,
+              "coveredTokens": [
+                "n",
+                "i",
+                "x"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 6,
+              "covered": 3,
+              "dropped": 3,
+              "droppedRatio": 0.5,
+              "coveredTokens": [
+                "n",
+                "i",
+                "x"
+              ]
+            }
+          }
+        },
+        {
+          "input": "今天天气很好",
+          "wasmTokens": [
+            "tɕ",
+            "in",
+            "tone1",
+            "tʰ",
+            "iɛn",
+            "tone1",
+            "tʰ",
+            "iɛn",
+            "tone1",
+            "tɕʰ",
+            "i",
+            "tone4",
+            "x",
+            "ən",
+            "tone2",
+            "x",
+            "aʊ",
+            "tone3"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 6,
+              "covered": 0,
+              "dropped": 6,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 6,
+              "covered": 0,
+              "dropped": 6,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 18,
+              "covered": 3,
+              "dropped": 15,
+              "droppedRatio": 0.8333,
+              "coveredTokens": [
+                "i",
+                "x",
+                "x"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 18,
+              "covered": 3,
+              "dropped": 15,
+              "droppedRatio": 0.8333,
+              "coveredTokens": [
+                "i",
+                "x",
+                "x"
+              ]
+            }
+          }
+        },
+        {
+          "input": "我喜欢编程",
+          "wasmTokens": [
+            "uo",
+            "tone2",
+            "ɕ",
+            "i",
+            "tone3",
+            "x",
+            "uan",
+            "tone1",
+            "p",
+            "iɛn",
+            "tone1",
+            "tʂʰ",
+            "əŋ",
+            "tone2"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 5,
+              "covered": 0,
+              "dropped": 5,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 5,
+              "covered": 1,
+              "dropped": 4,
+              "droppedRatio": 0.8,
+              "coveredTokens": [
+                "我"
+              ]
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 14,
+              "covered": 4,
+              "dropped": 10,
+              "droppedRatio": 0.7143,
+              "coveredTokens": [
+                "ɕ",
+                "i",
+                "x",
+                "p"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 14,
+              "covered": 4,
+              "dropped": 10,
+              "droppedRatio": 0.7143,
+              "coveredTokens": [
+                "ɕ",
+                "i",
+                "x",
+                "p"
+              ]
+            }
+          }
+        },
+        {
+          "input": "中文测试",
+          "wasmTokens": [
+            "tʂ",
+            "uŋ",
+            "tone1",
+            "uən",
+            "tone2",
+            "tsʰ",
+            "ɤ",
+            "tone4",
+            "ʂ",
+            "ɻ̩",
+            "tone4"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 4,
+              "covered": 0,
+              "dropped": 4,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 4,
+              "covered": 2,
+              "dropped": 2,
+              "droppedRatio": 0.5,
+              "coveredTokens": [
+                "中",
+                "文"
+              ]
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 11,
+              "covered": 2,
+              "dropped": 9,
+              "droppedRatio": 0.8182,
+              "coveredTokens": [
+                "ɤ",
+                "ʂ"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 11,
+              "covered": 1,
+              "dropped": 10,
+              "droppedRatio": 0.9091,
+              "coveredTokens": [
+                "ʂ"
+              ]
+            }
+          }
+        },
+        {
+          "input": "数字123",
+          "wasmTokens": [
+            "ʂ",
+            "u",
+            "tone4",
+            "ts",
+            "ɨ",
+            "tone4",
+            "1",
+            "2",
+            "3"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 5,
+              "covered": 0,
+              "dropped": 5,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 5,
+              "covered": 3,
+              "dropped": 2,
+              "droppedRatio": 0.4,
+              "coveredTokens": [
+                "1",
+                "2",
+                "3"
+              ]
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 9,
+              "covered": 3,
+              "dropped": 6,
+              "droppedRatio": 0.6667,
+              "coveredTokens": [
+                "ʂ",
+                "u",
+                "ɨ"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 9,
+              "covered": 6,
+              "dropped": 3,
+              "droppedRatio": 0.3333,
+              "coveredTokens": [
+                "ʂ",
+                "u",
+                "ɨ",
+                "1",
+                "2",
+                "3"
+              ]
+            }
+          }
+        },
+        {
+          "input": "标点符号！",
+          "wasmTokens": [
+            "p",
+            "iaʊ",
+            "tone1",
+            "t",
+            "iɛn",
+            "tone3",
+            "f",
+            "u",
+            "tone2",
+            "x",
+            "aʊ",
+            "tone4",
+            "!"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 5,
+              "covered": 0,
+              "dropped": 5,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 5,
+              "covered": 0,
+              "dropped": 5,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 13,
+              "covered": 6,
+              "dropped": 7,
+              "droppedRatio": 0.5385,
+              "coveredTokens": [
+                "p",
+                "t",
+                "f",
+                "u",
+                "x",
+                "!"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 13,
+              "covered": 6,
+              "dropped": 7,
+              "droppedRatio": 0.5385,
+              "coveredTokens": [
+                "p",
+                "t",
+                "f",
+                "u",
+                "x",
+                "!"
+              ]
+            }
+          }
+        },
+        {
+          "input": "混合text测试",
+          "wasmTokens": [
+            "x",
+            "uən",
+            "tone4",
+            "x",
+            "ɤ",
+            "tone2",
+            "t",
+            "e",
+            "x",
+            "t",
+            "tsʰ",
+            "ɤ",
+            "tone4",
+            "ʂ",
+            "ɻ̩",
+            "tone4"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 8,
+              "covered": 4,
+              "dropped": 4,
+              "droppedRatio": 0.5,
+              "coveredTokens": [
+                "t",
+                "e",
+                "x",
+                "t"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 8,
+              "covered": 4,
+              "dropped": 4,
+              "droppedRatio": 0.5,
+              "coveredTokens": [
+                "t",
+                "e",
+                "x",
+                "t"
+              ]
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 16,
+              "covered": 9,
+              "dropped": 7,
+              "droppedRatio": 0.4375,
+              "coveredTokens": [
+                "x",
+                "x",
+                "ɤ",
+                "t",
+                "e",
+                "x",
+                "t",
+                "ɤ",
+                "ʂ"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 16,
+              "covered": 7,
+              "dropped": 9,
+              "droppedRatio": 0.5625,
+              "coveredTokens": [
+                "x",
+                "x",
+                "t",
+                "e",
+                "x",
+                "t",
+                "ʂ"
+              ]
+            }
+          }
+        },
+        {
+          "input": "长句子用于测试性能表现",
+          "wasmTokens": [
+            "tʂʰ",
+            "aŋ",
+            "tone2",
+            "tɕ",
+            "y_vowel",
+            "tone4",
+            "ts",
+            "ɨ",
+            "tone5",
+            "iuŋ",
+            "tone4",
+            "y_vowel",
+            "tone2",
+            "tsʰ",
+            "ɤ",
+            "tone4",
+            "ʂ",
+            "ɻ̩",
+            "tone4",
+            "ɕ",
+            "iŋ",
+            "tone4",
+            "n",
+            "əŋ",
+            "tone2",
+            "p",
+            "iaʊ",
+            "tone3",
+            "ɕ",
+            "iɛn",
+            "tone4"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 11,
+              "covered": 0,
+              "dropped": 11,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 11,
+              "covered": 1,
+              "dropped": 10,
+              "droppedRatio": 0.9091,
+              "coveredTokens": [
+                "用"
+              ]
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 31,
+              "covered": 7,
+              "dropped": 24,
+              "droppedRatio": 0.7742,
+              "coveredTokens": [
+                "ɨ",
+                "ɤ",
+                "ʂ",
+                "ɕ",
+                "n",
+                "p",
+                "ɕ"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 31,
+              "covered": 6,
+              "dropped": 25,
+              "droppedRatio": 0.8065,
+              "coveredTokens": [
+                "ɨ",
+                "ʂ",
+                "ɕ",
+                "n",
+                "p",
+                "ɕ"
+              ]
+            }
+          }
+        },
+        {
+          "input": "简短",
+          "wasmTokens": [
+            "tɕ",
+            "iɛn",
+            "tone2",
+            "t",
+            "uan",
+            "tone3"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 2,
+              "covered": 0,
+              "dropped": 2,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 2,
+              "covered": 0,
+              "dropped": 2,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 6,
+              "covered": 1,
+              "dropped": 5,
+              "droppedRatio": 0.8333,
+              "coveredTokens": [
+                "t"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 6,
+              "covered": 1,
+              "dropped": 5,
+              "droppedRatio": 0.8333,
+              "coveredTokens": [
+                "t"
+              ]
+            }
+          }
+        },
+        {
+          "input": "经营管理",
+          "wasmTokens": [
+            "tɕ",
+            "iŋ",
+            "tone1",
+            "iŋ",
+            "tone2",
+            "k",
+            "uan",
+            "tone2",
+            "l",
+            "i",
+            "tone3"
+          ],
+          "puaTokens": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 4,
+              "covered": 0,
+              "dropped": 4,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 4,
+              "covered": 0,
+              "dropped": 4,
+              "droppedRatio": 1,
+              "coveredTokens": []
+            }
+          },
+          "zhWithDictionary": {
+            "v1.0": {
+              "totalPhonemes": 11,
+              "covered": 3,
+              "dropped": 8,
+              "droppedRatio": 0.7273,
+              "coveredTokens": [
+                "k",
+                "l",
+                "i"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 11,
+              "covered": 3,
+              "dropped": 8,
+              "droppedRatio": 0.7273,
+              "coveredTokens": [
+                "k",
+                "l",
+                "i"
+              ]
+            }
+          }
+        }
+      ],
+      "ja": [
+        {
+          "input": "こんにちは",
+          "wasmTokens": [
+            "k",
+            "o",
+            "[",
+            "N_n",
+            "n",
+            "i",
+            "ch",
+            "i",
+            "w",
+            "a"
+          ],
+          "puaTokens": [
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 10,
+              "covered": 7,
+              "dropped": 3,
+              "droppedRatio": 0.3,
+              "coveredTokens": [
+                "k",
+                "o",
+                "n",
+                "i",
+                "i",
+                "w",
+                "a"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 10,
+              "covered": 7,
+              "dropped": 3,
+              "droppedRatio": 0.3,
+              "coveredTokens": [
+                "k",
+                "o",
+                "n",
+                "i",
+                "i",
+                "w",
+                "a"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "今日はいい天気ですね",
+          "wasmTokens": [
+            "ky",
+            "o",
+            "]",
+            "[",
+            "o",
+            "w",
+            "a",
+            "i",
+            "]",
+            "[",
+            "i",
+            "t",
+            "e",
+            "]",
+            "[",
+            "N_ng",
+            "k",
+            "i",
+            "d",
+            "e",
+            "s",
+            "U",
+            "n",
+            "e"
+          ],
+          "puaTokens": [
+            "",
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 24,
+              "covered": 15,
+              "dropped": 9,
+              "droppedRatio": 0.375,
+              "coveredTokens": [
+                "o",
+                "o",
+                "w",
+                "a",
+                "i",
+                "i",
+                "t",
+                "e",
+                "k",
+                "i",
+                "d",
+                "e",
+                "s",
+                "n",
+                "e"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 24,
+              "covered": 15,
+              "dropped": 9,
+              "droppedRatio": 0.375,
+              "coveredTokens": [
+                "o",
+                "o",
+                "w",
+                "a",
+                "i",
+                "i",
+                "t",
+                "e",
+                "k",
+                "i",
+                "d",
+                "e",
+                "s",
+                "n",
+                "e"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "経営",
+          "wasmTokens": [
+            "k",
+            "e",
+            "[",
+            "e",
+            "e",
+            "e"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 6,
+              "covered": 5,
+              "dropped": 1,
+              "droppedRatio": 0.1667,
+              "coveredTokens": [
+                "k",
+                "e",
+                "e",
+                "e",
+                "e"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 6,
+              "covered": 5,
+              "dropped": 1,
+              "droppedRatio": 0.1667,
+              "coveredTokens": [
+                "k",
+                "e",
+                "e",
+                "e",
+                "e"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "テスト",
+          "wasmTokens": [
+            "t",
+            "e",
+            "]",
+            "[",
+            "s",
+            "U",
+            "t",
+            "o"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 8,
+              "covered": 5,
+              "dropped": 3,
+              "droppedRatio": 0.375,
+              "coveredTokens": [
+                "t",
+                "e",
+                "s",
+                "t",
+                "o"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 8,
+              "covered": 5,
+              "dropped": 3,
+              "droppedRatio": 0.375,
+              "coveredTokens": [
+                "t",
+                "e",
+                "s",
+                "t",
+                "o"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "ありがとう",
+          "wasmTokens": [
+            "a",
+            "[",
+            "r",
+            "i",
+            "]",
+            "g",
+            "a",
+            "t",
+            "o",
+            "o"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 10,
+              "covered": 7,
+              "dropped": 3,
+              "droppedRatio": 0.3,
+              "coveredTokens": [
+                "a",
+                "r",
+                "i",
+                "a",
+                "t",
+                "o",
+                "o"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 10,
+              "covered": 7,
+              "dropped": 3,
+              "droppedRatio": 0.3,
+              "coveredTokens": [
+                "a",
+                "r",
+                "i",
+                "a",
+                "t",
+                "o",
+                "o"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "日本語",
+          "wasmTokens": [
+            "n",
+            "i",
+            "[",
+            "h",
+            "o",
+            "N_ng",
+            "g",
+            "o"
+          ],
+          "puaTokens": [
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 8,
+              "covered": 5,
+              "dropped": 3,
+              "droppedRatio": 0.375,
+              "coveredTokens": [
+                "n",
+                "i",
+                "h",
+                "o",
+                "o"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 8,
+              "covered": 5,
+              "dropped": 3,
+              "droppedRatio": 0.375,
+              "coveredTokens": [
+                "n",
+                "i",
+                "h",
+                "o",
+                "o"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "カタカナ",
+          "wasmTokens": [
+            "k",
+            "a",
+            "[",
+            "t",
+            "a",
+            "k",
+            "a",
+            "]",
+            "n",
+            "a"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 10,
+              "covered": 8,
+              "dropped": 2,
+              "droppedRatio": 0.2,
+              "coveredTokens": [
+                "k",
+                "a",
+                "t",
+                "a",
+                "k",
+                "a",
+                "n",
+                "a"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 10,
+              "covered": 8,
+              "dropped": 2,
+              "droppedRatio": 0.2,
+              "coveredTokens": [
+                "k",
+                "a",
+                "t",
+                "a",
+                "k",
+                "a",
+                "n",
+                "a"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "ひらがな",
+          "wasmTokens": [
+            "h",
+            "i",
+            "[",
+            "r",
+            "a",
+            "g",
+            "a",
+            "n",
+            "a"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 9,
+              "covered": 7,
+              "dropped": 2,
+              "droppedRatio": 0.2222,
+              "coveredTokens": [
+                "h",
+                "i",
+                "r",
+                "a",
+                "a",
+                "n",
+                "a"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 9,
+              "covered": 7,
+              "dropped": 2,
+              "droppedRatio": 0.2222,
+              "coveredTokens": [
+                "h",
+                "i",
+                "r",
+                "a",
+                "a",
+                "n",
+                "a"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "漢字",
+          "wasmTokens": [
+            "k",
+            "a",
+            "[",
+            "N_uvular",
+            "j",
+            "i"
+          ],
+          "puaTokens": [
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 6,
+              "covered": 4,
+              "dropped": 2,
+              "droppedRatio": 0.3333,
+              "coveredTokens": [
+                "k",
+                "a",
+                "j",
+                "i"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 6,
+              "covered": 4,
+              "dropped": 2,
+              "droppedRatio": 0.3333,
+              "coveredTokens": [
+                "k",
+                "a",
+                "j",
+                "i"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "お元気ですか",
+          "wasmTokens": [
+            "o",
+            "[",
+            "g",
+            "e",
+            "]",
+            "N_ng",
+            "k",
+            "i",
+            "d",
+            "e",
+            "s",
+            "U",
+            "k",
+            "a"
+          ],
+          "puaTokens": [
+            ""
+          ],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 14,
+              "covered": 9,
+              "dropped": 5,
+              "droppedRatio": 0.3571,
+              "coveredTokens": [
+                "o",
+                "e",
+                "k",
+                "i",
+                "d",
+                "e",
+                "s",
+                "k",
+                "a"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 14,
+              "covered": 9,
+              "dropped": 5,
+              "droppedRatio": 0.3571,
+              "coveredTokens": [
+                "o",
+                "e",
+                "k",
+                "i",
+                "d",
+                "e",
+                "s",
+                "k",
+                "a"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        }
+      ],
+      "en": [
+        {
+          "input": "hello",
+          "wasmTokens": [
+            "h",
+            "e",
+            "l",
+            "l",
+            "o"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 5,
+              "covered": 5,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "h",
+                "e",
+                "l",
+                "l",
+                "o"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 5,
+              "covered": 5,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "h",
+                "e",
+                "l",
+                "l",
+                "o"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "world",
+          "wasmTokens": [
+            "w",
+            "o",
+            "r",
+            "l",
+            "d"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 5,
+              "covered": 5,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "w",
+                "o",
+                "r",
+                "l",
+                "d"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 5,
+              "covered": 5,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "w",
+                "o",
+                "r",
+                "l",
+                "d"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "test",
+          "wasmTokens": [
+            "t",
+            "e",
+            "s",
+            "t"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 4,
+              "covered": 4,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "t",
+                "e",
+                "s",
+                "t"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 4,
+              "covered": 4,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "t",
+                "e",
+                "s",
+                "t"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "never",
+          "wasmTokens": [
+            "n",
+            "e",
+            "v",
+            "e",
+            "r"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 5,
+              "covered": 5,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "n",
+                "e",
+                "v",
+                "e",
+                "r"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 5,
+              "covered": 5,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "n",
+                "e",
+                "v",
+                "e",
+                "r"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "hello world",
+          "wasmTokens": [
+            "h",
+            "e",
+            "l",
+            "l",
+            "o",
+            " ",
+            "w",
+            "o",
+            "r",
+            "l",
+            "d"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 11,
+              "covered": 11,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "h",
+                "e",
+                "l",
+                "l",
+                "o",
+                " ",
+                "w",
+                "o",
+                "r",
+                "l",
+                "d"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 11,
+              "covered": 11,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "h",
+                "e",
+                "l",
+                "l",
+                "o",
+                " ",
+                "w",
+                "o",
+                "r",
+                "l",
+                "d"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "The quick brown fox",
+          "wasmTokens": [
+            "T",
+            "h",
+            "e",
+            " ",
+            "q",
+            "u",
+            "i",
+            "c",
+            "k",
+            " ",
+            "b",
+            "r",
+            "o",
+            "w",
+            "n",
+            " ",
+            "f",
+            "o",
+            "x"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 19,
+              "covered": 19,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "T",
+                "h",
+                "e",
+                " ",
+                "q",
+                "u",
+                "i",
+                "c",
+                "k",
+                " ",
+                "b",
+                "r",
+                "o",
+                "w",
+                "n",
+                " ",
+                "f",
+                "o",
+                "x"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 19,
+              "covered": 19,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "T",
+                "h",
+                "e",
+                " ",
+                "q",
+                "u",
+                "i",
+                "c",
+                "k",
+                " ",
+                "b",
+                "r",
+                "o",
+                "w",
+                "n",
+                " ",
+                "f",
+                "o",
+                "x"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "testing",
+          "wasmTokens": [
+            "t",
+            "e",
+            "s",
+            "t",
+            "i",
+            "n",
+            "g"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 7,
+              "covered": 6,
+              "dropped": 1,
+              "droppedRatio": 0.1429,
+              "coveredTokens": [
+                "t",
+                "e",
+                "s",
+                "t",
+                "i",
+                "n"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 7,
+              "covered": 6,
+              "dropped": 1,
+              "droppedRatio": 0.1429,
+              "coveredTokens": [
+                "t",
+                "e",
+                "s",
+                "t",
+                "i",
+                "n"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "phoneme",
+          "wasmTokens": [
+            "p",
+            "h",
+            "o",
+            "n",
+            "e",
+            "m",
+            "e"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 7,
+              "covered": 7,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "p",
+                "h",
+                "o",
+                "n",
+                "e",
+                "m",
+                "e"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 7,
+              "covered": 7,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "p",
+                "h",
+                "o",
+                "n",
+                "e",
+                "m",
+                "e"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "synthesis",
+          "wasmTokens": [
+            "s",
+            "y",
+            "n",
+            "t",
+            "h",
+            "e",
+            "s",
+            "i",
+            "s"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 9,
+              "covered": 9,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "s",
+                "y",
+                "n",
+                "t",
+                "h",
+                "e",
+                "s",
+                "i",
+                "s"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 9,
+              "covered": 9,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "s",
+                "y",
+                "n",
+                "t",
+                "h",
+                "e",
+                "s",
+                "i",
+                "s"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        },
+        {
+          "input": "text to speech",
+          "wasmTokens": [
+            "t",
+            "e",
+            "x",
+            "t",
+            " ",
+            "t",
+            "o",
+            " ",
+            "s",
+            "p",
+            "e",
+            "e",
+            "c",
+            "h"
+          ],
+          "puaTokens": [],
+          "asShipped": {
+            "v1.0": {
+              "totalPhonemes": 14,
+              "covered": 14,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "t",
+                "e",
+                "x",
+                "t",
+                " ",
+                "t",
+                "o",
+                " ",
+                "s",
+                "p",
+                "e",
+                "e",
+                "c",
+                "h"
+              ]
+            },
+            "v1.1-zh": {
+              "totalPhonemes": 14,
+              "covered": 14,
+              "dropped": 0,
+              "droppedRatio": 0,
+              "coveredTokens": [
+                "t",
+                "e",
+                "x",
+                "t",
+                " ",
+                "t",
+                "o",
+                " ",
+                "s",
+                "p",
+                "e",
+                "e",
+                "c",
+                "h"
+              ]
+            }
+          },
+          "zhWithDictionary": null
+        }
+      ]
+    },
+    "summary": {
+      "zh": {
+        "asShipped": {
+          "v1.0": {
+            "totalPhonemes": 52,
+            "dropped": 48,
+            "droppedRatio": 0.9231
+          },
+          "v1.1-zh": {
+            "totalPhonemes": 52,
+            "dropped": 41,
+            "droppedRatio": 0.7885
+          }
+        },
+        "zhWithDictionary": {
+          "v1.0": {
+            "totalPhonemes": 135,
+            "dropped": 94,
+            "droppedRatio": 0.6963
+          },
+          "v1.1-zh": {
+            "totalPhonemes": 135,
+            "dropped": 95,
+            "droppedRatio": 0.7037
+          }
+        }
+      },
+      "ja": {
+        "asShipped": {
+          "v1.0": {
+            "totalPhonemes": 105,
+            "dropped": 33,
+            "droppedRatio": 0.3143
+          },
+          "v1.1-zh": {
+            "totalPhonemes": 105,
+            "dropped": 33,
+            "droppedRatio": 0.3143
+          }
+        },
+        "zhWithDictionary": null
+      },
+      "en": {
+        "asShipped": {
+          "v1.0": {
+            "totalPhonemes": 86,
+            "dropped": 1,
+            "droppedRatio": 0.0116
+          },
+          "v1.1-zh": {
+            "totalPhonemes": 86,
+            "dropped": 1,
+            "droppedRatio": 0.0116
+          }
+        },
+        "zhWithDictionary": null
+      }
+    }
+  }
+}

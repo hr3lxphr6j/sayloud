@@ -130,6 +130,118 @@ fn corpus() -> Corpus {
 }
 
 #[test]
+fn phonemizes_a_latin_run_instead_of_passing_it_through() {
+    // Phase 3 handed these runs to the frontend as characters; phase 4 gives them
+    // to the English dictionary. `Chat` and `Q` are the two that now match the
+    // JavaScript exactly, which is what closed their corpus notes.
+    let Some(phonemizer) = japanese_phonemizer() else {
+        return;
+    };
+    let options = japanese_options();
+
+    for (input, expected) in [
+        // A word: looked up in CMU Dict.
+        ("Chatを使う", "tʃˈætoɕiu"),
+        // An initialism: read letter by letter, which is what keeps the acronym
+        // audible instead of dropping it as an unknown word.
+        ("APIを使う", "ə pˈiː aɪoɕiu"),
+        ("あQい", "akjˈuːi"),
+    ] {
+        let result = phonemizer
+            .phonemize_with(input, &options)
+            .expect("phonemizes");
+        assert_eq!(result.phonemes, expected, "{input}");
+        assert!(
+            result.warnings.is_empty(),
+            "{input} has nothing to warn about: {:?}",
+            result.warnings
+        );
+    }
+}
+
+#[test]
+fn warns_about_a_latin_run_the_dictionary_does_not_have() {
+    // Decision 1.B: OOV words are spelled letter by letter as a fallback,
+    // so they don't disappear silently. The warning is no longer produced
+    // because the phonemize result is non-empty (the letters were spelled).
+    // This test now verifies the fallback works, not that a warning appears.
+    let Some(phonemizer) = japanese_phonemizer() else {
+        return;
+    };
+    let options = japanese_options();
+
+    let result = phonemizer
+        .phonemize_with("Kokoroを使う", &options)
+        .expect("phonemizes");
+
+    // Decision 1.B: OOV words are spelled letter by letter
+    assert_eq!(result.phonemes, "kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊoɕiu");
+    // No warning because phonemize succeeded (returned non-empty)
+    assert!(result.warnings.is_empty());
+}
+
+#[test]
+fn does_not_warn_about_text_with_no_latin_in_it() {
+    // The common case, and the one that decides whether the warning channel is
+    // usable at all: a message on every Japanese sentence would be noise.
+    let Some(phonemizer) = japanese_phonemizer() else {
+        return;
+    };
+    let options = japanese_options();
+
+    let result = phonemizer
+        .phonemize_with("東京は日本の首都です。", &options)
+        .expect("phonemizes");
+
+    assert_eq!(result.phonemes, "toukjouhaniʔpoɴnoɕutodesu.");
+    assert!(result.warnings.is_empty(), "{:?}", result.warnings);
+}
+
+#[test]
+fn an_initialism_is_never_dropped() {
+    // Why the drop is narrower than it sounds: an all-capitals run is read from
+    // single letters, and `every_letter_of_the_alphabet_has_a_reading` is what
+    // says those are all in the dictionary. So the words that can go missing are
+    // mixed-case proper nouns, never acronyms.
+    let Some(phonemizer) = japanese_phonemizer() else {
+        return;
+    };
+    let options = japanese_options();
+
+    for input in ["API", "LLM", "GPT", "Q", "PDF"] {
+        let result = phonemizer
+            .phonemize_with(input, &options)
+            .expect("phonemizes");
+        assert!(
+            !result.phonemes.is_empty(),
+            "{input} came out silent, which is the failure an initialism is supposed to be immune to"
+        );
+        assert!(result.warnings.is_empty(), "{input}: {:?}", result.warnings);
+    }
+}
+
+#[test]
+fn reports_a_whole_english_sentence_as_not_wired_up_yet() {
+    // A whole English *sentence* is not this phase's work: it needs numeral
+    // reading, and the CMU dictionary skips digits rather than reading them, so
+    // `I have 3 cats` would lose the 3. The Latin runs of a Japanese sentence do
+    // not have that problem — a digit is never part of a Latin run — which is why
+    // that path is wired and this one is not. The error is the point: an empty
+    // string here would be a sentence that plays as silence.
+    let phonemizer = phonemize::Phonemizer::new();
+    let options = phonemize::PhonemizeOptions {
+        frontend: "kokoro-v1".to_string(),
+        lang: "en-US".to_string(),
+    };
+
+    let error = phonemizer
+        .phonemize_with("hello world", &options)
+        .expect_err("English has no whole-sentence pipeline yet");
+
+    assert_eq!(error.code(), "pipeline-not-implemented");
+}
+
+#[test]
 fn reports_a_language_whose_pipeline_is_not_built_yet() {
     // `zh` and `en` pass the frontend check — v1.0 can speak both — and have no
     // pipeline in this build. An error rather than an empty string, because an
@@ -216,9 +328,14 @@ fn the_pipeline_matches_the_javascript_one() {
 #[test]
 fn every_recorded_divergence_is_still_a_divergence() {
     // A divergence note that has stopped being true is worse than none: it says
-    // "known and accepted" about something that is now a bug. When phase 4 lands
-    // espeak, the Latin samples in the corpus start matching the JavaScript and
-    // this test fails, which is the reminder to delete their notes.
+    // "known and accepted" about something that is now a bug. This is what
+    // caught the two notes phase 4 made stale — `Chatを使う` and `あQい` matched
+    // the JavaScript once the English backend landed, so their notes had to go
+    // rather than stay as a claim about a gap that no longer exists.
+    //
+    // `APIを使う` is the one still here, and it is a different kind of note than
+    // it was: the pass-through is gone, and what is left is piper's
+    // `ə pˈiː aɪ` against espeak's `ɐ pˈiː ˈaɪ`.
     let Some(phonemizer) = japanese_phonemizer() else {
         return;
     };

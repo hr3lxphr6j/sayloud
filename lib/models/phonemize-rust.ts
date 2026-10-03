@@ -54,6 +54,17 @@ export interface PhonemizeResult {
    */
   readonly phonemes: string;
   readonly spans?: readonly PhonemeSpan[];
+  /**
+   * Runs of text that produced no phonemes, one message each.
+   *
+   * Absent when there are none, which is the common case — the Rust side omits
+   * the field rather than sending an empty array. Today only one thing lands
+   * here: a Latin run the English dictionary has no entry for, which is dropped
+   * (`crates/phonemize/src/pipeline.rs`). It travels with the result rather than
+   * being an error because the sentence still plays; it is not silent because a
+   * dropped word is audible as a missing word.
+   */
+  readonly warnings?: readonly string[];
 }
 
 export interface RustPhonemizerDeps {

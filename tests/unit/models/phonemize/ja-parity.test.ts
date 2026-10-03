@@ -6,7 +6,7 @@
  * It is committed, and both sides are pinned to it:
  *
  * - this file checks the JavaScript pipeline still produces `js`;
- * - `crates/phonemize/tests/ja_parity.rs` checks the Rust pipeline produces
+ * - `crates/phonemize/tests/ja_pipeline.rs` checks the Rust pipeline produces
  *   `rust ?? js`.
  *
  * Neither side can drift alone. A change to the JavaScript output fails here and
@@ -117,10 +117,12 @@ const INPUTS: string[] = [
   '7',
   '八千',
   '資産３２億ドル、約４２００億円',
-  // Latin runs. These are the samples Rust is *meant* to differ on until phase 4
-  // brings espeak in: it passes the characters through where the JavaScript
-  // spells them with espeak. They are here so the gap is a recorded fact with a
-  // test that fails when it closes, not an omission.
+  // Latin runs. `APIを使う` is the one sample Rust is *still* meant to differ on,
+  // and it is now a phoneme-detail difference rather than a missing engine: both
+  // sides spell the acronym out, piper gives `ə pˈiː aɪ` where espeak gives
+  // `ɐ pˈiː ˈaɪ`. `Chatを使う` and `あQい` matched exactly once the English
+  // backend landed, so their divergence notes were deleted — a note that has
+  // stopped being true is worse than none.
   'APIを使う',
   'Chatを使う',
   // A character no table entry covers, which the IPA conversion keeps as-is.

@@ -43,6 +43,13 @@ pub struct PhonemizeResult {
     /// later does not change the signature (spec §3.1).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spans: Option<Vec<PhonemeSpan>>,
+    /// Runs of text that produced no phonemes, one message each.
+    ///
+    /// Omitted from the wire format when there are none, so the common case is
+    /// the object it has always been — the JavaScript test that compares the
+    /// whole result (`phonemize-rust.test.ts`) is pinned to that.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 /// A run of phonemes produced by a run of the input text.

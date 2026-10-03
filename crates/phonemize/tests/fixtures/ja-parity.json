@@ -152,20 +152,16 @@
     {
       "input": "APIを使う",
       "js": "ɐ pˈiː ˈaɪoɕiu",
-      "rust": "APIoɕiu",
-      "divergence": "Latin runs are passed through, not phonemized: espeak arrives in phase 4. The JavaScript spells API with espeak; Rust keeps the letters, which for an acronym Kokoro's vocabulary already holds as phonemes is close to the same sound — and is not silent."
+      "rust": "ə pˈiː aɪoɕiu",
+      "divergence": "Latin runs go to the English backend, which reads an all-capitals run letter by letter: piper's CMU Dict gives `ə pˈiː aɪ` for `A P I` where espeak gives `ɐ pˈiː ˈaɪ`. The pass-through is gone; what is left is the two engines' phoneme detail (schwa vs. the near-open central vowel, and no secondary stress mark), which is the difference the phase 4 plan says to accept rather than to chase."
     },
     {
       "input": "Chatを使う",
-      "js": "tʃˈætoɕiu",
-      "rust": "Chatoɕiu",
-      "divergence": "Same as APIを使う: espeak is phase 4. Here the pass-through is further from the JavaScript, because Chat is a word rather than an acronym and the letters are not how it is said."
+      "js": "tʃˈætoɕiu"
     },
     {
       "input": "あQい",
-      "js": "akjˈuːi",
-      "rust": "aQi",
-      "divergence": "Same as APIを使う: Q is a Latin run, so it is passed through where the JavaScript phonemizes it with espeak."
+      "js": "akjˈuːi"
     }
   ]
 }

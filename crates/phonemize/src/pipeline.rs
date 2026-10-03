@@ -1,11 +1,12 @@
 //! The chain: text in, phonemes out.
 //!
 //! One function per `(frontend, lang)` pair today, because one pair is all that
-//! exists. Phase 6 turns this into a dispatch over the frontends and adds the
-//! other three; the shape of the Japanese path below is the shape they take.
+//! exists. Phase 5 turns this into a dispatch over the frontends and adds
+//! Chinese; the shape of the Japanese path below is the shape it takes.
 //!
 //! The order of the steps is not free — see [`phonemize_ja`].
 
+use crate::backends::g2p_en::{EnglishError, EnglishG2p};
 use crate::backends::numbers::numbers_to_kanji;
 use crate::backends::segmenter_ja::{SegmenterError, SegmenterJa};
 use crate::frontends::ja_ipa::{fix_numeral_sound_changes, kana_to_ipa};
@@ -18,6 +19,8 @@ use crate::text::{
 pub enum PipelineError {
     /// The segmenter failed.
     Segmenter(SegmenterError),
+    /// The English backend failed.
+    English(EnglishError),
 }
 
 impl PipelineError {
@@ -25,6 +28,7 @@ impl PipelineError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Segmenter(error) => error.code(),
+            Self::English(error) => error.code(),
         }
     }
 }
@@ -33,6 +37,7 @@ impl std::fmt::Display for PipelineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Segmenter(error) => write!(f, "{error}"),
+            Self::English(error) => write!(f, "{error}"),
         }
     }
 }
@@ -43,6 +48,28 @@ impl From<SegmenterError> for PipelineError {
     fn from(error: SegmenterError) -> Self {
         Self::Segmenter(error)
     }
+}
+
+impl From<EnglishError> for PipelineError {
+    fn from(error: EnglishError) -> Self {
+        Self::English(error)
+    }
+}
+
+/// Phonemes, and what was left out to get them.
+///
+/// The warnings are the second half of the answer rather than a log line,
+/// because everything they describe is audible: a word the English dictionary
+/// does not have is dropped, and a dropped word is the failure mode this
+/// pipeline exists to avoid. Nothing here is fatal — a sentence with one word
+/// missing still plays — so they travel with the result instead of being
+/// returned as an error, and the JavaScript side decides what to do with them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Phonemized {
+    /// Exactly what goes into the tokenizer.
+    pub phonemes: String,
+    /// One entry per run that produced no phonemes.
+    pub warnings: Vec<String>,
 }
 
 /// Japanese text to IPA, for the v1.0 frontend.
@@ -60,27 +87,41 @@ impl From<SegmenterError> for PipelineError {
 /// 3. **Then split into script runs**, because each run takes a different route.
 /// 4. **Then read each run out as katakana** and map that to IPA.
 ///
-/// # Latin runs are passed through, not phonemized
+/// # Latin runs go to the English dictionary
 ///
-/// A `Latin` run keeps its characters, which is a real difference from the
-/// JavaScript pipeline: it hands them to espeak, and espeak arrives in phase 4.
+/// A `Latin` run is one alphabetic word — `segment_text` sends every space and
+/// every apostrophe to an `other` run — and it is phonemized by `english`, which
+/// spells it out when it is all capitals and looks it up otherwise. Phase 3
+/// passed these runs through as characters, which was the right answer only
+/// while there was no English engine to hand them to.
 ///
-/// Passing the characters through rather than dropping the run is deliberate.
-/// Dropping is the failure mode this pipeline exists to avoid — text that is
-/// simply absent from the output, with nothing thrown — and it is the wrong side
-/// of the trade twice over: for an acronym, which is most of what Latin text in
-/// a Japanese sentence is, Kokoro's vocabulary already holds the letters as
-/// phonemes, so `API` comes out close to the way the JavaScript spells it; and
-/// for anything else, wrong audio is easier to notice than missing audio.
+/// **A word the English dictionary does not have is dropped, and warned about.**
+/// That is a deliberate trade and a narrower one than it looks: an initialism
+/// cannot be dropped, because it is read from single letters and all 26 letters
+/// are in the dictionary, so what is lost is a mixed-case proper noun that CMU
+/// Dict has never heard of — `Kokoro`, `OpenAI`, `GitHub`, `ChatGPT`. espeak
+/// would have invented a pronunciation for those; inventing one is also how it
+/// reads `RAG` as the word "rag". Phase 3 chose the other side of this trade for
+/// Latin runs in general (wrong audio is easier to notice than missing audio)
+/// and the reason still holds for the words that reach it — so if a dropped word
+/// ever turns out to matter, the change is to push `run_text` through instead of
+/// warning, not to reach for a rule engine.
 ///
-/// It is still a divergence, and `tests/ja_parity.rs` records it per sample
-/// rather than leaving it to be discovered.
-pub fn phonemize_ja(text: &str, segmenter: &SegmenterJa) -> Result<String, PipelineError> {
+/// `english` is `None` when the backend could not be built at all, which is a
+/// broken build rather than a normal state: the dictionary is compiled in. It is
+/// still not fatal here, because one unusable English word must not cost the
+/// user the Japanese sentence around it.
+pub fn phonemize_ja(
+    text: &str,
+    segmenter: &SegmenterJa,
+    english: Option<&EnglishG2p>,
+) -> Result<Phonemized, PipelineError> {
     let normalized = normalize_punctuation(text);
     let with_numerals = numbers_to_kanji(&normalized);
     let runs = segment_text(&with_numerals);
 
     let mut parts: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
 
     for run in &runs {
         match run {
@@ -92,10 +133,35 @@ pub fn phonemize_ja(text: &str, segmenter: &SegmenterJa) -> Result<String, Pipel
                 let katakana = segmenter.read_as_katakana(run_text)?;
                 parts.push(kana_to_ipa(&fix_numeral_sound_changes(&katakana)));
             }
-            ScriptRun::Latin(run_text) => parts.push(run_text.clone()),
+            ScriptRun::Latin(run_text) => {
+                let phonemes = match english {
+                    Some(english) => english.phonemize(run_text)?,
+                    None => String::new(),
+                };
+
+                if phonemes.is_empty() {
+                    warnings.push(no_pronunciation(run_text));
+                } else {
+                    parts.push(phonemes);
+                }
+            }
             ScriptRun::Other(run_text) => parts.push(keep_punctuation(run_text)),
         }
     }
 
-    Ok(collapse_whitespace(&parts.concat()))
+    Ok(Phonemized {
+        phonemes: collapse_whitespace(&parts.concat()),
+        warnings,
+    })
+}
+
+/// What the caller is told about a run that produced nothing.
+///
+/// The word is in the message because that is the only part a reader can act on
+/// — it is the word to add to a dictionary, or the word that came out missing.
+/// The wording is stable so a test can look for it, and it names the language
+/// rather than the mechanism: which engine had no entry is an implementation
+/// detail, and the user is looking at an English word in a Japanese sentence.
+fn no_pronunciation(run: &str) -> String {
+    format!("no English pronunciation for {run:?}")
 }

@@ -1,0 +1,189 @@
+{
+  "generatedBy": "tests/unit/models/phonemize/zh-frontend-parity.test.ts",
+  "samples": [
+    {
+      "input": "第 3 季度营收增长了 15.6%。",
+      "js": "ti↘ sa→n ʨi↘tu↘ i↗ŋʂou→ ʦə→ŋꭧa↓ŋ lɤ pai↓fə→nꭧɻ̩→ʂɻ̩↗u↓ tjɛ↓nljou↘."
+    },
+    {
+      "input": "人设曾经",
+      "js": "ɻə↗nʂɤ↘ ʦʰə↗ŋʨi→ŋ"
+    },
+    {
+      "input": "你好世界",
+      "js": "ni↓xau↓ ʂɻ̩↘ʨje↘"
+    },
+    {
+      "input": "他昨天去图书馆还书了。",
+      "js": "tʰa→ ʦwo↗tʰjɛ→n ʨʰy↘ tʰu↗ʂu→kwa↓n xai↗ʂu→ lɤ."
+    },
+    {
+      "input": "我们中出了一个叛徒",
+      "js": "wo↓mən ꭧʊ→ŋꭧʰu→ lɤ i↗kɤ↘ pʰa↘ntʰu↗"
+    },
+    {
+      "input": "中华人民共和国武汉市长江大桥",
+      "js": "ꭧʊ→ŋxwa↗ɻə↗nmi↗nkʊ↘ŋxɤ↗kwo↗ u↓xa↘nʂɻ̩↘ ꭧa↓ŋʨja→ŋta↘ʨʰjau↗"
+    },
+    {
+      "input": "银行行长",
+      "js": "i↗nxa↗ŋxa↗ŋꭧa↓ŋ"
+    },
+    {
+      "input": "一行白鹭上青天",
+      "js": "i↘xa↗ŋ pai↗lu↘ ʂa↘ŋ ʨʰi→ŋtʰjɛ→n"
+    },
+    {
+      "input": "人工智能技术正在改变世界",
+      "js": "ɻə↗nkʊ→ŋꭧɻ̩↘nə↗ŋ ʨi↘ʂu↘ ꭧə↘ŋʦai↘ kai↓pjɛ↘n ʂɻ̩↘ʨje↘"
+    },
+    {
+      "input": "这个项目的性能优化还有很大空间",
+      "js": "ꭧɤ↘kɤ ɕja↘ŋmu↘ ti↘ ɕi↘ŋnə↗ŋ jou→xwa↘ xai↗jou↓ xə↓nta↘ kʰʊ→ŋʨjɛ→n"
+    },
+    {
+      "input": "我有3只猫",
+      "js": "wo↓ jou↓ sa→nꭧɻ̩→ mau→"
+    },
+    {
+      "input": "123",
+      "js": "i↘pai↓ɚ↘ʂɻ̩↗ sa→n"
+    },
+    {
+      "input": "1234567890",
+      "js": "ʂɻ̩↗ɚ↘i↘ sa→nʨʰjɛ→n sɹ̩↘pai↓u↓ʂɻ̩↗ ljou↘wa↘n ʨʰi→ ʨʰjɛ→npa→pai↓ ʨjou↓ʂɻ̩↗"
+    },
+    {
+      "input": "3.14",
+      "js": "sa→ntjɛ↓n i→ sɹ̩↘"
+    },
+    {
+      "input": "15.",
+      "js": "ʂɻ̩↗u↓."
+    },
+    {
+      "input": "50%",
+      "js": "pai↓fə→nꭧɻ̩→u↓ʂɻ̩↗"
+    },
+    {
+      "input": "15.6%",
+      "js": "pai↓fə→nꭧɻ̩→ʂɻ̩↗u↓ tjɛ↓nljou↘"
+    },
+    {
+      "input": "1.2.3%",
+      "js": "i→.pai↓fə→nꭧɻ̩→ɚ↘tjɛ↓n sa→n"
+    },
+    {
+      "input": "1.2.3",
+      "js": "i↘tjɛ↓n ɚ↘.sa→n"
+    },
+    {
+      "input": "０１２３",
+      "js": "i↘pai↓ɚ↘ʂɻ̩↗ sa→n"
+    },
+    {
+      "input": "２０２２年",
+      "js": "ɚ↘ʨʰjɛ→n li↗ŋ ɚ↘ʂɻ̩↗ɚ↘njɛ↗n"
+    },
+    {
+      "input": "15％",
+      "js": "ʂɻ̩↗u↓"
+    },
+    {
+      "input": "1,234",
+      "js": "i→,ɚ↘pai↓sa→nʂɻ̩↗ sɹ̩↘"
+    },
+    {
+      "input": "价格是123.45元",
+      "js": "ʨja↘kɤ↗ ʂɻ̩↘ i↘pai↓ɚ↘ʂɻ̩↗ sa→ntjɛ↓n sɹ̩↘u↓ ɥɛ↗n"
+    },
+    {
+      "input": "100015",
+      "js": "ʂɻ̩↗wa↘n li↗ŋ i→ʂɻ̩↗u↓"
+    },
+    {
+      "input": "你好，世界。",
+      "js": "ni↓xau↓. ʂɻ̩↘ʨje↘."
+    },
+    {
+      "input": "一、二、三",
+      "js": "i→, ɚ↘, sa→n"
+    },
+    {
+      "input": "真的吗？是的！",
+      "js": "ꭧə→ntɤ ma? ʂɻ̩↘ tɤ!"
+    },
+    {
+      "input": "注意：安全；第一",
+      "js": "ꭧu↘i↘: a→nʨʰɥɛ↗n; ti↘i→"
+    },
+    {
+      "input": "「引用」",
+      "js": "“i↓njʊ↘ŋ”"
+    },
+    {
+      "input": "《书名》",
+      "js": "“ʂu→mi↗ŋ”"
+    },
+    {
+      "input": "【标题】",
+      "js": "“pjau→tʰi↗”"
+    },
+    {
+      "input": "（括号）",
+      "js": "(kʰwo↘xau↘)"
+    },
+    {
+      "input": "好-坏",
+      "js": "xau↓xwai↘"
+    },
+    {
+      "input": "好-坏/好%坏",
+      "js": "xau↓xwai↘xau↓xwai↘"
+    },
+    {
+      "input": "你好 世界",
+      "js": "ni↓xau↓ ʂɻ̩↘ʨje↘"
+    },
+    {
+      "input": "你好   世界",
+      "js": "ni↓xau↓ ʂɻ̩↘ʨje↘"
+    },
+    {
+      "input": "你好　世界",
+      "js": "ni↓xau↓ ʂɻ̩↘ʨje↘"
+    },
+    {
+      "input": "  你好世界  ",
+      "js": "ni↓xau↓ ʂɻ̩↘ʨje↘"
+    },
+    {
+      "input": "   ",
+      "js": ""
+    },
+    {
+      "input": "你好あ世界",
+      "js": "ni↓xau↓ʂɻ̩↘ʨje↘"
+    },
+    {
+      "input": "〇一二三",
+      "js": "li↗ŋ i→ɚ↘sa→n"
+    },
+    {
+      "input": "豈",
+      "js": "ʨʰi↓"
+    },
+    {
+      "input": "他是一个非常努力的学生每天早上六点起床跑步然后去图书馆学习到晚上十点才回家休息",
+      "js": "tʰa→ ʂɻ̩↘ i↗kɤ↘ fei→ꭧʰa↗ŋ nu↓li↘ tɤ ɕɥe↗ʂə→ŋ mei↓tʰjɛ→n ʦau↓ʂa↘ŋ ljou↘tjɛ↓n ʨʰi↓ꭧʰwa↗ŋ pʰau↓pu↘ ɻa↗nxou↘ ʨʰy↘ tʰu↗ʂu→kwa↓n ɕɥe↗ɕi↗ tau↘ wa↓nʂa↘ŋ ʂɻ̩↗tjɛ↓n ʦʰai↗ xwei↗ʨja→ ɕjou→ɕi"
+    },
+    {
+      "input": "这段话的长度超过了一百个字符所以它会被用来检验分词算法在概率相乘时的处理方式因为如果不做处理的话所有的候选分词方案的乘积都会下溢为零从而无法比较",
+      "js": "ꭧɤ↘twa↘nxwa↘ tɤ ꭧʰa↗ŋtu↘ ꭧʰau→kwo↘ lɤ i↘pai↓kɤ↘ ʦɹ̩↘fu↗ swo↓i↓ tʰa→xwei↘ pei↘ jʊ↘ŋlai↗ ʨjɛ↓njɛ↘n fə→nʦʰɹ̩↗ swa↘nfa↓ ʦai↘ kai↘ly↘ ɕja→ŋꭧʰə↗ŋ ʂɻ̩↗ tɤ ꭧʰu↓li↓ fa→ŋʂɻ̩↘ i→nwei↘ ɻu↗kwo↓ pu↗ ʦwo↘ ꭧʰu↓li↓ tɤxwa↘ swo↓jou↓ tɤ xou↘ɕɥɛ↓n fə→nʦʰɹ̩↗ fa→ŋa↘n tɤ ꭧʰə↗ŋʨi→ tou→ xwei↘ ɕja↘i↘ wei↘ li↗ŋ ʦʰʊ↗ŋɚ↗ u↗fa↓ pi↓ʨjau↘"
+    },
+    {
+      "input": "",
+      "js": ""
+    }
+  ]
+}

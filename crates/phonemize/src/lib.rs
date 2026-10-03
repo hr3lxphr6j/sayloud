@@ -10,7 +10,10 @@
 //! backend the Latin runs of a Japanese sentence go through, then as a pipeline
 //! of its own once the numeral reading landed ([`pipeline::phonemize_en`]); the
 //! dictionary it needs is compiled in, so there is nothing to fetch for it.
-//! Chinese arrives in a later phase.
+//! Chinese is complete as of phase 6: [`pipeline::phonemize_zh`] has the numeral,
+//! punctuation, word-boundary and mixed-script rules, and the one thing it
+//! fetches is jieba's word list, because the crate's own embedded-dictionary
+//! feature cannot link for wasm (see [`dictionary::JIEBA_ZH`]).
 
 use std::sync::OnceLock;
 
@@ -27,7 +30,8 @@ pub mod vocab;
 
 use backends::g2p_en::EnglishG2p;
 use backends::segmenter_ja::{SegmenterError, SegmenterJa};
-use dictionary::{DictionaryError, DictionaryRegistry, IPADIC_JA};
+use backends::segmenter_zh::{SegmenterZh, SegmenterZhError};
+use dictionary::{DictionaryError, DictionaryRegistry, IPADIC_JA, JIEBA_ZH};
 use pipeline::PipelineError;
 use vocab::{validate_phonemes, Vocab, VocabError};
 
@@ -47,6 +51,13 @@ pub struct Phonemizer {
     /// evicted, so a second build could only arrive at the same object at the
     /// cost of another 45 MB of copying.
     japanese: Option<SegmenterJa>,
+    /// The Chinese segmenter, built the same way and for the same reason.
+    ///
+    /// A second `Option` rather than a shared one because the two are not
+    /// interchangeable: they read different dictionaries and answer different
+    /// questions, and a language that has been prepared keeps its segmenter when
+    /// a later `prepare` is for another one.
+    chinese: Option<SegmenterZh>,
     /// The English backend, built on the first use rather than on `prepare`.
     ///
     /// It needs no dictionary — the CMU dictionary is compiled into this module
@@ -112,7 +123,7 @@ impl Phonemizer {
     /// middle of a sentence.
     pub fn finish_loading(&mut self) -> Result<(), JsValue> {
         self.dictionaries.finish().map_err(dictionary_error)?;
-        self.build_backends().map_err(segmenter_error)
+        self.build_backends().map_err(backend_error)
     }
 
     /// Resolves once the module is usable.
@@ -182,13 +193,28 @@ impl Phonemizer {
             "en" => {
                 pipeline::phonemize_en(text, self.english()).map_err(PhonemizeError::Pipeline)?
             }
-            // `zh` passes the frontend check above and has no pipeline in this
-            // build. An error rather than an empty string: a sentence that
-            // phonemizes to nothing plays as silence, and silence is exactly what
-            // this migration exists to stop producing quietly. `NotImplemented`
-            // also says which of the two things went wrong, which
-            // `UnsupportedLanguage` would not: the *frontend* can speak Chinese,
-            // this *build* cannot yet.
+            // Chinese needs jieba's word list, so like Japanese it can be asked
+            // to phonemize before `prepare` ran — and that is a failure rather
+            // than a sentence read without word boundaries, because the
+            // boundaries are audible (人设, 曾经).
+            "zh" => {
+                let segmenter =
+                    self.chinese
+                        .as_ref()
+                        .ok_or_else(|| PhonemizeError::NotPrepared {
+                            lang: options.lang.clone(),
+                        })?;
+                pipeline::phonemize_zh(text, segmenter, self.english())
+                    .map_err(PhonemizeError::Pipeline)?
+            }
+            // Every language the frontend table lists has a pipeline now, so this
+            // arm is unreachable through `phonemize_with` — the frontend check at
+            // the top of this function rejects anything else first. It stays as
+            // the honest answer for the next language that is added to
+            // `supported_languages` before its pipeline exists: an error rather
+            // than an empty string, because a sentence that phonemizes to nothing
+            // plays as silence, and silence is exactly what this migration exists
+            // to stop producing quietly.
             _ => {
                 return Err(PhonemizeError::NotImplemented {
                     lang: options.lang.clone(),
@@ -236,10 +262,21 @@ impl Phonemizer {
     /// Idempotent, and additive: a segmenter that has been built stays built
     /// even when a later `prepare` is for a language that does not need it,
     /// which is the same lifetime the registry gives its bytes.
-    fn build_backends(&mut self) -> Result<(), SegmenterError> {
+    ///
+    /// **This is where a dictionary stops being bytes**, and it is the seam that
+    /// turns a partial load into an error rather than into a pipeline running
+    /// with half its dictionary. Both of these parse their whole word list, which
+    /// is the expensive part of loading either language, so a corrupt file fails
+    /// here — when the voice is picked — rather than in the middle of a sentence.
+    fn build_backends(&mut self) -> Result<(), BackendError> {
         if self.japanese.is_none() {
             if let Some(bytes) = self.dictionaries.get(IPADIC_JA) {
                 self.japanese = Some(SegmenterJa::from_container(bytes)?);
+            }
+        }
+        if self.chinese.is_none() {
+            if let Some(bytes) = self.dictionaries.get(JIEBA_ZH) {
+                self.chinese = Some(SegmenterZh::from_dictionary(bytes)?);
             }
         }
         Ok(())
@@ -305,6 +342,47 @@ impl From<VocabError> for PhonemizeError {
 
 impl std::error::Error for PhonemizeError {}
 
+/// Why a backend could not be built from the dictionaries that arrived.
+///
+/// One type for both segmenters, because `finish_loading` is one seam and has to
+/// report one failure: which language's dictionary was unusable is part of the
+/// message, and the `code` is the one the JavaScript side switches on.
+#[derive(Debug)]
+enum BackendError {
+    Japanese(SegmenterError),
+    Chinese(SegmenterZhError),
+}
+
+impl BackendError {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Japanese(error) => error.code(),
+            Self::Chinese(error) => error.code(),
+        }
+    }
+}
+
+impl std::fmt::Display for BackendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Japanese(error) => write!(f, "{error}"),
+            Self::Chinese(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl From<SegmenterError> for BackendError {
+    fn from(error: SegmenterError) -> Self {
+        Self::Japanese(error)
+    }
+}
+
+impl From<SegmenterZhError> for BackendError {
+    fn from(error: SegmenterZhError) -> Self {
+        Self::Chinese(error)
+    }
+}
+
 /// A failure, as the JavaScript wrapper sees it.
 ///
 /// An `Error` rather than the bare string wasm-bindgen would throw for
@@ -326,7 +404,7 @@ fn dictionary_error(error: DictionaryError) -> JsValue {
     thrown_error(error.code(), &error.to_string())
 }
 
-fn segmenter_error(error: SegmenterError) -> JsValue {
+fn backend_error(error: BackendError) -> JsValue {
     thrown_error(error.code(), &error.to_string())
 }
 

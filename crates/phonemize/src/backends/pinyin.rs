@@ -52,11 +52,13 @@
 //!
 //! # What is not here
 //!
-//! Word boundaries. `han_to_ipa` puts one space between syllables, which is what
-//! the JavaScript side's `singleSyllableWords` does and what its own tests
-//! compare against; grouping the syllables into words needs jieba, and that is
-//! phase 6. The punctuation, numeral and Latin-run rules around the Han run are
-//! phase 6 as well.
+//! Word boundaries. [`ChinesePinyin::han_to_ipa`] puts one space between
+//! syllables, which is what the JavaScript side's `singleSyllableWords` does and
+//! what its own tests compare against; [`ChinesePinyin::han_to_ipa_by_words`] is
+//! the production spacing and takes the boundaries from jieba as an argument,
+//! because the readings and the boundaries come from different places and this
+//! module only owns the readings. The punctuation, numeral and Latin-run rules
+//! around the Han run are [`super::zh_text`] and [`super::numbers_zh`].
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -179,6 +181,17 @@ pub enum PinyinError {
         expected: usize,
         text: String,
     },
+    /// The word boundaries and the syllables do not describe the same text.
+    ///
+    /// The boundaries come from jieba and the syllables from `pinyin-pro`, so
+    /// they can disagree — and slicing on a wrong boundary would move a syllable
+    /// into the neighbouring word, which is audible and otherwise silent. The
+    /// JavaScript's `joinByWords` makes the same check and throws the same way.
+    WordBoundaries {
+        covered: usize,
+        syllables: usize,
+        text: String,
+    },
 }
 
 impl PinyinError {
@@ -187,6 +200,7 @@ impl PinyinError {
         match self {
             Self::UnknownSyllable { .. } => "unknown-syllable",
             Self::UnreadableCharacters { .. } => "unreadable-characters",
+            Self::WordBoundaries { .. } => "word-boundaries",
         }
     }
 }
@@ -204,6 +218,14 @@ impl std::fmt::Display for PinyinError {
             } => write!(
                 f,
                 "characters pinyin-pro could not read ({found}/{expected} returned) in {text:?}"
+            ),
+            Self::WordBoundaries {
+                covered,
+                syllables,
+                text,
+            } => write!(
+                f,
+                "word boundaries cover {covered} of {syllables} syllables in {text:?}"
             ),
         }
     }
@@ -389,6 +411,47 @@ impl ChinesePinyin {
             syllables.push(self.syllable_to_ipa(reading.as_str(), text)?);
         }
         Ok(syllables.join(" "))
+    }
+
+    /// A run of Chinese characters to IPA, grouped into words.
+    ///
+    /// `lengths` is how many characters each word has, in order — jieba's answer,
+    /// from [`SegmenterZh::word_lengths`](crate::backends::SegmenterZh::word_lengths).
+    /// One space goes between words and none inside one, which is misaki's
+    /// spacing and the shape Kokoro was trained on: one space per *syllable*
+    /// instead made the model pause inside words (人设, 曾经).
+    ///
+    /// [`ChinesePinyin::han_to_ipa`] is the same reading with one space per
+    /// syllable, which is what `chinese.ts`'s `singleSyllableWords` produces and
+    /// what its own tests pin; this is the production spacing.
+    ///
+    /// The three refusals happen in the JavaScript's order, so the error a caller
+    /// sees is the one the JavaScript would have thrown: characters `pinyin-pro`
+    /// could not read, then a syllable the table is missing, then boundaries that
+    /// do not cover the syllables.
+    pub fn han_to_ipa_by_words(
+        &self,
+        text: &str,
+        lengths: &[usize],
+    ) -> Result<String, PinyinError> {
+        let readings = self.readings(text);
+        let expected = readings.len();
+        let found = readings.iter().filter(|reading| reading.is_some()).count();
+
+        if found != expected {
+            return Err(PinyinError::UnreadableCharacters {
+                found,
+                expected,
+                text: text.to_string(),
+            });
+        }
+
+        let mut syllables = Vec::with_capacity(expected);
+        for reading in readings.into_iter().flatten() {
+            syllables.push(self.syllable_to_ipa(reading.as_str(), text)?);
+        }
+
+        join_by_words(&syllables, lengths, text)
     }
 
     // ------------------------------------------------------------- internals
@@ -593,6 +656,44 @@ impl ChinesePinyin {
 
         selected
     }
+}
+
+/// Group IPA syllables into words: nothing inside a word, one space between.
+///
+/// This is misaki's spacing, reproduced from `chinese.ts`'s `joinByWords`.
+///
+/// The slicing is clamped the way JavaScript's `Array.prototype.slice` is, so a
+/// length that overruns the syllables produces a short word and then trips the
+/// check below, rather than panicking on an out-of-range index. A panic inside
+/// the wasm takes the worker with it, and the answer — "these boundaries are
+/// wrong" — is available either way.
+fn join_by_words(
+    syllables: &[String],
+    lengths: &[usize],
+    context: &str,
+) -> Result<String, PinyinError> {
+    let mut words: Vec<String> = Vec::with_capacity(lengths.len());
+    let mut at = 0;
+
+    for length in lengths {
+        let start = at.min(syllables.len());
+        let end = (at + length).min(syllables.len());
+        words.push(syllables[start..end].concat());
+        at += length;
+    }
+
+    // The boundaries and the syllables come from different sources — jieba and
+    // pinyin-pro — so they can disagree. Slicing on a wrong boundary would move a
+    // syllable into the neighbouring word, which is audible and silent.
+    if at != syllables.len() {
+        return Err(PinyinError::WordBoundaries {
+            covered: at,
+            syllables: syllables.len(),
+            text: context.to_string(),
+        });
+    }
+
+    Ok(words.join(" "))
 }
 
 /// One segmentation candidate.

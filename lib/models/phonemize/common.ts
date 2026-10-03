@@ -151,6 +151,20 @@ export async function phonemizeSpelled(text: string): Promise<string> {
 const KOKORO_PUNCTUATION = new Set([' ', ',', '.', '!', '?', '-', ':', ';', '(', ')', '"', "'"]);
 
 /**
+ * Full-width digits to ASCII, so one pattern covers both spellings.
+ *
+ * Shared because both language front ends need it and neither is complete
+ * without it: a full-width digit is not a digit to `\d`, so it survives every
+ * numeral rule untouched and then reaches the segmenter, where `other` keeps
+ * only punctuation — the number is dropped, silently. Measured before this was
+ * shared: the Chinese `２０２２年` came out as `njɛ↗n`, the 年 alone, exactly the
+ * shape the Japanese path had before the same fix.
+ */
+export function toHalfWidth(text: string): string {
+  return text.replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
+}
+
+/**
  * Keep only punctuation that Kokoro understands.
  *
  * Any mark not in the tokenizer's vocabulary is dropped, since Kokoro

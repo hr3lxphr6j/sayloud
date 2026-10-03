@@ -1,0 +1,517 @@
+{
+  "generatedBy": "tests/unit/models/phonemize/zh-parity.test.ts",
+  "samples": [
+    {
+      "input": "你好世界",
+      "jsPinyin": [
+        "ni3",
+        "hao3",
+        "shi4",
+        "jie4"
+      ],
+      "js": "ni↓ xau↓ ʂɻ̩↘ ʨje↘"
+    },
+    {
+      "input": "妈麻马骂",
+      "jsPinyin": [
+        "ma1",
+        "ma2",
+        "ma3",
+        "ma4"
+      ],
+      "js": "ma→ ma↗ ma↓ ma↘"
+    },
+    {
+      "input": "吗",
+      "jsPinyin": [
+        "ma0"
+      ],
+      "js": "ma"
+    },
+    {
+      "input": "女绿略虐",
+      "jsPinyin": [
+        "nü3",
+        "lü4",
+        "lüe4",
+        "nüe4"
+      ],
+      "js": "ny↓ ly↘ lɥe↘ nɥe↘"
+    },
+    {
+      "input": "好",
+      "jsPinyin": [
+        "hao3"
+      ],
+      "js": "xau↓"
+    },
+    {
+      "input": "〇一",
+      "jsPinyin": [
+        "ling2",
+        "yi1"
+      ],
+      "js": "li↗ŋ i→"
+    },
+    {
+      "input": "银行行长",
+      "jsPinyin": [
+        "yin2",
+        "hang2",
+        "hang2",
+        "zhang3"
+      ],
+      "js": "i↗n xa↗ŋ xa↗ŋ ꭧa↓ŋ"
+    },
+    {
+      "input": "一行白鹭上青天",
+      "jsPinyin": [
+        "yi4",
+        "hang2",
+        "bai2",
+        "lu4",
+        "shang4",
+        "qing1",
+        "tian1"
+      ],
+      "js": "i↘ xa↗ŋ pai↗ lu↘ ʂa↘ŋ ʨʰi→ŋ tʰjɛ→n"
+    },
+    {
+      "input": "长大了",
+      "jsPinyin": [
+        "zhang3",
+        "da4",
+        "le0"
+      ],
+      "js": "ꭧa↓ŋ ta↘ lɤ"
+    },
+    {
+      "input": "音乐和快乐",
+      "jsPinyin": [
+        "yin1",
+        "yue4",
+        "he2",
+        "kuai4",
+        "le4"
+      ],
+      "js": "i→n ɥe↘ xɤ↗ kʰwai↘ lɤ↘"
+    },
+    {
+      "input": "重复一遍",
+      "jsPinyin": [
+        "chong2",
+        "fu4",
+        "yi2",
+        "bian4"
+      ],
+      "js": "ꭧʰʊ↗ŋ fu↘ i↗ pjɛ↘n"
+    },
+    {
+      "input": "的确",
+      "jsPinyin": [
+        "di2",
+        "que4"
+      ],
+      "js": "ti↗ ʨʰɥe↘"
+    },
+    {
+      "input": "目的",
+      "jsPinyin": [
+        "mu4",
+        "di4"
+      ],
+      "js": "mu↘ ti↘"
+    },
+    {
+      "input": "项目的进度",
+      "jsPinyin": [
+        "xiang4",
+        "mu4",
+        "di4",
+        "jin4",
+        "du4"
+      ],
+      "js": "ɕja↘ŋ mu↘ ti↘ ʨi↘n tu↘"
+    },
+    {
+      "input": "慢慢地",
+      "jsPinyin": [
+        "man4",
+        "man4",
+        "di4"
+      ],
+      "js": "ma↘n ma↘n ti↘"
+    },
+    {
+      "input": "跑得快",
+      "jsPinyin": [
+        "pao3",
+        "de2",
+        "kuai4"
+      ],
+      "js": "pʰau↓ tɤ↗ kʰwai↘"
+    },
+    {
+      "input": "还书",
+      "jsPinyin": [
+        "hai2",
+        "shu1"
+      ],
+      "js": "xai↗ ʂu→"
+    },
+    {
+      "input": "着装",
+      "jsPinyin": [
+        "zhe0",
+        "zhuang1"
+      ],
+      "js": "ꭧɤ ꭧwa→ŋ"
+    },
+    {
+      "input": "咖喱",
+      "jsPinyin": [
+        "ka1",
+        "li2"
+      ],
+      "js": "kʰa→ li↗"
+    },
+    {
+      "input": "乳臭",
+      "jsPinyin": [
+        "ru3",
+        "chou4"
+      ],
+      "js": "ɻu↓ ꭧʰou↘"
+    },
+    {
+      "input": "相片",
+      "jsPinyin": [
+        "xiang1",
+        "pian4"
+      ],
+      "js": "ɕja→ŋ pʰjɛ↘n"
+    },
+    {
+      "input": "成吉思汗",
+      "jsPinyin": [
+        "cheng2",
+        "ji2",
+        "si1",
+        "han2"
+      ],
+      "js": "ꭧʰə↗ŋ ʨi↗ sɹ̩→ xa↗n"
+    },
+    {
+      "input": "为什么",
+      "jsPinyin": [
+        "wei4",
+        "shen2",
+        "me0"
+      ],
+      "js": "wei↘ ʂə↗n mɤ"
+    },
+    {
+      "input": "一个",
+      "jsPinyin": [
+        "yi2",
+        "ge4"
+      ],
+      "js": "i↗ kɤ↘"
+    },
+    {
+      "input": "不是",
+      "jsPinyin": [
+        "bu2",
+        "shi4"
+      ],
+      "js": "pu↗ ʂɻ̩↘"
+    },
+    {
+      "input": "看一看",
+      "jsPinyin": [
+        "kan4",
+        "yi0",
+        "kan4"
+      ],
+      "js": "kʰa↘n i kʰa↘n"
+    },
+    {
+      "input": "去不去",
+      "jsPinyin": [
+        "qu4",
+        "bu0",
+        "qu4"
+      ],
+      "js": "ʨʰy↘ pu ʨʰy↘"
+    },
+    {
+      "input": "一的",
+      "jsPinyin": [
+        "yi1",
+        "de0"
+      ],
+      "js": "i→ tɤ"
+    },
+    {
+      "input": "第一",
+      "jsPinyin": [
+        "di4",
+        "yi1"
+      ],
+      "js": "ti↘ i→"
+    },
+    {
+      "input": "十一",
+      "jsPinyin": [
+        "shi2",
+        "yi1"
+      ],
+      "js": "ʂɻ̩↗ i→"
+    },
+    {
+      "input": "二十",
+      "jsPinyin": [
+        "er4",
+        "shi2"
+      ],
+      "js": "ɚ↘ ʂɻ̩↗"
+    },
+    {
+      "input": "一千",
+      "jsPinyin": [
+        "yi4",
+        "qian1"
+      ],
+      "js": "i↘ ʨʰjɛ→n"
+    },
+    {
+      "input": "万里",
+      "jsPinyin": [
+        "wan4",
+        "li3"
+      ],
+      "js": "wa↘n li↓"
+    },
+    {
+      "input": "一重",
+      "jsPinyin": [
+        "yi4",
+        "chong2"
+      ],
+      "js": "i↘ ꭧʰʊ↗ŋ"
+    },
+    {
+      "input": "十行",
+      "jsPinyin": [
+        "shi2",
+        "hang2"
+      ],
+      "js": "ʂɻ̩↗ xa↗ŋ"
+    },
+    {
+      "input": "重行",
+      "jsPinyin": [
+        "zhong4",
+        "xing2"
+      ],
+      "js": "ꭧʊ↘ŋ ɕi↗ŋ"
+    },
+    {
+      "input": "了",
+      "jsPinyin": [
+        "liao3"
+      ],
+      "js": "ljau↓"
+    },
+    {
+      "input": "春天来了",
+      "jsPinyin": [
+        "chun1",
+        "tian1",
+        "lai2",
+        "le0"
+      ],
+      "js": "ꭧʰwə→n tʰjɛ→n lai↗ lɤ"
+    },
+    {
+      "input": "人々",
+      "jsPinyin": [
+        "ren2",
+        "ren2"
+      ],
+      "js": "ɻə↗n ɻə↗n"
+    },
+    {
+      "input": "々",
+      "jsPinyin": [
+        "tong2"
+      ],
+      "js": "tʰʊ↗ŋ"
+    },
+    {
+      "input": "中华人民共和国",
+      "jsPinyin": [
+        "zhong1",
+        "hua2",
+        "ren2",
+        "min2",
+        "gong4",
+        "he2",
+        "guo2"
+      ],
+      "js": "ꭧʊ→ŋ xwa↗ ɻə↗n mi↗n kʊ↘ŋ xɤ↗ kwo↗"
+    },
+    {
+      "input": "人工智能技术正在快速发展",
+      "jsPinyin": [
+        "ren2",
+        "gong1",
+        "zhi4",
+        "neng2",
+        "ji4",
+        "shu4",
+        "zheng4",
+        "zai4",
+        "kuai4",
+        "su4",
+        "fa1",
+        "zhan3"
+      ],
+      "js": "ɻə↗n kʊ→ŋ ꭧɻ̩↘ nə↗ŋ ʨi↘ ʂu↘ ꭧə↘ŋ ʦai↘ kʰwai↘ su↘ fa→ ꭧa↓n"
+    },
+    {
+      "input": "经济全球化",
+      "jsPinyin": [
+        "jing1",
+        "ji4",
+        "quan2",
+        "qiu2",
+        "hua4"
+      ],
+      "js": "ʨi→ŋ ʨi↘ ʨʰɥɛ↗n ʨʰjou↗ xwa↘"
+    },
+    {
+      "input": "他是一个非常努力的学生每天早上六点起床跑步然后去图书馆学习到晚上十点才回家休息",
+      "jsPinyin": [
+        "ta1",
+        "shi4",
+        "yi2",
+        "ge4",
+        "fei1",
+        "chang2",
+        "nu3",
+        "li4",
+        "de0",
+        "xue2",
+        "sheng1",
+        "mei3",
+        "tian1",
+        "zao3",
+        "shang4",
+        "liu4",
+        "dian3",
+        "qi3",
+        "chuang2",
+        "pao3",
+        "bu4",
+        "ran2",
+        "hou4",
+        "qu4",
+        "tu2",
+        "shu1",
+        "guan3",
+        "xue2",
+        "xi2",
+        "dao4",
+        "wan3",
+        "shang4",
+        "shi2",
+        "dian3",
+        "cai2",
+        "hui2",
+        "jia1",
+        "xiu1",
+        "xi0"
+      ],
+      "js": "tʰa→ ʂɻ̩↘ i↗ kɤ↘ fei→ ꭧʰa↗ŋ nu↓ li↘ tɤ ɕɥe↗ ʂə→ŋ mei↓ tʰjɛ→n ʦau↓ ʂa↘ŋ ljou↘ tjɛ↓n ʨʰi↓ ꭧʰwa↗ŋ pʰau↓ pu↘ ɻa↗n xou↘ ʨʰy↘ tʰu↗ ʂu→ kwa↓n ɕɥe↗ ɕi↗ tau↘ wa↓n ʂa↘ŋ ʂɻ̩↗ tjɛ↓n ʦʰai↗ xwei↗ ʨja→ ɕjou→ ɕi"
+    },
+    {
+      "input": "这段话的长度超过了一百个字符所以它会被用来检验分词算法在概率相乘时的处理方式因为如果不做处理的话所有的候选分词方案的乘积都会下溢为零从而无法比较",
+      "jsPinyin": [
+        "zhe4",
+        "duan4",
+        "hua4",
+        "de0",
+        "chang2",
+        "du4",
+        "chao1",
+        "guo4",
+        "le0",
+        "yi4",
+        "bai3",
+        "ge4",
+        "zi4",
+        "fu2",
+        "suo3",
+        "yi3",
+        "ta1",
+        "hui4",
+        "bei4",
+        "yong4",
+        "lai2",
+        "jian3",
+        "yan4",
+        "fen1",
+        "ci2",
+        "suan4",
+        "fa3",
+        "zai4",
+        "gai4",
+        "lü4",
+        "xiang1",
+        "cheng2",
+        "shi2",
+        "de0",
+        "chu3",
+        "li3",
+        "fang1",
+        "shi4",
+        "yin1",
+        "wei4",
+        "ru2",
+        "guo3",
+        "bu2",
+        "zuo4",
+        "chu3",
+        "li3",
+        "de0",
+        "hua4",
+        "suo3",
+        "you3",
+        "de0",
+        "hou4",
+        "xuan3",
+        "fen1",
+        "ci2",
+        "fang1",
+        "an4",
+        "de0",
+        "cheng2",
+        "ji1",
+        "dou1",
+        "hui4",
+        "xia4",
+        "yi4",
+        "wei4",
+        "ling2",
+        "cong2",
+        "er2",
+        "wu2",
+        "fa3",
+        "bi3",
+        "jiao4"
+      ],
+      "js": "ꭧɤ↘ twa↘n xwa↘ tɤ ꭧʰa↗ŋ tu↘ ꭧʰau→ kwo↘ lɤ i↘ pai↓ kɤ↘ ʦɹ̩↘ fu↗ swo↓ i↓ tʰa→ xwei↘ pei↘ jʊ↘ŋ lai↗ ʨjɛ↓n jɛ↘n fə→n ʦʰɹ̩↗ swa↘n fa↓ ʦai↘ kai↘ ly↘ ɕja→ŋ ꭧʰə↗ŋ ʂɻ̩↗ tɤ ꭧʰu↓ li↓ fa→ŋ ʂɻ̩↘ i→n wei↘ ɻu↗ kwo↓ pu↗ ʦwo↘ ꭧʰu↓ li↓ tɤ xwa↘ swo↓ jou↓ tɤ xou↘ ɕɥɛ↓n fə→n ʦʰɹ̩↗ fa→ŋ a↘n tɤ ꭧʰə↗ŋ ʨi→ tou→ xwei↘ ɕja↘ i↘ wei↘ li↗ŋ ʦʰʊ↗ŋ ɚ↗ u↗ fa↓ pi↓ ʨjau↘"
+    }
+  ]
+}

@@ -2,13 +2,16 @@
 //! text into phonemes.
 //!
 //! A backend is whatever a language needs and another does not — a segmenter, a
-//! numeral reader, a pronunciation table. The Japanese and English ones exist;
-//! the Chinese segmenter arrives in phase 5.
+//! numeral reader, a pronunciation table. The Japanese, English and Chinese ones
+//! exist; the Chinese *frontend* (word boundaries, punctuation, Latin runs)
+//! arrives in phase 6.
 
 pub mod g2p_en;
 pub mod numbers;
 pub mod numbers_en;
+pub mod pinyin;
 pub mod segmenter_ja;
 
 pub use g2p_en::{EnglishError, EnglishG2p};
+pub use pinyin::{ChinesePinyin, PinyinError, Syllable};
 pub use segmenter_ja::{JaToken, SegmenterError, SegmenterJa};

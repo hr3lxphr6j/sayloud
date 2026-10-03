@@ -37,6 +37,46 @@ const IPADIC = 'lindera-ipadic-ja';
 const IPADIC_URL = `/dictionaries/${IPADIC}.bin.zst`;
 
 /**
+ * The real IPADic asset, or `null` when skipping was asked for.
+ *
+ * `test-dict.json.zst` is a stand-in for the *transport* — bytes arrive
+ * compressed and come out whole — and that is all phase 2 defined. It stopped
+ * being enough for `finish_loading` once that started building the segmenter
+ * from the bytes (phase 3), because no small payload can satisfy lindera's nine
+ * components. So the tests that reach that step use the dictionary itself.
+ *
+ * Missing is a failure, not a skip. These tests are the only JavaScript-side
+ * check that the boundary works, and a test that passes because its input was
+ * absent is a false green. Skipping is something you ask for by name, with
+ * `PHONEMIZE_SKIP_DICT_TESTS=1`.
+ */
+function realDictionary(): DictionaryBytes | null {
+  const asset = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    `../../../public/dictionaries/${IPADIC}.bin.zst`
+  );
+  try {
+    return new Uint8Array(readFileSync(asset));
+  } catch (error) {
+    if (process.env.PHONEMIZE_SKIP_DICT_TESTS === '1') {
+      console.warn(`SKIPPING the dictionary-backed tests: no ${asset}`);
+      return null;
+    }
+    throw new Error(
+      `no dictionary at ${asset} (${String(error)}).\n` +
+        'Run ./scripts/setup-lindera-dict.sh to build it, or set ' +
+        'PHONEMIZE_SKIP_DICT_TESTS=1 to skip the Japanese pipeline tests.'
+    );
+  }
+}
+
+/** Read once, at collection time, so the skip conditions are cheap to ask. */
+const REAL_DICTIONARY = realDictionary();
+
+/** Whether the tests that need the real dictionary can run at all. */
+const hasDictionary = REAL_DICTIONARY !== null;
+
+/**
  * A phonemizer with a dictionary source attached.
  *
  * The source records the URLs it was asked for, so a `prepare` that quietly
@@ -61,22 +101,25 @@ describe('RustPhonemizer', () => {
    * constructed — a wrapper that forgot `new WasmPhonemizer()` would pass the
    * test above. Reaching the phonemize seam proves the instance exists.
    *
-   * The stub returns no phonemes; this asserts the shape, not the output, so it
-   * does not have to change when the real pipeline lands.
+   * Chinese is used because it needs no dictionary, so the seam can be reached
+   * without `prepare`; what comes back is `pipeline-not-implemented`, because
+   * the Chinese pipeline is phase 5. That the seam throws a *coded* error rather
+   * than returning empty phonemes is the assertion — an empty string would be a
+   * sentence that plays as silence.
    */
   it('exposes a callable phonemize seam once ready', async () => {
     const phonemizer = new RustPhonemizer({ wasm: WASM });
     await phonemizer.ready;
 
-    const result = phonemizer.phonemize('你好', { frontend: 'kokoro-v1', lang: 'zh-CN' });
-
-    expect(typeof result.phonemes).toBe('string');
+    expect(() => phonemizer.phonemize('你好', { frontend: 'kokoro-v1', lang: 'zh-CN' })).toThrow(
+      /pipeline-not-implemented/
+    );
   });
 });
 
 describe('RustPhonemizer.prepare', () => {
-  it('fetches what the wasm asks for and hands it over', async () => {
-    const { phonemizer, fetch, caches } = phonemizerWith();
+  it.skipIf(!hasDictionary)('fetches what the wasm asks for and hands it over', async () => {
+    const { phonemizer, fetch, caches } = phonemizerWith(REAL_DICTIONARY ?? undefined);
     await phonemizer.ready;
 
     await phonemizer.prepare('kokoro-v1', 'ja-JP');
@@ -169,7 +212,7 @@ describe('RustPhonemizer.prepare', () => {
     expect(error.message).toContain(IPADIC);
   });
 
-  it('loads every dictionary and then finishes', async () => {
+  it.skipIf(!hasDictionary)('loads every dictionary and then finishes', async () => {
     // Spied on rather than inferred. Without this, a `prepare` that fetched and
     // dropped the bytes — or one that forgot `finish_loading` — passes every
     // other test in this file, and the failure it causes is a pipeline that runs
@@ -178,12 +221,20 @@ describe('RustPhonemizer.prepare', () => {
     const finish = vi.spyOn(WasmPhonemizer.prototype, 'finish_loading');
 
     try {
-      const { phonemizer } = phonemizerWith();
+      const { phonemizer } = phonemizerWith(REAL_DICTIONARY ?? undefined);
       await phonemizer.ready;
 
       await phonemizer.prepare('kokoro-v1', 'ja-JP');
 
-      expect(load).toHaveBeenCalledWith(IPADIC, COMPRESSED);
+      // Not `toHaveBeenCalledWith(IPADIC, REAL_DICTIONARY)`: vitest's deep
+      // equality on an 8.5 MB typed array takes ~10 s (measured), against 2 ms
+      // for the memcmp below. The assertion is the same one either way — the
+      // bytes the wasm was handed are the bytes that were fetched, all of them.
+      const [name, handedOver] = load.mock.calls[0] ?? [];
+      expect(name).toBe(IPADIC);
+      expect(Buffer.from(handedOver as Uint8Array).equals(Buffer.from(REAL_DICTIONARY ?? []))).toBe(
+        true
+      );
       expect(finish).toHaveBeenCalledTimes(1);
       // The order is the protocol: bytes first, then the check that they all
       // arrived. A `finish_loading` before the feed would always report a gap.
@@ -194,5 +245,44 @@ describe('RustPhonemizer.prepare', () => {
       load.mockRestore();
       finish.mockRestore();
     }
+  });
+});
+
+/**
+ * The boundary itself, which only a JavaScript test can check.
+ *
+ * The Rust parity corpus (`crates/phonemize/tests/ja_pipeline.rs`) proves the
+ * pipeline produces the right phonemes; it cannot prove that they arrive in
+ * JavaScript as `{ phonemes }` rather than, say, as a bare string or with the
+ * field named differently. `serde_wasm_bindgen` is what decides that, and this is
+ * where a change to it would show up.
+ */
+describe('RustPhonemizer.phonemize', () => {
+  async function prepared(): Promise<RustPhonemizer> {
+    const { phonemizer } = phonemizerWith(REAL_DICTIONARY ?? undefined);
+    await phonemizer.ready;
+    await phonemizer.prepare('kokoro-v1', 'ja-JP');
+    return phonemizer;
+  }
+
+  it.skipIf(!hasDictionary)("returns the pipeline's phonemes", async () => {
+    const phonemizer = await prepared();
+
+    expect(phonemizer.phonemize('経営', { frontend: 'kokoro-v1', lang: 'ja-JP' })).toEqual({
+      phonemes: 'keiei',
+    });
+  });
+
+  it('throws rather than degrading when nothing was prepared', async () => {
+    // The seam is synchronous, so this is the failure a caller sees if it skips
+    // `prepare` — and it must be an error, not an empty string, because an empty
+    // string is a sentence that plays as silence. No dictionary is needed: the
+    // call never reaches one.
+    const { phonemizer } = phonemizerWith();
+    await phonemizer.ready;
+
+    expect(() => phonemizer.phonemize('経営', { frontend: 'kokoro-v1', lang: 'ja-JP' })).toThrow(
+      /dictionary-not-loaded/
+    );
   });
 });

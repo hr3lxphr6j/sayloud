@@ -1,0 +1,149 @@
+{
+  "meta": {
+    "generatedAt": "2026-10-03T09:22:45.695Z",
+    "package": "piper-plus",
+    "packageVersion": "0.7.0",
+    "wasmBuild": "multilingual (ja, zh, ko, es, fr, pt, sv)",
+    "wasmBytes": 60077874,
+    "node": "v26.10.0",
+    "iterations": 20,
+    "sampleLength": 50,
+    "targets": {
+      "wasmLoadMs": 200,
+      "initMs": 500,
+      "zhMsPerSentence": 2,
+      "jaMsPerSentence": 2,
+      "enMsPerSentence": 10,
+      "memoryMb": 100
+    },
+    "note": "wasmLoadMs is WebAssembly.Module compilation + instantiation of the 57 MB binary (initSync). constructMs is `new WasmPhonemizer(config)`, which is where the bundled NAIST-JDIC dictionary becomes usable. Both are paid again every time Chrome reclaims the offscreen document."
+  },
+  "load": {
+    "moduleImportMs": 1.0424,
+    "wasmLoadMs": 14.4133,
+    "wasmLoadTargetMs": 200,
+    "pass": true
+  },
+  "init": {
+    "constructMs": 15.174,
+    "initTargetMs": 500,
+    "pass": true
+  },
+  "languages": {
+    "ja": {
+      "status": "ok",
+      "mode": "rust-g2p",
+      "meaningful": true,
+      "meaningfulNote": null,
+      "output": "ni[hoN_nggonoo[N_uvularseegooseegi]jutsuwakyu[usokuniha[clteN_uvularshI[teo][riwa[tashi]tachinoni[chijoose]ekatsunosa[ma]zamanaba][meN_ndeka[tsuyoosa[retei[ma]sUto[temobe][N_uvularri",
+      "outputLength": 182,
+      "puaTokenCount": 14,
+      "stats": {
+        "iterations": 20,
+        "minMs": 0.339,
+        "medianMs": 0.4926,
+        "trimmedMeanMs": 0.4454,
+        "maxMs": 0.6494
+      },
+      "targetMs": 2,
+      "pass": true
+    },
+    "zh": {
+      "status": "ok",
+      "mode": "passthrough",
+      "meaningful": false,
+      "meaningfulNote": "zh is in character-passthrough mode in this wasm build; the timing measures string iteration, not G2P.",
+      "output": "人工智能技术正在快速发展并且深刻改变着我们日常生活的方方面面今天天气非常好我们一起去公园散步吧很开心",
+      "outputLength": 50,
+      "puaTokenCount": 0,
+      "stats": {
+        "iterations": 20,
+        "minMs": 0.014,
+        "medianMs": 0.015,
+        "trimmedMeanMs": 0.0153,
+        "maxMs": 0.0284
+      },
+      "targetMs": 2,
+      "pass": true
+    },
+    "en": {
+      "status": "ok",
+      "mode": "passthrough",
+      "meaningful": false,
+      "meaningfulNote": "en is in character-passthrough mode in this wasm build; the timing measures string iteration, not G2P.",
+      "output": "Artificial intelligence is advancing rapidly today",
+      "outputLength": 50,
+      "puaTokenCount": 0,
+      "stats": {
+        "iterations": 20,
+        "minMs": 0.0139,
+        "medianMs": 0.0155,
+        "trimmedMeanMs": 0.0156,
+        "maxMs": 0.1369
+      },
+      "targetMs": 10,
+      "pass": true
+    },
+    "zhWithDictionary": {
+      "status": "ok",
+      "mode": "rust-g2p",
+      "meaningful": true,
+      "meaningfulNote": null,
+      "output": "ɻəntone2kuŋtone1tʂɻ̩tone4nəŋtone2tɕitone4ʂutone4tʂəŋtone4tsaɪtone4kʰuaɪtone4sutone4fatone1tʂantone3piŋtone4tɕʰiɛtone3ʂəntone1kʰɤtone4kaɪtone3piɛntone4tʂɤtone5uotone3məntone5ɻɻ̩tone4tʂʰaŋtone2ʂəŋtone1xuotone2tɤtone5faŋtone1faŋtone1miɛntone4miɛntone4tɕintone1tʰiɛntone1tʰiɛntone1tɕʰitone4feɪtone1tʂʰaŋtone2xaʊtone2uotone3məntone5itone4tɕʰitone3tɕʰy_voweltone4kuŋtone1yɛntone2santone4putone4patone5xəntone3kʰaɪtone1ɕintone1",
+      "outputLength": 420,
+      "puaTokenCount": 106,
+      "stats": {
+        "iterations": 20,
+        "minMs": 0.0687,
+        "medianMs": 0.0776,
+        "trimmedMeanMs": 0.0772,
+        "maxMs": 0.1018
+      },
+      "targetMs": 2,
+      "pass": true,
+      "note": "same call with the TONE3 pinyin dictionaries installed"
+    },
+    "zhAsShipped": {
+      "status": "ok",
+      "mode": "passthrough",
+      "meaningful": false,
+      "meaningfulNote": "zh is in character-passthrough mode in this wasm build; the timing measures string iteration, not G2P.",
+      "output": "人工智能技术正在快速发展并且深刻改变着我们日常生活的方方面面今天天气非常好我们一起去公园散步吧很开心",
+      "outputLength": 50,
+      "puaTokenCount": 0,
+      "stats": {
+        "iterations": 20,
+        "minMs": 0.014,
+        "medianMs": 0.015,
+        "trimmedMeanMs": 0.0153,
+        "maxMs": 0.0284
+      },
+      "targetMs": 2,
+      "pass": true
+    }
+  },
+  "memory": {
+    "rssMb": 388.33,
+    "heapTotalMb": 35.33,
+    "heapUsedMb": 24.52,
+    "externalMb": 121.96,
+    "arrayBuffersMb": 119.93,
+    "heapUsedTargetMb": 100,
+    "pass": true
+  },
+  "verdict": {
+    "checks": {
+      "wasmLoad": true,
+      "init": true,
+      "ja": true,
+      "zh": true,
+      "en": false,
+      "memory": true
+    },
+    "passed": 5,
+    "total": 6,
+    "passRate": 0.83,
+    "meetsBriefThreshold": true,
+    "note": "zh is scored on the dictionary-installed measurement, since the as-shipped passthrough would make it trivially fast. en cannot pass at all: this build has no English G2P, so its timing measures a no-op."
+  }
+}

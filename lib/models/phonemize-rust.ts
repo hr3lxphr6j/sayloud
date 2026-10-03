@@ -127,11 +127,18 @@ export class RustPhonemizer {
    *
    * Throws if a dictionary is missing rather than degrading quietly, and throws
    * when the frontend cannot speak `lang`.
+   *
+   * The wasm's error is passed through rather than put through
+   * {@link dictionaryFailure}: these failures are not dictionary *loads* — a
+   * segmenter that could not be built, or a `prepare` that never ran — and
+   * classifying them as load failures would report the wrong reason. The wasm
+   * already throws an `Error` carrying a stable `code` (spec §8.1).
    */
-  phonemize(_text: string, _options: PhonemizeOptions): PhonemizeResult {
-    this.requireInstance();
-    // TODO(task 3.x): call the wasm pipeline.
-    return { phonemes: '' };
+  phonemize(text: string, options: PhonemizeOptions): PhonemizeResult {
+    const instance = this.requireInstance();
+    // `JsValue` on the wasm side, so the generated signature is `any`; the shape
+    // is `PhonemizeResult` on both sides of the boundary (`src/types.rs`).
+    return instance.phonemize(text, options) as PhonemizeResult;
   }
 
   private requireInstance(): WasmPhonemizer {

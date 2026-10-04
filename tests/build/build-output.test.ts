@@ -380,7 +380,18 @@ describe('the build output', () => {
     // every English sentence is not where a compiled DFA belongs. The gate saves
     // 33 ms of composition per 710 skipped characters; 977 B is 0.016% of the
     // module.
-    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_042_508);
+    //
+    // **6,071,361 as of phase 9D, which is +28,853 B for the Mandarin tone rules**
+    // (`crates/phonemize/src/backends/tone_sandhi/`). Measured by building twice
+    // with only the four word lists emptied, 7,661 B of that is the lists
+    // themselves — 509 entries, 3,632 B of UTF-8 and one 16-byte fat pointer
+    // each — and 21,192 B is code: the rules, the four monomorphized
+    // `binary_search` calls over them, `HAN_NUMERALS`, and jieba's
+    // `cut_for_search`, which the reference's `_split_word` needs and which
+    // nothing before this phase linked. 0.48% of the module for a rule layer that
+    // changes what the Chinese voices say, against the 1 MB `rustfst` above for
+    // an English numeral reader. Nothing here is a fetched asset.
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_071_361);
   });
 
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {

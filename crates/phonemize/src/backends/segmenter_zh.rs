@@ -100,6 +100,29 @@ pub struct SegmenterZh {
     jieba: Jieba,
 }
 
+/// One word of the segmentation, with the part of speech jieba's dictionary
+/// gives it.
+///
+/// A *length* rather than the word itself, for the same reason
+/// [`SegmenterZh::word_lengths`] returns lengths: the word is a range of the
+/// text, and every consumer of it already has the text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaggedWord<'a> {
+    /// How many characters the word covers.
+    pub length: usize,
+    /// jieba's tag: `n`, `v`, `ul`, `nr`, `x`.
+    pub tag: &'a str,
+}
+
+/// The byte offset of the `chars`-th character, for splitting on a character
+/// boundary.
+fn byte_at(text: &str, chars: usize) -> usize {
+    text.char_indices()
+        .nth(chars)
+        .map(|(index, _)| index)
+        .unwrap_or(text.len())
+}
+
 impl SegmenterZh {
     /// Build a segmenter from the decompressed dictionary.
     ///
@@ -114,6 +137,111 @@ impl SegmenterZh {
             .map_err(|error| SegmenterZhError::Dictionary {
                 detail: error.to_string(),
             })
+    }
+
+    /// The length in characters of each word in `text`, with its part of speech.
+    ///
+    /// Phase 9D. The tone rules ask about the tag in about a third of their
+    /// branches: `_neural_sandhi` will not make a suffix neutral on the wrong
+    /// kind of word, and `_merge_yi` only glues `V 一 V` together when the first
+    /// V is a verb.
+    ///
+    /// # Where the tag comes from
+    ///
+    /// The third column of jieba's own word list, which is the same data Python
+    /// jieba's `posseg` reads, so a word the dictionary has is tagged the same
+    /// way on both sides. **A word the dictionary does not have is `x`** —
+    /// "other" — because the compound HMM that would guess a tag for it is
+    /// behind `jieba-rs`'s `default-dict` feature, and that feature cannot be
+    /// built for wasm (`Cargo.toml`).
+    ///
+    /// That is a real difference from PaddleSpeech, and a narrow one: Python
+    /// jieba tags 还书 `v` where this says `x`, and a rule that checks the tag
+    /// then declines. A sandhi or a neutral tone the tag would have allowed is
+    /// not applied; nothing is read wrong.
+    ///
+    /// The *boundaries* are not guessed either way: `cut` and `tag` are one walk
+    /// over one dictionary, and `agrees_with_word_lengths` asserts that on a
+    /// corpus rather than assuming it.
+    pub fn tagged_words<'a>(
+        &'a self,
+        text: &'a str,
+    ) -> Result<Vec<TaggedWord<'a>>, SegmenterZhError> {
+        let words = self.jieba.tag(text, true);
+        let lengths: Vec<usize> = words.iter().map(|word| word.word.chars().count()).collect();
+
+        // The same check `word_lengths` makes, for the same reason: a segmenter
+        // that dropped or invented a character would shift every following
+        // syllable onto the wrong word.
+        let covered: usize = lengths.iter().sum();
+        let expected = text.chars().count();
+        if covered != expected {
+            return Err(SegmenterZhError::Coverage {
+                covered,
+                expected,
+                text: text.to_string(),
+            });
+        }
+
+        Ok(words
+            .iter()
+            .zip(lengths)
+            .map(|(word, length)| TaggedWord {
+                length,
+                tag: word.tag,
+            })
+            .collect())
+    }
+
+    /// `tone_sandhi.py`'s `_split_word`: where jieba's search mode breaks a word
+    /// in two, and what it calls the two pieces.
+    ///
+    /// The reference sorts the sub-words `jieba.cut_for_search` returns by length
+    /// and then looks for the shortest one in the word: at the front, the word
+    /// splits after it; anywhere else, the shortest sub-word is its *tail*. So the
+    /// returned length is the boundary — the first `length` characters of the word
+    /// are one group and the rest are the other — and the two strings are the
+    /// names `_split_word` calls them by.
+    ///
+    /// **The names are not the two groups, and this reproduces that rather than
+    /// fixing it.** 不怎么样 comes back as `(2, "不怎", "怎么")`: `cut_for_search`
+    /// offers 不 / 怎么 / 怎么样 / 不怎么样, the shortest is 怎么, it starts at
+    /// index 1, so the second name spells characters 1–2 while the second group is
+    /// characters 2–4. `_neural_sandhi` tests the *name* for membership in the
+    /// neutral-tone list and then neutralizes the *group's* last tone, and this
+    /// word is exactly where that difference is observable: 怎么 is in the list
+    /// and 么样 is not, so the last tone of 不怎么样 comes out neutral. Both halves
+    /// have to be returned for that to be reproducible.
+    ///
+    /// A sub-word can be the whole word, in which case the second group is empty —
+    /// the reference's callers treat that as a group with no tones in it.
+    pub fn split_word<'a>(&self, word: &'a str) -> (usize, [&'a str; 2]) {
+        let mut subwords: Vec<&str> = self
+            .jieba
+            .cut_for_search(word, true)
+            .iter()
+            .map(|token| token.word)
+            .collect();
+        // Stable, as Python's `sorted` is: on equal lengths the tie goes to
+        // whichever sub-word jieba offered first, and that decides the split.
+        subwords.sort_by_key(|subword| subword.chars().count());
+
+        let total = word.chars().count();
+        let Some(shortest) = subwords.first().copied() else {
+            return (total, [word, ""]);
+        };
+        let length = shortest.chars().count();
+
+        // Only "is it at the front" is asked, so bytes against characters does
+        // not matter here. Not found is `None` and Python's -1, and both fall
+        // through to the tail case.
+        if word.find(shortest) == Some(0) {
+            let (first, second) = word.split_at(byte_at(word, length));
+            (length, [first, second])
+        } else {
+            let (prefix, _) = word.split_at(byte_at(word, total - length));
+            (total - length, [prefix, shortest])
+        }
     }
 
     /// The length in characters of each word in `text`.
@@ -213,6 +341,72 @@ mod tests {
         // this comes out as 还|书, with it on as one word. Asserted as lengths so
         // the test says which boundary it is about.
         assert_eq!(segmenter().word_lengths("还书").unwrap(), vec![2]);
+    }
+
+    #[test]
+    fn agrees_with_word_lengths() {
+        // `word_lengths` segments with `cut` and `tagged_words` with `tag`, and
+        // the tone rules take their boundaries from the second while the
+        // pipeline before phase 9D took them from the first. If they disagreed,
+        // the spacing of the output would depend on whether the tone rules ran,
+        // which is a difference nothing else would catch. They are one walk over
+        // one dictionary, and this asserts it on a corpus rather than assuming
+        // it.
+        let segmenter = segmenter();
+        let corpus: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/zh-frontend-parity.json"))
+                .expect("the corpus parses");
+        let samples = corpus["samples"].as_array().expect("a sample list");
+
+        for sample in samples {
+            let text = sample["input"].as_str().expect("an input");
+            let lengths = segmenter.word_lengths(text).expect("segments");
+            let tagged: Vec<usize> = segmenter
+                .tagged_words(text)
+                .expect("tags")
+                .iter()
+                .map(|word| word.length)
+                .collect();
+            assert_eq!(lengths, tagged, "{text:?} segments the same way twice");
+        }
+    }
+
+    #[test]
+    fn splits_a_word_where_the_reference_does() {
+        // `tone_sandhi.py`'s `_split_word`, checked against Python jieba's
+        // `cut_for_search` and its own implementation. The two cases that decide
+        // the third-tone rules split in opposite directions, and 不怎么样 is the
+        // one where the two names are not the two halves.
+        let segmenter = segmenter();
+
+        // 纸 / 老虎: monosyllable plus disyllable.
+        let (first, names) = segmenter.split_word("纸老虎");
+        assert_eq!((first, names), (1, ["纸", "老虎"]));
+
+        // 蒙古 / 包: the other way round.
+        let (first, names) = segmenter.split_word("蒙古包");
+        assert_eq!((first, names), (2, ["蒙古", "包"]));
+
+        // 所有 / 人.
+        let (first, names) = segmenter.split_word("所有人");
+        assert_eq!((first, names), (2, ["所有", "人"]));
+
+        // The names are `不怎` and `怎么` while the halves are `不怎` and `么样`:
+        // jieba's shortest sub-word starts at index 1, so it is the word's *tail*
+        // and not its remainder. `_neural_sandhi` tests the name and neutralizes
+        // the group, and 不怎么样 is the word where that shows.
+        let (first, names) = segmenter.split_word("不怎么样");
+        assert_eq!((first, names), (2, ["不怎", "怎么"]));
+
+        // A reduplication splits into its two halves, which is why the
+        // reduplication rule cannot simply ask whether the repeat is inside one
+        // sub-word.
+        let (first, names) = segmenter.split_word("说说");
+        assert_eq!((first, names), (1, ["说", "说"]));
+
+        // And a word jieba's search mode has nothing to say about is one word.
+        let (first, names) = segmenter.split_word("人设");
+        assert_eq!((first, names), (2, ["人设", ""]));
     }
 
     #[test]

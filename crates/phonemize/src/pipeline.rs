@@ -18,6 +18,7 @@ use crate::backends::pinyin::{ChinesePinyin, PinyinError};
 use crate::backends::segmenter_ja::{SegmenterError, SegmenterJa};
 use crate::backends::segmenter_zh::{SegmenterZh, SegmenterZhError};
 use crate::backends::tn_gate;
+use crate::backends::tone_sandhi;
 use crate::backends::wetext::Normalizer as WeTextNormalizer;
 use crate::backends::zh_text::{self, ZhRun};
 use crate::frontends::ja_ipa::{fix_numeral_sound_changes, kana_to_ipa};
@@ -336,6 +337,51 @@ pub fn phonemize_en(
     })
 }
 
+/// Whether the Mandarin tone rules run, for [`phonemize_zh`].
+///
+/// # Why this is a parameter and not a constant
+///
+/// The rules are phase 9D and they move the Chinese output away from what the
+/// JavaScript frontend produced, on purpose. That old output is what the P5
+/// listening tests were run against, and the parity corpus in
+/// `crates/phonemize/tests/fixtures/zh-frontend-parity.json` is the JavaScript
+/// string for 47 sentences — so there has to be a way to produce it again, or
+/// the corpus stops being a test of anything and the change stops being
+/// reversible. [`ToneRules::Off`] is that way, and it is the phase 6 pipeline
+/// exactly.
+///
+/// **P5 §1.5 argues for `Off` on the v1.0 voices and against it on v1.1-zh**, and
+/// the choice is the caller's because only the caller knows which voice is
+/// playing:
+///
+/// > 我们用的是 v1.0 的 IPA tokenizer … v1.0 的 8 个中文音色在官方 `VOICES.md` 里
+/// > 评级 D，训练时用的 G2P 就是 misaki 的 legacy 路径——那条路径本身不做变调、
+/// > 不做儿化。模型学到的映射是「原调音素序列 → 实际变调的音频」。我们加变调/儿化
+/// > 等于偏离训练分布。
+///
+/// The counter-evidence is in the same spec: §1.6 measured that changing a tone
+/// arrow changes pitch by a few Hz, and §1.2 C left the 一/不 sandhi the G2P
+/// already applies switched on. `lib.rs` passes `On` today — the user asked for
+/// these rules in production — and the A/B is a one-word change there.
+///
+/// **No `Default`.** There is no default: `On` for the v1.0 voices is a decision
+/// with an argument against it, and `#[derive(Default)]` is how that argument
+/// gets lost. Every caller names one of the two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToneRules {
+    /// Apply the third-tone, 一/不, neutral-tone and erhua rules.
+    On,
+    /// Read the tones `pinyin-pro` gives, one tone per character.
+    Off,
+}
+
+impl ToneRules {
+    /// Whether these are the rules that run.
+    pub fn are_on(self) -> bool {
+        matches!(self, Self::On)
+    }
+}
+
 /// Chinese text to IPA, for the v1.0 frontend.
 ///
 /// The same four steps as [`phonemize_ja`], in the same order and for the same
@@ -357,7 +403,7 @@ pub fn phonemize_en(
 ///    difference is audible.
 /// 4. **Then read each run out.**
 ///
-/// # A Han run is read a word at a time
+/// # A Han run is read a word at a time, and its tones are decided twice
 ///
 /// The syllables are [`ChinesePinyin`]'s, one per character, and the *boundaries*
 /// between them are [`SegmenterZh`]'s. Both are needed: misaki writes one space
@@ -366,6 +412,15 @@ pub fn phonemize_en(
 /// segmenter dropping a character, or the syllable table missing one — is refused
 /// rather than guessed at, because either would move a syllable into the
 /// neighbouring word.
+///
+/// `tone_rules` is phase 9D, and it is the second decision about a tone: the
+/// first is one per character from `pinyin-pro`, and the second is
+/// [`tone_sandhi`], which reads the words and the tags jieba gave them and
+/// rewrites the tones that Mandarin does not pronounce as written (`你好` is
+/// *ní hǎo*) and drops the 儿 of 玩儿 into the syllable before it. It also decides
+/// the *words*, because the reference merges words first and a merged word is a
+/// merged word in the spacing too. `ToneRules::Off` is the pipeline before that
+/// layer and nothing else; see [`ToneRules`] for why both exist.
 ///
 /// # Latin runs go to the English engine, not to espeak
 ///
@@ -394,6 +449,7 @@ pub fn phonemize_zh(
     text: &str,
     segmenter: &SegmenterZh,
     english: Option<&EnglishG2p>,
+    tone_rules: ToneRules,
 ) -> Result<Phonemized, PipelineError> {
     let with_numerals = numbers_to_han(text);
     let mapped = zh_text::map_punctuation(&with_numerals);
@@ -408,9 +464,31 @@ pub fn phonemize_zh(
             ZhRun::Han(run_text) => {
                 // The boundaries first, so that a segmenter that lost a character
                 // is reported as that rather than as the syllable table missing
-                // one — the same order the JavaScript checks them in.
-                let lengths = segmenter.word_lengths(run_text)?;
-                parts.push(chinese.han_to_ipa_by_words(run_text, &lengths)?);
+                // one — the same order the JavaScript checks them in. The
+                // unreadable characters are the second question and are asked by
+                // `complete_readings`, which is where the phase 6 pipeline asked
+                // it too; the tone rules need the readings in hand, so on that
+                // path it cannot be asked from inside the syllable lookup.
+                //
+                // The two branches ask different segmenter methods, and that is
+                // deliberate rather than incidental: `Off` must be the phase 6
+                // pipeline byte for byte, and that pipeline took its boundaries
+                // from `word_lengths`. `On` needs the tags, and takes them from
+                // the same call. `SegmenterZh` asserts the two agree.
+                let phonemes = if tone_rules.are_on() {
+                    let words = segmenter.tagged_words(run_text)?;
+                    let readings = chinese.complete_readings(run_text)?;
+                    let plan = tone_sandhi::plan(run_text, &words, &readings, segmenter);
+                    chinese.syllables_to_ipa_by_words(
+                        &plan.syllables,
+                        &plan.word_lengths,
+                        run_text,
+                    )?
+                } else {
+                    let lengths = segmenter.word_lengths(run_text)?;
+                    chinese.han_to_ipa_by_words(run_text, &lengths)?
+                };
+                parts.push(phonemes);
             }
             ZhRun::Latin(run_text) => {
                 let phonemes = match english {

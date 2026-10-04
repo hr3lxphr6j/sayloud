@@ -6,6 +6,24 @@
 //! reading, the punctuation map, the script split, and jieba's word boundaries,
 //! which is where the spaces in the output come from.
 //!
+//! # Two pipelines, and which test runs which
+//!
+//! Phase 9D put Mandarin tone sandhi and the erhua coda in front of the syllable
+//! table (`tests/tone_sandhi.rs`), and the JavaScript frontend had neither — so
+//! the shipped pipeline and the corpus no longer describe the same thing.
+//! `pipeline::ToneRules` is the seam: `Off` is the phase 6 pipeline exactly, and
+//! `On` is what ships (`lib.rs` passes `On`).
+//!
+//! The corpus stays a *parity* corpus, and the tests below keep it one by asking
+//! for `Off`, through [`legacy_phonemes`]. **The shipped pipeline is checked
+//! against it too**, in `the_tone_rules_change_exactly_these_samples`: that test
+//! holds the list of samples the tone rules move, with the value each moves to,
+//! and asserts from both ends — a sample in the list must differ and match its
+//! new value, and one that is not in the list must be identical under both
+//! pipelines. So "the tone rules are the only difference" is asserted rather
+//! than hoped for, and a later phase that moves the output for some other reason
+//! fails here instead of quietly rewriting the corpus.
+//!
 //! Three independent pins, because they fail for different reasons:
 //!
 //! - **The corpus** (`tests/fixtures/zh-frontend-parity.json`) is 47 whole
@@ -36,6 +54,8 @@
 mod common;
 
 use common::{chinese_options, chinese_phonemizer};
+use phonemize::backends::segmenter_zh::SegmenterZh;
+use phonemize::pipeline::{self, ToneRules};
 use phonemize::{PhonemizeError, PhonemizeResult, Phonemizer};
 use serde::Deserialize;
 
@@ -64,16 +84,57 @@ fn phonemize(phonemizer: &Phonemizer, text: &str) -> PhonemizeResult {
         .unwrap_or_else(|error| panic!("{text:?}: {error}"))
 }
 
+/// The phase 6 pipeline, for a test that compares against the JavaScript.
+///
+/// The corpus is the JavaScript frontend's output, and the JavaScript frontend
+/// did no tone sandhi and no erhua, so a test that compares against it has to ask
+/// for [`ToneRules::Off`]. It cannot go through `Phonemizer`, which ships `On`
+/// and takes no option for it — deliberately, because whether the v1.0 voices
+/// should sandhi at all is a decision for the caller and not for a sentence (see
+/// `pipeline::ToneRules`) — so this drives the pipeline directly with its own
+/// segmenter, built once per test rather than once per sentence.
+struct Legacy {
+    segmenter: SegmenterZh,
+}
+
+/// `None` only when the caller asked to skip the dictionary tests by name; the
+/// rule for that is in [`common`].
+fn legacy() -> Option<Legacy> {
+    let compressed = common::jieba_dictionary_bytes()?;
+
+    // The registry decompresses inside the wasm; a test that wants the word list
+    // has to unpack the frame itself.
+    let mut decoder =
+        ruzstd::decoding::StreamingDecoder::new(&compressed[..]).expect("a zstd frame");
+    let mut dictionary = Vec::new();
+    std::io::Read::read_to_end(&mut decoder, &mut dictionary).expect("the frame decompresses");
+
+    Some(Legacy {
+        segmenter: SegmenterZh::from_dictionary(&dictionary).expect("the dictionary loads"),
+    })
+}
+
+impl Legacy {
+    fn phonemes(&self, text: &str) -> String {
+        // `None` for the English backend: the corpus has no Latin text in it,
+        // because the two pipelines deliberately use different English engines
+        // for a Latin run (see the module comment above).
+        pipeline::phonemize_zh(text, &self.segmenter, None, ToneRules::Off)
+            .unwrap_or_else(|error| panic!("{text:?}: {error}"))
+            .phonemes
+    }
+}
+
 #[test]
 fn matches_the_javascript_pipeline_on_the_corpus() {
-    let Some(phonemizer) = chinese_phonemizer() else {
+    let Some(legacy) = legacy() else {
         return;
     };
 
     let mut failures = Vec::new();
     let samples = corpus().samples;
     for sample in &samples {
-        let rust = phonemize(&phonemizer, &sample.input).phonemes;
+        let rust = legacy.phonemes(&sample.input);
         if rust != sample.js {
             failures.push(format!(
                 "{}\n  javascript {:?}\n  rust       {:?}",
@@ -107,47 +168,61 @@ fn matches_the_javascript_suite_sample_for_sample() {
     let Some(phonemizer) = chinese_phonemizer() else {
         return;
     };
+    let Some(legacy) = legacy() else {
+        return;
+    };
 
     // The P5 spec's §3.11.7 example: a numeral, a decimal, a percentage, a
-    // full-width full stop, and the tone sandhi pinyin-pro applies to 增长.
+    // full-width full stop, and the tone sandhi pinyin-pro applies to 增长. It
+    // goes through `legacy` for the same reason the corpus does — these are the
+    // JavaScript suite's own expectations, and the tone rules move one of them
+    // (你好世界。 gains a second tone on 你).
     assert_eq!(
-        phonemize(&phonemizer, "第 3 季度营收增长了 15.6%。").phonemes,
+        legacy.phonemes("第 3 季度营收增长了 15.6%。"),
         "ti↘ sa→n ʨi↘tu↘ i↗ŋʂou→ ʦə→ŋꭧa↓ŋ lɤ pai↓fə→nꭧɻ̩→ʂɻ̩↗u↓ tjɛ↓nljou↘."
     );
 
     // The space comes *after* the mark, because `mapPunctuation` emits `", "`
     // and the runs are concatenated with nothing inserted between them. Putting
     // one in front of every mark as well is the deviation the P5 spec calls B.
+    assert_eq!(legacy.phonemes("你好世界。"), "ni↓xau↓ ʂɻ̩↘ʨje↘.");
+
+    assert_eq!(legacy.phonemes("你好   世界"), "ni↓xau↓ ʂɻ̩↘ʨje↘");
+    assert_eq!(legacy.phonemes("妈麻马骂。"), "ma→ma↗ma↓ ma↘.");
+
+    // `-` is not in Kokoro's vocabulary, and `%` is already spoken by the
+    // numeral conversion. Emitting either would be pointless at best.
+    assert_eq!(legacy.phonemes("好-坏"), "xau↓xwai↘");
+
+    // Nothing to say is not an error.
+    assert_eq!(legacy.phonemes("   "), "");
+
+    // And the shipped pipeline on the same sentences, so that both pipelines are
+    // pinned for one input rather than one being pinned and the other assumed.
+    // 你好 is the one that moved: *ní hǎo*.
     assert_eq!(
         phonemize(&phonemizer, "你好世界。").phonemes,
-        "ni↓xau↓ ʂɻ̩↘ʨje↘."
-    );
-
-    assert_eq!(
-        phonemize(&phonemizer, "你好   世界").phonemes,
-        "ni↓xau↓ ʂɻ̩↘ʨje↘"
+        "ni↗xau↓ ʂɻ̩↘ʨje↘."
     );
     assert_eq!(
         phonemize(&phonemizer, "妈麻马骂。").phonemes,
         "ma→ma↗ma↓ ma↘."
     );
-
-    // `-` is not in Kokoro's vocabulary, and `%` is already spoken by the
-    // numeral conversion. Emitting either would be pointless at best.
     assert_eq!(phonemize(&phonemizer, "好-坏").phonemes, "xau↓xwai↘");
-
-    // Nothing to say is not an error.
     assert_eq!(phonemize(&phonemizer, "   ").phonemes, "");
 }
 
-/// The two inputs the phase 6 task names as its acceptance examples, verbatim.
+/// The two inputs the phase 6 task names as its acceptance examples, verbatim,
+/// through the shipped pipeline — so these are the strings the tone rules produce
+/// and not the ones the JavaScript did.
 ///
 /// The first is also a corpus sample, so JavaScript pins it independently — the
 /// duplication is the point, and the same shape as the suite's own assertions
 /// above. It is a numeral at the *end* of a sentence, which none of the other
 /// numeral samples covers, and the failure it guards is the interesting one: a
 /// trailing numeral that never becomes Han would be dropped as punctuation and
-/// the sentence would simply stop early.
+/// the sentence would simply stop early. 你好 is *ní hǎo*, which is why the first
+/// syllable carries `↗` and not `↓`.
 ///
 /// The second cannot be a corpus sample, because it has a Latin run and the two
 /// pipelines deliberately use different English engines there (see the module
@@ -161,7 +236,7 @@ fn handles_the_acceptance_examples_the_task_names() {
 
     assert_eq!(
         phonemize(&phonemizer, "你好世界123").phonemes,
-        "ni↓xau↓ ʂɻ̩↘ʨje↘ i↘pai↓ɚ↘ʂɻ̩↗ sa→n"
+        "ni↗xau↓ ʂɻ̩↘ʨje↘ i↘pai↓ɚ↘ʂɻ̩↗ sa→n"
     );
 
     assert_eq!(
@@ -172,6 +247,114 @@ fn handles_the_acceptance_examples_the_task_names() {
             phonemize(&phonemizer, "ABC").phonemes,
             phonemize(&phonemizer, "英文").phonemes
         )
+    );
+}
+
+/// Every corpus sample the phase 9D tone rules move, and what they move it to.
+///
+/// One entry per sample, grouped by the rule that did it. The values are the
+/// shipped pipeline's, and the point of the table is that
+/// `the_tone_rules_change_exactly_these_samples` reads it from both directions:
+/// each entry must differ from the JavaScript and match its new value, and every
+/// sample *not* in the table must be identical under both pipelines. Adding
+/// sandhi somewhere new — or breaking it somewhere old — fails there.
+///
+/// The rules, in the order the entries appear:
+///
+/// - **三声连读** — 你好 is *ní hǎo*, and 我有 and 处理 and 所以 and 一百个 lose
+///   their third tone the same way.
+/// - **轻声** — 一个 is *yí ge*, and the 的 of 这个项目的… is the particle and not
+///   the 的 of 目的, which is what `pinyin-pro` reads it as on its own.
+/// - **合词** — 不做 and 一四 and 处理 are one word after the merge pass, which is
+///   why a space disappears: `3.14` is 三点一四 and 一四 is one word to the
+///   reference, so `i→sɹ̩↘` has no space in it where the JavaScript had one.
+const TONE_RULE_CHANGES: &[(&str, &str)] = &[
+    // 三声连读
+    ("你好世界", "ni↗xau↓ ʂɻ̩↘ʨje↘"),
+    ("你好世界123", "ni↗xau↓ ʂɻ̩↘ʨje↘ i↘pai↓ɚ↘ʂɻ̩↗ sa→n"),
+    ("你好，世界。", "ni↗xau↓. ʂɻ̩↘ʨje↘."),
+    ("你好 世界", "ni↗xau↓ ʂɻ̩↘ʨje↘"),
+    ("你好   世界", "ni↗xau↓ ʂɻ̩↘ʨje↘"),
+    ("你好　世界", "ni↗xau↓ ʂɻ̩↘ʨje↘"),
+    ("  你好世界  ", "ni↗xau↓ ʂɻ̩↘ʨje↘"),
+    ("你好あ世界", "ni↗xau↓ʂɻ̩↘ʨje↘"),
+    ("我有3只猫", "wo↗jou↓ sa→nꭧɻ̩→ mau→"),
+    // 轻声
+    ("我们中出了一个叛徒", "wo↓mən ꭧʊ→ŋꭧʰu→ lɤ i↗kɤ pʰa↘ntʰu↗"),
+    (
+        "这个项目的性能优化还有很大空间",
+        "ꭧɤ↘kɤ ɕja↘ŋmu↘ ti ɕi↘ŋnə↗ŋ jou→xwa↘ xai↗jou↓ xə↓nta↘ kʰʊ→ŋʨjɛ→n",
+    ),
+    // 合词, plus the 轻声 and 三声连读 in the same sentence
+    ("3.14", "sa→ntjɛ↓n i→sɹ̩↘"),
+    (
+        "他是一个非常努力的学生每天早上六点起床跑步然后去图书馆学习到晚上十点才回家休息",
+        "tʰa→ ʂɻ̩↘ i↗kɤ fei→ꭧʰa↗ŋ nu↓li↘ tɤ ɕɥe↗ʂə→ŋ mei↓tʰjɛ→n ʦau↓ʂa↘ŋ ljou↘tjɛ↓n ʨʰi↓ꭧʰwa↗ŋ pʰau↓pu↘ ɻa↗nxou↘ ʨʰy↘ tʰu↗ʂu→kwa↓n ɕɥe↗ɕi↗ tau↘ wa↓nʂa↘ŋ ʂɻ̩↗tjɛ↓n ʦʰai↗ xwei↗ʨja→ ɕjou→ɕi",
+    ),
+    (
+        "这段话的长度超过了一百个字符所以它会被用来检验分词算法在概率相乘时的处理方式因为如果不做处理的话所有的候选分词方案的乘积都会下溢为零从而无法比较",
+        "ꭧɤ↘twa↘nxwa↘ tɤ ꭧʰa↗ŋtu↘ ꭧʰau→kwo↘ lɤ i↘pai↓kɤ ʦɹ̩↘fu↗ swo↗i↓ tʰa→xwei↘ pei↘ jʊ↘ŋlai↗ ʨjɛ↓njɛ↘n fə→nʦʰɹ̩↗ swa↘nfa↓ ʦai↘ kai↘ly↘ ɕja→ŋꭧʰə↗ŋ ʂɻ̩↗ tɤ ꭧʰu↗li↓ fa→ŋʂɻ̩↘ i→nwei↘ ɻu↗kwo↓ pu↗ʦwo↘ ꭧʰu↗li↓ tɤxwa↘ swo↗jou↓ tɤ xou↘ɕɥɛ↓n fə→nʦʰɹ̩↗ fa→ŋa↘n tɤ ꭧʰə↗ŋʨi→ tou→ xwei↘ ɕja↘i↘ wei↘ li↗ŋ ʦʰʊ↗ŋɚ↗ u↗fa↓ pi↓ʨjau↘",
+    ),
+];
+
+/// The shipped pipeline against the corpus, sample by sample, and the claim that
+/// the tone rules are the *only* difference.
+///
+/// Asserted from both directions on purpose. A list of changed samples would pass
+/// if a later phase changed a *third* sample and rewrote the corpus; the `None`
+/// arm — every sample not in the table has to come out identical under both
+/// pipelines *and* identical to the JavaScript — is what makes the table a
+/// complete description of the difference rather than a record of part of it.
+#[test]
+fn the_tone_rules_change_exactly_these_samples() {
+    let Some(phonemizer) = chinese_phonemizer() else {
+        return;
+    };
+    let Some(legacy) = legacy() else {
+        return;
+    };
+
+    let samples = corpus().samples;
+    let mut seen = 0;
+    for sample in &samples {
+        let shipped = phonemize(&phonemizer, &sample.input).phonemes;
+        let before = legacy.phonemes(&sample.input);
+        assert_eq!(
+            before, sample.js,
+            "{:?}: the phase 6 pipeline is the corpus",
+            sample.input
+        );
+
+        match TONE_RULE_CHANGES
+            .iter()
+            .find(|(input, _)| *input == sample.input)
+        {
+            Some((_, expected)) => {
+                seen += 1;
+                assert_eq!(
+                    shipped, *expected,
+                    "{:?} under the tone rules",
+                    sample.input
+                );
+                assert_ne!(
+                    shipped, before,
+                    "{:?} is in the table but did not move",
+                    sample.input
+                );
+            }
+            None => assert_eq!(
+                shipped, sample.js,
+                "{:?} is not in the table but the tone rules moved it",
+                sample.input
+            ),
+        }
+    }
+
+    // And the table does not describe samples the corpus does not have.
+    assert_eq!(
+        seen,
+        TONE_RULE_CHANGES.len(),
+        "every entry in the table is a corpus sample"
     );
 }
 
@@ -240,9 +423,12 @@ fn a_numerals_reading_is_not_a_separate_run() {
     // in an `other` run and be dropped as punctuation — unheard, and silently.
     // 只 is what makes this visible: as 三只 it is read with the numeral in one
     // word, and a split run would leave 三 missing and the word boundary wrong.
+    // 我有 is two third tones in a row and the merge pass makes it one word, so
+    // the shipped pipeline says *wó yǒu*: `wo↗jou↓` where the JavaScript said
+    // `wo↓ jou↓`.
     assert_eq!(
         phonemize(&phonemizer, "我有3只猫").phonemes,
-        "wo↓ jou↓ sa→nꭧɻ̩→ mau→"
+        "wo↗jou↓ sa→nꭧɻ̩→ mau→"
     );
 
     // And the reading itself, so a failure says which half broke.

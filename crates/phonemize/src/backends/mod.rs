@@ -5,6 +5,16 @@
 //! numeral reader, a pronunciation table. All four languages' backends exist
 //! now: Japanese segmentation, English G2P, Chinese readings, and the Chinese
 //! segmenter and text rules that phase 6 added.
+//!
+//! Number reading is the one backend with two implementations: the hand-written
+//! `numbers*` readers, and phase 9B's [`wetext`] engine — weighted FSTs from
+//! WeTextProcessing, vendored rather than depended on. English prefers the FSTs
+//! and falls back to `numbers_en`; Chinese and Japanese still use their own
+//! readers, so nothing about their output moved in that phase.
+//!
+//! [`tn_gate`] is not a reader and produces no output: it is the cheap "is there
+//! anything here for the FSTs to do?" question asked before them, because they
+//! answer every English sentence whether or not it has an answer to find.
 
 pub mod g2p_en;
 pub mod numbers;
@@ -13,6 +23,9 @@ pub mod numbers_zh;
 pub mod pinyin;
 pub mod segmenter_ja;
 pub mod segmenter_zh;
+pub mod tn_gate;
+pub mod wetext;
+pub mod wetext_tn;
 pub mod zh_text;
 
 pub use g2p_en::{EnglishError, EnglishG2p};

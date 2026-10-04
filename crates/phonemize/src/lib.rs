@@ -9,7 +9,8 @@
 //! turns text into phonemes with it. English is wired as well — first as the
 //! backend the Latin runs of a Japanese sentence go through, then as a pipeline
 //! of its own once the numeral reading landed ([`pipeline::phonemize_en`]); the
-//! dictionary it needs is compiled in, so there is nothing to fetch for it.
+//! CMU dictionary it pronounces with is compiled in, so what it *fetches* is the
+//! WeText grammars its numerals go through instead (phase 9B).
 //! Chinese is complete as of phase 6: [`pipeline::phonemize_zh`] has the numeral,
 //! punctuation, word-boundary and mixed-script rules, and the one thing it
 //! fetches is jieba's word list, because the crate's own embedded-dictionary
@@ -31,7 +32,12 @@ pub mod vocab;
 use backends::g2p_en::EnglishG2p;
 use backends::segmenter_ja::{SegmenterError, SegmenterJa};
 use backends::segmenter_zh::{SegmenterZh, SegmenterZhError};
-use dictionary::{DictionaryError, DictionaryRegistry, IPADIC_JA, JIEBA_ZH};
+use backends::wetext::{Normalizer as WeTextNormalizer, WeTextError};
+use backends::wetext_tn;
+use dictionary::{
+    DictionaryError, DictionaryRegistry, IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER,
+    WETEXT_EN_TN_VERBALIZER,
+};
 use pipeline::PipelineError;
 use vocab::{validate_phonemes, Vocab, VocabError};
 
@@ -69,6 +75,19 @@ pub struct Phonemizer {
     /// see `pipeline::phonemize_ja` for why that is a warning rather than an
     /// error.
     english: OnceLock<Option<EnglishG2p>>,
+    /// The English text normalizer, built by `finish_loading` from the two
+    /// grammars the dictionary protocol fetched.
+    ///
+    /// `None` until those arrive, and `None` for a caller that never called
+    /// `prepare` — which is a state `phonemize_en` is written to tolerate, since
+    /// English's phonemes need no dictionary at all (spec §2.3). Unlike
+    /// `japanese`/`chinese` this is not an `Option` a caller can be refused for:
+    /// the numeral reader it replaces is still here as the fallback.
+    ///
+    /// Held rather than rebuilt for the same reason as the segmenters: parsing
+    /// 12 MB of English FST is 52 ms, and a second `prepare` for a different
+    /// voice could only arrive at the same object.
+    english_tn: Option<WeTextNormalizer>,
 }
 
 #[wasm_bindgen]
@@ -186,13 +205,15 @@ impl Phonemizer {
                 pipeline::phonemize_ja(text, segmenter, self.english())
                     .map_err(PhonemizeError::Pipeline)?
             }
-            // English has no dictionary to wait for — the CMU dictionary is
-            // compiled in — so this arm needs no `prepare` and no `NotPrepared`
-            // check. The backend itself is still built lazily on the first call;
-            // see the `english` field.
-            "en" => {
-                pipeline::phonemize_en(text, self.english()).map_err(PhonemizeError::Pipeline)?
-            }
+            // English has no dictionary to wait for *for its phonemes* — the CMU
+            // dictionary is compiled in — so this arm needs no `NotPrepared`
+            // check. Its FSTs are still a `prepare`-time dictionary (phase 9B),
+            // which is why `english_tn` can be `None` here without being an
+            // error: `phonemize_en` falls back to `numbers_en` for it. The
+            // backend itself is built lazily on the first call; see the
+            // `english` field.
+            "en" => pipeline::phonemize_en(text, self.english(), self.english_tn.as_ref())
+                .map_err(PhonemizeError::Pipeline)?,
             // Chinese needs jieba's word list, so like Japanese it can be asked
             // to phonemize before `prepare` ran — and that is a failure rather
             // than a sentence read without word boundaries, because the
@@ -257,17 +278,23 @@ impl Phonemizer {
         self.english.get_or_init(|| EnglishG2p::new().ok()).as_ref()
     }
 
-    /// Build the segmenters the last `required_dictionaries` asked for.
+    /// Build the backends the last `required_dictionaries` asked for.
     ///
-    /// Idempotent, and additive: a segmenter that has been built stays built
-    /// even when a later `prepare` is for a language that does not need it,
-    /// which is the same lifetime the registry gives its bytes.
+    /// Idempotent, and additive: a backend that has been built stays built even
+    /// when a later `prepare` is for a language that does not need it, which is
+    /// the same lifetime the registry gives its bytes.
     ///
     /// **This is where a dictionary stops being bytes**, and it is the seam that
     /// turns a partial load into an error rather than into a pipeline running
-    /// with half its dictionary. Both of these parse their whole word list, which
-    /// is the expensive part of loading either language, so a corrupt file fails
+    /// with half its dictionary. Both segmenters parse their whole word list, and
+    /// the WeText engine parses 12 MB of FST for English, so a corrupt file fails
     /// here — when the voice is picked — rather than in the middle of a sentence.
+    ///
+    /// The English grammars are the one exception to "additive": they are not
+    /// required, because the numeral reader they replace is still the fallback.
+    /// Their *absence* is therefore not an error here even though
+    /// `dictionary_names` lists them, and the only way that happens is a caller
+    /// that never asked for them.
     fn build_backends(&mut self) -> Result<(), BackendError> {
         if self.japanese.is_none() {
             if let Some(bytes) = self.dictionaries.get(IPADIC_JA) {
@@ -277,6 +304,17 @@ impl Phonemizer {
         if self.chinese.is_none() {
             if let Some(bytes) = self.dictionaries.get(JIEBA_ZH) {
                 self.chinese = Some(SegmenterZh::from_dictionary(bytes)?);
+            }
+        }
+        // Both FSTs or neither: a tagger with no verbalizer can only fail, and
+        // failing here names the missing half instead of reporting it from
+        // inside a sentence mid-TN.
+        if self.english_tn.is_none() {
+            if let (Some(tagger), Some(verbalizer)) = (
+                self.dictionaries.get(WETEXT_EN_TN_TAGGER),
+                self.dictionaries.get(WETEXT_EN_TN_VERBALIZER),
+            ) {
+                self.english_tn = Some(wetext_tn::english(tagger, verbalizer)?);
             }
         }
         Ok(())
@@ -351,6 +389,8 @@ impl std::error::Error for PhonemizeError {}
 enum BackendError {
     Japanese(SegmenterError),
     Chinese(SegmenterZhError),
+    /// The English TN grammars arrived but are not usable FSTs.
+    EnglishTn(WeTextError),
 }
 
 impl BackendError {
@@ -358,6 +398,11 @@ impl BackendError {
         match self {
             Self::Japanese(error) => error.code(),
             Self::Chinese(error) => error.code(),
+            // `dictionary-format` rather than a code of its own: from the
+            // caller's side this is the same failure as a decompressed
+            // dictionary that will not parse, and the JavaScript side's
+            // reason-to-message table already has an arm for it.
+            Self::EnglishTn(_) => "dictionary-format",
         }
     }
 }
@@ -367,7 +412,19 @@ impl std::fmt::Display for BackendError {
         match self {
             Self::Japanese(error) => write!(f, "{error}"),
             Self::Chinese(error) => write!(f, "{error}"),
+            Self::EnglishTn(error) => {
+                write!(
+                    f,
+                    "the English text-normalization grammars are unusable: {error}"
+                )
+            }
         }
+    }
+}
+
+impl From<WeTextError> for BackendError {
+    fn from(error: WeTextError) -> Self {
+        Self::EnglishTn(error)
     }
 }
 

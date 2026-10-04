@@ -16,9 +16,10 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 
-use phonemize::dictionary::{IPADIC_JA, JIEBA_ZH};
+use phonemize::dictionary::{IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER};
 use phonemize::{PhonemizeOptions, Phonemizer};
 
 /// Where the Japanese dictionary asset lives, from this crate rather than the
@@ -86,6 +87,82 @@ pub fn chinese_phonemizer() -> Option<Phonemizer> {
     prepare(jieba_dictionary_bytes()?, "zh-CN", JIEBA_ZH)
 }
 
+/// The two English text-normalization grammars, by the registry's names.
+pub const WETEXT_EN_NAMES: [&str; 2] = [WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER];
+
+/// Where one English TN grammar lives.
+pub fn wetext_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("../../public/dictionaries/{name}.bin.zst"))
+}
+
+/// The compressed bytes of both English TN grammars.
+///
+/// Both or neither: the pipeline needs a tagger *and* a verbalizer, so a missing
+/// half is the same failure as a missing whole.
+pub fn wetext_compressed() -> Option<Vec<(String, Vec<u8>)>> {
+    let mut out = Vec::new();
+    for name in WETEXT_EN_NAMES {
+        out.push((
+            name.to_string(),
+            asset(&wetext_path(name), "./scripts/setup-wetext-fsts.sh")?,
+        ));
+    }
+    Some(out)
+}
+
+/// The two grammars, **decompressed**.
+///
+/// The registry unpacks inside the wasm, and the wrapper that hands it the bytes
+/// only ever passes them along. These tests want the FSTs themselves — to feed
+/// the normalizer directly and assert on the words it produces rather than on
+/// the phonemes those words become.
+///
+/// `ruzstd` rather than a call into the crate: the decompressor is private, and
+/// a test that reached it would be testing the transport it is trying to get
+/// past.
+pub fn wetext_fsts() -> Option<(Vec<u8>, Vec<u8>)> {
+    let decompress = |compressed: &[u8]| -> Vec<u8> {
+        let mut decoder =
+            ruzstd::decoding::StreamingDecoder::new(compressed).expect("the asset is a zstd frame");
+        let mut raw = Vec::new();
+        decoder
+            .read_to_end(&mut raw)
+            .expect("the frame decompresses");
+        raw
+    };
+
+    let mut fsts = wetext_compressed()?
+        .into_iter()
+        .map(|(_, bytes)| decompress(&bytes));
+    let tagger = fsts.next().expect("both grammars are in the list");
+    let verbalizer = fsts.next().expect("both grammars are in the list");
+    Some((tagger, verbalizer))
+}
+
+/// A phonemizer that has been through the whole `prepare` flow for English.
+///
+/// Since phase 9B that is not a no-op: English's *phonemes* still need no
+/// dictionary, but its numerals go through the WeText grammars, and they arrive
+/// the same way IPADic and jieba's word list do.
+pub fn english_phonemizer() -> Option<Phonemizer> {
+    let mut phonemizer = Phonemizer::new();
+    phonemizer
+        .required_dictionaries("kokoro-v1", "en-US")
+        .unwrap_or_else(|_| panic!("kokoro-v1 speaks en-US"));
+
+    for (name, compressed) in wetext_compressed()? {
+        phonemizer
+            .load_dictionary(&name, &compressed)
+            .unwrap_or_else(|_| panic!("{name} loads"));
+    }
+    phonemizer
+        .finish_loading()
+        .unwrap_or_else(|_| panic!("both grammars arrived"));
+
+    Some(phonemizer)
+}
+
 /// The `prepare` flow, once the bytes are in hand.
 fn prepare(compressed: Vec<u8>, lang: &str, name: &str) -> Option<Phonemizer> {
     let mut phonemizer = Phonemizer::new();
@@ -115,5 +192,13 @@ pub fn chinese_options() -> PhonemizeOptions {
     PhonemizeOptions {
         frontend: "kokoro-v1".to_string(),
         lang: "zh-CN".to_string(),
+    }
+}
+
+/// Options for the v1.0 English frontend.
+pub fn english_options() -> PhonemizeOptions {
+    PhonemizeOptions {
+        frontend: "kokoro-v1".to_string(),
+        lang: "en-US".to_string(),
     }
 }

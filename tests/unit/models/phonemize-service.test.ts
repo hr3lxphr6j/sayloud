@@ -40,6 +40,16 @@ const JIEBA = 'jieba-zh-dict';
 const JIEBA_URL = `/dictionaries/${JIEBA}.bin.zst`;
 
 /**
+ * The two English text-normalization grammars (phase 9B).
+ *
+ * English's *pronunciation* dictionary is still compiled into the wasm — the
+ * CMU dictionary, spec §2.3 — but its numerals go through the vendored WeText
+ * engine, and those grammars are 12 MB of OpenFST binary. They arrive the same
+ * way IPADic and jieba's word list do.
+ */
+const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
+
+/**
  * A shipped dictionary, or null when skipping was asked for.
  *
  * Missing is a failure, not a skip: these are the only tests that run the
@@ -66,6 +76,24 @@ function asset(name: string): DictionaryBytes | null {
 
 const REAL_IPADIC = asset(IPADIC);
 const REAL_JIEBA = asset(JIEBA);
+
+/** The two English grammars, or null when skipping was asked for. */
+const REAL_WETEXT_EN = Object.fromEntries(
+  WETEXT_EN.map((name) => [name, asset(name)] as const)
+) as Record<(typeof WETEXT_EN)[number], DictionaryBytes | null>;
+
+/** Whether both of them are there, for the tests that cannot run without one. */
+const hasWetextEn = WETEXT_EN.every((name) => REAL_WETEXT_EN[name] !== null);
+
+/** The routes that serve the English grammars, for a test that needs them. */
+function wetextEnRoutes(): Record<string, DictionaryBytes> {
+  return Object.fromEntries(
+    WETEXT_EN.map((name) => [
+      `/dictionaries/${name}.bin.zst`,
+      REAL_WETEXT_EN[name] ?? new Uint8Array(),
+    ])
+  );
+}
 
 /** A service whose phonemizer reads its dictionaries from the given routes. */
 function serviceWith(routes: Record<string, DictionaryBytes>): PhonemizeService {
@@ -114,15 +142,20 @@ describe('PhonemizeService', () => {
     expect(() => service.phonemize('hello', 'kokoro-v1', 'en-US')).toThrow('not initialised');
   });
 
-  it('needs no dictionary for English', async () => {
-    // The CMU dictionary is compiled into the wasm. A `prepare` that demanded
-    // one anyway would make every English voice — the default — unplayable.
-    const service = serviceWith({});
+  it.skipIf(!hasWetextEn)('reads English through its text-normalization grammars', async () => {
+    // As of phase 9B a `prepare` for English does fetch something, so this is no
+    // longer a test that it fetches *nothing* (there is one of those further
+    // down, for the frontend table). What it pins is the seam: the two grammars
+    // are loaded, the pipeline uses them, and the sentence still comes out.
+    const service = serviceWith(wetextEnRoutes());
     await service.init();
 
     await service.prepare('kokoro-v1', 'en-US');
 
     expect(service.phonemize('hello world', 'kokoro-v1', 'en-US').phonemes).toBe('həlˈoʊ wˈɜːld');
+    // "fifty percent" — the word the hand-written reader dropped, and the
+    // reason the grammars are fetched at all.
+    expect(service.phonemize('50%', 'kokoro-v1', 'en-US').phonemes).toBe('fˈɪftiː pɚsˈɛnt');
   });
 
   it.skipIf(REAL_IPADIC === null)('speaks Japanese once its dictionary is loaded', async () => {

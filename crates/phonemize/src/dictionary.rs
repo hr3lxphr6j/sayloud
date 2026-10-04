@@ -40,6 +40,29 @@ pub const IPADIC_JA: &str = "lindera-ipadic-ja";
 /// 1.6 MB compressed, built by `scripts/setup-jieba-dict.sh`.
 pub const JIEBA_ZH: &str = "jieba-zh-dict";
 
+/// The English TN tagger FST's name, as the JavaScript side sees it.
+///
+/// Phase 9B. English is the one language whose *phonemes* need no dictionary —
+/// the CMU dictionary is compiled in — but its *numerals* come from the vendored
+/// WeText engine (`crate::backends::wetext`), and that engine's grammars are
+/// OpenFST binaries: 5.6 MB and 6.4 MB raw, so they arrive through the registry
+/// like everything else rather than being embedded (spec decision #4).
+///
+/// The tagger is the half that recognizes an entity; the verbalizer below is the
+/// half that says it. Both are needed and neither is usable without the other,
+/// which is why they are two names rather than one archive: the registry's unit
+/// is one zstd frame, and it already has a rule for "everything declared must
+/// arrive".
+///
+/// 161 KB compressed, built by `scripts/setup-wetext-fsts.sh` from the FSTs the
+/// Python `wetext` distribution ships.
+pub const WETEXT_EN_TN_TAGGER: &str = "wetext-en-tn-tagger";
+
+/// The English TN verbalizer FST's name, as the JavaScript side sees it.
+///
+/// 546 KB compressed. See [`WETEXT_EN_TN_TAGGER`] for why there are two.
+pub const WETEXT_EN_TN_VERBALIZER: &str = "wetext-en-tn-verbalizer";
+
 /// What each frontend can speak (spec §2.2).
 ///
 /// The frontend is the model's phoneme inventory, and the two do not cover the
@@ -56,12 +79,12 @@ pub fn supported_languages(frontend: &str) -> Option<&'static [&'static str]> {
 
 /// The dictionaries one language needs, by primary subtag.
 ///
-/// Empty is a real answer, not a stub: the English CMU dictionary and the
-/// Chinese pinyin tables are compiled into the wasm (spec §2.3), so English
-/// fetches nothing.
-///
 /// `None` means "not a language this pipeline knows", which is different from
 /// "needs nothing" — the caller checks the frontend's language list first.
+///
+/// Empty is still a real answer, though no language gives it today: the English
+/// CMU dictionary and the Chinese pinyin tables are compiled into the wasm
+/// (spec §2.3), and only the parts that cannot be are fetched.
 fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
     match language {
         // IPADic: prebuilt trie + connection matrix, ~10 MB compressed and
@@ -72,7 +95,12 @@ fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
         // part of Chinese that is not compiled in, because the only way
         // `jieba-rs` can embed it cannot link for wasm (see [`JIEBA_ZH`]).
         "zh" => Some(&[JIEBA_ZH]),
-        "en" => Some(&[]),
+        // English fetches the two WeText TN grammars (phase 9B). They are the
+        // only dictionary this language has ever needed, and they are needed
+        // for the *numeral* step rather than for the phonemes: the CMU
+        // dictionary is compiled in, so this list being non-empty is not a
+        // contradiction of spec §2.3.
+        "en" => Some(&[WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER]),
         _ => None,
     }
 }

@@ -1,0 +1,112 @@
+===========================================================================
+WeText text normalization (crates/phonemize/src/backends/wetext/)
+===========================================================================
+
+This directory is a copy of wetext-rs 0.1.2, by SpenserCai.
+
+  wetext-rs     https://github.com/SpenserCai/wetext-rs
+                Copyright the wetext-rs authors
+                Apache License, Version 2.0
+
+  WeTextProcessing  https://github.com/wenet-e2e/WeTextProcessing
+                Copyright 2021 Wenet Community
+                Apache License, Version 2.0
+
+wetext-rs is a Rust reimplementation of Wenet's WeTextProcessing, which is a
+Python package built on pynini and OpenFST. The FST data this module runs
+comes from the Python `wetext` distribution, which is the upstream project's
+own build of the same grammars; see `public/dictionaries/wetext-en-tn-NOTICE.txt`.
+
+A copy of the Apache License, Version 2.0, is in `LICENSE-Apache-2.0` beside
+this file. Both projects are distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+---------------------------------------------------------------------------
+Modifications made for tts-ng
+---------------------------------------------------------------------------
+
+The copy is upstream's `src/` at version 0.1.2 with the following changes.
+The first five are the ones the P6 phase 9B evaluation measured and recommended
+(`docs/superpowers/plans/p6-wetext-evaluation.md`, appendix B); the sixth is a
+correctness fix phase 9B.4 made after the evaluation. Nothing else about the
+normalization logic was touched.
+
+1. `text_normalizer.rs`: added `FstTextNormalizer::from_bytes`, and removed
+   `from_file`. `rustfst`'s `SerializableFst::load` takes the whole OpenFST
+   binary as a `&[u8]`; upstream's `from_file` only reads a file into a buffer
+   first. So the new constructor is that parse with the file read removed, which
+   is the half `wasm32-unknown-unknown` cannot do.
+
+2. `normalizer.rs`: the FST cache is no longer lazy. Upstream kept a
+   `fst_dir` and read an FST the first time a configuration asked for it;
+   here every FST arrives through `Normalizer::from_bytes` under the relative
+   name upstream would have joined to that directory. `FstCache` and
+   `get_or_load` are gone, upstream's `new(path)` / `with_defaults(path)` /
+   free `normalize(path, text)` are gone with them, and `normalize` takes
+   `&self` because there is nothing left to fill in. This is what makes the
+   module usable where there is no filesystem at all, rather than merely
+   compiling without one.
+
+3. `normalizer.rs`: `full_to_half` moved from `postprocess` to `preprocess`.
+   Upstream applies it after the TN, which is too late — `should_normalize`
+   looks for an ASCII digit, and `２０２２年` has none, so full-width numerals
+   reached the tagger unnormalised and the whole TN was skipped, silently.
+   Measured on 11 Japanese inputs: 6/11 normalized upstream, 10/11 after the
+   move. Japanese and Chinese text is full of full-width digits.
+
+4. `contractions.rs`: the three embedded JSON paths are module-relative
+   (`data/...`) rather than crate-relative (`../data/...`), because the file
+   moved into `backends/wetext/`. `token_parser.rs`/`contractions.rs` import
+   through `super::` for the same reason. No behaviour change.
+
+5. `normalizer.rs`: `should_normalize` regained the `lang` parameter the port
+   dropped, so that its digit test applies to every language *except* English —
+   which is what the Python reference does. Without it the Rust port skipped the
+   whole TN for an English sentence with no digit in it, which is the half of
+   English TN that is not about digits: `Dr. Smith` is `doctor Smith` in the
+   reference and came out unchanged here. Measured after the fix, the port agreed
+   with the reference on 34 of 41 probe inputs. That count was taken **with
+   modification 6 not yet made**, and the differences it counted as ties between
+   readings of a bare digit string (`123` -> `one hundred and twenty three`
+   there, `one two three` here) were in fact modification 6's bug: the two
+   readings were not equally costly. The probe was a one-off against
+   `pip install wetext==0.1.8` and is not committed, so this note does not claim
+   a new number for it — only that the old one should not be read as a limit on
+   how well the two agree now. See `README.md` and
+   `docs/superpowers/plans/p6-9b4-shortest-path-bug.md`.
+
+6. `text_normalizer.rs`: the one-best path is no longer extracted with
+   `rustfst::shortest_path`. That function does not handle **negative arc
+   weights**, and these grammars are full of them — upstream ranks competing
+   readings with `pynutil.add_weight(..., -0.0001)`, and a composed FST reaches
+   `-0.0001` — so it returned paths that were not the cheapest. Measured on the
+   composed FST for `cardinal { integer: "123" }`: seven readings exist, the
+   cardinal `one hundred and twenty three` costs `0.000000`, `one two three`
+   costs `0.000200`, and `shortest_path` returned the latter. Of 18 probe
+   sentences through the real pipeline, 7 were read along a more expensive path.
+   The copy now runs its own Bellman-Ford relaxation over the composed FST,
+   records the arc each state was reached by, picks the final state minimizing
+   `dist + final_weight` and walks the arcs back to the start. These grammars
+   have no negative cycle (probed: 2-4 relaxation rounds, and the loop ends on a
+   round that changes nothing). Same public API, same behaviour for an empty
+   compose or an FST with no successful path — the input comes back unchanged.
+   Measured on 3000 calls per input, the replacement is not slower than the
+   `shortest_path` it replaces (best of five runs: 461 vs 466 us for
+   `hello world`, 1273 vs 1289 us for `I have 123 apples.`, 1831 vs 1854 us for
+   `Between 100 and 200 people.`). This is our change, not upstream's; upstream
+   and `kaldifst` have the same defect.
+
+Additionally, `error.rs` no longer has upstream's
+`IoError(#[from] std::io::Error)` variant: it existed for the `std::fs`
+constructors that modification 1 and 2 removed, and an unused `From<io::Error>`
+is a way for an I/O error to arrive in a module that has no I/O.
+
+The port had one pre-existing flaw that was *not* fixed, because nothing in
+this crate reaches it: upstream's `fix_contractions` is off by default, and
+the configuration this crate builds for English leaves it off.
+
+The port has one more limitation that is **not** ours, recorded in `README.md`:
+`1000` is tagged `date { year: "1000" }`, where `ten hundred` and `one thousand`
+are a genuine tie at `0.000100`. Modification 6 changed which non-minimal path
+was returned; it did not change this, because here both readings *are* the
+minimum.

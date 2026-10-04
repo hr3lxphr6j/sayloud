@@ -42,6 +42,15 @@ const WASM = new Uint8Array(
 const IPADIC_URL = '/dictionaries/lindera-ipadic-ja.bin.zst';
 const JIEBA_URL = '/dictionaries/jieba-zh-dict.bin.zst';
 
+/**
+ * The two English text-normalization grammars (phase 9B).
+ *
+ * English has no pronunciation dictionary to fetch — the CMU dictionary is
+ * compiled in — but since phase 9B its numerals go through the vendored WeText
+ * engine, and those grammars are fetched on `prepare` like any other dictionary.
+ */
+const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
+
 /** A shipped dictionary, or null when skipping was asked for. */
 function asset(name: string): DictionaryBytes | null {
   const path = resolve(ROOT, `public/dictionaries/${name}.bin.zst`);
@@ -58,6 +67,25 @@ function asset(name: string): DictionaryBytes | null {
 
 const REAL_IPADIC = asset('lindera-ipadic-ja');
 const REAL_JIEBA = asset('jieba-zh-dict');
+
+/** The two English grammars, under the same missing-is-a-failure rule. */
+const REAL_WETEXT_EN = WETEXT_EN.map((name) => asset(name));
+
+/** Every dictionary these tests serve, so `assembled({})` is still a full set. */
+function shippedDictionaries(): Record<string, DictionaryBytes> {
+  const routes: Record<string, DictionaryBytes> = {};
+  for (const [name, bytes] of [
+    ['lindera-ipadic-ja', REAL_IPADIC],
+    ['jieba-zh-dict', REAL_JIEBA],
+  ] as const) {
+    if (bytes !== null) routes[`/dictionaries/${name}.bin.zst`] = bytes;
+  }
+  WETEXT_EN.forEach((name, index) => {
+    const bytes = REAL_WETEXT_EN[index];
+    if (bytes !== undefined && bytes !== null) routes[`/dictionaries/${name}.bin.zst`] = bytes;
+  });
+  return routes;
+}
 
 /** A `WorkerLike` that runs the real phonemizer, as the worker would. */
 class PhonemizeWorkerStub implements WorkerLike {
@@ -198,10 +226,26 @@ function tierOf(id: string): ModelTier {
   return tier;
 }
 
-/** The engine, both workers, with the real phonemizer behind the seam. */
-async function assembled(dictionaries: Record<string, DictionaryBytes>) {
+/**
+ * The engine, both workers, with the real phonemizer behind the seam.
+ *
+ * `dictionaries` is layered over the shipped set rather than replacing it, so a
+ * test about Japanese does not have to remember that English now needs two
+ * grammars as well — `prepare` for any language is what runs, and it asks for
+ * whatever that language's table lists.
+ *
+ * A `null` removes a route instead, which is how "the install does not have this
+ * file" is spelled now that the default is a full set.
+ */
+async function assembled(dictionaries: Record<string, DictionaryBytes | null>) {
+  const routes: Record<string, DictionaryBytes> = { ...shippedDictionaries() };
+  for (const [url, bytes] of Object.entries(dictionaries)) {
+    if (bytes === null) delete routes[url];
+    else routes[url] = bytes;
+  }
+
   const fetch = fakeFetch(
-    Object.fromEntries(Object.entries(dictionaries).map(([url, bytes]) => [url, { bytes }]))
+    Object.fromEntries(Object.entries(routes).map(([url, bytes]) => [url, { bytes }]))
   );
   const service = new PhonemizeService({
     create: () => new RustPhonemizer({ wasm: WASM, fetch, cacheStorage: new FakeCaches() }),
@@ -282,7 +326,10 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     // setting. `unknown` would read as "something went wrong" and throw away
     // the only actionable half — and this is the path a user takes to find out:
     // pick a Japanese voice, and the first sentence fails.
-    const { engine } = await assembled({});
+    //
+    // `null` removes the route rather than serving a body, so the fake transport
+    // answers exactly what a missing file does: nothing.
+    const { engine } = await assembled({ [IPADIC_URL]: null });
 
     const error = await engine
       .synthesize('経営', 'jf_alpha', 'ja-JP', new AbortController().signal)

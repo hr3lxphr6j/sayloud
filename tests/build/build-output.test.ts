@@ -84,9 +84,10 @@ const PHONEMIZE_MARKERS = ['phonemize_bg-'] as const;
 const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
 
 /**
- * Measured 39.9 MB (38.05 MiB): ONNX Runtime's 20.6 MB wasm, the 8.5 MB IPADic
- * dictionary, the 5.1 MB phonemizer wasm, the 2.2 MB kokoro worker chunk, the
- * 1.6 MB Chinese word list, and the rest.
+ * Measured 44.4 MB (42.36 MiB): ONNX Runtime's 20.6 MB wasm, the 8.5 MB IPADic
+ * dictionary, the 6.1 MB phonemizer wasm, the 2.8 MB HeadTTS dictionary, the
+ * 2.2 MB kokoro worker chunk, the 1.6 MB Chinese word list, the 0.7 MB English
+ * text-normalization grammars, and the rest.
  *
  * **Phase 8 deleted the JavaScript chain, and the size fell by exactly the
  * kuromoji dictionary: 57,692,840 → 39,900,884 B.** That drop is the dictionary
@@ -101,15 +102,36 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  * the Rust frontend segments with, and it lives in `public/` for the same reason
  * kuromoji's dictionary did.
  *
- * **This bound had been exceeded once before, and by more.** It was set to
- * 44-50 MB around a measurement of 46.8 MB and did not move when the IPADic
- * dictionary — 8.1 MB, and absent from the itemisation above until phase 6 —
- * landed; the build was 55.35 MB at the commit before the Chinese word list was
- * added, which is 5.35 MB past the ceiling. Nothing noticed because
- * `pnpm test:build` is opt-in and CI does not run it.
+ * **Phase 9B: +1,013,905 B of wasm (`rustfst`, for the vendored WeText engine)
+ * and +707,782 B of assets (two TN grammars and their NOTICE).** Both were
+ * predicted in advance and both are the size of the thing rather than of the
+ * change: `rustfst` is what the +1 MB *is*, and the grammars are 12 MB of
+ * OpenFST binary that stay out of the module by being a fetched dictionary.
+ *
+ * **Phase 9B.4: −53,768 B of wasm, no asset change.** The fix in that phase put
+ * negative-weight handling into the copy's own path extraction and dropped the
+ * call to `rustfst::shortest_path`, which was the only thing in reach of
+ * OpenFST's queue-based shortest-distance and its determinize; that half of
+ * `rustfst` is no longer in the module at all. Measured by building the same
+ * source twice with only the extraction swapped; the per-file assertion below
+ * has the pair.
+ *
+ * **This bound had been exceeded twice before.** It was set to 44-50 MB around a
+ * measurement of 46.8 MB and did not move when the IPADic dictionary — 8.1 MB,
+ * and absent from the itemisation above until phase 6 — landed; the build was
+ * 55.35 MB at the commit before the Chinese word list was added, which is
+ * 5.35 MB past the ceiling. It had happened again by the time phase 9B measured:
+ * the 2.8 MB HeadTTS dictionary, added by `scripts/setup-headtts-dict.sh`, was
+ * not in the itemisation above either, so the tree measured 42.7 MB against a
+ * 42 MB ceiling *before* any of phase 9B's bytes. Nothing noticed, for the same
+ * reason as last time: `pnpm test:build` is opt-in and CI does not run it.
+ *
+ * The lesson is the one the first overrun already wrote down and did not act on:
+ * an asset that lands in `public/` moves this number, and whoever adds one owns
+ * moving it. A bound nothing runs is a comment with a test around it.
  */
-const MIN_BYTES = 38_000_000;
-const MAX_BYTES = 42_000_000;
+const MIN_BYTES = 43_000_000;
+const MAX_BYTES = 46_000_000;
 
 interface BuiltFile {
   /** Path relative to the output directory, POSIX-separated. */
@@ -316,7 +338,7 @@ describe('the build output', () => {
     // Exactly two: ONNX Runtime's and the phonemizer's. Both are singletons —
     // the jsep build covers the WebGPU and wasm backends, so a second ORT
     // binary would be 21 MB of dead weight (spec §1.4), and a second phonemizer
-    // binary would be 5 MB of the same. jieba's is no longer here at all, which
+    // binary would be 6 MB of the same. jieba's is no longer here at all, which
     // is the whole of phase 7's effect on this list.
     expect(wasm).toHaveLength(2);
 
@@ -326,7 +348,39 @@ describe('the build output', () => {
 
     const phonemize = wasm.filter((path) => /phonemize_bg-.*\.wasm$/.test(path));
     expect(phonemize).toHaveLength(1);
-    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(5_081_554);
+    // 5,081,554 before phase 9B. The 1,013,905 B it grew by is `rustfst` — the
+    // FST engine the vendored WeText normalizer runs on — and not the copied
+    // normalizer, which is ~50 KB of source. The grammars themselves are two
+    // fetched dictionaries and are not in here at all; that is the whole point of
+    // shipping them through the dictionary protocol rather than `include_bytes!`ing
+    // 12 MB of OpenFST binary.
+    //
+    // Phase 9B.4 then took 53,768 B back off, and that is measured rather than
+    // estimated: with the one-best extraction swapped from
+    // `rustfst::shortest_path` to the copy's own Bellman-Ford (see
+    // `crates/phonemize/src/backends/wetext/NOTICE`, modification 6), the same
+    // build was 6,095,271 B, the extracted one 6,041,503 B. `shortest_path` was
+    // the only caller of OpenFST's queue-based shortest-distance and its
+    // determinize-with-distance, so dropping the call took that whole half of
+    // `rustfst` with it. The number below is a build of today's source, not the
+    // old 6,095,459 — that constant was 188 B above what the same code builds to
+    // now, which is drift this change neither caused nor explains.
+    //
+    // 6,041,531 rather than 6,041,503: the backtrack in `cheapest_path_labels`
+    // lost its unguarded `while` for a `for` bounded by `num_states`, so the
+    // comment above it ("at most `num_states` steps") is now enforced instead of
+    // asserted. 28 B against a hang that would take the worker with no error to
+    // report is the right trade; the extraction is otherwise identical.
+    //
+    // 6,042,508 as of phase 9B.6, which puts a hand-written scan in front of the
+    // engine (`crates/phonemize/src/backends/tn_gate.rs`). **977 B** — the whole
+    // cost of the gate, and the reason it is a byte scan rather than a `regex`:
+    // `regex` is linked already, so the criterion was never "can we afford the
+    // dependency" but "what does the automaton cost", and a filter that runs on
+    // every English sentence is not where a compiled DFA belongs. The gate saves
+    // 33 ms of composition per 710 skipped characters; 977 B is 0.016% of the
+    // module.
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_042_508);
   });
 
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {

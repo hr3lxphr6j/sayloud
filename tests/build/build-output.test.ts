@@ -84,10 +84,13 @@ const PHONEMIZE_MARKERS = ['phonemize_bg-'] as const;
 const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
 
 /**
- * Measured 44.4 MB (42.36 MiB): ONNX Runtime's 20.6 MB wasm, the 8.5 MB IPADic
- * dictionary, the 6.1 MB phonemizer wasm, the 2.8 MB HeadTTS dictionary, the
- * 2.2 MB kokoro worker chunk, the 1.6 MB Chinese word list, the 0.7 MB English
- * text-normalization grammars, and the rest.
+ * Measured 44.4 MB (42.36 MiB) before phase 9A: ONNX Runtime's 20.6 MB wasm, the
+ * 8.5 MB IPADic dictionary, the 6.1 MB phonemizer wasm, the 2.8 MB HeadTTS
+ * dictionary (phase 9A deleted it), the 2.2 MB kokoro worker chunk, the 1.6 MB
+ * Chinese word list, the 0.7 MB English text-normalization grammars, and the
+ * rest. Phase 9A left it at 41.62 MB. The `MIN_BYTES`/`MAX_BYTES` window still
+ * has this number in it, which is the point of pinning the wasm separately below:
+ * a change that moves the total has to say what moved.
  *
  * **Phase 8 deleted the JavaScript chain, and the size fell by exactly the
  * kuromoji dictionary: 57,692,840 → 39,900,884 B.** That drop is the dictionary
@@ -116,21 +119,45 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  * source twice with only the extraction swapped; the per-file assertion below
  * has the pair.
  *
+ * **Phase 9A: +17,385 B of wasm, no asset change.** The NRL 7948 letter-to-sound
+ * rules HeadTTS uses for a word the CMU dictionary does not have: 309 rules as
+ * `&'static [Rule]` of pattern, advance and phonemes, plus the loop around them
+ * and the `regex` automata they are matched with. `regex` was already linked
+ * (phase 9B's copied normalizer carries it), so this is the data and the loop and
+ * not a new engine — 0.30% of the module, against 3.75 MB of dictionary compiled
+ * in beside it. The rule count is 309: the "7948" is the number of the NRL
+ * report, not the size of its rule table.
+ *
  * **This bound had been exceeded twice before.** It was set to 44-50 MB around a
  * measurement of 46.8 MB and did not move when the IPADic dictionary — 8.1 MB,
  * and absent from the itemisation above until phase 6 — landed; the build was
  * 55.35 MB at the commit before the Chinese word list was added, which is
  * 5.35 MB past the ceiling. It had happened again by the time phase 9B measured:
- * the 2.8 MB HeadTTS dictionary, added by `scripts/setup-headtts-dict.sh`, was
- * not in the itemisation above either, so the tree measured 42.7 MB against a
- * 42 MB ceiling *before* any of phase 9B's bytes. Nothing noticed, for the same
- * reason as last time: `pnpm test:build` is opt-in and CI does not run it.
+ * the 2.8 MB HeadTTS dictionary, which `scripts/setup-headtts-dict.sh` had put in
+ * `public/`, was not in the itemisation above either, so the tree measured
+ * 42.7 MB against a 42 MB ceiling *before* any of phase 9B's bytes. Nothing
+ * noticed, for the same reason as last time: `pnpm test:build` is opt-in and CI
+ * does not run it.
+ *
+ * **Phase 9A deleted that dictionary and its script.** Phase 9A reads the words
+ * the CMU dictionary does not have with HeadTTS's *rules*, which are 309 entries
+ * of `const` data compiled into the module, so HeadTTS's own 125,829-word
+ * dictionary is a second answer to a question this pipeline already answers — and
+ * nothing had read the file since the attempt that fetched it was abandoned. An
+ * asset in `public/` is copied whether or not anything imports it, so leaving it
+ * would have been 2.79 MB of the shipped extension for a file no code could name.
  *
  * The lesson is the one the first overrun already wrote down and did not act on:
  * an asset that lands in `public/` moves this number, and whoever adds one owns
  * moving it. A bound nothing runs is a comment with a test around it.
+ * Phase 9A left it at 41.62 MB (41,615,858 B), which is 2.79 MB below where
+ * 9B left it: the HeadTTS dictionary above is gone, and the wasm grew 18,015 B.
+ * The window below is 40–46 MB. The floor is not decorative — it is what catches
+ * a build that silently stopped copying a dictionary, which is a failure this
+ * test has already failed to notice once — so it sits one Chinese word list below
+ * the measurement rather than as far down as it could go.
  */
-const MIN_BYTES = 43_000_000;
+const MIN_BYTES = 40_000_000;
 const MAX_BYTES = 46_000_000;
 
 interface BuiltFile {
@@ -391,7 +418,21 @@ describe('the build output', () => {
     // nothing before this phase linked. 0.48% of the module for a rule layer that
     // changes what the Chinese voices say, against the 1 MB `rustfst` above for
     // an English numeral reader. Nothing here is a fetched asset.
-    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_071_361);
+    //
+    // **6,088,746 as of phase 9A, which is +17,385 B for the English
+    // letter-to-sound rules** (`crates/phonemize/src/backends/headtts_en/`).
+    // Measured by building this source and then the source with the new module
+    // unreferenced, in the same tree: 6,071,361 → 6,088,746. 309 rules at ~36 B of
+    // static data each is ~11 KB, and the rest is the scan, the misaki-to-IPA
+    // translation, and the `regex` automata the patterns compile to. No asset
+    // moved — the rules are `const` data, not a fetched dictionary — which is the
+    // one thing this phase was asked not to do and did not.
+    //
+    // 0.30% of the module for the words the dictionary does not have. The
+    // comparison that matters is with the 3.75 MB CMU dictionary above: the
+    // fallback for a word it lacks is three orders of magnitude smaller than the
+    // table of the words it has.
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_088_746);
   });
 
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {

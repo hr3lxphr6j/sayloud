@@ -91,11 +91,18 @@ impl From<EnglishError> for PipelineError {
 /// Phonemes, and what was left out to get them.
 ///
 /// The warnings are the second half of the answer rather than a log line,
-/// because everything they describe is audible: a word the English dictionary
-/// does not have is dropped, and a dropped word is the failure mode this
-/// pipeline exists to avoid. Nothing here is fatal — a sentence with one word
-/// missing still plays — so they travel with the result instead of being
+/// because everything they describe is audible: a run that produced no phonemes
+/// contributes nothing to the sentence, and a missing word is the failure mode
+/// this pipeline exists to avoid. Nothing here is fatal — a sentence with one
+/// word missing still plays — so they travel with the result instead of being
 /// returned as an error, and the JavaScript side decides what to do with them.
+///
+/// **An English warning is all but unreachable, and that is phase 9A's doing.**
+/// A Latin run now has three chances — the CMU dictionary, the NRL 7948 rules, and
+/// the letters, all 26 of which are in the dictionary — so producing nothing takes
+/// a run whose every letter is absent from all three. The channel is kept because
+/// that is the honest answer for one, and because the other two languages drop
+/// runs routinely (a `Han` run in an English sentence).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Phonemized {
     /// Exactly what goes into the tokenizer.
@@ -127,17 +134,14 @@ pub struct Phonemized {
 /// passed these runs through as characters, which was the right answer only
 /// while there was no English engine to hand them to.
 ///
-/// **A word the English dictionary does not have is dropped, and warned about.**
-/// That is a deliberate trade and a narrower one than it looks: an initialism
-/// cannot be dropped, because it is read from single letters and all 26 letters
-/// are in the dictionary, so what is lost is a mixed-case proper noun that CMU
-/// Dict has never heard of — `Kokoro`, `OpenAI`, `GitHub`, `ChatGPT`. espeak
-/// would have invented a pronunciation for those; inventing one is also how it
-/// reads `RAG` as the word "rag". Phase 3 chose the other side of this trade for
-/// Latin runs in general (wrong audio is easier to notice than missing audio)
-/// and the reason still holds for the words that reach it — so if a dropped word
-/// ever turns out to matter, the change is to push `run_text` through instead of
-/// warning, not to reach for a rule engine.
+/// **A mixed-case word the English dictionary does not have is read by rule.**
+/// Phase 4 spelled those out (`Kokoro` → K-O-K-O-R-O) and that was the trade then:
+/// espeak would have invented a pronunciation, and inventing one is how it reads
+/// `RAG` as the word "rag". Phase 9A takes the middle road — the letter-to-sound
+/// rules of NRL Report 7948, which HeadTTS uses for the same job
+/// ([`headtts_en`](crate::backends::headtts_en)) — so the run is neither dropped
+/// nor spelled. An initialism is still spelled and still cannot be dropped: it is
+/// read from single letters, and all 26 of them are in the dictionary.
 ///
 /// `english` is `None` when the backend could not be built at all, which is a
 /// broken build rather than a normal state: the dictionary is compiled in. It is
@@ -260,8 +264,9 @@ pub fn phonemize_ja(
 /// A `Han` or `Kana` run is dropped rather than read: this is the English
 /// pipeline, so `hello 世界` is English text with a word in a script this
 /// frontend has no reading for, and a character Kokoro cannot use is worth less
-/// than the sentence around it. Nothing else here is silent — a word the CMU
-/// dictionary does not have is spelled out letter by letter rather than dropped
+/// than the sentence around it. Nothing else here is silent: a word the CMU
+/// dictionary does not have is read by the NRL 7948 rules, and spelled out letter
+/// by letter only if those read it as a consonant cluster with no vowel
 /// (see [`EnglishG2p::phonemize`]).
 ///
 /// # Known gap: an apostrophe splits a word
@@ -427,12 +432,12 @@ impl ToneRules {
 /// This is the one place the Rust pipeline deliberately does not reproduce the
 /// JavaScript. `chinese.ts` sends a Latin run to espeak, spelled out letter by
 /// letter when it is all capitals; this sends it to [`EnglishG2p`], which is CMU
-/// Dict plus a spelling rule, for the reasons phase 4 recorded. The two agree on
-/// initialisms and can disagree on a mixed-case word espeak would have invented a
-/// pronunciation for — which is the trade phase 4 chose on purpose, and it applies
-/// here unchanged because it is the same backend the Japanese pipeline already
-/// uses for the same runs. A word the dictionary does not have is dropped and
-/// warned about, not silently skipped.
+/// Dict plus a reading rule, for the reasons phase 4 recorded. The two agree on
+/// initialisms and can disagree on a mixed-case word — which is the trade phase 4
+/// chose on purpose, and phase 9A narrowed rather than removed, because both sides
+/// are now reading a word the dictionary does not have instead of one of them
+/// spelling it. A run that produces nothing at all is warned about, not silently
+/// skipped.
 ///
 /// # Whitespace
 ///

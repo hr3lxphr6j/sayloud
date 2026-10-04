@@ -20,8 +20,13 @@
 //! [`tn_gate`] is not a reader and produces no output: it is the cheap "is there
 //! anything here for the FSTs to do?" question asked before them, because they
 //! answer every English sentence whether or not it has an answer to find.
+//!
+//! [`headtts_en`] is the other half of the English G2P: the CMU dictionary is a
+//! dictionary, so a word outside it has no reading at all, and the letter-to-sound
+//! rules of NRL Report 7948 (as HeadTTS adapted them) are what reads it.
 
 pub mod g2p_en;
+pub mod headtts_en;
 pub mod numbers;
 pub mod numbers_en;
 pub mod numbers_zh;

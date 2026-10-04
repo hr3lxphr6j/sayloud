@@ -8,6 +8,8 @@
     "build": "wxt build",
     "prebuild": "pnpm build:wasm",
     "build:wasm": "./scripts/build-phonemize-wasm.sh",
+    "gen:headtts": "node scripts/gen-headtts-rules.mjs",
+    "check:headtts": "node scripts/gen-headtts-rules.mjs --check",
     "build:e2e": "SAYLOUD_E2E=1 wxt build --mode e2e",
     "check:manifest": "node scripts/check-manifest.mjs",
     "test": "vitest run",

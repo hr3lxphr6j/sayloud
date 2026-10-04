@@ -161,11 +161,19 @@ fn phonemizes_a_latin_run_instead_of_passing_it_through() {
 }
 
 #[test]
-fn warns_about_a_latin_run_the_dictionary_does_not_have() {
-    // Decision 1.B: OOV words are spelled letter by letter as a fallback,
-    // so they don't disappear silently. The warning is no longer produced
-    // because the phonemize result is non-empty (the letters were spelled).
-    // This test now verifies the fallback works, not that a warning appears.
+fn reads_a_latin_run_the_dictionary_does_not_have_by_rule() {
+    // This test used to be `warns_about_a_latin_run_the_dictionary_does_not_have`
+    // and asserted the letter-by-letter fallback, `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ` —
+    // "Kokoro" read as K-O-K-O-R-O. Phase 9A reads it by rule instead, which is
+    // the point of the phase: it is one reading rather than six, and it is the
+    // same reading a lone English sentence gets (`tests/en_g2p.rs`).
+    //
+    // The warning channel is untouched and the expectation "no warnings" is now
+    // structural rather than incidental: a Latin run reaches the letter fallback
+    // only if neither the dictionary nor the rules nor the letters produce
+    // anything, and all 26 letters are in the dictionary. So an English warning
+    // is unreachable through this pipeline — kept as the honest answer for a run
+    // that produces nothing, not as a message anyone should expect to see.
     let Some(phonemizer) = japanese_phonemizer() else {
         return;
     };
@@ -175,10 +183,8 @@ fn warns_about_a_latin_run_the_dictionary_does_not_have() {
         .phonemize_with("Kokoroを使う", &options)
         .expect("phonemizes");
 
-    // Decision 1.B: OOV words are spelled letter by letter
-    assert_eq!(result.phonemes, "kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊoɕiu");
-    // No warning because phonemize succeeded (returned non-empty)
-    assert!(result.warnings.is_empty());
+    assert_eq!(result.phonemes, "kɑkɔɹoʊoɕiu");
+    assert!(result.warnings.is_empty(), "{:?}", result.warnings);
 }
 
 #[test]

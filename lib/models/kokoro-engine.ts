@@ -21,7 +21,6 @@
 import { KokoroTTS } from 'kokoro-js';
 import { concatPcm, KOKORO_SAMPLE_RATE } from './audio';
 import { abortError, type DeviceInfo, type RawPcm } from './engine';
-import { isChinese, isJapanese } from './language';
 import { type ModelTier, modelById, tierById } from './registry';
 import type { SynthesizePiece } from './worker-protocol';
 
@@ -140,34 +139,39 @@ export class KokoroEngine {
   /**
    * Audio for one piece.
    *
-   * English goes through `generate()`, the library's own supported path: it
-   * phonemizes the way the model was trained — espeak plus the number,
-   * punctuation and character substitutions `kokoro-js` applies afterwards —
-   * and re-implementing that here is how the two would drift apart. Chinese and
-   * Japanese cannot: `generate()` rejects every voice outside its 28-voice
-   * English list (verification §1.1.1), so their IPA enters through
-   * `generate_from_ids()`, which does no voice validation.
+   * **All three languages enter the model the same way**, through
+   * `generate_from_ids()`, and phase 10 is when that became true. English used to
+   * go through `generate()`, the library's own supported path, which runs
+   * `kokoro-js`'s front end on the raw text: espeak, then the number,
+   * punctuation and character substitutions it applies afterwards. The reason to
+   * stop is that the words arriving here were already phonemized — by the Rust
+   * module, for all three languages — so `generate()` was a second, invisible
+   * front end that the token count in `countTokens()` did not describe.
    *
-   * That is also why a piece carries both its text and its IPA rather than
-   * whichever half its language needs: the split is by language, and the
-   * language is the caller's to know.
+   * `truncation: false`, the same as `countTokens()`. A piece the coordinator got
+   * wrong would otherwise be silently cut at the model's limit, mid-word, in a
+   * way that reads as a bad sentence rather than as a bug; `planPieces` cuts at
+   * clause boundaries against this same tokenizer, so the limit is not reached
+   * legitimately.
+   *
+   * `lang` is not read. It stays in the signature because the request names a
+   * voice and a voice speaks exactly one language, and because the one per-voice
+   * rendering decision already known — `kokoro-js` rewrites `nˈaɪntɪ` to
+   * `nˈaɪndi` for en-US and for no other variety — would need it. Making it a
+   * silent parameter rather than a re-plumbing job is the cheaper half of that
+   * trade; `docs/superpowers/plans/p6-phase10-english.md` §五 records the gap.
    */
   private async render(
     piece: SynthesizePiece,
     voiceId: string,
-    lang: string
+    _lang: string
   ): Promise<Float32Array> {
     const tts = this.tts;
     if (!tts) throw new Error('the model is not loaded');
     const options = { voice: voiceId } as GenerateOptions;
 
-    if (isChinese(lang) || isJapanese(lang)) {
-      const encoded = tts.tokenizer(piece.ipa, { truncation: false });
-      const audio = await tts.generate_from_ids(encoded.input_ids, options);
-      return audio.audio;
-    }
-
-    const audio = await tts.generate(piece.text, options);
+    const encoded = tts.tokenizer(piece.ipa, { truncation: false });
+    const audio = await tts.generate_from_ids(encoded.input_ids, options);
     return audio.audio;
   }
 

@@ -85,8 +85,10 @@ export interface LocalProviderDeps {
  *
  * The prefix is the reliable signal — it is how the model repository names its
  * voices, and it is the only thing a voice id carries — and it is what decides
- * which phonemization pipeline the engine uses. Getting it wrong would send
- * Chinese text through espeak, which throws.
+ * which phonemization pipeline the engine uses. Getting it wrong sends the
+ * sentence down the wrong frontend, which reads it as the wrong language rather
+ * than failing: a `zh` voice with `en-US` phonemizes English text with the
+ * Chinese word list.
  */
 export function voiceLanguage(voiceId: string): string | undefined {
   const prefix = voiceId.slice(0, 2);

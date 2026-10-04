@@ -276,8 +276,9 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     await engine.synthesize('hello world', 'af_heart', 'en-US', signal);
 
     // The exact string `en_g2p.rs` pins on the Rust side, so a change on either
-    // side of the seam shows up here.
-    expect(kokoro.pieces).toEqual([{ text: 'hello world', ipa: 'həlˈoʊ wˈɜːld' }]);
+    // side of the seam shows up here. Since phase 10 the model is handed IPA and
+    // nothing else — see `SynthesizePiece`.
+    expect(kokoro.pieces).toEqual([{ ipa: 'həlˈoʊ wˈɜːld' }]);
   });
 
   it.skipIf(REAL_IPADIC === null)('hands the model Japanese phonemes', async () => {
@@ -291,7 +292,7 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     // The dictionary was asked for by the *phonemize* worker, not by the model:
     // `prepare` is what makes the language usable, and nothing else loads it.
     expect(phonemizer.posted[1]).toMatchObject({ type: 'prepare', lang: 'ja-JP' });
-    expect(kokoro.pieces).toEqual([{ text: '経営', ipa: 'keiei' }]);
+    expect(kokoro.pieces).toEqual([{ ipa: 'keiei' }]);
   });
 
   it.skipIf(REAL_JIEBA === null)('hands the model Chinese phonemes', async () => {
@@ -306,14 +307,15 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     // the first a second — *ní hǎo*. This test is about the seam between the two
     // workers and not about the reading, so all it needs from here is that the
     // string arrived; `tests/tone_sandhi.rs` is what pins it.
-    expect(kokoro.pieces).toEqual([{ text: '你好', ipa: 'ni↗xau↓' }]);
+    expect(kokoro.pieces).toEqual([{ ipa: 'ni↗xau↓' }]);
   });
 
   it('keeps every character of a sentence it has to cut up', async () => {
     // Cutting is the coordinator's job, and the risk of moving it here is that
-    // a piece's text and a piece's phonemes stop describing the same thing. The
-    // sentence has to survive the round trip whole, and every piece has to have
-    // something to say — an empty IPA is a piece that plays as silence.
+    // a piece stops describing what the one it replaced described. The sentence
+    // has to survive the round trip whole, and every piece that reaches the
+    // model has to have something to say — an empty IPA is a piece that plays
+    // as silence.
     const { engine, kokoro, phonemizer } = await assembled({});
     kokoro.tokens = (phonemes) => (phonemes.length > 8 ? 600 : 5);
     const signal = new AbortController().signal;
@@ -321,13 +323,23 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     await engine.synthesize('hello world', 'af_heart', 'en-US', signal);
 
     // Measured whole, found too long, halved (there is no punctuation to cut
-    // at), then measured again — and phonemized for real each time.
+    // at), then measured again — and phonemized for real each time. The text is
+    // what travels here, so this is where "every character survived the cut" is
+    // asserted: the three requests are the whole sentence and its two halves.
     const asked = phonemizer.posted.filter((message) => message.type === 'phonemize');
     expect(asked.map((message) => message.text)).toEqual(['hello world', 'hello', ' world']);
+    expect(
+      asked
+        .map((message) => message.text)
+        .slice(1)
+        .join('')
+    ).toBe('hello world');
+
     // Packed back into one call, because two small pieces cost more to
     // synthesize than one — the cut exists for the paragraph, not the sentence.
+    // Since phase 10 the model is handed IPA and not text, so this is as much as
+    // can be said here about the join: one call, and every piece audible.
     expect(kokoro.pieces).toHaveLength(1);
-    expect(kokoro.pieces.map((piece) => piece.text).join('')).toBe('hello world');
     for (const piece of kokoro.pieces) expect(piece.ipa.trim()).not.toBe('');
   });
 

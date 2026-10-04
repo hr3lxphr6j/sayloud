@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import preact from '@preact/preset-vite';
 import { defineConfig } from 'wxt';
 
@@ -16,6 +17,35 @@ function e2eHostPermissions(): string[] {
 export default defineConfig({
   vite: () => ({
     plugins: [preact()],
+    resolve: {
+      alias: {
+        /**
+         * Take espeak-ng out of the bundle.
+         *
+         * `kokoro-js` imports `phonemize` from the `phonemizer` package at
+         * module scope, so espeak-ng's wasm is in the import graph from the
+         * moment the kokoro worker exists — whether or not `generate()` is ever
+         * called — and the bundler follows the import graph rather than the
+         * calls. Phase 10 renders every language from IPA through
+         * `generate_from_ids()`, so `generate()` is not called and the 1.3 MB of
+         * espeak data is not reachable at runtime; this alias is what makes it
+         * not reachable at build time either.
+         *
+         * Aliasing the *specifier* is the whole mechanism, and it has to be the
+         * bare name rather than a path: `kokoro-js` is the one that says
+         * `import ... from "phonemizer"`, and `resolve.alias` replaces that
+         * source string before resolution. Pointing it at `false` instead would
+         * leave the import in place as an empty module and only work for the
+         * default export.
+         *
+         * `phonemizer` is not a direct dependency — it is `kokoro-js`'s, and pnpm
+         * keeps it in the store rather than the root — so there is no
+         * `package.json` entry to remove and nothing else names it. The stub's own
+         * doc comment explains what would break if the call ever came back.
+         */
+        phonemizer: fileURLToPath(new URL('lib/models/phonemizer-stub.ts', import.meta.url)),
+      },
+    },
     /**
      * Do **not** add `define: { 'import.meta': '{}' }` here.
      *

@@ -26,15 +26,19 @@ import { isMessageId, messageTypeOf } from './worker-message';
 /**
  * One synthesis call's worth of prepared text.
  *
- * Both halves travel because the two language families need different ones:
- * Chinese and Japanese are rendered from `ipa` (their voices are outside the
- * list `kokoro-js`'s own `generate()` accepts, so they enter through
- * `generate_from_ids`), and English is rendered from `text` (`generate()` runs
- * the model's own front end internally, and re-implementing it here is how the
- * two would drift apart).
+ * **Only the IPA travels.** Until phase 10 English was rendered from `text`,
+ * because `kokoro-js`'s own `generate()` runs the model's front end internally —
+ * espeak, plus the number, punctuation and character substitutions applied
+ * afterwards — and re-implementing that here was how the two would drift apart.
+ * Phase 10 replaced that front end with the Rust phonemizer for all three
+ * languages, so there is one rendering path and one input: `ipa`, which is
+ * `generate_from_ids`'s argument and needs no reading of the text at all.
+ *
+ * The text is still what gets *split*, and where it is split is decided by
+ * `planPieces` before this struct exists — so what a caller loses by not sending
+ * it is nothing it still needs.
  */
 export interface SynthesizePiece {
-  readonly text: string;
   readonly ipa: string;
 }
 
@@ -101,8 +105,8 @@ const REPLY_TYPES: ReadonlySet<string> = new Set(['ready', 'loaded', 'counted', 
 /** True for one piece of a sentence that is ready to be spoken. */
 function isSynthesizePiece(value: unknown): value is SynthesizePiece {
   if (typeof value !== 'object' || value === null) return false;
-  const piece = value as { text?: unknown; ipa?: unknown };
-  return typeof piece.text === 'string' && typeof piece.ipa === 'string';
+  const piece = value as { ipa?: unknown };
+  return typeof piece.ipa === 'string';
 }
 
 /** True for a well-formed request. */

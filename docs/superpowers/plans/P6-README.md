@@ -33,6 +33,10 @@
 - `p6-phase7-two-workers.md` - 双 worker 架构
 - `p6-phase8-cleanup.md` - JS 链清理
 - `p6-9b2-implementation.md` - **阶段 9B.2：英文 WeText TN 集成**（含实测数字与三处评估更正）
+- `p6-9a-headtts-integration.md` - 阶段 9A：英文 OOV 换成 NRL 7948 规则
+- `p6-9d-tone-sandhi-erhua.md` - 阶段 9D：中文变调与儿化音
+- `p6-9e-cjk-text-normalization.md` - **阶段 9E：中日文 TN**（含修改 7 与两种语言的 delta 表）
+- `p6-phase10-english.md` - **阶段 10：英文接入 Rust phonemize、移除 espeak**（含体积与未做的听感测试）
 
 ### 调研资料（参考价值）
 

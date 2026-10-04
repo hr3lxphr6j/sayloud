@@ -72,6 +72,30 @@ const ORT_MARKERS = ['onnxruntime', 'InferenceSession', 'wasmPaths', 'ort-wasm']
 const PHONEMIZE_MARKERS = ['phonemize_bg-'] as const;
 
 /**
+ * Strings that only appear in a bundle carrying espeak-ng.
+ *
+ * Phase 10 dropped espeak from the extension: English is rendered from the Rust
+ * phonemizer's IPA through `generate_from_ids()` like the other two languages,
+ * so `kokoro-js`'s own front end is never called and the 2.5 MB `phonemizer`
+ * package is aliased to a throwing stub (`wxt.config.ts`).
+ *
+ * Two markers, and **not** the obvious `espeak` or `phonemizer`, both of which
+ * this file tried first:
+ *
+ *   - `phonemizer` is our own word — the phonemize worker, `PhonemizeService`,
+ *     the wasm's `phonemizer_free` export — and appears in three chunks that have
+ *     nothing to do with espeak;
+ *   - `espeak` is a substring of `WeSpeakerResNetModel`, which transformers.js
+ *     lists among its supported models, so it survives in the kokoro worker
+ *     forever.
+ *
+ * `espeak-ng-data` is the directory the package's wasm reads and `eSpeakNG` is
+ * the worker class it spawns; both were measured present in the pre-phase-10
+ * build and absent now, in the same file (`assets/kokoro.worker-*.js`).
+ */
+const ESPEAK_MARKERS = ['espeak-ng-data', 'eSpeakNG'] as const;
+
+/**
  * Strings that only appear in a bundle carrying the JavaScript phonemize chain.
  *
  * Phase 8 deleted that chain, and the deletion is the one thing in this file
@@ -88,9 +112,7 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  * 8.5 MB IPADic dictionary, the 6.1 MB phonemizer wasm, the 2.8 MB HeadTTS
  * dictionary (phase 9A deleted it), the 2.2 MB kokoro worker chunk, the 1.6 MB
  * Chinese word list, the 0.7 MB English text-normalization grammars, and the
- * rest. Phase 9A left it at 41.62 MB. The `MIN_BYTES`/`MAX_BYTES` window still
- * has this number in it, which is the point of pinning the wasm separately below:
- * a change that moves the total has to say what moved.
+ * rest. Phase 9A left it at 41.62 MB.
  *
  * **Phase 8 deleted the JavaScript chain, and the size fell by exactly the
  * kuromoji dictionary: 57,692,840 → 39,900,884 B.** That drop is the dictionary
@@ -128,6 +150,30 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  * in beside it. The rule count is 309: the "7948" is the number of the NRL
  * report, not the size of its rule table.
  *
+ * **Phase 9D: +28,853 B of wasm, no asset change** (the Mandarin tone rules).
+ *
+ * **Phase 9E: +1,459 B of wasm and +223,092 B of assets.** The smallest of the
+ * phases by an order of magnitude, and deliberately so: the FST *engine* was
+ * paid for in 9B, so what is new here is the wiring — two more `Option<Normalizer>`
+ * fields, a shared numeral step, one Unicode digit test — and four grammars as
+ * assets (54 + 106 + 30 + 33 KB, plus a NOTICE each). 1,459 B is 0.024% of a
+ * 6 MB module, and it is the whole cost of Chinese and Japanese text
+ * normalization.
+ *
+ * **Phase 10: −1,320,513 B of assets, no wasm change.** English stopped being
+ * rendered by `kokoro-js`'s own front end, which took the `phonemizer` package —
+ * espeak-ng's 2.5 MB wasm — out of the graph; the kokoro worker's chunk alone fell
+ * from 2,225,156 B to 904,657 B, and that chunk is what espeak *was*. Measured by
+ * building this tree with and without the alias, so it is one measurement and not
+ * a comparison against a number from another session. `pnpm build` no longer
+ * emits an espeak asset at all.
+ *
+ * The three numbers that matter today, measured on one build:
+ *
+ *   wasm          6,090,205 B
+ *   assets       22,539,282 B  (two dictionaries, six grammars, ORT's 20.6 MB)
+ *   total        40,521,530 B  (40.52 MB)
+ *
  * **This bound had been exceeded twice before.** It was set to 44-50 MB around a
  * measurement of 46.8 MB and did not move when the IPADic dictionary — 8.1 MB,
  * and absent from the itemisation above until phase 6 — landed; the build was
@@ -150,15 +196,15 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  * The lesson is the one the first overrun already wrote down and did not act on:
  * an asset that lands in `public/` moves this number, and whoever adds one owns
  * moving it. A bound nothing runs is a comment with a test around it.
- * Phase 9A left it at 41.62 MB (41,615,858 B), which is 2.79 MB below where
- * 9B left it: the HeadTTS dictionary above is gone, and the wasm grew 18,015 B.
- * The window below is 40–46 MB. The floor is not decorative — it is what catches
- * a build that silently stopped copying a dictionary, which is a failure this
- * test has already failed to notice once — so it sits one Chinese word list below
- * the measurement rather than as far down as it could go.
+ *
+ * **The floor is not decorative.** It is what catches a build that silently
+ * stopped copying a dictionary — a failure this test has already failed to notice
+ * once — so it sits roughly one Chinese word list (1.63 MB) below the measurement
+ * rather than as far down as it could go. The ceiling sits ~4.5 MB above it, which
+ * is more than any single asset here except ONNX Runtime's wasm.
  */
-const MIN_BYTES = 40_000_000;
-const MAX_BYTES = 46_000_000;
+const MIN_BYTES = 38_890_000;
+const MAX_BYTES = 45_000_000;
 
 interface BuiltFile {
   /** Path relative to the output directory, POSIX-separated. */
@@ -305,6 +351,13 @@ function carriesPhonemizer(path: string): boolean {
   return PHONEMIZE_MARKERS.some((marker) => text.includes(marker));
 }
 
+/** Whether this file's code can reach espeak-ng. JavaScript only, as above. */
+function carriesEspeak(path: string): boolean {
+  if (!path.endsWith('.js')) return false;
+  const { text } = readBuiltFile(path);
+  return ESPEAK_MARKERS.some((marker) => text.includes(marker));
+}
+
 const manifest = JSON.parse(readBuiltFile('manifest.json').text) as {
   background?: { service_worker?: string; scripts?: string[] };
   side_panel?: { default_path?: string };
@@ -432,7 +485,14 @@ describe('the build output', () => {
     // comparison that matters is with the 3.75 MB CMU dictionary above: the
     // fallback for a word it lacks is three orders of magnitude smaller than the
     // table of the words it has.
-    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_088_746);
+    //
+    // 6,090,205 as of phase 9E, which is **+1,459 B** for Chinese and Japanese
+    // text normalization — measured against 6,088,746 from a build of the same
+    // tree with the wiring reverted, not against the constant above. The FST
+    // engine (`rustfst`) arrived in 9B and is shared; what is new is two fields,
+    // a shared numeral step and one Unicode digit test. 0.024% of the module for
+    // both languages, against 1.01 MB for English's share of the same engine.
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_090_205);
   });
 
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {
@@ -497,6 +557,27 @@ describe('the build output', () => {
 
     expect(mentions).toEqual([]);
     expect(FILES.filter((path) => path.startsWith('kuromoji-dict/'))).toEqual([]);
+  });
+
+  it('carries no trace of espeak-ng', () => {
+    // Phase 10. English is rendered from the Rust phonemizer's IPA, so
+    // `kokoro-js`'s own front end — the half that called espeak — is never
+    // reached, and the alias in `wxt.config.ts` is what keeps its 2.5 MB out of
+    // the package. The failure this catches is the alias being dropped or the
+    // specifier being respelled: the extension would still work, 1.3 MB heavier,
+    // and nothing else in the suite would say a word.
+    //
+    // JavaScript only, for the reason `carriesOrt` gives, and asserted across
+    // the whole package rather than against the worker that used to carry it —
+    // espeak was reachable from exactly one chunk, and "exactly one chunk" is
+    // not a property worth pinning.
+    expect(FILES.filter(carriesEspeak)).toEqual([]);
+
+    // And the marker is one that *would* be found if it came back: the package
+    // that provides it is still on disk, so this is a check on the build and not
+    // on the dependency having been uninstalled.
+    const packageDir = resolve(process.cwd(), 'node_modules/.pnpm/phonemizer@1.2.1');
+    expect(existsSync(packageDir)).toBe(true);
   });
 
   it('stays the size the spec measured', () => {

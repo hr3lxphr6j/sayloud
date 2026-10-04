@@ -411,7 +411,7 @@ describe('WorkerLocalEngine.synthesize', () => {
     expect(workers.phonemizer.types).toEqual(['init', 'prepare', 'phonemize']);
     expect(workers.kokoro.types).toEqual(['init', 'load', 'count', 'synthesize']);
     expect(workers.kokoro.posted.at(-1)).toMatchObject({
-      pieces: [{ text: 'hello', ipa: 'ipa:hello' }],
+      pieces: [{ ipa: 'ipa:hello' }],
       voiceId: 'af_heart',
       lang: 'en-US',
     });
@@ -522,7 +522,7 @@ describe('WorkerLocalEngine.synthesize', () => {
     // *does* fit at exactly one call.
     expect(counted).toEqual(['ipa:a,b', 'ipa:a,', 'ipa:b']);
     expect(workers.kokoro.posted.at(-1)).toMatchObject({
-      pieces: [{ text: 'a,b', ipa: 'ipa:a, ipa:b' }],
+      pieces: [{ ipa: 'ipa:a, ipa:b' }],
     });
   });
 

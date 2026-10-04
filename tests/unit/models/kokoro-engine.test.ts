@@ -35,7 +35,12 @@ function speakingSession() {
   const dispose = vi.fn();
   const generate = vi.fn(async () => ({ audio: new Float32Array([1, 1]) }));
   const generateFromIds = vi.fn(async () => ({ audio: new Float32Array([2]) }));
-  const tokenizer = vi.fn((text: string) => ({ input_ids: { dims: [1, text.length] } }));
+  // Two parameters because `KokoroEngine` always passes the second one —
+  // `{ truncation: false }` — and a one-parameter fake would make the argument
+  // invisible to `mock.calls` as well as to the type checker.
+  const tokenizer = vi.fn((text: string, _options?: { truncation?: boolean }) => ({
+    input_ids: { dims: [1, text.length] },
+  }));
   const session = {
     model: { dispose },
     generate,
@@ -166,16 +171,15 @@ describe('KokoroEngine.load', () => {
 /**
  * What the engine does with pieces that are already phonemized.
  *
- * The two paths are the whole reason a piece carries both its text and its IPA:
- * English goes in as text so `kokoro-js` phonemizes it the way the model was
- * trained, and Chinese and Japanese go in as IPA because `generate()` rejects
- * every voice outside its own 28-voice English list.
+ * **One path for all three languages, since phase 10.** Until then an English
+ * piece went in as *text* so `kokoro-js` phonemized it the way the model was
+ * trained — espeak plus the substitutions applied afterwards — and Chinese and
+ * Japanese went in as IPA because `generate()` rejects every voice outside its
+ * own 28-voice English list. All three now arrive as IPA from the Rust
+ * phonemizer, so `generate()` is gone from this class entirely.
  */
 describe('KokoroEngine.synthesize', () => {
-  const PIECES = [
-    { text: 'hello', ipa: 'həlˈoʊ' },
-    { text: ' world', ipa: ' wˈɜːld' },
-  ];
+  const PIECES = [{ ipa: 'həlˈoʊ' }, { ipa: ' wˈɜːld' }];
 
   beforeEach(() => {
     fromPretrained.mockReset();
@@ -187,28 +191,39 @@ describe('KokoroEngine.synthesize', () => {
 
     const pcm = await engine.synthesize(1, PIECES, 'af_heart', 'en-US');
 
-    expect(session.generate).toHaveBeenCalledTimes(2);
+    expect(session.generateFromIds).toHaveBeenCalledTimes(2);
+    expect(session.generate).not.toHaveBeenCalled();
     // Same sample rate by construction, so the concatenation is exact.
     expect(pcm.sampleRate).toBe(24_000);
-    expect([...pcm.pcm]).toEqual([1, 1, 1, 1]);
+    expect([...pcm.pcm]).toEqual([2, 2]);
   });
 
-  it('speaks English through the library\u2019s own front end', async () => {
-    // The reason a piece carries its text at all. `generate()` applies the
-    // number, punctuation and character substitutions Kokoro was trained on;
-    // re-implementing them here is how the two would drift apart.
+  it('speaks English from the IPA the Rust pipeline produced', async () => {
+    // Phase 10. English used to reach `generate()` as text, which meant a second
+    // front end ran over words that had already been phonemized — and the token
+    // count in `countTokens()` described the IPA rather than what was spoken.
+    // The assertion is the same shape as the one below it now, which is the
+    // point: the language no longer picks a path.
     const session = speakingSession();
     const engine = await speaking(session.session);
 
     await engine.synthesize(1, [PIECES[0] as (typeof PIECES)[number]], 'af_heart', 'en-GB');
 
-    expect(session.generate).toHaveBeenCalledWith('hello', { voice: 'af_heart' });
-    expect(session.generateFromIds).not.toHaveBeenCalled();
+    expect(session.tokenizer).toHaveBeenCalledWith('həlˈoʊ', { truncation: false });
+    expect(session.generateFromIds).toHaveBeenCalledWith(
+      { dims: [1, 6] },
+      {
+        voice: 'af_heart',
+      }
+    );
+    expect(session.generate).not.toHaveBeenCalled();
   });
 
-  it('speaks Chinese and Japanese from the IPA', async () => {
+  it('speaks Chinese and Japanese from the IPA too', async () => {
     // `generate()` validates the voice against its own list of 28 English
-    // voices, so these two languages cannot use it at all.
+    // voices, which is why these two never used it. Kept as a test of its own
+    // because the list is `kokoro-js`'s and this engine no longer depends on
+    // whether a voice happens to be in it.
     const session = speakingSession();
     const engine = await speaking(session.session);
 
@@ -220,11 +235,27 @@ describe('KokoroEngine.synthesize', () => {
     expect(session.generate).not.toHaveBeenCalled();
   });
 
+  it('does not truncate at the model\u2019s limit', async () => {
+    // `truncation: true` would silently cut an over-long piece mid-word, which
+    // reads as a bad sentence rather than as a bug — and `planPieces` has
+    // already cut against this same tokenizer, so the limit is not reached
+    // legitimately. Asserted on every language now, because the reason used to
+    // be stated only for the count.
+    const session = speakingSession();
+    const engine = await speaking(session.session);
+
+    await engine.synthesize(1, PIECES, 'af_heart', 'en-US');
+
+    for (const call of session.tokenizer.mock.calls) {
+      expect(call[1]).toEqual({ truncation: false });
+    }
+  });
+
   it('stops rendering the pieces still to come once it is cancelled', async () => {
     const session = speakingSession();
     const engine = await speaking(session.session);
     const first = deferred<{ audio: Float32Array<ArrayBuffer> }>();
-    session.generate.mockReturnValueOnce(first.promise);
+    session.generateFromIds.mockReturnValueOnce(first.promise);
 
     const synthesis = engine.synthesize(7, PIECES, 'af_heart', 'en-US');
     await tick();
@@ -234,7 +265,7 @@ describe('KokoroEngine.synthesize', () => {
     await expect(synthesis).rejects.toThrow('aborted');
     // The second piece is not rendered: the caller has moved on, and rendering
     // it would occupy the device for audio nobody will play.
-    expect(session.generate).toHaveBeenCalledTimes(1);
+    expect(session.generateFromIds).toHaveBeenCalledTimes(1);
   });
 
   it('refuses to speak before a model is loaded', async () => {

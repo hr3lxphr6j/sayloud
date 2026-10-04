@@ -6,8 +6,9 @@
  * `TimelinePlayer`, the `<audio>` element, the L2 audio cache — already speaks
  * "one `ArrayBuffer` with a mime type", so the cheapest way to fit in is to
  * write a WAV header and hand over a buffer that needs no new code anywhere.
- * Both synthesis paths (English `generate()`, Chinese `generate_from_ids()`)
- * return the same `RawAudio` shape, so this is one implementation for both.
+ * Both synthesis paths return the same `RawAudio` shape — and since phase 10
+ * there is only one path, `generate_from_ids()`, for all three languages — so
+ * this is one implementation for all of them.
  */
 
 /** Kokoro's output rate. Not configurable — the model decides it. */

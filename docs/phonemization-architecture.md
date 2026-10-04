@@ -44,7 +44,7 @@ offscreen 主线程   lib/models/worker-engine.ts
 
 | 层 | 内容 |
 |---|---|
-| `frontends/` | 每个音素集一个：`ja_ipa`（v1.0 日语）、`zh_ipa`、`zh_zhuyin`（v1.1-zh）、`en_espeak`。最后一步，也是唯一知道模型词表的一层 |
+| `frontends/` | 每个音素集一个：`ja_ipa`（v1.0 日语）、`zh_ipa`、`zh_zhuyin`（v1.1-zh）。最后一步，也是唯一知道模型词表的一层 |
 | `backends/` | 各语言的 G2P 与切词：`segmenter_ja`（lindera IPADic）、`segmenter_zh`（jieba-rs）、`pinyin`（pinyin-pro 的移植）、`tone_sandhi`（阶段 9D：普通话变调与儿化音）、`numbers`/`numbers_zh`（数字读法）、`g2p_en`（piper-plus-g2p，CMU Dict + ARPAbet→IPA） |
 | `text.rs` / `zh_text.rs` | 标点归一、脚本切分、空白处理 |
 | `vocab.rs` | **词表闸门**：输出的每个字符必须在所选音色的词表里，否则报错而不是静默丢字 |
@@ -63,34 +63,37 @@ tokenizer 的 normalizer 是"把不认识的东西替换成空串"：**不在词
 |---|---|---|---|
 | `lindera-ipadic-ja.bin.zst` | 8.51 MB | 日语切词 | `prepare('kokoro-v1','ja-JP')` |
 | `jieba-zh-dict.bin.zst` | 1.63 MB | 中文切词 | `prepare('kokoro-v1','zh-CN')` |
-| — | — | 英文 | **不需要**（CMU Dict 编进 wasm） |
+| `wetext-en-tn-*.bin.zst` | 707 KB | 英文数字 | `prepare('kokoro-v1','en-US')` |
+| `wetext-zh-tn-*.bin.zst` | 160 KB | 中文数字 | `prepare('kokoro-v1','zh-CN')` |
+| `wetext-ja-tn-*.bin.zst` | 63 KB | 日语数字 | `prepare('kokoro-v1','ja-JP')` |
 
-两者都由 `pnpm install` 的 `scripts/setup-{lindera,jieba}-dict.sh` 生成，**不跟踪**。
+（`wetext-*-tn` 每项是两个文件：tagger 与 verbalizer，成对缺一不可——tagger 认实体，
+verbalizer 说出来。英文的**发音**词典仍然是编进 wasm 的 CMU Dict，不入此表。）
+
+全部由 `pnpm install` 的 `scripts/setup-{lindera,jieba,wetext-fsts}.sh` 生成，**不跟踪**。
 首句付一次解压（实测中文 82.6 ms、日语 164.3 ms，见
-`tests/performance/phonemize-benchmark.test.ts`）。
+`tests/performance/phonemize-benchmark.test.ts`；TN 文法另外付一次 FST 解析，英文 70 ms）。
 
 ## 语言分派：跟着**音色**走，不是跟着网页
 
-`lib/models/language.ts` 只有两个谓词（`isChinese`、`isJapanese`），kokoro 引擎用它们
-决定怎么渲染一段：
+`lib/models/language.ts` 已随阶段 10 删除（它的两个谓词 `isChinese`/`isJapanese` 再无调用者）。
+现在语言只决定一件事：**哪条音素化管线**。
 
-- **中文 / 日语**：IPA 通过 `generate_from_ids()` 进模型（`generate()` 会拒绝英语以外
-  的所有音色）。
-- **英文（以及其它）**：走 `tts.generate(piece.text)`，即 **kokoro-js 自己内部的
-  espeak**。
+- **三条管线，一个渲染入口。** 中文 `zh-CN`、日语 `ja-JP`、英文 `en-US` 各自走
+  `crates/phonemize` 里的一条管线，输出 IPA，经 `generate_from_ids()` 进模型。
+- 音色 id 的前缀（`zf_`/`jf_`/`af_`…，见 `lib/providers/local.ts::voiceLanguage`）是
+  语言从哪来的唯一信号，选错会让句子被当成另一种语言音素化，而不是报错。
 
-### 英文这个例外，以及它留下的一个不一致
+### 英文两处历史例外都已收敛
 
-生产英文**不走** Rust 的 `g2p_en`。`lib/models/phonemize/english.ts` 已在阶段 8 删除，
-而它本来也没有调用者；真正发声的是 kokoro-js 内部的 espeak，那是模型训练时的对齐目标。
-原因是质量：espeak 处理缩写、缩略词、专名比 CMU Dict 好（阶段 4 的决定，P6.1 仍未拍板
-是否迁移）。
-
-需要知道的一个**现存小不一致**：`worker-engine.ts` 对**所有**语言都调 phonemize
-worker，英文也不例外。于是英文那句的 **token 数**是按 Rust 的 IPA 算的，而**音频**
-是按 kokoro-js 的 espeak IPA 合成的。两者长度不同，切句的估算因此对英文略偏。
-不是 bug（`planPieces` 只需要一个上限内的切分），但它是 P6.1 的输入之一：要么让英文
-真的走 Rust IPA，要么对英文别再算那份用不上的 IPA。
+1. **渲染路径**。阶段 10 之前 `KokoroEngine.render()` 按语言分叉：英文走
+   `tts.generate(piece.text)`（kokoro-js 内部 espeak），中日文走 `generate_from_ids(ipa)`。
+   现在三种语言都走 IPA。代价与缺口（尤其是 8 个英式音色没有自己的音素变体、
+   `nˈaɪnti`→`nˈaɪndi` 这类 en-US 专属改写的缺失）在
+   `docs/superpowers/plans/p6-phase10-english.md` §四/§五，**听感测试未做**。
+2. **token 数与音频不一致**。`worker-engine.ts` 对所有语言都调 phonemize worker，
+   英文也不例外——于是英文那句的 token 数按 Rust IPA 算、音频按 espeak IPA 合成，
+   两者长度不同，切句估算因此对英文略偏。阶段 10 之后两者是同一串 IPA，这条不一致消失。
 
 ## 云服务商不做音素化
 

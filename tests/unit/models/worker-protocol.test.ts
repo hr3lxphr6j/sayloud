@@ -31,7 +31,7 @@ describe('isWorkerRequest', () => {
       isWorkerRequest({
         type: 'synthesize',
         id: 4,
-        pieces: [{ text: 'hello', ipa: 'həlˈoʊ' }],
+        pieces: [{ ipa: 'həlˈoʊ' }],
         voiceId: 'af_heart',
         lang: 'en-US',
       })
@@ -58,9 +58,19 @@ describe('isWorkerRequest', () => {
     const base = { type: 'synthesize', id: 1, voiceId: 'af_heart', lang: 'en-US' };
     expect(isWorkerRequest({ ...base, pieces: [] })).toBe(false);
     expect(isWorkerRequest({ ...base, pieces: 'həlˈoʊ' })).toBe(false);
+    // No `ipa` at all — the shape a previous version sent, when a piece carried
+    // the raw text as well. It is refused for the same reason: `render` reads
+    // `piece.ipa` and would tokenize `undefined`.
     expect(isWorkerRequest({ ...base, pieces: [{ text: 'hello' }] })).toBe(false);
-    expect(isWorkerRequest({ ...base, pieces: [{ text: 7, ipa: 'a' }] })).toBe(false);
+    expect(isWorkerRequest({ ...base, pieces: [{ ipa: 7 }] })).toBe(false);
+    expect(isWorkerRequest({ ...base, pieces: [{ ipa: undefined }] })).toBe(false);
     expect(isWorkerRequest({ ...base, pieces: [null] })).toBe(false);
+    // And a piece that carries *only* the IPA is the shape that works.
+    expect(isWorkerRequest({ ...base, pieces: [{ ipa: 'a' }] })).toBe(true);
+    // Extra fields are not rejected — `isSynthesizePiece` is a type guard, not a
+    // schema — so the one that used to travel is accepted as long as the IPA is
+    // there. Asserted so the comment above is not mistaken for a validator.
+    expect(isWorkerRequest({ ...base, pieces: [{ text: 'a', ipa: 'a' }] })).toBe(true);
   });
 
   it('refuses a count with nothing to count', () => {

@@ -64,9 +64,12 @@ export interface OnDeviceEngine {
    * Synthesize one sentence.
    *
    * `lang` is required rather than optional because it selects the
-   * phonemization path, and the two paths are not interchangeable: Chinese
-   * needs a lookup table and tone arrows, English needs espeak. Callers derive
-   * it from the voice id's prefix when the user has not set one.
+   * phonemization path, and the paths are not interchangeable: Chinese needs a
+   * word list and tone arrows, Japanese a dictionary, and English neither —
+   * its CMU dictionary is compiled into the wasm (P6 spec §2.3). Since phase 10
+   * it does *not* select the rendering path: all three languages reach the model
+   * as IPA. Callers derive it from the voice id's prefix when the user has not
+   * set one.
    */
   synthesize(text: string, voiceId: string, lang: string, signal: AbortSignal): Promise<RawPcm>;
 

@@ -129,6 +129,72 @@ function phonemizerWith(bytes: DictionaryBytes = COMPRESSED) {
   return { phonemizer, fetch, caches };
 }
 
+/**
+ * The two English text-normalization grammars (phase 9B).
+ *
+ * English's pronunciation dictionary is compiled in; these are the OpenFST
+ * grammars its numerals go through, and they are fetched on `prepare` like any
+ * other dictionary.
+ */
+const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
+
+/** Where the wrapper looks for each one. */
+const WETEXT_EN_URLS = WETEXT_EN.map((name) => `/dictionaries/${name}.bin.zst`);
+
+/**
+ * The real English grammars, or `null` when skipping was asked for.
+ *
+ * Read once at collection time, like the IPADic asset above and under the same
+ * rule: missing is a failure, and skipping is asked for by name.
+ */
+function realWetextEn(): DictionaryBytes[] | null {
+  try {
+    return WETEXT_EN.map(
+      (name) =>
+        new Uint8Array(
+          readFileSync(
+            resolve(
+              dirname(fileURLToPath(import.meta.url)),
+              `../../../public/dictionaries/${name}.bin.zst`
+            )
+          )
+        ) as DictionaryBytes
+    );
+  } catch (error) {
+    if (process.env.PHONEMIZE_SKIP_DICT_TESTS === '1') {
+      console.warn(`SKIPPING the English TN tests: ${String(error)}`);
+      return null;
+    }
+    throw new Error(
+      `no English text-normalization grammar (${String(error)}).\n` +
+        'Run ./scripts/setup-wetext-fsts.sh to build them, or set ' +
+        'PHONEMIZE_SKIP_DICT_TESTS=1 to skip the English TN tests.'
+    );
+  }
+}
+
+/** Read once, at collection time, so the skip conditions are cheap to ask. */
+const REAL_WETEXT_EN = realWetextEn();
+
+/** Whether the tests that need the real English grammars can run at all. */
+const hasWetextEn = REAL_WETEXT_EN !== null;
+
+/** The same as `phonemizerWith`, with the two English grammars behind it. */
+function phonemizerWithEnglish() {
+  const bytes = REAL_WETEXT_EN ?? [];
+  const routes: Record<string, DictionaryBytes> = {};
+  WETEXT_EN_URLS.forEach((url, index) => {
+    routes[url] = bytes[index] ?? COMPRESSED;
+  });
+
+  const fetch = fakeFetch(
+    Object.fromEntries(Object.entries(routes).map(([url, value]) => [url, { bytes: value }]))
+  );
+  const caches = new FakeCaches();
+  const phonemizer = new RustPhonemizer({ wasm: WASM, fetch, cacheStorage: caches });
+  return { phonemizer, fetch, caches };
+}
+
 /** The same, with the Chinese word list behind the wrapper's dictionary source. */
 function chinesePhonemizerWith(bytes: DictionaryBytes) {
   const fetch = fakeFetch({ [JIEBA_URL]: { bytes } });
@@ -179,17 +245,36 @@ describe('RustPhonemizer.prepare', () => {
     expect(caches.bucket(DICTIONARIES_CACHE).has(IPADIC_URL)).toBe(true);
   });
 
-  it('fetches nothing for a language that needs no dictionary', async () => {
-    // English's CMU dictionary is compiled into the wasm (spec §2.3), the way
-    // espeak's data was meant to be. A `prepare` that demanded a dictionary
-    // anyway would fail here, and would also make every English voice
-    // unplayable.
-    const { phonemizer, fetch } = phonemizerWith();
+  it.skipIf(!hasWetextEn)('fetches the text-normalization grammars English now needs', async () => {
+    // English's *pronunciation* dictionary is compiled into the wasm (spec
+    // §2.3) — the CMU dictionary — and this test used to assert that a
+    // `prepare('kokoro-v1', 'en-US')` therefore fetched nothing. Phase 9B made
+    // that false: the numerals go through vendored WeText grammars, and those
+    // are 12 MB of OpenFST binary, so they are fetched on `prepare` the way
+    // IPADic and jieba's word list are.
+    //
+    // Both, in the order the wasm asks for them, and parsed — `finish_loading`
+    // is inside `prepare`, so a stand-in frame would fail here rather than pass
+    // silently.
+    const { phonemizer, fetch } = phonemizerWithEnglish();
     await phonemizer.ready;
 
     await phonemizer.prepare('kokoro-v1', 'en-US');
 
-    expect(fetch.calls).toEqual([]);
+    expect(fetch.calls).toEqual(WETEXT_EN_URLS);
+  });
+
+  it('still phonemizes English with no dictionary at all', async () => {
+    // The property phase 9B's fallback exists to keep. English used to be the
+    // language `prepare` had nothing to do for, so a caller that never called it
+    // is not an error: the hand-written numeral reader is still compiled in, and
+    // the pipeline falls back to it rather than refusing or losing the digits.
+    const phonemizer = new RustPhonemizer({ wasm: WASM });
+    await phonemizer.ready;
+
+    expect(
+      phonemizer.phonemize('I have 3 cats', { frontend: 'kokoro-v1', lang: 'en-US' }).phonemes
+    ).toBe('aɪ hæv θɹˈiː kˈæts');
   });
 
   it('rejects a language the frontend cannot speak', async () => {

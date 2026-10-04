@@ -25,10 +25,15 @@
  *   whichever sentence comes first unless something warms it. It is measured
  *   instead of being hidden by a warm-up loop.
  * - **Cold start.** `prepare` decompresses the dictionary inside the wasm —
- *   1.6 MB for Chinese, 8.5 MB for Japanese — which the plan's risk list names
- *   as the first sentence's cost. This says how big it actually is: the two
- *   numbers are almost entirely decompression, because the glue caches the
- *   compiled module after the first instance, which is why English's is 1 ms.
+ *   1.6 MB for Chinese, 8.5 MB for Japanese, 0.7 MB of text-normalization
+ *   grammars for English — which the plan's risk list names as the first
+ *   sentence's cost. This says how big it actually is.
+ *
+ * **Phase 9B moved the English per-sentence number by two orders of magnitude**,
+ * from 0.037 ms to ~3.5 ms, because English numerals now go through a
+ * 12 MB weighted-FST normalizer instead of a table. It is still 0.5% of the
+ * synthesis it feeds, and it has a bound of its own below rather than a raised
+ * shared one: Chinese and Japanese did not change and must not be given room to.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -48,6 +53,13 @@ const WASM = new Uint8Array(
 const IPADIC_URL = '/dictionaries/lindera-ipadic-ja.bin.zst';
 const JIEBA_URL = '/dictionaries/jieba-zh-dict.bin.zst';
 
+/**
+ * The English text-normalization grammars (phase 9B), by the names the wasm
+ * asks for. English's pronunciation dictionary is compiled in; these are what
+ * `prepare` fetches, and what the English benchmark below now pays for.
+ */
+const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
+
 function asset(name: string): DictionaryBytes {
   return new Uint8Array(readFileSync(resolve(ROOT, `public/dictionaries/${name}.bin.zst`)));
 }
@@ -63,6 +75,9 @@ function newPhonemizer(): RustPhonemizer {
     fetch: fakeFetch({
       [IPADIC_URL]: { bytes: asset('lindera-ipadic-ja') },
       [JIEBA_URL]: { bytes: asset('jieba-zh-dict') },
+      ...Object.fromEntries(
+        WETEXT_EN.map((name) => [`/dictionaries/${name}.bin.zst`, { bytes: asset(name) }])
+      ),
     }),
     cacheStorage: new FakeCaches(),
   });
@@ -116,11 +131,22 @@ function medianMs(phonemizer: RustPhonemizer, text: string, options: Options): n
  * each comment so that a failure reports both numbers, the way the build-size
  * bound does.
  */
-/** Measured 0.050 ms (zh, 32 chars), 0.039 ms (ja, 35), 0.037 ms (en): ~20x. */
+/** Measured 0.050 ms (zh, 32 chars) and 0.039 ms (ja, 35): ~20x. */
 const WARM_BOUND_MS = 1;
-/** Measured 18.0 ms — the CMU hash map, once per phonemizer: ~8x. */
+/**
+ * Measured 3.541 ms (en, 68 chars), against 0.037 ms before phase 9B: ~3.4x.
+ *
+ * The English pipeline's numerals are matched by a weighted-FST tagger and
+ * verbalizer over 12 MB of grammar, where they used to be a table lookup, and
+ * the reference implementation normalizes English text whether or not it has a
+ * digit in it — so there is no early exit to hide behind. Not folded into
+ * `WARM_BOUND_MS` on purpose: that bound is what Chinese and Japanese are held
+ * to, and they did not get slower.
+ */
+const WARM_ENGLISH_BOUND_MS = 12;
+/** Measured 25.2 ms — the CMU hash map, once per phonemizer: ~6x. */
 const FIRST_ENGLISH_BOUND_MS = 150;
-/** Measured 77.5 ms (Chinese, 1.6 MB) and 165.2 ms (Japanese, 8.5 MB): ~6x. */
+/** Measured 74.5 ms (zh, 1.6 MB), 152.7 ms (ja, 8.5 MB), 82.9 ms (en, 0.7 MB): ~6x. */
 const COLD_BOUND_MS = 1000;
 
 describe('the cost of one sentence, warm', () => {
@@ -160,7 +186,7 @@ describe('the cost of one sentence, warm', () => {
     // a slow machine for something the user pays once.
     expect(first.phonemes.length).toBeGreaterThan(0);
     expect(firstMs).toBeLessThan(FIRST_ENGLISH_BOUND_MS);
-    expect(median).toBeLessThan(WARM_BOUND_MS);
+    expect(median).toBeLessThan(WARM_ENGLISH_BOUND_MS);
   });
 });
 
@@ -183,12 +209,16 @@ describe('the cost of starting from nothing', () => {
     expect(elapsed).toBeLessThan(COLD_BOUND_MS);
   });
 
-  it('English, which needs no dictionary at all', async () => {
+  it('English, including its 0.7 MB of text-normalization grammars', async () => {
+    // English used to be the free one — its CMU dictionary is compiled in, so
+    // this was `wasm only` and 1 ms of glue. Phase 9B gave it two fetched
+    // grammars, and this is what fetching and parsing 12 MB of OpenFST costs:
+    // one decompression and one parse, per worker, before the first sentence.
     const start = performance.now();
     await prepared({ frontend: 'kokoro-v1', lang: 'en-US' });
     const elapsed = performance.now() - start;
 
-    console.log(`Cold start, English: ${elapsed.toFixed(1)} ms (wasm only)`);
+    console.log(`Cold start, English: ${elapsed.toFixed(1)} ms (wasm + 0.7 MB grammars)`);
     expect(elapsed).toBeLessThan(COLD_BOUND_MS);
   });
 });

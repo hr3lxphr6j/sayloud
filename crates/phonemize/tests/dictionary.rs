@@ -17,6 +17,14 @@ const IPADIC: &str = "lindera-ipadic-ja";
 /// The Chinese dictionary's name, as `required_dictionaries` spells it.
 const JIEBA: &str = "jieba-zh-dict";
 
+/// The two English text-normalization grammars, as `required_dictionaries`
+/// spells them.
+///
+/// Phase 9B: English's *phonemes* still need no dictionary — the CMU dictionary
+/// is compiled in — but its numerals come from the vendored WeText engine, whose
+/// grammars are 12 MB of OpenFST binary and therefore an asset.
+const WETEXT_EN: [&str; 2] = ["wetext-en-tn-tagger", "wetext-en-tn-verbalizer"];
+
 /// A path inside the repo, resolved from this crate rather than the cwd — `cargo
 /// test` runs with the package directory as the working directory.
 fn fixture(name: &str) -> PathBuf {
@@ -47,11 +55,15 @@ fn japanese_needs_the_ipadic_dictionary() {
 }
 
 #[test]
-fn english_needs_no_dictionary_yet() {
-    // espeak-ng's data files are compiled into the wasm (spec §2.3), so English
-    // is the case where `prepare` has nothing to fetch. It is also the case a
-    // broken implementation would get wrong by demanding a dictionary anyway.
-    assert!(declared("kokoro-v1", "en-US").required().is_empty());
+fn english_needs_the_two_text_normalization_grammars() {
+    // English used to be the case where `prepare` had nothing to fetch — the CMU
+    // dictionary is compiled into the wasm (spec §2.3) — and it is the assertion
+    // that changed in phase 9B, on purpose and with the measurement written
+    // down (`docs/superpowers/plans/p6-9b2-implementation.md`).
+    //
+    // Two names rather than one archive: the registry's unit is a single zstd
+    // frame, and the tagger without the verbalizer can only fail.
+    assert_eq!(declared("kokoro-v1", "en-US").required(), WETEXT_EN);
 }
 
 #[test]
@@ -252,8 +264,16 @@ fn switching_language_back_does_not_demand_the_dictionary_again() {
         .unwrap();
     registry.finish().unwrap();
 
-    // English needs nothing, so this is the whole of a voice switch to English.
+    // A voice switch to English is now two more fetches rather than none. The
+    // bytes here are the transport fixture: `finish` checks that everything
+    // asked for arrived, and it is `Phonemizer::finish_loading` — not the
+    // registry — that parses them, so any zstd frame does for this test.
     registry.declare_required("kokoro-v1", "en-US").unwrap();
+    for name in WETEXT_EN {
+        registry
+            .load(name, &fixture_bytes("test-dict.json.zst"))
+            .unwrap();
+    }
     registry.finish().unwrap();
 
     // And back. `load` is skipped by the wrapper here only if the bytes are
@@ -370,8 +390,10 @@ fn the_wasm_boundary_exposes_the_protocol() {
             .unwrap(),
         [IPADIC]
     );
-    assert!(phonemizer
-        .required_dictionaries("kokoro-v1", "en-US")
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        phonemizer
+            .required_dictionaries("kokoro-v1", "en-US")
+            .unwrap(),
+        WETEXT_EN
+    );
 }

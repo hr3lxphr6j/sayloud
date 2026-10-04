@@ -110,8 +110,71 @@ num2words = "1.2.0"
 # disabling it costs nothing but the embedded dictionary.
 jieba-rs = { version = "0.11", default-features = false }
 
+# Weighted-FST text normalization (phase 9B), for the numeral step of the English
+# pipeline. The engine is **not** a dependency: `src/backends/wetext/` is a copy
+# of `wetext-rs` 0.1.2 with the five changes `NOTICE` lists, because the
+# published crate can only load FSTs from a directory, has a defect that makes
+# `２０２２年` normalize to nothing, and has a second one that made English TN skip
+# every sentence with no digit in it. The evaluation that decided to vendor it —
+# including why a fork was not the answer — is
+# `docs/superpowers/plans/p6-wetext-evaluation.md`.
+#
+# **`SerializableFst::load` takes a `&[u8]`**, which is why the copy needs no
+# filesystem: the only constructor it has parses a slice the dictionary protocol
+# handed it. So nothing here reads a file, and nothing here writes one — the
+# half of `rustfst` that does is linked out.
+#
+# `rustfst` is what the +1,013,905 B is (measured before and after, release wasm,
+# same profile); the copied engine is ~50 KB of source. Default features are
+# **required**, unlike everywhere else in this file. The default is
+# `state-label-u32`, which is what makes `rustfst::Label` a `u32` — and the copied
+# engine reads the FST's labels as UTF-8 *bytes* (`label as u8`) and compares them
+# against `EPS_LABEL`. Turning it off changes the label type and with it that
+# cast, silently, at the first non-ASCII character.
+rustfst = "1"
+
+# `wetext`'s own error type is a `thiserror` enum, and the copy keeps it: the
+# alternative is hand-writing six `Display` arms, which is how every other error
+# in this crate is spelled. A proc macro with no runtime, so it costs nothing in
+# the wasm.
+thiserror = "2"
+
+# Contraction expansion and the three JSON tables it embeds
+# (`src/backends/wetext/data/`, ~7 KB). Nothing enables it — English TN leaves
+# `fix_contractions` at upstream's default of off (see `wetext_tn`) — but it is
+# part of what was copied, the tables are small, and `regex` is already linked
+# through `piper-plus-g2p`. Removing it would be a fifth modification to
+# document rather than a saving.
+regex = "1"
+once_cell = "1"
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# getrandom 0.3 is not a dependency anything in this crate calls. It arrives
+# with `rustfst` -> `rand` -> `rand_core`, and it refuses to compile for
+# `wasm32-unknown-unknown` unless it is told which backend to use: the `cfg`
+# lives in `.cargo/config.toml`, and the feature has to be turned on by a direct
+# dependency, which is this one. This is the fourth dependency in this crate
+# that cannot cross the wasm boundary as published, and the first where the fix
+# is a flag rather than a decoder or a frontend swap — there is no C here, just
+# a `cfg`.
+#
+# Bound to the wasm target rather than declared generally: on the host, nothing
+# has to be said about which backend to use, and a direct dependency there would
+# only pin a version this crate does not otherwise care about.
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
 [dev-dependencies]
 # The parity corpus is JSON, and so is the option object that crosses the wasm
 # boundary. Already in the dependency graph through lindera, so this costs no
 # extra build.
+#
+# Also a normal dependency, for the copied `wetext` engine's contraction tables.
+# Both entries are needed: a test target can see a `[dev-dependencies]` entry and
+# not a `[dependencies]` one.
 serde_json = "1"
+# The English TN tests decompress the two FST assets themselves — the registry's
+# decompression is inside the wasm, and a test that read the frames in order to
+# hand them to `load_dictionary` would be testing the transport it is trying to
+# get past. Already a normal dependency, so this adds no build.
+ruzstd = "0.9"

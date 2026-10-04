@@ -19,8 +19,10 @@ __pycache__/
 *.pyc
 
 # The Japanese and Chinese dictionaries for the Rust phonemizer, built by
-# scripts/setup-lindera-dict.sh and scripts/setup-jieba-dict.sh on install. 8.5 MB
-# of IPADic and 1.6 MB of jieba's word list, regenerated rather than tracked.
+# scripts/setup-lindera-dict.sh, scripts/setup-jieba-dict.sh and
+# scripts/setup-wetext-fsts.sh on install. 8.5 MB of IPADic, 1.6 MB of jieba's
+# word list and 707 KB of English text-normalization grammars, regenerated rather
+# than tracked.
 #
 # The kuromoji dictionaries used to live here too, in `public/kuromoji-dict/`,
 # for the JavaScript phonemize chain. Phase 8 deleted that chain and the 17 MB

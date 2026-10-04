@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "postinstall": "wxt prepare && (./scripts/setup-lindera-dict.sh || echo '⚠️  the Japanese dictionary was not built; the Japanese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-lindera-dict.sh') && (./scripts/setup-jieba-dict.sh || echo '⚠️  the Chinese dictionary was not built; the Chinese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-jieba-dict.sh')"
+    "postinstall": "wxt prepare && (./scripts/setup-lindera-dict.sh || echo '⚠️  the Japanese dictionary was not built; the Japanese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-lindera-dict.sh') && (./scripts/setup-jieba-dict.sh || echo '⚠️  the Chinese dictionary was not built; the Chinese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-jieba-dict.sh') && (./scripts/setup-wetext-fsts.sh || echo '⚠️  the English text-normalization grammars were not built; the English TN tests will fail. Re-run: FORCE=1 ./scripts/setup-wetext-fsts.sh')"
   },
   "devDependencies": {
     "@babel/core": "^8.0.6",

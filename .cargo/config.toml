@@ -1,0 +1,24 @@
+# Target-specific rustflags for the workspace.
+#
+# `rustfst` -> `rand` -> `rand_core` -> `getrandom` 0.3, and getrandom 0.3 refuses
+# to compile for `wasm32-unknown-unknown` without being told which backend to
+# use:
+#
+#   error: The wasm32-unknown-unknown targets are not supported by default
+#          you may need to enable the "wasm_js" configuration flag
+#
+# `rand` is a plain dependency of `rustfst` — the FST *writer* — and is not
+# optional, so it cannot be dropped from an FST reader. The backend therefore has
+# to be named, and the feature that goes with it is a direct dependency of
+# `crates/phonemize` (`[target.'cfg(target_arch = "wasm32")'.dependencies]`).
+#
+# Checked in rather than exported from a build script or CI, so that a local
+# `wasm-pack build` and CI agree about how the wasm was built. This path is the
+# one `wasm-pack` sees: it runs cargo from the crate directory, and cargo reads
+# `.cargo/config.toml` from every ancestor.
+#
+# Scoped to the wasm target rather than set globally: on the host, getrandom's
+# default backend is the right one, and a global flag would be a lie about how
+# the native tests are built.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

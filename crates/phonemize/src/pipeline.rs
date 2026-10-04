@@ -8,6 +8,8 @@
 //! the same too — see [`phonemize_ja`]. A later phase turns this into a dispatch
 //! over the frontends.
 
+use std::borrow::Cow;
+
 use crate::backends::g2p_en::{EnglishError, EnglishG2p};
 use crate::backends::numbers::numbers_to_kanji;
 use crate::backends::numbers_en::numbers_to_english;
@@ -15,6 +17,8 @@ use crate::backends::numbers_zh::numbers_to_han;
 use crate::backends::pinyin::{ChinesePinyin, PinyinError};
 use crate::backends::segmenter_ja::{SegmenterError, SegmenterJa};
 use crate::backends::segmenter_zh::{SegmenterZh, SegmenterZhError};
+use crate::backends::tn_gate;
+use crate::backends::wetext::Normalizer as WeTextNormalizer;
 use crate::backends::zh_text::{self, ZhRun};
 use crate::frontends::ja_ipa::{fix_numeral_sound_changes, kana_to_ipa};
 use crate::text::{
@@ -185,19 +189,70 @@ pub fn phonemize_ja(
 /// English text to IPA, for the v1.0 frontend.
 ///
 /// The same four steps as [`phonemize_ja`], in the same order and for the same
-/// reasons:
+/// reasons, with the numeral step done by a weighted-FST engine when one is
+/// available:
 ///
 /// 1. **Normalize punctuation**.
 /// 2. **Expand numerals before segmentation.** A digit belongs to no script the
 ///    segmenter knows, so it would land in the `other` run and be dropped as
-///    punctuation — unheard, and silently. [`numbers_to_english`] is the step
-///    that keeps `I have 3 cats` from losing the 3, and it is why this function
-///    could not be written before it: the CMU dictionary skips a digit rather
-///    than reading it, so a whole English sentence used to be a regression
-///    against espeak, which reads the number out.
+///    punctuation — unheard, and silently. This is the step that keeps `I have 3
+///    cats` from losing the 3, and it is why this function could not be written
+///    before it: the CMU dictionary skips a digit rather than reading it, so a
+///    whole English sentence used to be a regression against espeak, which reads
+///    the number out.
 /// 3. **Then split into script runs.**
 /// 4. **Then read each run out.** A `Latin` run goes to `english`, and an `other`
 ///    run keeps only the punctuation Kokoro can use.
+///
+/// # Numerals: WeText when it is there, `numbers_to_english` when it is not
+///
+/// `tn` is the vendored WeText engine, built by `finish_loading` from the two
+/// grammars the dictionary protocol fetched ([`crate::backends::wetext_tn`]).
+/// Phase 9B added it because the hand-written reader is not a reader of
+/// anything but a number: it produced the letters `T H I R T Y P M` for `3:30pm`,
+/// dropped the `%` of `50%` entirely, and turned `1st` into an "onest". The
+/// engine reads all of those — and dates, money and abbreviations with them — as
+/// the entities they are.
+///
+/// **It read bare integers wrong until phase 9B.4, and that was this copy's
+/// bug, not the grammar's.** An unqualified `123` came out `one two three`,
+/// which was written up as the engine choosing between equal-cost readings. It
+/// was not: the grammar's cheapest reading is `one hundred and twenty three`,
+/// and `rustfst::shortest_path` — which assumes non-negative arc weights and
+/// these grammars have `-0.0001` ones — was returning a more expensive path.
+/// `src/backends/wetext/text_normalizer.rs` now computes the true minimum, and
+/// `docs/superpowers/plans/p6-9b4-shortest-path-bug.md` is the write-up.
+/// `1000` is still `ten hundred`, and that one *is* the grammar: the tagger reads
+/// it as a year, where `ten hundred` and `one thousand` cost the same and the
+/// Python reference picks `ten hundred` too. `tests/wetext_en.rs` pins the
+/// readings, and `src/backends/wetext/README.md` has the tables.
+///
+/// It is **optional** on purpose. English is the one language whose phonemes
+/// need no dictionary, so `phonemize_with` deliberately does not require
+/// `prepare` for it; making the numeral step fatal without one would turn that
+/// into an error for a caller that never had to care. Three cases reach the
+/// fallback and none of them is a silent wrong answer: no engine was built
+/// (nothing was prepared), the engine could not be built, or it failed on this
+/// sentence. `numbers_to_english` is what this pipeline did before phase 9B —
+/// a worse reading of a date, not a missing one.
+///
+/// # The gate, and why it is in front of the engine
+///
+/// [`tn_gate::needs_normalization`] decides whether the engine is consulted at
+/// all, and a `false` means the text goes on unchanged. The reason is speed and
+/// only speed: the tagger FST is 92% of the engine's cost and upstream's English
+/// TN runs it on every sentence whatever the sentence contains
+/// (`should_normalize` applies its digit test only to the other two languages).
+/// Measured, the gate is 2.8 µs for 950 characters against 43 ms for the
+/// composition it skips.
+///
+/// **It is a filter, not a second opinion about what needs normalizing**, and
+/// `tests/tn_gate.rs` is what keeps it from becoming one: a skip has to imply
+/// that the tagger found nothing but its two pass-through classes, that the whole
+/// engine would have returned the text unchanged, and that the phonemes do not
+/// depend on whether the engine was asked. Where it is still wrong — the
+/// grammar's whitelist is 3,050 strings with no shape to recognise — the plan
+/// measures it (`docs/superpowers/plans/p6-9b6-tn-gate.md` §四).
 ///
 /// # What is dropped
 ///
@@ -224,9 +279,33 @@ pub fn phonemize_ja(
 /// broken build rather than a normal state: the dictionary is compiled in. It is
 /// still not fatal here, because one unusable English word must not cost the
 /// user the sentence around it.
-pub fn phonemize_en(text: &str, english: Option<&EnglishG2p>) -> Result<Phonemized, PipelineError> {
+pub fn phonemize_en(
+    text: &str,
+    english: Option<&EnglishG2p>,
+    tn: Option<&WeTextNormalizer>,
+) -> Result<Phonemized, PipelineError> {
     let normalized = normalize_punctuation(text);
-    let with_numerals = numbers_to_english(&normalized);
+    let with_numerals: Cow<'_, str> = match tn {
+        // The gate first, because the tagger is where the cost is: 92% of
+        // English TN is the tagger FST, and it runs on every sentence whether or
+        // not there is anything for it to tag
+        // (`docs/superpowers/plans/p6-9b3-fst-and-gate.md` §五). A skip is only
+        // taken when the text has none of the shapes TN can rewrite, and
+        // skipping is then the same as running it: `numbers_to_english`, the
+        // fallback for a failure, is a no-op on the same text because it only
+        // ever matches a digit. `tests/tn_gate.rs` asserts that rather than
+        // assuming it.
+        Some(tn) if tn_gate::needs_normalization(&normalized) => Cow::Owned(
+            tn.normalize(&normalized)
+                .unwrap_or_else(|_| numbers_to_english(&normalized)),
+        ),
+        // The engine is there and the gate says there is nothing here for it.
+        Some(_) => Cow::Borrowed(&normalized),
+        // No engine was built at all — the caller never called `prepare`. Not the
+        // gate's business: the fallback is what this pipeline did before phase
+        // 9B and it stays exactly as it was.
+        None => Cow::Owned(numbers_to_english(&normalized)),
+    };
     let runs = segment_text(&with_numerals);
 
     let mut parts: Vec<String> = Vec::new();

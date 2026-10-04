@@ -16,7 +16,7 @@ const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOC
 const BLOCK_SELECTOR = [...BLOCK_TAGS].join(',');
 
 /** Subtrees whose text is never read aloud. */
-const SKIP_TAGS = new Set(['PRE', 'CODE', 'SCRIPT', 'STYLE']);
+const SKIP_TAGS = new Set(['PRE', 'CODE', 'SCRIPT', 'STYLE', 'SUP']);
 
 /**
  * Containers that end the surrounding text run.

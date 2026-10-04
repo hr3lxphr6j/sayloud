@@ -1,5 +1,14 @@
 # HeadTTS English G2P Implementation - Completion Report
 
+> **Stale: this report is from the abandoned JavaScript-side attempt, and two of
+> its premises were later corrected.** It describes files that phase 8 deleted
+> (`lib/models/phonemize/headtts-en.ts` and its tests) and claims piper-plus-g2p is
+> GPL — it is MIT, like HeadTTS. Phase 9A is what actually landed, it is in Rust,
+> and it uses HeadTTS's *rule table* rather than the 125,829-word dictionary this
+> report is about: see `superpowers/plans/p6-9a-headtts-integration.md`. That
+> dictionary and `scripts/setup-headtts-dict.sh` have been deleted — nothing read
+> either of them, and 2.79 MB of dead asset was shipping in the extension.
+
 ## Summary
 
 Successfully implemented and tested HeadTTS (MIT licensed) English G2P to replace piper-plus-g2p (GPL).

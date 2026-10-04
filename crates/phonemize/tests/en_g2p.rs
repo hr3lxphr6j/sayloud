@@ -4,11 +4,20 @@
 //! the module, so unlike `ja_pipeline.rs` these tests run everywhere and on the
 //! first call.
 //!
-//! The number cases are what this phase is for. The CMU dictionary is a
-//! dictionary and not a rule engine, so a digit has no pronunciation to find and
+//! The number cases are what phase 5 is for. The CMU dictionary is a dictionary
+//! and not a rule engine, so a digit has no pronunciation to find and
 //! was skipped rather than read — measured before `numbers_to_english` ran,
 //! `I have 3 cats` → `aɪ hæv kˈæts`, the 3 gone. Every sentence here is pinned to
 //! its exact phonemes because that is what makes the absence audible in a diff.
+//!
+//! **Phase 9A changed none of the seven sentences that were here before it**, and
+//! that is worth stating rather than leaving to a diff: every word in them is in
+//! CMU Dict, so every one of them took the dictionary path before and after. What
+//! the phase changes is what happens to a word the dictionary does not have, and
+//! there was no such word in this file to move — the OOV cases below are new
+//! tests, not moved expectations. The one expectation in the tree that did move is
+//! in `ja_pipeline.rs`, where `Kokoro` was pinned to its letter-by-letter
+//! spelling.
 
 use phonemize::{PhonemizeOptions, Phonemizer};
 
@@ -112,5 +121,99 @@ fn splits_a_contraction_because_the_segmenter_does() {
     //
     // The apostrophe itself is gone from the output, because it is not in the
     // vocabulary and the tokenizer would delete it — see `KOKORO_PUNCTUATION`.
+    //
+    // Phase 9A left this alone: `don` and `t` are both in CMU Dict, so neither
+    // half reaches the rules.
     assert_eq!(phonemize("don't stop"), "dˈɑntˈiː stˈɑp");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9A: the words the dictionary does not have
+//
+// Before this phase every test below was the same sentence, spelled letter by
+// letter: `Kokoro speaks` → `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ spˈiːks`. Six letters read
+// as six letters is not a pronunciation, and these are the words a dictionary of
+// common English is least likely to have and a reader is most likely to type.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn reads_a_word_the_dictionary_does_not_have_by_rule() {
+    // The letter-to-sound rules of NRL Report 7948, as HeadTTS adapted them. The
+    // dictionary is asked first (`keeps_the_dictionary_in_front_of_the_rules`),
+    // so nothing here had a reading before.
+    for (text, expected) in [
+        ("Kokoro speaks", "kɑkɔɹoʊ spˈiːks"),
+        ("GitHub and OpenAI", "ɡɪθəb ənd oʊpɛneɪ"),
+        ("TypeScript is a language", "tɪpɛskɹɪpt ɪz ə lˈæŋɡwədʒ"),
+        ("YouTube", "jutub"),
+        ("PyTorch", "paɪtɔɹtʃ"),
+        ("localhost", "lˈoʊkɔlhoʊst"),
+    ] {
+        assert_eq!(phonemize(text), expected, "{text}");
+    }
+}
+
+#[test]
+fn keeps_the_dictionary_in_front_of_the_rules() {
+    // The rules are a fallback and not an improvement pass: a word CMU Dict has
+    // keeps the dictionary's answer, even when the rules would give a different
+    // one. `Shakespeare` is the clear case — the rules read it `ʃækɛspiɹ`, the
+    // dictionary says `ʃˈeɪkspˌiːɹ`, and the dictionary is the one that is a
+    // transcription rather than a reading. `through` is the same shape (`θɹuː`
+    // against the rules' `θɹu`).
+    //
+    // Asserted through the pipeline so it is the *order* being tested, not the
+    // rule engine's output: swapping the two would change both sentences.
+    assert_eq!(
+        phonemize("Shakespeare wrote Hamlet"),
+        "ʃˈeɪkspˌiːɹ ɹˈoʊt hˈæmlət"
+    );
+    assert_eq!(phonemize("through the door"), "θɹuː ðə dˈɔːɹ");
+}
+
+#[test]
+fn reads_an_initialism_letter_by_letter_even_though_the_rules_have_an_answer() {
+    // The rule engine offers `ttp` for `HTTP`, `dʒsən` for `JSON` and `ə` for
+    // `A`, and every one of those is worse than the letters. The capitals rule
+    // runs first and keeps all-capitals runs away from it, which is what stops
+    // "the rules made OOV words better" from also meaning "acronyms stopped being
+    // spelled".
+    assert_eq!(
+        phonemize("The API is a LLM"),
+        "ðə ə pˈiː aɪ ɪz ə ˈɛl ˈɛl ˈɛm"
+    );
+    assert_eq!(phonemize("HTTP"), "ˈeɪtʃ tˈiː tˈiː pˈiː");
+    assert_eq!(phonemize("XYZ"), "ˈɛks wˈaɪ zˈiː");
+}
+
+#[test]
+fn spells_a_lowercase_initialism_because_it_is_not_shaped_like_a_word() {
+    // A run with no `A`, `E`, `I`, `O` or `U` in it is not a word, and the rules
+    // read it as one: `http` → `ttp`, `xyz` → `sɪz`, `sql` → `skl`. The letters
+    // are what the run is for, so it never reaches the rules.
+    //
+    // `json` has an `o` and does reach them — `dʒsən` is not right either, but it
+    // is a reading of a word-shaped run and the boundary has to be somewhere the
+    // next reader can check.
+    assert_eq!(
+        phonemize("xyz http json sql"),
+        "ˈɛks wˈaɪ zˈiː ˈeɪtʃ tˈiː tˈiː pˈiː dʒsən ˈɛs kjˈuː ˈɛl"
+    );
+}
+
+#[test]
+fn a_rule_reading_stays_inside_the_vocabulary() {
+    // Every phoneme a rule emits has to be one Kokoro's tokenizer keeps, and the
+    // gate is what turns one it does not into an error rather than into a
+    // silently deleted character. This is the end-to-end half of
+    // `tests/headtts_en.rs::the_vocabulary_keeps_every_phoneme_the_rules_can_emit`:
+    // that test asks the vocabulary, this one asks `phonemize_with`, which is
+    // where the gate actually runs.
+    let phonemizer = Phonemizer::new();
+    for text in ["Kokoro", "GitHub and OpenAI", "TypeScript", "wojciechowski"] {
+        let result = phonemizer
+            .phonemize_with(text, &options())
+            .unwrap_or_else(|error| panic!("{text:?} was refused: {error:?}"));
+        assert!(!result.phonemes.is_empty(), "{text:?}");
+    }
 }

@@ -1,4 +1,5 @@
-//! English G2P: the Latin runs of a CJK sentence (spec §2.3, phase 4).
+//! English G2P: the Latin runs of a CJK sentence (spec §2.3, phase 4), and the
+//! words the dictionary does not have (phase 9A).
 //!
 //! # Why not espeak
 //!
@@ -15,7 +16,7 @@
 //! filesystem to need. The cost is 3.75 MB in the module and a 27 ms parse the
 //! first time English is used.
 //!
-//! # The two things this module decides
+//! # The three things this module decides
 //!
 //! **Initialisms are spelled, words are not.** `API` has to come out as the
 //! letters A-P-I (`ə pˈiː aɪ`) and `Chat` as a word (`tʃˈæt`), and the rule that
@@ -26,21 +27,33 @@
 //! "rag", and that single counterexample is why the JavaScript side spells
 //! capitals out instead of handing every run to the engine.
 //!
-//! **A word the dictionary does not have is dropped, and says so.** CMU Dict is
-//! a dictionary, not a rule engine: `Kokoro`, `OpenAI`, `GitHub` and `ChatGPT`
-//! are not in it and get no pronunciation, where espeak would have invented one.
-//! [`EnglishG2p::phonemize`] returns an empty string for them and the pipeline
-//! records a warning — the alternative, guessing, is how `GitHub` becomes
-//! `ɡˈɪtˌhʌb`. Note that this cannot make an *initialism* silent: `API` is
-//! spelled from single letters, and all 26 letters are in the dictionary.
+//! **A word the dictionary does not have is read by rule.** CMU Dict is a
+//! dictionary, not a rule engine: `Kokoro`, `OpenAI`, `GitHub` and `ChatGPT` are
+//! not in it. Until phase 9A they were spelled letter by letter, which is not a
+//! pronunciation — `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː`, six letters read
+//! as six letters — and phase 9A is the fix:
+//! [`headtts_en`](crate::backends::headtts_en), the letter-to-sound rules of NRL
+//! Report 7948 as HeadTTS adapted them, gives `GitHub` `ɡɪθəb` and `TypeScript`
+//! `tɪpɛskɹɪpt`. The dictionary is still asked first, so the change is confined
+//! to words that used to get nothing.
+//!
+//! **A reading with no vowel letter in the word is not attempted.** `http`,
+//! `xyz` and `sql` are not words, they are initialisms typed in lower case, and
+//! the rules read them as `ttp`, `sɪz` and `skl` — the letter-shape answers to a
+//! question about a word. Spelling the letters is strictly more informative
+//! there, so a run with no `A`, `E`, `I`, `O` or `U` in it never reaches the
+//! rules. See [`has_vowel_letter`], which is where the line is drawn and why it is
+//! drawn on the input rather than on the answer.
 
+use crate::backends::headtts_en;
 use piper_plus_g2p::english::EnglishPhonemizer;
 use piper_plus_g2p::Phonemizer;
 
 /// Why English phonemization failed.
 ///
 /// There is no "unknown word" variant on purpose: a word the dictionary does not
-/// have is not a failure, it is an empty answer (see the module docs).
+/// have is read by rule, and a word the rules cannot read is spelled — neither is
+/// a failure. What is left is the two ways the machinery itself can break.
 #[derive(Debug)]
 pub enum EnglishError {
     /// The dictionary embedded in this module was rejected.
@@ -79,13 +92,18 @@ impl std::fmt::Display for EnglishError {
 
 impl std::error::Error for EnglishError {}
 
-/// English text to IPA, through the CMU Pronouncing Dictionary.
+/// English text to IPA, through the CMU Pronouncing Dictionary and then, for a
+/// word the dictionary does not have, through the NRL 7948 rules.
 ///
 /// Built once per phonemizer and kept, because building it parses the whole
 /// dictionary: 27 ms and ~13 MB of hash map, measured in the wasm. The caller
 /// decides when that is worth paying — see `Phonemizer::english` in `lib.rs`,
 /// which builds it on the first Latin run rather than on `prepare`, so a
 /// Japanese sentence with no Latin text in it never pays.
+///
+/// The rule table adds nothing to that cost. It is a `&'static [Rule]` of
+/// literals, and the regular expressions it names are compiled one at a time, by
+/// the first word that tries them.
 pub struct EnglishG2p {
     phonemizer: EnglishPhonemizer,
 }
@@ -103,15 +121,32 @@ impl EnglishG2p {
 
     /// One run of Latin text to IPA.
     ///
-    /// When the dictionary has no pronunciation for a word, it is spelled letter
-    /// by letter as a fallback. The caller still records a warning so the OOV
-    /// word does not go unnoticed.
+    /// Three answers, in this order:
+    ///
+    /// 1. **The dictionary**, which is the only one of the three that is a
+    ///    pronunciation rather than a reading of the spelling.
+    /// 2. **The rules**, for a word the dictionary does not have — see the module
+    ///    docs, and [`headtts_en`](crate::backends::headtts_en) for what they are
+    ///    and are not.
+    /// 3. **The letters**, for a run with no vowel letter in it and for the empty
+    ///    run. This is what every OOV word used to get, kept as the last resort so
+    ///    that nothing that used to be pronounced becomes silent.
+    ///
+    /// Both of the first two go through [`is_initialism`] first: an all-capitals
+    /// run is spelled, and it is spelled out of the dictionary, so it never
+    /// reaches the rules.
+    ///
+    /// The caller still records a warning when the answer is empty, which is now
+    /// only reachable for a run that is empty or whose every letter is absent
+    /// from the dictionary — that is, not for a run of ASCII letters.
     pub fn phonemize(&self, run: &str) -> Result<String, EnglishError> {
-        let text = spelled_out(run);
-
+        // An initialism is spelled — by the dictionary, one letter at a time.
+        // Both halves matter: the rule is the JavaScript one, and the dictionary
+        // is what makes `A P I` three phoneme strings instead of nothing.
+        let dictionary_text = spelled_out(run);
         let (tokens, _) = self
             .phonemizer
-            .phonemize_with_prosody(&text)
+            .phonemize_with_prosody(&dictionary_text)
             .map_err(|error| EnglishError::Phonemize {
                 detail: error.to_string(),
             })?;
@@ -120,25 +155,78 @@ impl EnglishG2p {
         // marks and the word separators as tokens of their own, so joining them
         // is what reconstructs the string the frontend wants.
         let result = tokens.concat();
-
-        // OOV fallback: spell the word letter by letter when the dictionary
-        // returned nothing. Decision 1.B: "Kokoro" → "K O K O R O" rather
-        // than silent, easier to notice and debug.
-        if result.is_empty() && !run.is_empty() {
-            // Space-separate each character so the dictionary reads them one at a time
-            let letters: Vec<String> = run.chars().map(|ch| ch.to_string()).collect();
-            let fallback = letters.join(" ");
-            let (fallback_tokens, _) =
-                self.phonemizer
-                    .phonemize_with_prosody(&fallback)
-                    .map_err(|error| EnglishError::Phonemize {
-                        detail: error.to_string(),
-                    })?;
-            return Ok(fallback_tokens.concat());
+        if !result.is_empty() {
+            return Ok(result);
         }
 
-        Ok(result)
+        // OOV, and not an initialism: `dictionary_text` is the run itself, and the
+        // dictionary had nothing for it. Phase 9A reads it by rule instead of
+        // spelling it — unless it is not shaped like a word at all.
+        if has_vowel_letter(run) {
+            if let Some(ipa) = headtts_en::phonemize(run) {
+                if !ipa.is_empty() {
+                    return Ok(ipa);
+                }
+            }
+        }
+
+        // The last resort. Decision 1.B: a word nothing can read is spelled
+        // letter by letter — "Kokoro" → "K O K O R O" rather than silent, easier
+        // to notice and debug.
+        self.spell_out(run)
     }
+
+    /// The letters of a run, one at a time, through the dictionary.
+    ///
+    /// Unconditional, unlike [`spelled_out`], which spaces only an initialism:
+    /// this is the fallback, and it is reached *because* the dictionary had
+    /// nothing for the run as it was written. Re-asking for it unchanged would be
+    /// the same question.
+    fn spell_out(&self, run: &str) -> Result<String, EnglishError> {
+        if run.is_empty() {
+            return Ok(String::new());
+        }
+
+        let (tokens, _) = self
+            .phonemizer
+            .phonemize_with_prosody(&space_letters(run))
+            .map_err(|error| EnglishError::Phonemize {
+                detail: error.to_string(),
+            })?;
+        Ok(tokens.concat())
+    }
+}
+
+/// Whether a run of letters is shaped like a word.
+///
+/// This is the line between a reading and a spelling, and it is drawn because the
+/// rules are a *spelling* oracle: asked for a word they answer with the best
+/// reading of the letters, and asked for a run of letters that is not a word they
+/// answer anyway. `http` comes out `ttp` with no vowel in it, `sql` comes out
+/// `skl`, and `xyz` — which does have a vowel-shaped answer — comes out `sɪz`,
+/// one syllable where a speaker would say three letters. `ˈeɪtʃ tˈiː tˈiː pˈiː` is
+/// longer and it is what the letters are *for*.
+///
+/// **On the input rather than on the answer**, which is the decision worth
+/// recording. A check on the answer — "does this reading have a syllable in
+/// it?" — catches `ttp` and `skl` and misses `xyz`, because `sɪz` has a vowel; the
+/// consonant cluster is wrong for a reason the vowel does not explain. What the
+/// three runs have in common is upstream of the engine: written as letters, none
+/// of them contains `A`, `E`, `I`, `O` or `U`. That is also the cheaper question,
+/// since it is asked before any rule is tried.
+///
+/// **`Y` does not count**, which is the one judgement call. It is a vowel letter
+/// in `rhythm` and a consonant letter in `yaml`, and every `y`-only OOV word worth
+/// reaching the rules — `rhythm`, `myth`, `sylph`, `lynch` — is in CMU Dict
+/// already. Counting it would read `xyz` as a word; not counting it spells a word
+/// the dictionary has stopped having, which is the safer of the two failures.
+///
+/// Real English words with none of the five letters do exist — `hmm`, `tsk`,
+/// `nth` — and they are spelled out rather than read by rule. That is the same
+/// answer they got before phase 9A, so nothing regressed to get here.
+pub fn has_vowel_letter(run: &str) -> bool {
+    run.chars()
+        .any(|character| matches!(character.to_ascii_uppercase(), 'A' | 'E' | 'I' | 'O' | 'U'))
 }
 
 /// Whether a run is read letter by letter.
@@ -169,6 +257,14 @@ fn spelled_out(run: &str) -> String {
         return run.to_string();
     }
 
+    space_letters(run)
+}
+
+/// The letters of a run, separated by spaces: `API` → `A P I`.
+///
+/// This is what makes the dictionary read them one at a time, and it is the shape
+/// `phonemizeSpelled` builds on the JavaScript side.
+fn space_letters(run: &str) -> String {
     let letters: Vec<String> = run.chars().map(|ch| ch.to_string()).collect();
     letters.join(" ")
 }
@@ -242,7 +338,9 @@ mod tests {
 
     #[test]
     fn common_words_come_out_the_way_the_corpus_expects() {
-        // The extended set from the phase 4 plan, minus the OOV words below.
+        // The extended set from the phase 4 plan. These are dictionary words, and
+        // phase 9A moved them nowhere — the point of asserting them here is that
+        // the rule path did not get in front of the dictionary.
         for (run, expected) in [
             ("Agent", "ˈeɪdʒənt"),
             ("hello", "həlˈoʊ"),
@@ -255,16 +353,58 @@ mod tests {
     }
 
     #[test]
-    fn a_word_outside_the_dictionary_is_spelled() {
-        // Decision 1.B: OOV words fall back to letter-by-letter spelling rather
-        // than returning empty, so "Kokoro" is pronounced (as K-O-K-O-R-O)
-        // instead of being silently dropped.
-        for run in ["Kokoro", "OpenAI", "GitHub", "ChatGPT"] {
-            let result = ipa(run);
-            assert!(!result.is_empty(), "{run} should be spelled when OOV");
-            // The result should be longer than a typical word (multiple letters
-            // each with their own pronunciation)
-            assert!(result.len() > 10, "{run} → {result} (spelled)");
+    fn a_word_outside_the_dictionary_is_read_by_rule() {
+        // Phase 9A. Before it, each of these was spelled: `Kokoro` was
+        // `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ` and `GitHub` was
+        // `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː`.
+        for (run, expected) in [
+            ("Kokoro", "kɑkɔɹoʊ"),
+            ("OpenAI", "oʊpɛneɪ"),
+            ("GitHub", "ɡɪθəb"),
+            ("TypeScript", "tɪpɛskɹɪpt"),
+            ("PyTorch", "paɪtɔɹtʃ"),
+            ("YouTube", "jutub"),
+        ] {
+            assert_eq!(ipa(run), expected, "{run}");
+        }
+    }
+
+    #[test]
+    fn a_lowercase_initialism_is_spelled_rather_than_read_as_a_cluster() {
+        // The rules answer a spelling question, and a run of letters that is not
+        // a word still gets an answer — `ttp` for `http` is a consonant cluster
+        // with no syllable in it, and `sɪz` for `xyz` is one syllable where a
+        // speaker says three letters. The letters are what the run is *for*.
+        assert!(!has_vowel_letter("http"));
+        assert!(!has_vowel_letter("xyz"));
+        assert_eq!(ipa("http"), "ˈeɪtʃ tˈiː tˈiː pˈiː");
+        assert_eq!(ipa("xyz"), "ˈɛks wˈaɪ zˈiː");
+        assert_eq!(ipa("sql"), "ˈɛs kjˈuː ˈɛl");
+        // `json` has an `o`, so it is read as a word and the rules get it, which
+        // is the boundary this rule draws and not a claim that `dʒsən` is right.
+        assert_eq!(ipa("json"), "dʒsən");
+    }
+
+    #[test]
+    fn an_all_capital_run_is_still_spelled_rather_than_read() {
+        // The rule engine offers `ttp` for `HTTP` and `sɪz` for `XYZ`, which is
+        // why the capitals rule comes first and keeps them away from it. Pinned
+        // because "the rules improved OOV words" must not turn into "the rules
+        // read initialisms".
+        assert_eq!(ipa("HTTP"), "ˈeɪtʃ tˈiː tˈiː pˈiː");
+        assert_eq!(ipa("XYZ"), "ˈɛks wˈaɪ zˈiː");
+        assert_eq!(ipa("JSON"), "dʒˈeɪ ˈɛs ˈoʊ ˈɛn");
+    }
+
+    #[test]
+    fn has_vowel_letter_is_about_the_word_and_not_the_reading() {
+        for run in ["Kokoro", "GitHub", "json", "kubectl", "yaml", "TypeScript"] {
+            assert!(has_vowel_letter(run), "{run:?}");
+        }
+        for run in [
+            "http", "https", "xyz", "sql", "ssh", "html", "css", "", "hmm",
+        ] {
+            assert!(!has_vowel_letter(run), "{run:?}");
         }
     }
 

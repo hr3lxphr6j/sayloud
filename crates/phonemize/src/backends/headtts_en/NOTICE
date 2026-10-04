@@ -1,0 +1,89 @@
+===========================================================================
+HeadTTS letter-to-sound rules
+(crates/phonemize/src/backends/headtts_en/)
+===========================================================================
+
+The rule table in `rules.rs` is a transcription of the English language module
+of HeadTTS:
+
+  HeadTTS       https://github.com/met4citizen/HeadTTS
+                `modules/language-en-us.mjs`
+                Copyright (c) 2025 Mika Suominen
+                MIT License
+
+  Revision      c08f4ca8b3253b3e908e501486a1e068e606be5c (package 1.3.0)
+  SHA-256       of `modules/language-en-us.mjs` at that revision:
+                18b2f18c874ad19ccf8bf27e29c61b4f7ae57ca0e56ebfcf50f7b1b286b4e928
+
+The rules are in turn an adaptation, by the HeadTTS author, of the
+letter-to-sound rules published in:
+
+  NRL Report 7948, "Automatic Translation of English Text to Phonetics by
+  Means of Letter-to-Sound Rules" (1976), by Honey Sue Elovitz, Rodney W.
+  Johnson, Astrid McHugh and John E. Shore.
+  https://apps.dtic.mil/sti/pdfs/ADA021929.pdf
+
+which is a publication of the United States Government and not the licensed
+work; it is the machine-readable table derived from it that is HeadTTS's.
+
+A copy of the MIT License, as HeadTTS ships it, is in `LICENSE` beside this
+file. HeadTTS is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied.
+
+---------------------------------------------------------------------------
+What was taken, and what was not
+---------------------------------------------------------------------------
+
+**Taken: the rule data.** `rules.rs` holds, for each of the 309 rules, the three
+fields upstream's constructor computes for it — the expanded regular expression,
+the number of characters the rule consumes, and the phonemes it emits — in the
+order upstream tests them.
+
+Those three fields were not read out of the JavaScript source by hand. They are
+the output of upstream's own `new RegExp(...)` and ARPAbet-to-IPA conversion, run
+by `scripts/headtts-parity.mjs` against upstream at the revision above and
+committed as `crates/phonemize/tests/fixtures/headtts-en-parity.json`.
+`scripts/gen-headtts-rules.mjs` transcribes that fixture. So the port cannot
+disagree with HeadTTS about which operator means what — only about how a regular
+expression matches, which is what `tests/headtts_en.rs` is for.
+
+**Not taken: any code.** `engine.rs` is a Rust re-implementation of the loop in
+`Language#phonemizeWord`, written for this project; no JavaScript was
+translated line by line and none is executed at build time or at run time
+outside the two generator scripts above, which are development tools.
+
+**Not taken: the HeadTTS dictionary.** Upstream's larger table
+(`dictionaries/en-us.txt`, 125 829 words) is not used here. The English pipeline
+already has the CMU Pronouncing Dictionary compiled in, and adding a second one
+would be a second answer to the same question.
+
+**Not taken: the number, date, decade, ordinal and time conversion.** Upstream's
+`partSetText` and its friends turn `1970s` into `NINETEEN SEVENTIES`. This
+project normalizes English text with WeTextProcessing FSTs instead (phase 9B),
+which does the same job from a grammar, and the pipeline applies it before the
+dictionary or these rules are reached.
+
+---------------------------------------------------------------------------
+Modifications
+---------------------------------------------------------------------------
+
+1. `engine.rs`: the character at the current position is lower-cased to anchor
+   the pattern, exactly as upstream does, but the match is asked of the whole
+   word rather than of a string rebuild per rule — the string is rebuilt once per
+   position instead. Same question, one allocation instead of one per rule.
+
+2. `engine.rs`: upstream's loop has no path for "no rule matched" and would spin
+   forever; here it returns the same `None` a caller reads as "no pronunciation
+   for this word". Unreachable today — every group ends in a bare `[X]`, which
+   always matches — so this is a guard rather than a behaviour change.
+
+3. `engine.rs`: the diacritic branch of `normalizeUpper` is not ported. `É` is
+   dropped where upstream strips the accent and keeps the `E`. Accented Latin
+   letters cannot reach this module from the pipeline (`segment_text` emits
+   `[A-Za-z]+`), and porting it would mean carrying a Unicode decomposition table
+   into the wasm for input no caller can produce.
+
+4. `engine.rs`: `to_ipa` translates HeadTTS's misaki aliases (`ʧ`, `ʤ`, `A`,
+   `I`, `W`, `Y`, `O`) into the IPA the rest of the pipeline writes, so that a
+   sentence mixing dictionary words and rule-read words does not mix notations.
+   The rule table itself is unchanged; the translation is applied to the output.

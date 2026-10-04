@@ -418,20 +418,22 @@ describe('RustPhonemizer.phonemize', () => {
     expect(phonemizer.phonemize('あQい', options)).toEqual({ phonemes: 'akjˈuːi' });
   });
 
-  it.skipIf(!hasDictionary)('reports a word the English dictionary does not have', async () => {
+  it.skipIf(!hasDictionary)('reads a word the English dictionary does not have', async () => {
     const phonemizer = await prepared();
 
-    // Decision 1.B (Phase 4): OOV words are spelled letter by letter as a
-    // fallback instead of being silently dropped. CMU Dict has no `Kokoro`,
-    // so it's spelled K-O-K-O-R-O. The warning is no longer produced because
-    // the phonemize result is non-empty (the letters were spelled).
+    // Phase 9A: OOV words go through the NRL 7948 letter-to-sound rules instead
+    // of being spelled out letter by letter. CMU Dict has no `Kokoro`, so the
+    // rules read it — `kɑkɔɹoʊ`, one reading, where phase 4's fallback spelled it
+    // `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ` as K-O-K-O-R-O. The same change is asserted in
+    // `crates/phonemize/tests/ja_pipeline.rs`; this one says it survives the wasm
+    // boundary, which is the half a `cargo test` cannot check.
     const result = phonemizer.phonemize('Kokoroを使う', {
       frontend: 'kokoro-v1',
       lang: 'ja-JP',
     });
 
     expect(result).toEqual({
-      phonemes: 'kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊoɕiu',
+      phonemes: 'kɑkɔɹoʊoɕiu',
     });
   });
 

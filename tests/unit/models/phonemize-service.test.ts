@@ -40,14 +40,31 @@ const JIEBA = 'jieba-zh-dict';
 const JIEBA_URL = `/dictionaries/${JIEBA}.bin.zst`;
 
 /**
- * The two English text-normalization grammars (phase 9B).
+ * Every text-normalization grammar the registry can ask for (phases 9B, 9E).
  *
- * English's *pronunciation* dictionary is still compiled into the wasm — the
- * CMU dictionary, spec §2.3 — but its numerals go through the vendored WeText
- * engine, and those grammars are 12 MB of OpenFST binary. They arrive the same
- * way IPADic and jieba's word list do.
+ * English's *pronunciation* dictionary is still compiled into the wasm — the CMU
+ * dictionary, spec §2.3 — but all three languages read their numerals through the
+ * vendored WeText engine, and those grammars are OpenFST binaries. They arrive
+ * the same way IPADic and jieba's word list do.
  */
 const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
+const WETEXT_ZH = ['wetext-zh-tn-tagger', 'wetext-zh-tn-verbalizer'] as const;
+const WETEXT_JA = ['wetext-ja-tn-tagger', 'wetext-ja-tn-verbalizer'] as const;
+
+/**
+ * The English ones *and* the language's own, for a `prepare` that asks for all
+ * of them.
+ *
+ * `prepare('kokoro-v1', 'zh-CN')` fetches jieba's word list and the two Chinese
+ * grammars, so a route table that only serves the word list fails inside
+ * `finish_loading` — which is what happened when phase 9E added the second half
+ * of that list and this file still spelled it out by hand.
+ */
+function wetextRoutes(names: readonly string[]): Record<string, DictionaryBytes> {
+  return Object.fromEntries(
+    names.map((name) => [`/dictionaries/${name}.bin.zst`, asset(name) ?? new Uint8Array()])
+  );
+}
 
 /**
  * A shipped dictionary, or null when skipping was asked for.
@@ -77,22 +94,17 @@ function asset(name: string): DictionaryBytes | null {
 const REAL_IPADIC = asset(IPADIC);
 const REAL_JIEBA = asset(JIEBA);
 
-/** The two English grammars, or null when skipping was asked for. */
+/** The English grammars, or null when skipping was asked for. */
 const REAL_WETEXT_EN = Object.fromEntries(
   WETEXT_EN.map((name) => [name, asset(name)] as const)
 ) as Record<(typeof WETEXT_EN)[number], DictionaryBytes | null>;
 
-/** Whether both of them are there, for the tests that cannot run without one. */
+/** Whether every English grammar is there, for the tests that need them. */
 const hasWetextEn = WETEXT_EN.every((name) => REAL_WETEXT_EN[name] !== null);
 
 /** The routes that serve the English grammars, for a test that needs them. */
 function wetextEnRoutes(): Record<string, DictionaryBytes> {
-  return Object.fromEntries(
-    WETEXT_EN.map((name) => [
-      `/dictionaries/${name}.bin.zst`,
-      REAL_WETEXT_EN[name] ?? new Uint8Array(),
-    ])
-  );
+  return wetextRoutes(WETEXT_EN);
 }
 
 /** A service whose phonemizer reads its dictionaries from the given routes. */
@@ -159,7 +171,10 @@ describe('PhonemizeService', () => {
   });
 
   it.skipIf(REAL_IPADIC === null)('speaks Japanese once its dictionary is loaded', async () => {
-    const service = serviceWith({ [IPADIC_URL]: REAL_IPADIC ?? new Uint8Array() });
+    const service = serviceWith({
+      [IPADIC_URL]: REAL_IPADIC ?? new Uint8Array(),
+      ...wetextRoutes(WETEXT_JA),
+    });
     await service.init();
 
     await service.prepare('kokoro-v1', 'ja-JP');
@@ -167,10 +182,17 @@ describe('PhonemizeService', () => {
     // The same string `ja_pipeline.rs` pins on the Rust side: what this proves
     // is that it survives the worker's seam.
     expect(service.phonemize('経営', 'kokoro-v1', 'ja-JP').phonemes).toBe('keiei');
+
+    // And the numeral step the grammars are fetched for: `1/2` is 二分の一, which
+    // the hand-written reader read as the two cardinals いちに.
+    expect(service.phonemize('1/2', 'kokoro-v1', 'ja-JP').phonemes).toBe('nibuɴnoiʨi');
   });
 
   it.skipIf(REAL_JIEBA === null)('speaks Chinese once its word list is loaded', async () => {
-    const service = serviceWith({ [JIEBA_URL]: REAL_JIEBA ?? new Uint8Array() });
+    const service = serviceWith({
+      [JIEBA_URL]: REAL_JIEBA ?? new Uint8Array(),
+      ...wetextRoutes(WETEXT_ZH),
+    });
     await service.init();
 
     await service.prepare('kokoro-v1', 'zh-CN');
@@ -180,6 +202,12 @@ describe('PhonemizeService', () => {
     // both readings — the shipped one in `tests/tone_sandhi.rs` and the one the
     // JavaScript frontend produced in `tests/zh_pipeline.rs`.
     expect(service.phonemize('你好', 'kokoro-v1', 'zh-CN').phonemes).toBe('ni↗xau↓');
+
+    // And what phase 9E added: a year read as a year. `2024年` is 二零二四年 —
+    // èr líng èr sì nián — where `numbers_to_han` read 2024 as a quantity and
+    // said 二千零二十四年. Pinned on the Rust side in `tests/wetext_zh.rs` and
+    // `tests/zh_pipeline.rs`; this says it survives the seam.
+    expect(service.phonemize('2024年', 'kokoro-v1', 'zh-CN').phonemes).toBe('ɚ↘li↗ŋɚ↘ sɹ̩↘njɛ↗n');
   });
 
   it.skipIf(REAL_JIEBA === null)('refuses a language the frontend cannot speak', async () => {

@@ -1,31 +1,40 @@
 #!/usr/bin/env bash
 #
-# Builds the two English text-normalization grammars the Rust phonemizer loads.
+# Builds the text-normalization grammars the Rust phonemizer loads.
 #
-# These are the weighted-FST *TN* grammars for English, taken from the `wetext`
-# Python distribution — which is the upstream WeTextProcessing project's own
-# build of them, published as part of a wheel rather than as a separate data
-# release. `crates/phonemize/src/backends/wetext/` is a copy of SpenserCai's Rust
-# port that reads exactly this file format; the evaluation that decided to vendor
-# it is `docs/superpowers/plans/p6-wetext-evaluation.md`.
+# These are the weighted-FST *TN* grammars for English, Chinese and Japanese,
+# taken from the `wetext` Python distribution — which is the upstream
+# WeTextProcessing project's own build of them, published as part of a wheel
+# rather than as a separate data release. `crates/phonemize/src/backends/wetext/`
+# is a copy of SpenserCai's Rust port that reads exactly this file format; the
+# evaluation that decided to vendor it is
+# `docs/superpowers/plans/p6-wetext-evaluation.md`.
 #
 # **Why the FSTs are not inside the wasm.** Spec decision #4: a dictionary is
-# fetched on `prepare` and decompressed inside the module. These two are 12.04 MB
-# raw, 707 KB as one zstd frame each — four times the size of the rest of the
-# phonemizer wasm if they were `include_bytes!`'d. They arrive through the same
-# registry IPADic and jieba's word list do.
+# fetched on `prepare` and decompressed inside the module. Raw, the six frames
+# are 14.4 MB — five times the size of the rest of the phonemizer wasm if they
+# were `include_bytes!`'d. They arrive through the same registry IPADic and
+# jieba's word list do.
 #
-# Only `en/tn/{tagger,verbalizer}` are needed. The wheel also ships `prefix`,
-# `prefix_matcher`, `itn` and the zh/ja grammars; the normalizer configuration
-# this crate builds for English asks for neither a prefix matcher nor an ITN
-# grammar, so shipping them would be files that nothing ever reads.
+# Only `{en,zh,ja}/tn/{tagger,verbalizer}` are needed. The wheel also ships
+# `prefix`, `prefix_matcher`, `itn`, `full_to_half`, `traditional_to_simple`,
+# `remove_interjections`, `remove_puncts` and `tag_oov`; the normalizer
+# configuration this crate builds asks for none of them — no prefix matcher, no
+# ITN grammar, and every flag that would pull in a post-processor is left off,
+# which is also what the Python reference defaults to — so shipping them would be
+# files that nothing ever reads.
+#
+# **Both halves of a language or neither.** The tagger is the half that
+# recognizes an entity and the verbalizer is the half that says it; one without
+# the other can only fail, and `crates/phonemize/src/lib.rs` refuses to build a
+# language's normalizer unless both of its grammars arrived.
 #
 # Idempotent: an existing asset is left alone. Set FORCE=1 to rebuild it.
 #
 # `pnpm install` runs this through `postinstall`, where a failure is tolerated —
 # an offline checkout should still install. That tolerance is safe because the
-# asset's absence is *not* tolerated anywhere else: the English TN tests fail
-# with the command to fix it rather than skipping (see
+# asset's absence is *not* tolerated anywhere else: the TN tests fail with the
+# command to fix it rather than skipping (see
 # `crates/phonemize/tests/common/mod.rs`).
 set -euo pipefail
 
@@ -44,17 +53,26 @@ WHEEL_URL="https://files.pythonhosted.org/packages/43/fe/ca7ccae2673b64ba7d63612
 # better than pinning each one: the archive is what was published.
 WHEEL_SHA256="b2083e7f38ac38fcbecdf7aec6ac6f0e3d1a11b763facfa4daabc12138215454"
 
-# The two grammars, as the registry's names and as the paths inside the wheel.
-TAGGER_NAME="wetext-en-tn-tagger"
-VERBALIZER_NAME="wetext-en-tn-verbalizer"
+# The languages, and the two grammars each one needs.
+LANGUAGES="en zh ja"
+KINDS="tagger verbalizer"
 
 DICT_DIR="public/dictionaries"
-NOTICE="${DICT_DIR}/wetext-en-tn-NOTICE.txt"
 
-if [ -s "${DICT_DIR}/${TAGGER_NAME}.bin.zst" ] &&
-  [ -s "${DICT_DIR}/${VERBALIZER_NAME}.bin.zst" ] &&
-  [ "${FORCE:-0}" != "1" ]; then
-  echo "✓ English text-normalization grammars already built (${DICT_DIR}/${TAGGER_NAME}.bin.zst)"
+# The registry name one grammar is keyed under. `wetext-en-tn-tagger` and so on
+# — the same spelling `crates/phonemize/src/dictionary.rs` uses, which is what
+# `dictionaryUrl` on the JavaScript side turns into a path.
+asset_name() { echo "wetext-$1-tn-$2"; }
+
+# Whether every asset is already there, so the common case is one `test`.
+complete=1
+for lang in $LANGUAGES; do
+  for kind in $KINDS; do
+    [ -s "${DICT_DIR}/$(asset_name "$lang" "$kind").bin.zst" ] || complete=0
+  done
+done
+if [ "$complete" = 1 ] && [ "${FORCE:-0}" != "1" ]; then
+  echo "✓ text-normalization grammars already built (${DICT_DIR}/wetext-*-tn-*.bin.zst)"
   exit 0
 fi
 
@@ -63,7 +81,7 @@ for tool in curl unzip zstd; do
   command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 if [ ${#missing[@]} -gt 0 ]; then
-  echo "⚠️  Cannot build the English TN grammars: missing ${missing[*]}" >&2
+  echo "⚠️  Cannot build the text-normalization grammars: missing ${missing[*]}" >&2
   echo "   Install them (macOS: brew install zstd) and re-run:" >&2
   echo "   FORCE=1 ./scripts/setup-wetext-fsts.sh" >&2
   exit 1
@@ -76,14 +94,14 @@ if command -v shasum >/dev/null 2>&1; then
 elif command -v sha256sum >/dev/null 2>&1; then
   digest() { sha256sum "$1" | cut -d' ' -f1; }
 else
-  echo "⚠️  Cannot build the English TN grammars: no shasum or sha256sum" >&2
+  echo "⚠️  Cannot build the text-normalization grammars: no shasum or sha256sum" >&2
   exit 1
 fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-echo "📚 Building the English text-normalization grammars (wetext ${WETEXT_VERSION})..."
+echo "📚 Building the text-normalization grammars (wetext ${WETEXT_VERSION})..."
 curl --fail --location --silent --show-error --max-time 600 "$WHEEL_URL" -o "$work/wetext.whl"
 
 actual="$(digest "$work/wetext.whl")"
@@ -102,27 +120,32 @@ mkdir -p "$DICT_DIR"
 # no half a grammar for the loader to find — the FST parser would reject it, but
 # only after the fetch that the cache guard in `lib/models/phonemize-dict.ts`
 # would then have to notice.
-for pair in "${TAGGER_NAME}:tagger" "${VERBALIZER_NAME}:verbalizer"; do
-  name="${pair%%:*}"
-  kind="${pair##*:}"
-  src="$work/wheel/wetext/fsts/en/tn/${kind}.fst"
+for lang in $LANGUAGES; do
+  for kind in $KINDS; do
+    name="$(asset_name "$lang" "$kind")"
+    src="$work/wheel/wetext/fsts/${lang}/tn/${kind}.fst"
 
-  if [ ! -s "$src" ]; then
-    echo "⚠️  The wheel has no ${src#$work/wheel/} — it is not the layout this script knows" >&2
-    exit 1
-  fi
+    if [ ! -s "$src" ]; then
+      echo "⚠️  The wheel has no ${src#$work/wheel/} — it is not the layout this script knows" >&2
+      exit 1
+    fi
 
-  zstd -19 -q -f -o "${DICT_DIR}/${name}.bin.zst.tmp" "$src"
-  mv "${DICT_DIR}/${name}.bin.zst.tmp" "${DICT_DIR}/${name}.bin.zst"
-  echo "   ${name}.bin.zst  $(du -h "${DICT_DIR}/${name}.bin.zst" | cut -f1)"
+    zstd -19 -q -f -o "${DICT_DIR}/${name}.bin.zst.tmp" "$src"
+    mv "${DICT_DIR}/${name}.bin.zst.tmp" "${DICT_DIR}/${name}.bin.zst"
+    printf '   %-32s %s\n' "${name}.bin.zst" "$(du -h "${DICT_DIR}/${name}.bin.zst" | cut -f1)"
+  done
 done
 
-# The grammar is Apache-2.0, as is the Rust port that runs it. The notice is kept
-# next to the asset rather than inside the frame because it is not something the
-# loader reads, and the loader should not have to know about it.
-cat > "$NOTICE" <<NOTICE_TEXT
+# The grammar is Apache-2.0, as is the Rust port that runs it. One notice per
+# language, named after that language's assets, because the three are separate
+# grammars built from separate Python files and a reader looking at one of them
+# should not have to work out which. The notice sits *next to* the asset rather
+# than inside the frame: it is not something the loader reads, and the loader
+# should not have to know about it.
+notice() {
+  cat > "$1" <<NOTICE_TEXT
 ===========================================================================
-WeText English text-normalization grammars
+WeText ${2} text-normalization grammars
 ===========================================================================
 
 This software includes data files from
@@ -134,7 +157,7 @@ This software includes data files from
   wetext            (https://pypi.org/project/wetext/) ${WETEXT_VERSION}
   Apache License, Version 2.0
 
-\`en/tn/tagger.fst\` and \`en/tn/verbalizer.fst\` are the English text
+\`${3}/tn/tagger.fst\` and \`${3}/tn/verbalizer.fst\` are the ${2} text
 normalization grammars as the \`wetext\` distribution builds them, extracted from
 \`wetext-${WETEXT_VERSION}-py3-none-any.whl\` and redistributed unchanged as zstd
 frames. The Rust code that runs them is in
@@ -143,5 +166,10 @@ frames. The Rust code that runs them is in
 Both projects are distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied.
 NOTICE_TEXT
+}
 
-echo "✓ English text-normalization grammars ready in ${DICT_DIR}/"
+notice "${DICT_DIR}/wetext-en-tn-NOTICE.txt" English en
+notice "${DICT_DIR}/wetext-zh-tn-NOTICE.txt" Chinese zh
+notice "${DICT_DIR}/wetext-ja-tn-NOTICE.txt" Japanese ja
+
+echo "✓ text-normalization grammars ready in ${DICT_DIR}/"

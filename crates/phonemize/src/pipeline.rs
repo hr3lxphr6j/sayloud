@@ -7,6 +7,12 @@
 //! those differences are the same on all three sides, and the order they run in is
 //! the same too — see [`phonemize_ja`]. A later phase turns this into a dispatch
 //! over the frontends.
+//!
+//! Since phase 9E all three share one step that used to be three: the numeral
+//! reader is [`numerals`], which runs the vendored WeText engine when one was
+//! built and the language's hand-written reader when one was not. What is left
+//! language-specific about it is *where* in the sequence it runs and what the
+//! fallback is.
 
 use std::borrow::Cow;
 
@@ -111,6 +117,64 @@ pub struct Phonemized {
     pub warnings: Vec<String>,
 }
 
+/// Whether the numeral step consults [`tn_gate`] before the engine.
+///
+/// Two values, and the difference between them is not a preference. English's
+/// `should_normalize` is deliberately **not** gated on digits (modification 5 in
+/// `crate::backends::wetext::NOTICE`), so the engine is entered for every English
+/// sentence whatever it contains — the gate is what keeps 4.6 ms per 100
+/// characters off the sentences that have nothing for it. Chinese's and
+/// Japanese's `should_normalize` *is* the digit test, so an outer gate could only
+/// be a second opinion about a question the engine already answers, and the two
+/// disagreeing would either cost time or lose a reading. The reasoning is
+/// [`crate::backends::wetext_tn`]'s; this is how it reaches the pipeline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Gate {
+    /// Ask [`tn_gate::needs_normalization`] first, and skip the engine on a
+    /// `false`. English only.
+    CheapSkip,
+    /// Go straight to the engine; its own `should_normalize` decides.
+    EngineDecides,
+}
+
+/// The numeral step: WeText when it was built, `fallback` when it was not.
+///
+/// `text` is the text as the step's caller wants the engine to see it — for
+/// Chinese that is the raw sentence, for Japanese the punctuation-mapped one,
+/// because that is the order each pipeline has always run its steps in.
+///
+/// Three ways the engine is not used, and none of them is a silent wrong answer:
+///
+/// - it was never built (`None`), which is the caller that never called
+///   `prepare` and the build whose assets were not fetched;
+/// - the gate says there is nothing here for it, which is only reachable when
+///   [`Gate::CheapSkip`] was asked for;
+/// - it failed on this sentence. The engine can fail — a composition that will
+///   not build, a grammar that cannot produce a path — and one unreadable
+///   sentence is not worth the sentence around it. `fallback` is what the
+///   pipeline did before the engine arrived: a worse reading of a date, not a
+///   missing one.
+fn numerals<'a>(
+    text: &'a str,
+    tn: Option<&WeTextNormalizer>,
+    gate: Gate,
+    fallback: impl Fn(&str) -> String,
+) -> Cow<'a, str> {
+    match tn {
+        Some(tn) if gate == Gate::EngineDecides || tn_gate::needs_normalization(text) => {
+            Cow::Owned(tn.normalize(text).unwrap_or_else(|_| fallback(text)))
+        }
+        // The engine is there and the gate says there is nothing here for it.
+        // Skipping is then the same as running it, because `fallback` is a no-op
+        // on text with no digit in it and `tn_gate` only returns `false` for text
+        // whose digits the tagger would have passed through. `tests/tn_gate.rs`
+        // asserts that rather than assuming it.
+        Some(_) => Cow::Borrowed(text),
+        // No engine was built at all.
+        None => Cow::Owned(fallback(text)),
+    }
+}
+
 /// Japanese text to IPA, for the v1.0 frontend.
 ///
 /// The order of the first four steps is load-bearing:
@@ -123,6 +187,13 @@ pub struct Phonemized {
 ///    punctuation — unheard, and silently. Reading them as kanji here also keeps
 ///    a numeral in the same Han run as what it counts, which is what decides how
 ///    that reads (「年」 alone is とし, 「二十二年」 is ネン).
+///
+///    Since phase 9E the reading is usually [`wetext_tn::japanese`]'s rather than
+///    [`numbers_to_kanji`]'s, and it is applied to the punctuation-mapped text —
+///    the order above is what it has always been, so the grammar sees `,` where
+///    the source had `、`. That is not the Python reference's input, and it is
+///    the one place this pipeline departs from it; the readings are pinned in
+///    `tests/wetext_ja.rs` and the whole-pipeline effect in `tests/ja_pipeline.rs`.
 /// 3. **Then split into script runs**, because each run takes a different route.
 /// 4. **Then read each run out as katakana** and map that to IPA.
 ///
@@ -147,13 +218,19 @@ pub struct Phonemized {
 /// broken build rather than a normal state: the dictionary is compiled in. It is
 /// still not fatal here, because one unusable English word must not cost the
 /// user the Japanese sentence around it.
+///
+/// `tn` is the vendored WeText engine, built by `finish_loading` from the two
+/// grammars the dictionary protocol fetched ([`wetext_tn::japanese`]). It is
+/// optional for the reason [`crate::backends::wetext_tn`] gives, and its absence
+/// falls back to [`numbers_to_kanji`].
 pub fn phonemize_ja(
     text: &str,
     segmenter: &SegmenterJa,
     english: Option<&EnglishG2p>,
+    tn: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
     let normalized = normalize_punctuation(text);
-    let with_numerals = numbers_to_kanji(&normalized);
+    let with_numerals = numerals(&normalized, tn, Gate::EngineDecides, numbers_to_kanji);
     let runs = segment_text(&with_numerals);
 
     let mut parts: Vec<String> = Vec::new();
@@ -291,27 +368,7 @@ pub fn phonemize_en(
     tn: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
     let normalized = normalize_punctuation(text);
-    let with_numerals: Cow<'_, str> = match tn {
-        // The gate first, because the tagger is where the cost is: 92% of
-        // English TN is the tagger FST, and it runs on every sentence whether or
-        // not there is anything for it to tag
-        // (`docs/superpowers/plans/p6-9b3-fst-and-gate.md` §五). A skip is only
-        // taken when the text has none of the shapes TN can rewrite, and
-        // skipping is then the same as running it: `numbers_to_english`, the
-        // fallback for a failure, is a no-op on the same text because it only
-        // ever matches a digit. `tests/tn_gate.rs` asserts that rather than
-        // assuming it.
-        Some(tn) if tn_gate::needs_normalization(&normalized) => Cow::Owned(
-            tn.normalize(&normalized)
-                .unwrap_or_else(|_| numbers_to_english(&normalized)),
-        ),
-        // The engine is there and the gate says there is nothing here for it.
-        Some(_) => Cow::Borrowed(&normalized),
-        // No engine was built at all — the caller never called `prepare`. Not the
-        // gate's business: the fallback is what this pipeline did before phase
-        // 9B and it stays exactly as it was.
-        None => Cow::Owned(numbers_to_english(&normalized)),
-    };
+    let with_numerals = numerals(&normalized, tn, Gate::CheapSkip, numbers_to_english);
     let runs = segment_text(&with_numerals);
 
     let mut parts: Vec<String> = Vec::new();
@@ -397,6 +454,14 @@ impl ToneRules {
 ///    segmenter knows: it would land in an `other` run and be dropped as
 ///    punctuation — unheard, and silently. The JavaScript applies it in the same
 ///    place, inside the punctuation call: `mapPunctuation(numbersToHan(text))`.
+///
+///    Since phase 9E the reading is usually [`wetext_tn::chinese`]'s instead,
+///    applied to the same raw text — so a *year* is read digit by digit
+///    (`2024年` is 二零二四年, which is how it is said) where `numbers_to_han`
+///    reads it as a quantity (二千零二十四年). The engine trims, which
+///    `numbers_to_han` deliberately does not; that is invisible here, because
+///    [`zh_text::keep_punctuation`] keeps whitespace and
+///    [`collapse_whitespace`] is what removes it, at the end either way.
 /// 2. **Then punctuation**, [`zh_text::map_punctuation`], which is where the
 ///    pauses come from. It is not [`normalize_punctuation`]: `chinese.ts` maps
 ///    the quotation marks to `“ ”` where `common.ts` maps them to `"`, and the
@@ -449,14 +514,18 @@ impl ToneRules {
 ///
 /// `english` is `None` when the backend could not be built at all, which is a
 /// broken build rather than a normal state; see [`phonemize_ja`] for why that is a
-/// warning and not a failure.
+/// warning and not a failure. `tn` is the vendored WeText engine
+/// ([`wetext_tn::chinese`]), optional for the reason that module gives — and
+/// `None` is what makes this function the phase 6 pipeline, which is what the
+/// JavaScript parity corpus in `tests/zh_pipeline.rs` is asserted against.
 pub fn phonemize_zh(
     text: &str,
     segmenter: &SegmenterZh,
     english: Option<&EnglishG2p>,
     tone_rules: ToneRules,
+    tn: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
-    let with_numerals = numbers_to_han(text);
+    let with_numerals = numerals(text, tn, Gate::EngineDecides, numbers_to_han);
     let mapped = zh_text::map_punctuation(&with_numerals);
     let runs = zh_text::split_runs(&mapped);
 

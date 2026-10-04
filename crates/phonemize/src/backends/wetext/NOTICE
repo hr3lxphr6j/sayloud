@@ -28,8 +28,9 @@ Modifications made for tts-ng
 The copy is upstream's `src/` at version 0.1.2 with the following changes.
 The first five are the ones the P6 phase 9B evaluation measured and recommended
 (`docs/superpowers/plans/p6-wetext-evaluation.md`, appendix B); the sixth is a
-correctness fix phase 9B.4 made after the evaluation. Nothing else about the
-normalization logic was touched.
+correctness fix phase 9B.4 made after the evaluation, and the seventh is what
+phase 9E needed before it could wire Chinese and Japanese up at all. Nothing
+else about the normalization logic was touched.
 
 1. `text_normalizer.rs`: added `FstTextNormalizer::from_bytes`, and removed
    `from_file`. `rustfst`'s `SerializableFst::load` takes the whole OpenFST
@@ -104,6 +105,35 @@ is a way for an I/O error to arrive in a module that has no I/O.
 The port had one pre-existing flaw that was *not* fixed, because nothing in
 this crate reaches it: upstream's `fix_contractions` is off by default, and
 the configuration this crate builds for English leaves it off.
+
+7. `normalizer.rs`: `should_normalize` tests digits with
+   [`char::is_numeric`](char::is_numeric) rather than `is_ascii_digit`. Upstream's
+   line was a port of the Python reference's `re.search(r"\d", text)`, which over
+   a Python `str` matches every character in Unicode general category `Nd` — and
+   `is_ascii_digit` matches only `0-9`. `char::is_numeric` is `Nd | Nl | No`, a
+   superset, so this can only make the normalizer *run* on text the reference
+   would have skipped, which returns that text unchanged.
+
+   The port's comment defended the narrower test on the grounds that the
+   difference "does not reach English". That was true and beside the point: the
+   branch in question is the one English never takes (`lang != En` below it), so
+   the difference could only ever reach Chinese and Japanese — and it reached
+   them everywhere. Fully half the numerals in real Chinese and Japanese text are
+   written full-width (`２０２２年`, `１５．６％`), and `０` is U+FF10. Every one of
+   those took the "nothing to normalize here" early return and came out as the
+   digits it was written with, silently: dropping to the hand-written reader
+   gives the same answer as not having this engine, so no test that only checked
+   the output could tell the difference.
+
+   Measured against `pip install wetext==0.1.8` (`docs/superpowers/plans/p6-9e-cjk-text-normalization.md`
+   §三): of 48 Chinese probe inputs the copy agreed on 45 before this change and
+   47 after; of 29 Japanese inputs it agreed on 23 before and **29 after**. Every
+   remaining disagreement is `1.2.3%`, a malformed number that the reference's
+   chained-regex front end and this FST composition fragment differently, and that
+   `crates/phonemize/tests/wetext_zh.rs` pins.
+
+   Found by phase 9E, which is when Chinese and Japanese were wired up. Not
+   reachable from English, so nothing between 9B and 9E could have noticed.
 
 The port has one more limitation that is **not** ours, recorded in `README.md`:
 `1000` is tagged `date { year: "1000" }`, where `ten hundred` and `one thousand`

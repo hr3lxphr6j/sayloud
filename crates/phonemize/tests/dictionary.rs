@@ -17,13 +17,30 @@ const IPADIC: &str = "lindera-ipadic-ja";
 /// The Chinese dictionary's name, as `required_dictionaries` spells it.
 const JIEBA: &str = "jieba-zh-dict";
 
-/// The two English text-normalization grammars, as `required_dictionaries`
-/// spells them.
+/// The English text-normalization grammars, as `required_dictionaries` spells
+/// them.
 ///
-/// Phase 9B: English's *phonemes* still need no dictionary — the CMU dictionary
+/// Phase 9B. English's *phonemes* still need no dictionary — the CMU dictionary
 /// is compiled in — but its numerals come from the vendored WeText engine, whose
 /// grammars are 12 MB of OpenFST binary and therefore an asset.
 const WETEXT_EN: [&str; 2] = ["wetext-en-tn-tagger", "wetext-en-tn-verbalizer"];
+
+/// The Chinese ones (phase 9E).
+///
+/// Chinese and Japanese now fetch grammars as well as a word list, and that is
+/// the shape every language has: this list is the *numeral* step, not the
+/// phoneme step, so it is additive to whatever the phonemes need.
+const WETEXT_ZH: [&str; 2] = ["wetext-zh-tn-tagger", "wetext-zh-tn-verbalizer"];
+
+/// The Japanese ones (phase 9E).
+const WETEXT_JA: [&str; 2] = ["wetext-ja-tn-tagger", "wetext-ja-tn-verbalizer"];
+
+/// Everything `required_dictionaries("kokoro-v1", "ja-JP")` returns, in order:
+/// the language's own dictionary first, then its two grammars.
+const JA_REQUIRED: [&str; 3] = [IPADIC, WETEXT_JA[0], WETEXT_JA[1]];
+
+/// Everything `required_dictionaries("kokoro-v1", "zh-CN")` returns.
+const ZH_REQUIRED: [&str; 3] = [JIEBA, WETEXT_ZH[0], WETEXT_ZH[1]];
 
 /// A path inside the repo, resolved from this crate rather than the cwd — `cargo
 /// test` runs with the package directory as the working directory.
@@ -47,11 +64,25 @@ fn declared(frontend: &str, lang: &str) -> DictionaryRegistry {
     registry
 }
 
+/// Feed every name in a list the transport fixture, then finish.
+///
+/// Any zstd frame does: the registry only checks that everything asked for
+/// arrived, and it is `Phonemizer::finish_loading` — not the registry — that
+/// parses it into something a pipeline can use.
+fn load_fixture(registry: &mut DictionaryRegistry, names: &[&str]) {
+    for name in names {
+        registry
+            .load(name, &fixture_bytes("test-dict.json.zst"))
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+    }
+    registry.finish().unwrap_or_else(|error| panic!("{error}"));
+}
+
 #[test]
-fn japanese_needs_the_ipadic_dictionary() {
+fn japanese_needs_the_ipadic_dictionary_and_two_grammars() {
     let registry = declared("kokoro-v1", "ja-JP");
 
-    assert_eq!(registry.required(), [IPADIC]);
+    assert_eq!(registry.required(), JA_REQUIRED);
 }
 
 #[test]
@@ -67,7 +98,7 @@ fn english_needs_the_two_text_normalization_grammars() {
 }
 
 #[test]
-fn chinese_needs_the_jieba_dictionary() {
+fn chinese_needs_the_jieba_dictionary_and_two_grammars() {
     // The pinyin tables are compiled in, but the word list is not. This test was
     // written as a tripwire for exactly this decision — its comment said "if the
     // Chinese segmenter turns out to be lindera-cc-cedict rather than jieba-rs,
@@ -79,8 +110,9 @@ fn chinese_needs_the_jieba_dictionary() {
     //
     // Both frontends, because the choice of Chinese *script* is the frontend's
     // business and not the dictionary's: v1.0 and v1.1-zh read the same words.
-    assert_eq!(declared("kokoro-v1", "zh-CN").required(), [JIEBA]);
-    assert_eq!(declared("kokoro-v11-zh", "zh-CN").required(), [JIEBA]);
+    // Phase 9E added the two grammars to both.
+    assert_eq!(declared("kokoro-v1", "zh-CN").required(), ZH_REQUIRED);
+    assert_eq!(declared("kokoro-v11-zh", "zh-CN").required(), ZH_REQUIRED);
 }
 
 #[test]
@@ -133,7 +165,7 @@ fn a_dictionary_is_decompressed_on_load() {
     registry
         .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
         .unwrap();
-    registry.finish().unwrap();
+    load_fixture(&mut registry, &WETEXT_JA);
 
     // The assertion that matters: what came back is the plaintext the reference
     // `zstd` CLI compressed, byte for byte. A `load` that stored the compressed
@@ -158,7 +190,7 @@ fn loading_a_dictionary_nobody_asked_for_is_an_error() {
         error,
         DictionaryError::UnknownDictionary {
             name: "lindera-unidic-ja".to_string(),
-            declared: vec![IPADIC.to_string()],
+            declared: JA_REQUIRED.iter().map(|name| (*name).to_string()).collect(),
         }
     );
 }
@@ -230,7 +262,7 @@ fn finishing_before_every_dictionary_arrived_names_the_missing_ones() {
     assert_eq!(
         error,
         DictionaryError::Missing {
-            names: vec![IPADIC.to_string()]
+            names: JA_REQUIRED.iter().map(|name| (*name).to_string()).collect(),
         }
     );
     assert!(error.to_string().contains(IPADIC), "{error}");
@@ -262,19 +294,15 @@ fn switching_language_back_does_not_demand_the_dictionary_again() {
     registry
         .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
         .unwrap();
-    registry.finish().unwrap();
+    load_fixture(&mut registry, &WETEXT_JA);
 
-    // A voice switch to English is now two more fetches rather than none. The
-    // bytes here are the transport fixture: `finish` checks that everything
-    // asked for arrived, and it is `Phonemizer::finish_loading` — not the
-    // registry — that parses them, so any zstd frame does for this test.
+    // A voice switch to English is now two more fetches rather than none, and
+    // since phase 9E a switch *from* Japanese is also three. The bytes here are
+    // the transport fixture: `finish` checks that everything asked for arrived,
+    // and it is `Phonemizer::finish_loading` — not the registry — that parses
+    // them, so any zstd frame does for this test.
     registry.declare_required("kokoro-v1", "en-US").unwrap();
-    for name in WETEXT_EN {
-        registry
-            .load(name, &fixture_bytes("test-dict.json.zst"))
-            .unwrap();
-    }
-    registry.finish().unwrap();
+    load_fixture(&mut registry, &WETEXT_EN);
 
     // And back. `load` is skipped by the wrapper here only if the bytes are
     // already there — which `finish` is what checks.
@@ -292,13 +320,15 @@ fn a_voice_switch_between_two_languages_that_need_dictionaries() {
     registry
         .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
         .unwrap();
-    registry.finish().unwrap();
+    load_fixture(&mut registry, &WETEXT_JA);
 
+    // Six names, and `load` accepts all of them even though the last declaration
+    // was Japanese's — which is what the test after this one pins on purpose.
     registry.declare_required("kokoro-v1", "zh-CN").unwrap();
     registry
         .load(JIEBA, &fixture_bytes("test-dict.json.zst"))
         .unwrap();
-    registry.finish().unwrap();
+    load_fixture(&mut registry, &WETEXT_ZH);
 
     assert_eq!(
         registry.get(JIEBA),
@@ -388,7 +418,7 @@ fn the_wasm_boundary_exposes_the_protocol() {
         phonemizer
             .required_dictionaries("kokoro-v1", "ja-JP")
             .unwrap(),
-        [IPADIC]
+        JA_REQUIRED
     );
     assert_eq!(
         phonemizer

@@ -277,7 +277,7 @@ fn tagger_classes(tagged: &str) -> Vec<&str> {
 /// The parse is 247 ms in a debug native test, so this is per test rather than
 /// shared — and there are only a handful of tests here.
 fn engine() -> Option<(FstTextNormalizer, Normalizer)> {
-    let (tagger, verbalizer) = common::wetext_fsts()?;
+    let (tagger, verbalizer) = common::wetext_fsts(common::WETEXT_EN_NAMES)?;
     Some((
         FstTextNormalizer::from_bytes(&tagger).expect("the tagger parses"),
         wetext_tn::english(&tagger, &verbalizer).expect("both grammars parse"),

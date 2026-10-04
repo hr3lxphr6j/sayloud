@@ -25,7 +25,9 @@ use phonemize::backends::wetext_tn;
 use phonemize::dictionary::{DictionaryRegistry, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER};
 use phonemize::Phonemizer;
 
-use common::{english_options, english_phonemizer, wetext_compressed, wetext_fsts};
+use common::{
+    english_options, english_phonemizer, wetext_compressed, wetext_fsts, WETEXT_EN_NAMES,
+};
 
 /// The engine, built from the shipped grammars.
 ///
@@ -34,7 +36,7 @@ use common::{english_options, english_phonemizer, wetext_compressed, wetext_fsts
 /// order-dependent in a way that a `Normalizer` held across cases has no reason
 /// to be.
 fn engine() -> Option<Normalizer> {
-    let (tagger, verbalizer) = wetext_fsts()?;
+    let (tagger, verbalizer) = wetext_fsts(WETEXT_EN_NAMES)?;
     Some(wetext_tn::english(&tagger, &verbalizer).expect("the grammars parse"))
 }
 
@@ -308,7 +310,7 @@ fn an_unprepared_english_pipeline_falls_back_rather_than_failing() {
 /// wasm — the same split `tests/dictionary.rs` makes.
 #[test]
 fn one_grammar_without_the_other_is_not_enough_to_finish() {
-    let Some(assets) = wetext_compressed() else {
+    let Some(assets) = wetext_compressed(WETEXT_EN_NAMES) else {
         return;
     };
     let (name, bytes) = &assets[0];

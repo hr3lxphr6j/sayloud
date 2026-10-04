@@ -55,6 +55,7 @@ mod common;
 
 use common::{chinese_options, chinese_phonemizer};
 use phonemize::backends::segmenter_zh::SegmenterZh;
+use phonemize::backends::wetext::Normalizer;
 use phonemize::pipeline::{self, ToneRules};
 use phonemize::{PhonemizeError, PhonemizeResult, Phonemizer};
 use serde::Deserialize;
@@ -87,12 +88,21 @@ fn phonemize(phonemizer: &Phonemizer, text: &str) -> PhonemizeResult {
 /// The phase 6 pipeline, for a test that compares against the JavaScript.
 ///
 /// The corpus is the JavaScript frontend's output, and the JavaScript frontend
-/// did no tone sandhi and no erhua, so a test that compares against it has to ask
-/// for [`ToneRules::Off`]. It cannot go through `Phonemizer`, which ships `On`
-/// and takes no option for it — deliberately, because whether the v1.0 voices
-/// should sandhi at all is a decision for the caller and not for a sentence (see
-/// `pipeline::ToneRules`) — so this drives the pipeline directly with its own
-/// segmenter, built once per test rather than once per sentence.
+/// did no tone sandhi, no erhua and no WeText: it read numerals with
+/// `numbersToHan` and nothing else. So a test that compares against it has to ask
+/// for [`ToneRules::Off`] *and* no text normalizer. It cannot go through
+/// `Phonemizer` — that ships `On`, and since phase 9E it ships the shipped
+/// numerals too, and it takes no option for either, deliberately: whether the
+/// v1.0 voices should sandhi, and whether they should read a date as a date, are
+/// decisions for the caller and not for a sentence (see `pipeline::ToneRules`).
+/// So this drives the pipeline directly with its own segmenter, built once per
+/// test rather than once per sentence.
+///
+/// **[`Self::phonemes`] takes both switches**, and that is what makes the two
+/// tables that follow readable as a decomposition rather than a pile of pins:
+/// phase 6 is `(Off, None)`, the tone rules alone are `(On, None)`, the numeral
+/// step alone is `(Off, Some)` if anyone needs it, and the shipped pipeline is
+/// `(On, Some)`.
 struct Legacy {
     segmenter: SegmenterZh,
 }
@@ -115,13 +125,18 @@ fn legacy() -> Option<Legacy> {
 }
 
 impl Legacy {
-    fn phonemes(&self, text: &str) -> String {
+    fn phonemes(&self, text: &str, tone_rules: ToneRules, tn: Option<&Normalizer>) -> String {
         // `None` for the English backend: the corpus has no Latin text in it,
         // because the two pipelines deliberately use different English engines
         // for a Latin run (see the module comment above).
-        pipeline::phonemize_zh(text, &self.segmenter, None, ToneRules::Off)
+        pipeline::phonemize_zh(text, &self.segmenter, None, tone_rules, tn)
             .unwrap_or_else(|error| panic!("{text:?}: {error}"))
             .phonemes
+    }
+
+    /// The phase 6 pipeline, exactly: no tone rules and no WeText.
+    fn phase6(&self, text: &str) -> String {
+        self.phonemes(text, ToneRules::Off, None)
     }
 }
 
@@ -134,7 +149,7 @@ fn matches_the_javascript_pipeline_on_the_corpus() {
     let mut failures = Vec::new();
     let samples = corpus().samples;
     for sample in &samples {
-        let rust = legacy.phonemes(&sample.input);
+        let rust = legacy.phase6(&sample.input);
         if rust != sample.js {
             failures.push(format!(
                 "{}\n  javascript {:?}\n  rust       {:?}",
@@ -178,24 +193,24 @@ fn matches_the_javascript_suite_sample_for_sample() {
     // JavaScript suite's own expectations, and the tone rules move one of them
     // (你好世界。 gains a second tone on 你).
     assert_eq!(
-        legacy.phonemes("第 3 季度营收增长了 15.6%。"),
+        legacy.phase6("第 3 季度营收增长了 15.6%。"),
         "ti↘ sa→n ʨi↘tu↘ i↗ŋʂou→ ʦə→ŋꭧa↓ŋ lɤ pai↓fə→nꭧɻ̩→ʂɻ̩↗u↓ tjɛ↓nljou↘."
     );
 
     // The space comes *after* the mark, because `mapPunctuation` emits `", "`
     // and the runs are concatenated with nothing inserted between them. Putting
     // one in front of every mark as well is the deviation the P5 spec calls B.
-    assert_eq!(legacy.phonemes("你好世界。"), "ni↓xau↓ ʂɻ̩↘ʨje↘.");
+    assert_eq!(legacy.phase6("你好世界。"), "ni↓xau↓ ʂɻ̩↘ʨje↘.");
 
-    assert_eq!(legacy.phonemes("你好   世界"), "ni↓xau↓ ʂɻ̩↘ʨje↘");
-    assert_eq!(legacy.phonemes("妈麻马骂。"), "ma→ma↗ma↓ ma↘.");
+    assert_eq!(legacy.phase6("你好   世界"), "ni↓xau↓ ʂɻ̩↘ʨje↘");
+    assert_eq!(legacy.phase6("妈麻马骂。"), "ma→ma↗ma↓ ma↘.");
 
     // `-` is not in Kokoro's vocabulary, and `%` is already spoken by the
     // numeral conversion. Emitting either would be pointless at best.
-    assert_eq!(legacy.phonemes("好-坏"), "xau↓xwai↘");
+    assert_eq!(legacy.phase6("好-坏"), "xau↓xwai↘");
 
     // Nothing to say is not an error.
-    assert_eq!(legacy.phonemes("   "), "");
+    assert_eq!(legacy.phase6("   "), "");
 
     // And the shipped pipeline on the same sentences, so that both pipelines are
     // pinned for one input rather than one being pinned and the other assumed.
@@ -298,7 +313,13 @@ const TONE_RULE_CHANGES: &[(&str, &str)] = &[
 ];
 
 /// The shipped pipeline against the corpus, sample by sample, and the claim that
-/// the tone rules are the *only* difference.
+/// the tone rules are the *only* difference from the phase 6 pipeline.
+///
+/// **Tone rules only**: both sides of this comparison run with no text
+/// normalizer, so the phase 9E numeral step cannot show up here as a "tone rule
+/// change". That decomposition is what lets the table below be read as a claim
+/// about one mechanism — `the_text_normalizer_changes_exactly_these_samples` is
+/// the same test for the other one.
 ///
 /// Asserted from both directions on purpose. A list of changed samples would pass
 /// if a later phase changed a *third* sample and rewrote the corpus; the `None`
@@ -307,9 +328,6 @@ const TONE_RULE_CHANGES: &[(&str, &str)] = &[
 /// complete description of the difference rather than a record of part of it.
 #[test]
 fn the_tone_rules_change_exactly_these_samples() {
-    let Some(phonemizer) = chinese_phonemizer() else {
-        return;
-    };
     let Some(legacy) = legacy() else {
         return;
     };
@@ -317,8 +335,8 @@ fn the_tone_rules_change_exactly_these_samples() {
     let samples = corpus().samples;
     let mut seen = 0;
     for sample in &samples {
-        let shipped = phonemize(&phonemizer, &sample.input).phonemes;
-        let before = legacy.phonemes(&sample.input);
+        let shipped = legacy.phonemes(&sample.input, ToneRules::On, None);
+        let before = legacy.phase6(&sample.input);
         assert_eq!(
             before, sample.js,
             "{:?}: the phase 6 pipeline is the corpus",
@@ -343,7 +361,7 @@ fn the_tone_rules_change_exactly_these_samples() {
                 );
             }
             None => assert_eq!(
-                shipped, sample.js,
+                shipped, before,
                 "{:?} is not in the table but the tone rules moved it",
                 sample.input
             ),
@@ -354,6 +372,101 @@ fn the_tone_rules_change_exactly_these_samples() {
     assert_eq!(
         seen,
         TONE_RULE_CHANGES.len(),
+        "every entry in the table is a corpus sample"
+    );
+}
+
+/// Every corpus sample the phase 9E numeral step moves, and what it moves it to.
+///
+/// The same shape as [`TONE_RULE_CHANGES`], and deliberately separate from it:
+/// this table is about the *numeral* step and the other one is about the tone
+/// rules, so a regression in one cannot hide behind a pin in the other. Both are
+/// read from both directions — each entry must differ from the pipeline without
+/// the normalizer and match its new value, and every sample *not* in the table
+/// must be identical with and without it.
+///
+/// Five of forty-seven samples move, and the forty-two that do not are the
+/// reassuring half: `123`, `123.45`, `50%`, `100015`, `15％` and `我有3只猫` all
+/// come out the same either way, because for a bare cardinal the two readers
+/// agree. What moves is what has *context* to read.
+///
+/// Per entry, in order:
+///
+/// - **`第 3 季度…` — a space.** `第 3 季度` is one entity to the grammar and two
+///   runs to `numbers_to_han`, so the space between 三 and 季度 goes. Cosmetic,
+///   and the direction is towards how the sentence is actually said.
+/// - **`1.2.3` — neither reading means anything.** `numbers_to_han`'s four
+///   chained patterns give 一点二.三; the tagger fragments it at the first dot
+///   and gives 一.二点三. This is a malformed number and both answers are
+///   arbitrary; what matters is that it is *pinned* rather than discovered.
+/// - **`０１２３` — this one is worse, and it is the reference's behaviour.** The
+///   tagger splits it into `math{0}` and `math{123}`, so it reads 零一百二十三
+///   where `numbers_to_han` strips the leading zero and says 一百二十三. That is
+///   what `pip install wetext==0.1.8` produces for the same input, so it is not a
+///   defect in this copy — it is a cost of the switch, recorded here so nobody
+///   finds it by listening. (`007` goes the other way: the grammar says 零零七,
+///   which is how a code is read and how the hand-written reader did not.)
+/// - **`２０２２年` — the headline improvement.** A year is read as a year:
+///   二零二二年, not 二千零二十二年. `numbers_to_han` has no context to tell a year
+///   from a quantity and reads both as quantities; this is the class of input the
+///   engine was wired up for.
+/// - **`1,234` — 两 for 二.** Both readers keep the comma and read only the last
+///   group, so both are wrong; the grammar says 两百 where the hand-written
+///   reader said 二百, and 两百 is the form the user asked for (see the 9B
+///   decision note). The space before 三十四 goes for the same reason as the
+///   first entry.
+const TEXT_NORMALIZER_CHANGES: &[(&str, &str)] = &[
+    (
+        "第 3 季度营收增长了 15.6%。",
+        "ti↘ sa→nʨi↘tu↘ i↗ŋʂou→ ʦə→ŋꭧa↓ŋ lɤ pai↓fə→nꭧɻ\u{329}→ʂɻ\u{329}↗u↓ tjɛ↓nljou↘.",
+    ),
+    ("1.2.3", "i→.ɚ↘tjɛ↓n sa→n"),
+    ("０１２３", "li↗ŋ i→pai↓ɚ↘ʂɻ\u{329}↗ sa→n"),
+    ("２０２２年", "ɚ↘li↗ŋɚ↘ ɚ↘njɛ↗n"),
+    ("1,234", "i→,lja↗ŋpai↓ sa→nʂɻ\u{329}↗sɹ\u{329}↘"),
+];
+
+/// The shipped pipeline against the corpus, sample by sample, with the numeral
+/// step as the only difference.
+#[test]
+fn the_text_normalizer_changes_exactly_these_samples() {
+    let Some(phonemizer) = chinese_phonemizer() else {
+        return;
+    };
+    let Some(legacy) = legacy() else {
+        return;
+    };
+
+    let samples = corpus().samples;
+    let mut seen = 0;
+    for sample in &samples {
+        let shipped = phonemize(&phonemizer, &sample.input).phonemes;
+        let without = legacy.phonemes(&sample.input, ToneRules::On, None);
+
+        match TEXT_NORMALIZER_CHANGES
+            .iter()
+            .find(|(input, _)| *input == sample.input)
+        {
+            Some((_, expected)) => {
+                seen += 1;
+                assert_eq!(shipped, *expected, "{:?} with WeText", sample.input);
+                assert_ne!(
+                    shipped, without,
+                    "{:?} is in the table but did not move",
+                    sample.input
+                );
+            }
+            None => assert_eq!(
+                shipped, without,
+                "{:?} is not in the table but the numeral step moved it",
+                sample.input
+            ),
+        }
+    }
+
+    assert_eq!(
+        seen,
+        TEXT_NORMALIZER_CHANGES.len(),
         "every entry in the table is a corpus sample"
     );
 }
@@ -519,5 +632,93 @@ fn every_corpus_sample_passes_the_vocabulary_gate() {
             sample.input,
             result.expect_err("checked")
         );
+    }
+}
+
+/// What the phase 9E numeral step buys, at the phoneme level.
+///
+/// The corpus table above says which *corpus* samples move; this one says what
+/// the engine reads that the corpus does not cover, with both sides pinned so a
+/// failure identifies which of the two readers changed. Every row is a class the
+/// hand-written reader has no rule for — a clock time with a colon in it, a
+/// currency sign, a fraction, a phone number — except the first two, which are
+/// here because they show the same change is not local to a bare numeral.
+///
+/// Two rows read *worse* and are pinned anyway: `2,000` as 二,零零零 against
+/// 二,零, and the 减 of `555-1234`. Neither old reading was usable either, and a
+/// table of only the improvements would be a table that could not fail.
+#[test]
+fn the_numeral_step_reads_these_entities() {
+    let Some(legacy) = legacy() else {
+        return;
+    };
+    let Some(tn) = common::chinese_tn() else {
+        return;
+    };
+
+    let table: &[(&str, &str, &str)] = &[
+        (
+            "今天是2024年10月4日",
+            "ʨi→ntʰjɛ→n ʂɻ\u{329}↘ ɚ↘li↗ŋɚ↘ sɹ\u{329}↘njɛ↗n ʂɻ\u{329}↗ɥe↘ sɹ\u{329}↘ɻɻ\u{329}↘",
+            "ʨi→ntʰjɛ→n ʂɻ\u{329}↘ ɚ↘ʨʰjɛ→n li↗ŋ ɚ↘ʂɻ\u{329}↗sɹ\u{329}↘njɛ↗n ʂɻ\u{329}↗ɥe↘ sɹ\u{329}↘ɻɻ\u{329}↘",
+        ),
+        (
+            "2024年",
+            "ɚ↘li↗ŋɚ↘ sɹ\u{329}↘njɛ↗n",
+            "ɚ↘ʨʰjɛ→n li↗ŋ ɚ↘ʂɻ\u{329}↗sɹ\u{329}↘njɛ↗n",
+        ),
+        (
+            "1,234个",
+            "i↘ʨʰjɛ→nɚ↘pai↓ sa→nʂɻ\u{329}↗sɹ\u{329}↘kɤ",
+            "i→,ɚ↘pai↓sa→nʂɻ\u{329}↗ sɹ\u{329}↘kɤ",
+        ),
+        ("200元", "lja↗ŋpai↓ɥɛ↗n", "ɚ↘pai↓ɥɛ↗n"),
+        // The colon used to survive into the output and be kept as punctuation.
+        (
+            "下午3:30",
+            "ɕja↘u↓ sa→ntjɛ↓n sa→nʂɻ\u{329}↗fə→n",
+            "ɕja↘u↓ sa→n:sa→nʂɻ\u{329}↗",
+        ),
+        // The currency sign was dropped by the punctuation filter, so nothing
+        // said what the number was.
+        (
+            "$20.50",
+            "ɚ↘ʂɻ\u{329}↗tjɛ↓n u↓li↗ŋ mei↓ɥɛ↗n",
+            "$ɚ↘ʂɻ\u{329}↗tjɛ↓n u↓li↗ŋ",
+        ),
+        ("1/2", "ɚ↘fə→nꭧɻ\u{329}→i→", "i→ɚ↘"),
+        // Reads the 减 the grammar inserts for a hyphen. Old and new are both
+        // wrong; the new one adds a word.
+        (
+            "电话是555-1234",
+            "tjɛ↘nxwa↘ ʂɻ\u{329}↘ u↗pai↓ u↓ʂɻ\u{329}↗u↓ ʨjɛ↓n i↘ʨʰjɛ→nɚ↘pai↓ sa→nʂɻ\u{329}↗sɹ\u{329}↘",
+            "tjɛ↘nxwa↘ ʂɻ\u{329}↘ u↗pai↓ u↓ʂɻ\u{329}↗u↓i↘ʨʰjɛ→nɚ↘pai↓ sa→nʂɻ\u{329}↗sɹ\u{329}↘",
+        ),
+        // The clearest win of the set: a phone number read digit by digit rather
+        // than as three concatenated quantities.
+        (
+            "电话番号是090-1234-5678",
+            "tjɛ↘nxwa↘ fa→nxau↘ ʂɻ\u{329}↘ li↗ŋ ʨjou↓li↗ŋ i→ɚ↘sa→nsɹ\u{329}↘u↓ ljou↘ ʨʰi→pa→",
+            "tjɛ↘nxwa↘ fa→nxau↘ ʂɻ\u{329}↘ ʨjou↓ʂɻ\u{329}↗i↘ʨʰjɛ→nɚ↘pai↓ sa→nʂɻ\u{329}↗sɹ\u{329}↘u↓ʨʰjɛ→n ljou↘pai↓ ʨʰi→ʂɻ\u{329}↗pa→",
+        ),
+        (
+            "第3季度营收10,000,000元。",
+            "ti↘sa→nʨi↘tu↘ i↗ŋʂou→ i↘ʨʰjɛ→nwa↘nɥɛ↗n.",
+            "ti↘sa→nʨi↘tu↘ i↗ŋʂou→ʂɻ\u{329}↗,li↗ŋ,li↗ŋɥɛ↗n.",
+        ),
+    ];
+
+    for (input, with, without) in table {
+        assert_eq!(
+            legacy.phonemes(input, ToneRules::On, None),
+            *without,
+            "{input:?} without the numeral step"
+        );
+        assert_eq!(
+            legacy.phonemes(input, ToneRules::On, Some(&tn)),
+            *with,
+            "{input:?} with WeText"
+        );
+        assert_ne!(with, without, "{input:?} is in the table but did not move");
     }
 }

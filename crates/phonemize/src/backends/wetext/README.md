@@ -1,8 +1,15 @@
-# English text normalization (`wetext`)
+# Text normalization (`wetext`)
 
-Weighted-FST text normalization, vendored from `wetext-rs` 0.1.2 and wired up
-for English by `crate::backends::wetext_tn`. See `NOTICE` in this directory for
-the licence and the six modifications; this file is about *using* it.
+Weighted-FST text normalization, vendored from `wetext-rs` 0.1.2 and wired up for
+all three languages by `crate::backends::wetext_tn` — English in phase 9B,
+Chinese and Japanese in 9E. See `NOTICE` in this directory for the licence and the
+seven modifications; this file is about *using* it.
+
+Everything below is written from the English side, because English is where it
+was first wired up and where the interesting behaviour (abbreviations, and a
+3,050-key whitelist with no shape) lives. The other two are the same three-stage
+pipeline over different grammars; what they buy and what they cost is in
+`docs/superpowers/plans/p6-9e-cjk-text-normalization.md`.
 
 ## Where it comes from
 
@@ -21,8 +28,9 @@ means maintaining a fork; copying it means the code is ours to keep building.
 
 ## What it normalizes
 
-Eight classes were missing from the hand-written English numeral reader, and
-they are what this module is here for:
+Eight classes were missing from the hand-written English numeral reader, and they
+are what this module is here for (English; the other two have their own tables in
+`tests/wetext_zh.rs` and `tests/wetext_ja.rs`):
 
 | In | Out |
 |---|---|
@@ -62,14 +70,23 @@ against a synthesis that takes 500-750 ms.
 ## Known differences from upstream behaviour
 
 - **`normalize` trims.** Upstream trims in both `preprocess` and `postprocess`,
-  and this copy does too. Harmless for English, whose pipeline collapses
-  whitespace at the end anyway — but it is why this cannot be dropped into the
-  Chinese pipeline's numeral step, which deliberately does not trim.
-- **`full_to_half` moved** (modification 3 in `NOTICE`), so a full-width digit
-  is normalized where upstream would skip the TN entirely.
+  and this copy does too. Harmless for English and for Japanese, whose pipelines
+  collapse whitespace at the end anyway — but it is why this could not be dropped
+  into the Chinese pipeline's numeral step unchanged: that step deliberately does
+  not trim, and the pipeline has to rely on `collapse_whitespace` at the end
+  instead. Verified rather than assumed: see `phonemize_zh`.
+- **`full_to_half` moved** (modification 3 in `NOTICE`), so a full-width digit is
+  normalized where upstream would skip the TN entirely. Left **off**, like
+  upstream's default, which is why modification 7 below is the one that matters.
 - **`should_normalize` regained its `lang` parameter** (modification 5 in
   `NOTICE`), so English is normalized whether or not it contains a digit, as the
   Python reference does.
+- **`should_normalize` tests digits with `char::is_numeric`**, not
+  `is_ascii_digit` (modification 7 in `NOTICE`). The narrower test is a faithful
+  reading of nothing: the reference's `\d` is Unicode category `Nd`, and the
+  difference only ever reaches the two languages that were added later. Before
+  the fix this copy agreed with `pip install wetext==0.1.8` on 45 of 48 Chinese
+  probes and 23 of 29 Japanese ones; after it, 47 and 29.
 
 ## Path selection, and the bug that used to be here
 

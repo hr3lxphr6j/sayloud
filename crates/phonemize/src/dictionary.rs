@@ -42,26 +42,56 @@ pub const JIEBA_ZH: &str = "jieba-zh-dict";
 
 /// The English TN tagger FST's name, as the JavaScript side sees it.
 ///
-/// Phase 9B. English is the one language whose *phonemes* need no dictionary —
-/// the CMU dictionary is compiled in — but its *numerals* come from the vendored
-/// WeText engine (`crate::backends::wetext`), and that engine's grammars are
-/// OpenFST binaries: 5.6 MB and 6.4 MB raw, so they arrive through the registry
-/// like everything else rather than being embedded (spec decision #4).
+/// Phase 9B for English, phase 9E for the two CJK languages below. English is
+/// the one language whose *phonemes* need no dictionary — the CMU dictionary is
+/// compiled in — but its *numerals* come from the vendored WeText engine
+/// (`crate::backends::wetext`), and that engine's grammars are OpenFST binaries,
+/// so they arrive through the registry like everything else rather than being
+/// embedded (spec decision #4).
+///
+/// **The grammars are small where the numbers are.** English's pair is 707 KB
+/// compressed because its cardinal grammar is enormous; Chinese's is 160 KB and
+/// Japanese's 70 KB, so wiring all three adds 223 KB to an extension whose
+/// dictionaries are already 9.8 MB. What is *not* small is the code: `rustfst`
+/// arrived with phase 9B and is shared by all three.
 ///
 /// The tagger is the half that recognizes an entity; the verbalizer below is the
 /// half that says it. Both are needed and neither is usable without the other,
 /// which is why they are two names rather than one archive: the registry's unit
 /// is one zstd frame, and it already has a rule for "everything declared must
 /// arrive".
-///
-/// 161 KB compressed, built by `scripts/setup-wetext-fsts.sh` from the FSTs the
-/// Python `wetext` distribution ships.
 pub const WETEXT_EN_TN_TAGGER: &str = "wetext-en-tn-tagger";
 
 /// The English TN verbalizer FST's name, as the JavaScript side sees it.
 ///
-/// 546 KB compressed. See [`WETEXT_EN_TN_TAGGER`] for why there are two.
+/// 546 KB compressed, against the tagger's 161 KB. See
+/// [`WETEXT_EN_TN_TAGGER`] for why there are two.
 pub const WETEXT_EN_TN_VERBALIZER: &str = "wetext-en-tn-verbalizer";
+
+/// The Chinese TN tagger FST's name, as the JavaScript side sees it.
+///
+/// 56 KB compressed, built by the same script from the same wheel. Chinese TN
+/// needs no `full_to_half` grammar beside it: its tagger reads full-width
+/// numerals and full-width punctuation itself, which the probes in
+/// `crates/phonemize/tests/wetext_zh.rs` pin.
+pub const WETEXT_ZH_TN_TAGGER: &str = "wetext-zh-tn-tagger";
+
+/// The Chinese TN verbalizer FST's name, as the JavaScript side sees it.
+///
+/// 104 KB compressed. See [`WETEXT_ZH_TN_TAGGER`].
+pub const WETEXT_ZH_TN_VERBALIZER: &str = "wetext-zh-tn-verbalizer";
+
+/// The Japanese TN tagger FST's name, as the JavaScript side sees it.
+///
+/// 32 KB compressed — the smallest of the three, because Japanese entities are
+/// the most regular. See [`WETEXT_ZH_TN_TAGGER`] for why Chinese and Japanese
+/// need no separate full-width grammar.
+pub const WETEXT_JA_TN_TAGGER: &str = "wetext-ja-tn-tagger";
+
+/// The Japanese TN verbalizer FST's name, as the JavaScript side sees it.
+///
+/// 36 KB compressed. See [`WETEXT_JA_TN_TAGGER`].
+pub const WETEXT_JA_TN_VERBALIZER: &str = "wetext-ja-tn-verbalizer";
 
 /// What each frontend can speak (spec §2.2).
 ///
@@ -85,21 +115,23 @@ pub fn supported_languages(frontend: &str) -> Option<&'static [&'static str]> {
 /// Empty is still a real answer, though no language gives it today: the English
 /// CMU dictionary and the Chinese pinyin tables are compiled into the wasm
 /// (spec §2.3), and only the parts that cannot be are fetched.
+///
+/// **Every language now fetches the two WeText TN grammars, and that is the
+/// whole of what phase 9E changed here.** They are the *numeral* step rather
+/// than the phoneme step, which is why a non-empty list is not a contradiction
+/// of spec §2.3.
 fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
     match language {
         // IPADic: prebuilt trie + connection matrix, ~10 MB compressed and
         // 45.3 MB in memory (spec §1.4).
-        "ja" => Some(&[IPADIC_JA]),
+        "ja" => Some(&[IPADIC_JA, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER]),
         // jieba's word list: plain text, 1.6 MB compressed and 4.8 MB in memory,
         // read by `jieba-rs` rather than by a dictionary builder. It is the one
         // part of Chinese that is not compiled in, because the only way
         // `jieba-rs` can embed it cannot link for wasm (see [`JIEBA_ZH`]).
-        "zh" => Some(&[JIEBA_ZH]),
-        // English fetches the two WeText TN grammars (phase 9B). They are the
-        // only dictionary this language has ever needed, and they are needed
-        // for the *numeral* step rather than for the phonemes: the CMU
-        // dictionary is compiled in, so this list being non-empty is not a
-        // contradiction of spec §2.3.
+        "zh" => Some(&[JIEBA_ZH, WETEXT_ZH_TN_TAGGER, WETEXT_ZH_TN_VERBALIZER]),
+        // English's *phonemes* need no dictionary at all — the CMU dictionary is
+        // compiled in — so this list is entirely numerals (phase 9B).
         "en" => Some(&[WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER]),
         _ => None,
     }

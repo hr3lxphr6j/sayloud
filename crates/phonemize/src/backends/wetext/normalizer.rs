@@ -189,6 +189,20 @@ impl Normalizer {
         Language::En
     }
 
+    /// Whether a character counts as a digit for [`Self::should_normalize`].
+    ///
+    /// The reference asks `re.search(r"\d", text)`, which over a Python `str`
+    /// is every character in Unicode general category `Nd`.
+    /// [`char::is_numeric`] is `Nd | Nl | No`, so this is a **superset** — `½`,
+    /// `①` and `Ⅷ` are "digits" here and not to the reference. That direction is
+    /// the safe one: it can only make the normalizer *run* on text the reference
+    /// would have skipped, and running it on text it has nothing to say about
+    /// returns that text unchanged. The other direction was the bug
+    /// (modification 7 in `NOTICE`).
+    fn is_digit(ch: char) -> bool {
+        ch.is_numeric()
+    }
+
     /// Check if normalization is needed
     ///
     /// The digit test is **not** applied to English (modification 5 in
@@ -211,9 +225,14 @@ impl Normalizer {
     /// early exit — see the module's cost note in
     /// `crate::backends::wetext::README.md`.
     ///
-    /// `is_ascii_digit` rather than Python's `\d`, which is Unicode-wide: not a
-    /// difference that reaches English, and left alone rather than changed on
-    /// the way past.
+    /// **The digit test is Unicode-wide, the way the reference's `\d` is.** That
+    /// is modification 7 in `NOTICE`, and it is the difference between Chinese
+    /// and Japanese TN working and not: fully half the numerals in real Chinese
+    /// and Japanese text are written full-width (`２０２２年`, `１５．６％`), `０` is
+    /// not an ASCII digit, so every one of those skipped the whole normalizer
+    /// and came out unread. English never saw it, because this is not the branch
+    /// English takes — which is also why the port's `is_ascii_digit` looked
+    /// harmless for as long as English was the only language wired up.
     fn should_normalize(
         &self,
         text: &str,
@@ -223,7 +242,7 @@ impl Normalizer {
     ) -> bool {
         if operator == Operator::Tn && lang != Language::En {
             // TN: needs normalization if contains digits
-            if text.chars().any(|c| c.is_ascii_digit()) {
+            if text.chars().any(Self::is_digit) {
                 return true;
             }
             // Or if need to remove erhua

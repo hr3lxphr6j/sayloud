@@ -18,10 +18,13 @@
 //! entity's fields into the order its verbalizer expects, and a *verbalizer*
 //! FST turns the reordered entity into words. [`Normalizer`] is the whole of it.
 //!
-//! English is the language wired up today
-//! ([`crate::backends::wetext_tn`]); the FSTs for the other two are not
-//! shipped yet, so `zh`/`ja` configurations would fail to find the FSTs they
-//! ask for.
+//! English is one of the three languages wired up today
+//! ([`crate::backends::wetext_tn`]): its pair of grammars arrived in phase 9B and
+//! Chinese's and Japanese's in phase 9E, through the same dictionary protocol.
+//! `full_to_half`, `traditional_to_simple` and the four post-processors the
+//! wheel also ships are still fetched by nobody — no configuration this crate
+//! builds turns those flags on, which is what the Python reference defaults to
+//! as well.
 //!
 //! # No filesystem, no lazy loading
 //!

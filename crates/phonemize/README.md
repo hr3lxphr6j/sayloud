@@ -14,16 +14,19 @@ pinyin-pro) that phase 8 deleted; see
 
 | Language | How | Dictionary |
 |---|---|---|
-| Chinese (`zh-CN`) | jieba word boundaries → pinyin → **tone sandhi and erhua** → IPA (or zhuyin, for v1.1-zh) | `jieba-zh-dict.bin.zst`, 1.63 MB, fetched on `prepare` |
-| Japanese (`ja-JP`) | lindera IPADic → katakana → IPA table | `lindera-ipadic-ja.bin.zst`, 8.51 MB, fetched on `prepare` |
-| English (`en-US`) | CMU Dict → **NRL 7948 letter-to-sound rules** for a word it lacks → ARPAbet→IPA, numerals through the vendored WeText grammars | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in, and the rules 17 KB more |
+| Chinese (`zh-CN`) | **WeText numerals** (fallback: `numbers_to_han`) → jieba word boundaries → pinyin → **tone sandhi and erhua** → IPA (or zhuyin, for v1.1-zh) | `jieba-zh-dict.bin.zst`, 1.63 MB, plus `wetext-zh-tn-{tagger,verbalizer}.bin.zst`, 160 KB, both fetched on `prepare` |
+| Japanese (`ja-JP`) | **WeText numerals** (fallback: `numbers_to_kanji`) → lindera IPADic → katakana → IPA table | `lindera-ipadic-ja.bin.zst`, 8.51 MB, plus `wetext-ja-tn-{tagger,verbalizer}.bin.zst`, 63 KB, both fetched on `prepare` |
+| English (`en-US`) | **WeText numerals** (fallback: `numbers_to_english`) → CMU Dict → **NRL 7948 letter-to-sound rules** for a word it lacks → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in, and the rules 17 KB more |
 
-**English is implemented but not what production speaks.** The extension's Kokoro
-engine sends English to `kokoro-js`'s own `generate(text)`, which phonemizes with
-its internal espeak — the alignment target the model was trained on, and one that
-reads a mixed-case proper noun the CMU dictionary has never heard of.
-`phonemize_en` exists because the Latin runs *inside* Chinese and Japanese
-sentences need it. Whether English moves onto it is P6.1 and is not decided.
+**Since phase 10 English is what production speaks, like the other two.** The
+Kokoro engine used to send English to `kokoro-js`'s own `generate(text)`, which
+phonemized with its internal espeak — a *second* front end running over words this
+crate had already phonemized, and one whose IPA never matched the token count the
+sentence was cut with. All three languages now reach the model as IPA through
+`generate_from_ids()`. The trade that came with it is real and documented
+(en-GB voices have no variant of their own here, and espeak read a few classes
+better): `docs/superpowers/plans/p6-phase10-english.md` §四 has the comparison and
+§五 the gaps, and **the listening test has not been done**.
 
 Phase 9A gave the words that CMU dictionary does not have a reading instead of a
 spelling. Until it, `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː` — six letters read
@@ -116,6 +119,27 @@ jieba's `posseg` on 466 sentences, which found **0 rule differences** and 13
 sentences that differ because the two engines' dictionaries do (listed in that
 document). The three places this port deliberately answers differently are in its
 §五, each pinned by a test.
+
+Phase 9E wired the same WeText engine up for **Chinese and Japanese numerals**
+(`src/backends/wetext_tn.rs`), so all three languages read a year as a year, a
+clock time as a clock time and a phone number digit by digit rather than through
+three hand-written readers that each only ever matched a digit. It is the
+smallest of the phases — **+1,459 B** of wasm, because the FST engine arrived in
+9B and is shared, against 223 KB of fetched grammars for both languages combined
+— and the only one that had to change the vendored copy: `should_normalize`
+tested digits with `is_ascii_digit` where the reference's `\d` is Unicode-wide, and
+`０` is U+FF10, so **every full-width numeral in a Chinese or Japanese sentence
+skipped the normalizer entirely** and came out as the digits it was written with.
+That could not reach English (the branch it guards is `lang != En`), which is why
+it survived from 9B to 9E. Modifying it brought this copy from 45/48 to **47/48**
+agreement with `pip install wetext==0.1.8` on Chinese probes and from 23/29 to
+**29/29** on Japanese ones.
+
+The three hand-written readers stayed, as `Option<&Normalizer>`'s `None`: the
+same argument as `ToneRules`, and the same reason the JavaScript parity corpus is
+still a test of anything. `docs/superpowers/plans/p6-9e-cjk-text-normalization.md`
+has the delta tables — including the two readings this made *worse* (`０１２３` and
+a lone `０`) — and the three places the task's description did not match the tree.
 
 ## Two rules the rest of the crate is shaped by
 

@@ -25,6 +25,9 @@ const WASM = new Uint8Array(
 
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../../tests/fixtures');
 
+/** Where the built dictionaries live. */
+const ASSETS = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public/dictionaries');
+
 /** A real zstd frame — the reference CLI's, the same one the Rust tests read. */
 const COMPRESSED: DictionaryBytes = new Uint8Array(
   readFileSync(resolve(FIXTURES, 'test-dict.json.zst'))
@@ -120,76 +123,12 @@ const hasJieba = REAL_JIEBA !== null;
  * A phonemizer with a dictionary source attached.
  *
  * The source records the URLs it was asked for, so a `prepare` that quietly
- * loaded nothing cannot look like one that worked.
+ * loaded nothing cannot look like one that worked. Every grammar is routed as
+ * well as IPADic, because a `prepare('kokoro-v1', 'ja-JP')` now asks for three
+ * files and the route table is what answers them.
  */
 function phonemizerWith(bytes: DictionaryBytes = COMPRESSED) {
-  const fetch = fakeFetch({ [IPADIC_URL]: { bytes } });
-  const caches = new FakeCaches();
-  const phonemizer = new RustPhonemizer({ wasm: WASM, fetch, cacheStorage: caches });
-  return { phonemizer, fetch, caches };
-}
-
-/**
- * The two English text-normalization grammars (phase 9B).
- *
- * English's pronunciation dictionary is compiled in; these are the OpenFST
- * grammars its numerals go through, and they are fetched on `prepare` like any
- * other dictionary.
- */
-const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
-
-/** Where the wrapper looks for each one. */
-const WETEXT_EN_URLS = WETEXT_EN.map((name) => `/dictionaries/${name}.bin.zst`);
-
-/**
- * The real English grammars, or `null` when skipping was asked for.
- *
- * Read once at collection time, like the IPADic asset above and under the same
- * rule: missing is a failure, and skipping is asked for by name.
- */
-function realWetextEn(): DictionaryBytes[] | null {
-  try {
-    return WETEXT_EN.map(
-      (name) =>
-        new Uint8Array(
-          readFileSync(
-            resolve(
-              dirname(fileURLToPath(import.meta.url)),
-              `../../../public/dictionaries/${name}.bin.zst`
-            )
-          )
-        ) as DictionaryBytes
-    );
-  } catch (error) {
-    if (process.env.PHONEMIZE_SKIP_DICT_TESTS === '1') {
-      console.warn(`SKIPPING the English TN tests: ${String(error)}`);
-      return null;
-    }
-    throw new Error(
-      `no English text-normalization grammar (${String(error)}).\n` +
-        'Run ./scripts/setup-wetext-fsts.sh to build them, or set ' +
-        'PHONEMIZE_SKIP_DICT_TESTS=1 to skip the English TN tests.'
-    );
-  }
-}
-
-/** Read once, at collection time, so the skip conditions are cheap to ask. */
-const REAL_WETEXT_EN = realWetextEn();
-
-/** Whether the tests that need the real English grammars can run at all. */
-const hasWetextEn = REAL_WETEXT_EN !== null;
-
-/** The same as `phonemizerWith`, with the two English grammars behind it. */
-function phonemizerWithEnglish() {
-  const bytes = REAL_WETEXT_EN ?? [];
-  const routes: Record<string, DictionaryBytes> = {};
-  WETEXT_EN_URLS.forEach((url, index) => {
-    routes[url] = bytes[index] ?? COMPRESSED;
-  });
-
-  const fetch = fakeFetch(
-    Object.fromEntries(Object.entries(routes).map(([url, value]) => [url, { bytes: value }]))
-  );
+  const fetch = fakeFetch(served({ [IPADIC_URL]: bytes, ...grammarRoutes() }));
   const caches = new FakeCaches();
   const phonemizer = new RustPhonemizer({ wasm: WASM, fetch, cacheStorage: caches });
   return { phonemizer, fetch, caches };
@@ -197,9 +136,99 @@ function phonemizerWithEnglish() {
 
 /** The same, with the Chinese word list behind the wrapper's dictionary source. */
 function chinesePhonemizerWith(bytes: DictionaryBytes) {
-  const fetch = fakeFetch({ [JIEBA_URL]: { bytes } });
+  const fetch = fakeFetch(served({ [JIEBA_URL]: bytes, ...grammarRoutes() }));
   const phonemizer = new RustPhonemizer({ wasm: WASM, fetch, cacheStorage: new FakeCaches() });
   return { phonemizer, fetch };
+}
+
+/**
+ * Every text-normalization grammar the registry can ask for.
+ *
+ * All three languages read their numerals through the vendored WeText engine:
+ * English's pair since phase 9B, Chinese's and Japanese's since 9E. English's
+ * *pronunciation* dictionary is compiled into the wasm (spec §2.3) — the CMU
+ * dictionary — so for English these two are the whole of what `prepare`
+ * fetches, and for the other two they arrive alongside IPADic or jieba's word
+ * list.
+ *
+ * Listed together because `phonemizerWith` has to satisfy `/dictionaries/*` for
+ * whichever language a test asks about, and because the failure mode this
+ * prevents is a route table that only knows about the language it was written
+ * for — the phase 9E change broke exactly that in this file.
+ */
+const WETEXT = [
+  'wetext-en-tn-tagger',
+  'wetext-en-tn-verbalizer',
+  'wetext-zh-tn-tagger',
+  'wetext-zh-tn-verbalizer',
+  'wetext-ja-tn-tagger',
+  'wetext-ja-tn-verbalizer',
+] as const;
+
+/** Where the wrapper looks for one grammar. */
+function dictionaryUrl(name: string): string {
+  return `/dictionaries/${name}.bin.zst`;
+}
+
+/** The English pair, in the order the wasm asks for them. */
+const WETEXT_EN = WETEXT.filter((name) => name.includes('-en-'));
+
+/** Where the wrapper looks for each of the English grammars. */
+const WETEXT_EN_URLS = WETEXT_EN.map(dictionaryUrl);
+
+/** The Japanese pair. */
+const WETEXT_JA_URLS = WETEXT.filter((name) => name.includes('-ja-')).map(dictionaryUrl);
+
+/** The Chinese pair. */
+const WETEXT_ZH_URLS = WETEXT.filter((name) => name.includes('-zh-')).map(dictionaryUrl);
+
+/**
+ * One grammar asset, or `null` when skipping was asked for.
+ *
+ * Read once at collection time, like the two dictionaries above and under the
+ * same rule: missing is a failure, and skipping is asked for by name.
+ */
+function readGrammar(name: string): DictionaryBytes | null {
+  try {
+    return new Uint8Array(readFileSync(resolve(ASSETS, `${name}.bin.zst`))) as DictionaryBytes;
+  } catch (error) {
+    if (process.env.PHONEMIZE_SKIP_DICT_TESTS === '1') {
+      console.warn(`SKIPPING the text-normalization tests: no ${name} (${String(error)})`);
+      return null;
+    }
+    throw new Error(
+      `no ${name} grammar (${String(error)}).\n` +
+        'Run ./scripts/setup-wetext-fsts.sh to build them, or set ' +
+        'PHONEMIZE_SKIP_DICT_TESTS=1 to skip the text-normalization tests.'
+    );
+  }
+}
+
+/**
+ * A fake-fetch route table covering every grammar.
+ *
+ * The real assets, not a stand-in: `finish_loading` parses them, so a transport
+ * fixture would fail there rather than pass quietly. In skip mode the fixture is
+ * used instead — the tests that reach `finish_loading` have already guarded
+ * themselves with `skipIf`, and the ones that do not never get that far.
+ */
+function grammarRoutes(): Record<string, DictionaryBytes> {
+  const routes: Record<string, DictionaryBytes> = {};
+  for (const name of WETEXT) routes[dictionaryUrl(name)] = readGrammar(name) ?? COMPRESSED;
+  return routes;
+}
+
+/** A route table of `url -> { bytes }`, which is what `fakeFetch` wants. */
+function served(routes: Record<string, DictionaryBytes>) {
+  return Object.fromEntries(Object.entries(routes).map(([url, bytes]) => [url, { bytes }]));
+}
+
+/** The same as `phonemizerWith`, with every grammar behind it as well. */
+function phonemizerWithEnglish() {
+  const fetch = fakeFetch(served(grammarRoutes()));
+  const caches = new FakeCaches();
+  const phonemizer = new RustPhonemizer({ wasm: WASM, fetch, cacheStorage: caches });
+  return { phonemizer, fetch, caches };
 }
 
 describe('RustPhonemizer', () => {
@@ -238,14 +267,17 @@ describe('RustPhonemizer.prepare', () => {
 
     await phonemizer.prepare('kokoro-v1', 'ja-JP');
 
-    // The name comes from the wasm, not from this side — `required_dictionaries`
+    // The names come from the wasm, not from this side — `required_dictionaries`
     // is the one place that decides what a language costs, which is what keeps a
-    // dictionary swap from being a JavaScript change (spec §3.2).
-    expect(fetch.calls).toEqual([IPADIC_URL]);
-    expect(caches.bucket(DICTIONARIES_CACHE).has(IPADIC_URL)).toBe(true);
+    // dictionary swap from being a JavaScript change (spec §3.2). Three since
+    // phase 9E: IPADic and the two Japanese TN grammars.
+    expect(fetch.calls).toEqual([IPADIC_URL, ...WETEXT_JA_URLS]);
+    for (const url of fetch.calls) {
+      expect(caches.bucket(DICTIONARIES_CACHE).has(url)).toBe(true);
+    }
   });
 
-  it.skipIf(!hasWetextEn)('fetches the text-normalization grammars English now needs', async () => {
+  it('fetches the text-normalization grammars English needs', async () => {
     // English's *pronunciation* dictionary is compiled into the wasm (spec
     // §2.3) — the CMU dictionary — and this test used to assert that a
     // `prepare('kokoro-v1', 'en-US')` therefore fetched nothing. Phase 9B made
@@ -467,14 +499,15 @@ describe('RustPhonemizer.phonemize', () => {
  */
 describe('RustPhonemizer and the Chinese dictionary', () => {
   it.skipIf(!hasJieba)('asks the wasm for the jieba word list', async () => {
-    // The name is the wasm's to decide, and it changed in phase 6: Chinese used
-    // to fetch nothing. Asserted here so that a change to the dictionary table is
-    // visible on the wrapper side, which is the side that has to be able to find
-    // the file.
+    // The names are the wasm's to decide, and they changed twice: Chinese used to
+    // fetch nothing, then just the word list (phase 6), and since phase 9E the
+    // word list and its two TN grammars. Asserted here so that a change to the
+    // dictionary table is visible on the wrapper side, which is the side that has
+    // to be able to find the files.
     const { phonemizer, fetch } = chinesePhonemizerWith(REAL_JIEBA ?? new Uint8Array());
     await phonemizer.ready;
     await phonemizer.prepare('kokoro-v1', 'zh-CN');
 
-    expect(fetch.calls).toEqual([JIEBA_URL]);
+    expect(fetch.calls).toEqual([JIEBA_URL, ...WETEXT_ZH_URLS]);
   });
 });

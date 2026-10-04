@@ -468,3 +468,70 @@ fn the_corpus_covers_the_paths_that_break_independently() {
         .phonemes;
     assert_eq!(actual, "saɴbjaku");
 }
+
+/// What the phase 9E numeral step buys, at the phoneme level.
+///
+/// **The corpus has nothing in this table**, which is itself the finding: all 40
+/// Japanese corpus samples come out identically with and without the engine, so
+/// `the_pipeline_matches_the_javascript_one` still holds through the shipped path.
+/// The rows below are what is not in the corpus, with both sides pinned so a
+/// failure says which of the two readers changed.
+///
+/// Three rows read *worse*, and they are here for the same reason the `０` row in
+/// `wetext_ja.rs` is: a table of only the improvements could not fail in the
+/// direction that matters.
+#[test]
+fn the_numeral_step_reads_these_entities() {
+    let Some(segmenter) = segmenter() else {
+        return;
+    };
+    let Some(tn) = common::japanese_tn() else {
+        return;
+    };
+    let english = phonemize::backends::g2p_en::EnglishG2p::new().ok();
+
+    let table: &[(&str, &str, &str)] = &[
+        // A comma-grouped number: the old reader stopped at the separator.
+        ("1,234", "seɴniçakusaɴʥuujoɴ", "iʨi,niçakusaɴʥuujoɴ"),
+        // A fraction, which the old reader read as two cardinals: いちに.
+        ("1/2", "nibuɴnoiʨi", "iʨini"),
+        // Currency, where the old pipeline lost the 円 and read the digits as two
+        // separate quantities.
+        ("¥1,200", "seɴniçakueɴ", "iʨi,niçaku"),
+        ("3,000円", "saɴzeɴeɴ", "saɴ,reieɴ"),
+        // A unit, where the old reader handed `km` to the English dictionary and
+        // got the letters K and M.
+        ("2.5km", "niteɴɡokiromeːtoru", "niteɴɡokˈeɪ ˈɛm"),
+        // A telephone number inside a sentence: the grammar reads the hyphens as
+        // a range and inserts マイナス. A bare one reads as a telephone number
+        // (`tests/wetext_ja.rs`); this is the contextual case.
+        (
+            "電話は555-1234",
+            "deɴwahaɡoçakuɡoʥuuɡomainasuseɴniçakusaɴʥuujoɴ",
+            "deɴwahaɡoçakuɡoʥuuɡoseɴniçakusaɴʥuujoɴ",
+        ),
+        (
+            "電話番号は090-1234-5678です。",
+            "deɴwabaɴɡouhakjuumainasuseɴniçakusaɴʥuujoɴmainasuɡoseɴroʔpjakunanaʥuuhaʨidesu.",
+            "deɴwabaɴɡouhakjuuʥuuseɴniçakusaɴʥuujoɴɡoseɴroʔpjakunanaʥuuhaʨidesu.",
+        ),
+        // **The one genuine loss.** `０` normalizes to `〇` (U+3007), which no
+        // script run in this crate claims, so it is dropped and the digit reads
+        // as silence where it used to say れい. The reference produces `〇` too.
+        ("０", "", "rei"),
+    ];
+
+    for (input, with, without) in table {
+        let before = phonemize::pipeline::phonemize_ja(input, &segmenter, english.as_ref(), None)
+            .expect("phonemizes")
+            .phonemes;
+        let after =
+            phonemize::pipeline::phonemize_ja(input, &segmenter, english.as_ref(), Some(&tn))
+                .expect("phonemizes")
+                .phonemes;
+
+        assert_eq!(before, *without, "{input:?} without the numeral step");
+        assert_eq!(after, *with, "{input:?} with WeText");
+        assert_ne!(with, without, "{input:?} is in the table but did not move");
+    }
+}

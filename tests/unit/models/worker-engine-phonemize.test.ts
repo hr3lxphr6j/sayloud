@@ -43,13 +43,22 @@ const IPADIC_URL = '/dictionaries/lindera-ipadic-ja.bin.zst';
 const JIEBA_URL = '/dictionaries/jieba-zh-dict.bin.zst';
 
 /**
- * The two English text-normalization grammars (phase 9B).
+ * Every text-normalization grammar the registry can ask for.
  *
- * English has no pronunciation dictionary to fetch — the CMU dictionary is
- * compiled in — but since phase 9B its numerals go through the vendored WeText
- * engine, and those grammars are fetched on `prepare` like any other dictionary.
+ * All three languages read their numerals through the vendored WeText engine:
+ * English's pair since phase 9B, Chinese's and Japanese's since 9E. They are
+ * fetched on `prepare` like any other dictionary, and — unlike IPADic or
+ * jieba's word list — they are parsed by `finish_loading`, so a stand-in frame
+ * would fail rather than pass quietly.
  */
-const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
+const WETEXT = [
+  'wetext-en-tn-tagger',
+  'wetext-en-tn-verbalizer',
+  'wetext-zh-tn-tagger',
+  'wetext-zh-tn-verbalizer',
+  'wetext-ja-tn-tagger',
+  'wetext-ja-tn-verbalizer',
+] as const;
 
 /** A shipped dictionary, or null when skipping was asked for. */
 function asset(name: string): DictionaryBytes | null {
@@ -68,8 +77,8 @@ function asset(name: string): DictionaryBytes | null {
 const REAL_IPADIC = asset('lindera-ipadic-ja');
 const REAL_JIEBA = asset('jieba-zh-dict');
 
-/** The two English grammars, under the same missing-is-a-failure rule. */
-const REAL_WETEXT_EN = WETEXT_EN.map((name) => asset(name));
+/** Every grammar, under the same missing-is-a-failure rule. */
+const REAL_WETEXT = WETEXT.map((name) => [name, asset(name)] as const);
 
 /** Every dictionary these tests serve, so `assembled({})` is still a full set. */
 function shippedDictionaries(): Record<string, DictionaryBytes> {
@@ -77,13 +86,10 @@ function shippedDictionaries(): Record<string, DictionaryBytes> {
   for (const [name, bytes] of [
     ['lindera-ipadic-ja', REAL_IPADIC],
     ['jieba-zh-dict', REAL_JIEBA],
+    ...REAL_WETEXT,
   ] as const) {
     if (bytes !== null) routes[`/dictionaries/${name}.bin.zst`] = bytes;
   }
-  WETEXT_EN.forEach((name, index) => {
-    const bytes = REAL_WETEXT_EN[index];
-    if (bytes !== undefined && bytes !== null) routes[`/dictionaries/${name}.bin.zst`] = bytes;
-  });
   return routes;
 }
 

@@ -296,7 +296,11 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
 
     await engine.synthesize('你好', 'zf_xiaobei', 'zh-CN', signal);
 
-    expect(kokoro.pieces).toEqual([{ text: '你好', ipa: 'ni↓xau↓' }]);
+    // `ni↗xau↓`: 你好 is two third tones in a row and phase 9D's tone sandhi makes
+    // the first a second — *ní hǎo*. This test is about the seam between the two
+    // workers and not about the reading, so all it needs from here is that the
+    // string arrived; `tests/tone_sandhi.rs` is what pins it.
+    expect(kokoro.pieces).toEqual([{ text: '你好', ipa: 'ni↗xau↓' }]);
   });
 
   it('keeps every character of a sentence it has to cut up', async () => {

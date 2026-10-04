@@ -225,7 +225,12 @@ impl Phonemizer {
                         .ok_or_else(|| PhonemizeError::NotPrepared {
                             lang: options.lang.clone(),
                         })?;
-                pipeline::phonemize_zh(text, segmenter, self.english())
+                // `ToneRules::On` is phase 9D, and it is a decision rather than a
+                // default: see `pipeline::ToneRules` for the P5 §1.5 argument
+                // against it on the v1.0 voices and the two things that argue for
+                // it anyway. `Off` is the phase 6 pipeline, kept reachable because
+                // the parity corpus is pinned to what that produced.
+                pipeline::phonemize_zh(text, segmenter, self.english(), pipeline::ToneRules::On)
                     .map_err(PhonemizeError::Pipeline)?
             }
             // Every language the frontend table lists has a pipeline now, so this

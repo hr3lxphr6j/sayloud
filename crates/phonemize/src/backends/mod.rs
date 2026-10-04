@@ -12,6 +12,11 @@
 //! and falls back to `numbers_en`; Chinese and Japanese still use their own
 //! readers, so nothing about their output moved in that phase.
 //!
+//! [`tone_sandhi`] is the one backend that runs *after* a G2P rather than before
+//! it: Mandarin decides a tone twice, once per character from the dictionary and
+//! again from the words the character sits in, and that second pass is what
+//! turns 你好 into *ní hǎo* (phase 9D).
+//!
 //! [`tn_gate`] is not a reader and produces no output: it is the cheap "is there
 //! anything here for the FSTs to do?" question asked before them, because they
 //! answer every English sentence whether or not it has an answer to find.
@@ -24,6 +29,7 @@ pub mod pinyin;
 pub mod segmenter_ja;
 pub mod segmenter_zh;
 pub mod tn_gate;
+pub mod tone_sandhi;
 pub mod wetext;
 pub mod wetext_tn;
 pub mod zh_text;

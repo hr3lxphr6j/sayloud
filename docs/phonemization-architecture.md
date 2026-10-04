@@ -45,7 +45,7 @@ offscreen 主线程   lib/models/worker-engine.ts
 | 层 | 内容 |
 |---|---|
 | `frontends/` | 每个音素集一个：`ja_ipa`（v1.0 日语）、`zh_ipa`、`zh_zhuyin`（v1.1-zh）、`en_espeak`。最后一步，也是唯一知道模型词表的一层 |
-| `backends/` | 各语言的 G2P 与切词：`segmenter_ja`（lindera IPADic）、`segmenter_zh`（jieba-rs）、`pinyin`（pinyin-pro 的移植）、`numbers`/`numbers_zh`（数字读法）、`g2p_en`（piper-plus-g2p，CMU Dict + ARPAbet→IPA） |
+| `backends/` | 各语言的 G2P 与切词：`segmenter_ja`（lindera IPADic）、`segmenter_zh`（jieba-rs）、`pinyin`（pinyin-pro 的移植）、`tone_sandhi`（阶段 9D：普通话变调与儿化音）、`numbers`/`numbers_zh`（数字读法）、`g2p_en`（piper-plus-g2p，CMU Dict + ARPAbet→IPA） |
 | `text.rs` / `zh_text.rs` | 标点归一、脚本切分、空白处理 |
 | `vocab.rs` | **词表闸门**：输出的每个字符必须在所选音色的词表里，否则报错而不是静默丢字 |
 | `dictionary.rs` | 字典协议：`prepare` 时按名字取 `.bin.zst`，wasm 内解压（`ruzstd`） |
@@ -110,6 +110,9 @@ OpenAI / DashScope / Volcengine / Azure / ElevenLabs / OpenAI-compat 收原始�
 - **中文词边界由 jieba 提供**（`hmm` 打开，与 misaki 的切分对齐）；日语不需要，
   假名已经切好了。
 - **中文声调是箭头**（↗↘），不是变音符号；v1.1-zh 用注音 + 声调数字。
+- **中文变调与儿化音是阶段 9D 加的，而且可关**（`pipeline::ToneRules`）：
+  P5 §1.5 的论证是 v1.0 音色训练时不做这两件事，所以 `Off` 保留为阶段 6 管线的逐字
+  复现，冻结语料一直跑 `Off`。两边的证据在 `docs/superpowers/plans/p6-9d-tone-sandhi-erhua.md` §八。
 
 ## 对照语料：三份冻结的黄金文件
 

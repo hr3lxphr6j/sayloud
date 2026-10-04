@@ -257,3 +257,34 @@ fn a_reading_with_no_tone_is_not_given_one() {
     let syllable = ChinesePinyin::new();
     assert_eq!(syllable.text_to_pinyin("哼哼"), ["heng1", "heng1"]);
 }
+
+#[test]
+fn an_erhua_syllable_is_its_final_plus_the_coda() {
+    // Phase 9D's tone rules write the erhua coda as an `r` before the tone digit
+    // — `wanr2` for 玩儿 — because that is where PaddleSpeech puts it: on the
+    // final, which for 玩 is `uan`, so the reference has `w` + `uanr2`. The
+    // syllable table has no erhua entries and should not grow any: misaki's v1.0
+    // frontend reads 玩儿 as two syllables, so an entry would be a syllable
+    // transcribed from a model that never saw one. The coda is peeled off here
+    // and appended to the IPA instead.
+    let chinese = ChinesePinyin::new();
+    assert_eq!(chinese.syllable_to_ipa("wanr2", "玩儿").unwrap(), "wa↗nɻ");
+    assert_eq!(
+        chinese.syllable_to_ipa("huir4", "一会儿").unwrap(),
+        "xwei↘ɻ"
+    );
+
+    // `er` ends in `r` and is a syllable, not a coda, so it is read whole.
+    assert_eq!(chinese.syllable_to_ipa("er2", "儿").unwrap(), "ɚ↗");
+
+    // The `ü` translation happens *after* the coda comes off, or the key would be
+    // `lyr`: 驴儿 is `lü` + coda, and the table spells that `lv`.
+    assert_eq!(chinese.syllable_to_ipa("lür2", "驴儿").unwrap(), "ly↗ɻ");
+
+    // And a coda on a syllable the table does not have is that syllable's error
+    // and not a second, erhua-shaped one.
+    let error = chinese
+        .syllable_to_ipa("warr2", "玩儿")
+        .expect_err("there is no syllable under the coda");
+    assert!(matches!(error, PinyinError::UnknownSyllable { .. }));
+}

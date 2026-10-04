@@ -14,7 +14,7 @@ pinyin-pro) that phase 8 deleted; see
 
 | Language | How | Dictionary |
 |---|---|---|
-| Chinese (`zh-CN`) | jieba word boundaries → pinyin → IPA (or zhuyin, for v1.1-zh) | `jieba-zh-dict.bin.zst`, 1.63 MB, fetched on `prepare` |
+| Chinese (`zh-CN`) | jieba word boundaries → pinyin → **tone sandhi and erhua** → IPA (or zhuyin, for v1.1-zh) | `jieba-zh-dict.bin.zst`, 1.63 MB, fetched on `prepare` |
 | Japanese (`ja-JP`) | lindera IPADic → katakana → IPA table | `lindera-ipadic-ja.bin.zst`, 8.51 MB, fetched on `prepare` |
 | English (`en-US`) | CMU Dict + ARPAbet→IPA, numerals through the vendored WeText grammars | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in |
 
@@ -71,6 +71,29 @@ skipped. That is measured, quantified and written up in
 `docs/superpowers/plans/p6-9b6-tn-gate.md` §四; the short version is 1,127 missed
 keys, 182 of them audible, and 0 misses over 127 sentences of real prose.
 
+Phase 9D added the last step of the Chinese pipeline: **Mandarin tone sandhi and
+the erhua coda** (`src/backends/tone_sandhi/`, ported from PaddleSpeech's
+`ToneSandhi` and `_merge_erhua`). `pinyin-pro` gives one tone per character and
+Mandarin does not pronounce them as written — 你好 is *ní hǎo*, 一个 is *yí ge*,
+and the 儿 of 玩儿 is not a syllable but a coda on the one before it (`wanr2`,
+`wa↗nɻ`). The rules read jieba's words *and its part-of-speech tags*, so they also
+decide the word boundaries the tokenizer sees, and `Plan::word_lengths` is how
+that reaches the spacing.
+
+Two things about it are worth knowing before touching it. **It is switchable**:
+`pipeline::ToneRules` has an `Off` that is the phase 6 pipeline byte for byte,
+and the corpus in `tests/fixtures/zh-frontend-parity.json` is pinned through it —
+because P5 §1.5 argues the v1.0 voices were trained *without* these rules and the
+only way to keep that decision reversible is to keep the old path runnable and
+tested. `lib.rs` passes `On`; see
+`docs/superpowers/plans/p6-9d-tone-sandhi-erhua.md` §八 for both sides of it.
+**And it was verified against the reference rather than against a reading of
+it**: PaddleSpeech's `ToneSandhi` was imported and driven with `pypinyin` and
+jieba's `posseg` on 466 sentences, which found **0 rule differences** and 13
+sentences that differ because the two engines' dictionaries do (listed in that
+document). The three places this port deliberately answers differently are in its
+§五, each pinned by a test.
+
 ## Two rules the rest of the crate is shaped by
 
 1. **The vocabulary gate is a gate, not a warning.** The tokenizer's normaliser
@@ -123,7 +146,7 @@ JavaScript.
 
 ```bash
 ./scripts/build-phonemize-wasm.sh   # wasm-pack → lib/models/phonemize-wasm/
-cargo test --workspace              # 197 tests, native, no browser
+cargo test --workspace              # 249 tests, native, no browser
 cargo clippy --all-targets          # must stay at 0 warnings
 python3 scripts/gen-ja-ipa-table.py --check
 ```
@@ -156,6 +179,10 @@ boundary as published, and the first with a `cfg` for a fix rather than a swap.
 | `vocab-v1.txt`, `vocab-v11-zh.txt` | the two models' `tokenizer.json`, recorded in `tests/v0/kokoro-vocabs.json` | `node scripts/gen-kokoro-vocab.mjs` (`--check` in CI) |
 | `ja-ipa-table.json` | hand-maintained; the source of truth for the kana table | — |
 | `pinyin-NOTICE.txt` | — | MIT notices for `pinyin-pro` and misaki |
+
+The four word lists of phase 9D are **not** here: they are verbatim upstream data
+rather than something generated, so they live in
+`src/backends/tone_sandhi/tables.rs` with that directory's `NOTICE`.
 
 `src/frontends/ja_ipa_table.rs` is **generated** from `ja-ipa-table.json` by
 `scripts/gen-ja-ipa-table.py`. Do not edit it by hand:

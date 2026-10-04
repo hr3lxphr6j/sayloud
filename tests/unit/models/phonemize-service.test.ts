@@ -175,7 +175,11 @@ describe('PhonemizeService', () => {
 
     await service.prepare('kokoro-v1', 'zh-CN');
 
-    expect(service.phonemize('你好', 'kokoro-v1', 'zh-CN').phonemes).toBe('ni↓xau↓');
+    // `ni↗xau↓` and not `ni↓xau↓`: phase 9D's tone sandhi raises the first of
+    // two third tones, so this is the shipped reading of 你好. The Rust side pins
+    // both readings — the shipped one in `tests/tone_sandhi.rs` and the one the
+    // JavaScript frontend produced in `tests/zh_pipeline.rs`.
+    expect(service.phonemize('你好', 'kokoro-v1', 'zh-CN').phonemes).toBe('ni↗xau↓');
   });
 
   it.skipIf(REAL_JIEBA === null)('refuses a language the frontend cannot speak', async () => {

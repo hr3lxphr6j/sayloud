@@ -164,6 +164,30 @@ fn split_tone_marker(syllable: &str) -> (&str, Option<u8>) {
     }
 }
 
+/// Peel the erhua coda off a syllable, if it has one.
+///
+/// The tone rules write the coda as an `r` before the tone digit — `wanr2` for
+/// 玩儿 — because that is where PaddleSpeech puts it: on the *final*, which for
+/// 玩 is `uan`, so the reference has `w` + `uanr2`. The syllable table has no
+/// erhua entries and should not grow any: misaki's v1.0 frontend never produced
+/// one (it reads 玩儿 as two syllables, `wan2` + `er2`), so an erhua entry would
+/// be a syllable transcribed from a model that never saw it. The coda it needs is
+/// one character wide and the table already knows it — `ɻ` is what 人 starts
+/// with — so the `r` is peeled off here and appended to the IPA instead.
+///
+/// `er` ends in `r` and is not erhua, and no rule writes `err`.
+///
+/// **v1.1-zh does this differently.** Its frontend writes a separate `R` phoneme
+/// (`an` + `R` + tone, `misaki/zh_frontend.py`), because its vocabulary has `R`
+/// and no `ɻ`. When that frontend is ported this function is where the two
+/// spellings part company.
+fn split_erhua_coda(toneless: &str) -> (&str, bool) {
+    match toneless.strip_suffix('r') {
+        Some(base) if toneless != "er" => (base, true),
+        _ => (toneless, false),
+    }
+}
+
 /// Why a run of Chinese text could not be turned into IPA.
 ///
 /// Both variants correspond to the JavaScript side's single `UnknownSyllableError`
@@ -326,6 +350,11 @@ impl ChinesePinyin {
     ///
     /// `context` is only used for the error message, and is the text the syllable
     /// came from — the same thing the JavaScript side passes as its `context`.
+    ///
+    /// Accepts both spellings of the neutral tone: `pinyin-pro` writes it `0` and
+    /// the tone rules write it `5`. And accepts an **erhua syllable**, which is
+    /// spelled with an `r` before the tone digit — `wanr2` for 玩儿 — and read as
+    /// the syllable without it plus `ɻ`; see `split_erhua_coda`.
     pub fn syllable_to_ipa(&self, syllable: &str, context: &str) -> Result<String, PinyinError> {
         let (toneless, reported) = split_tone_marker(syllable);
         // `pinyin-pro` numbers the neutral tone `0`; the table and the tone
@@ -336,6 +365,8 @@ impl ChinesePinyin {
             Some(0) => Some(5),
             other => other,
         };
+
+        let (toneless, coda) = split_erhua_coda(toneless);
 
         // The table spells `ü` as `v` (pypinyin's toneless form) and `pinyin-pro`
         // spells it `ü`. The translation is required, not cosmetic: without it
@@ -376,21 +407,23 @@ impl ChinesePinyin {
         // identical to the training target's rather than merely equivalent after
         // tokenisation. U+0329, in ʂɻ̩, is *not* deleted: it is a different mark
         // and the vocabulary has it.
-        Ok(retone(&template.replace('0', tone_letter)).replace('\u{032F}', ""))
+        let ipa = retone(&template.replace('0', tone_letter)).replace('\u{032F}', "");
+
+        // The erhua coda goes on last, after the tone letter, because it is a
+        // coda on the syllable and not part of the vowel the tone marks.
+        Ok(if coda { ipa + "ɻ" } else { ipa })
     }
 
-    /// A run of Chinese characters to IPA, one space per syllable.
+    /// Every character's reading, refusing when any of them has none.
     ///
-    /// One space per syllable is what the JavaScript side's `singleSyllableWords`
-    /// produces, and it is the shape its own tests pin. The production spacing is
-    /// one space per *word* with no separator inside one, and the words come from
-    /// jieba — phase 6.
+    /// [`ChinesePinyin::readings`] answers `None` for a character `pinyin-pro`
+    /// does not know, and the caller is then left comparing a length against a
+    /// character count to find out. This does that comparison and reports it, so
+    /// the two callers that want all of them — [`han_to_ipa`] and the tone rules
+    /// — say so once.
     ///
-    /// Refuses rather than returning nothing when a character has no reading. The
-    /// alternative — returning the empty string, as the verification script did —
-    /// drops the character from the audio without a trace, and a sentence that is
-    /// missing a word sounds like a sentence.
-    pub fn han_to_ipa(&self, text: &str) -> Result<String, PinyinError> {
+    /// [`han_to_ipa`]: ChinesePinyin::han_to_ipa
+    pub fn complete_readings(&self, text: &str) -> Result<Vec<Syllable>, PinyinError> {
         let readings = self.readings(text);
         let expected = readings.len();
         let found = readings.iter().filter(|reading| reading.is_some()).count();
@@ -406,8 +439,25 @@ impl ChinesePinyin {
             });
         }
 
-        let mut syllables = Vec::with_capacity(expected);
-        for reading in readings.into_iter().flatten() {
+        Ok(readings.into_iter().flatten().collect())
+    }
+
+    /// A run of Chinese characters to IPA, one space per syllable.
+    ///
+    /// One space per syllable is what the JavaScript side's `singleSyllableWords`
+    /// produces, and it is the shape its own tests pin. The production spacing is
+    /// one space per *word* with no separator inside one, and the words come from
+    /// jieba — phase 6.
+    ///
+    /// Refuses rather than returning nothing when a character has no reading. The
+    /// alternative — returning the empty string, as the verification script did —
+    /// drops the character from the audio without a trace, and a sentence that is
+    /// missing a word sounds like a sentence.
+    pub fn han_to_ipa(&self, text: &str) -> Result<String, PinyinError> {
+        let readings = self.complete_readings(text)?;
+
+        let mut syllables = Vec::with_capacity(readings.len());
+        for reading in readings {
             syllables.push(self.syllable_to_ipa(reading.as_str(), text)?);
         }
         Ok(syllables.join(" "))
@@ -434,24 +484,37 @@ impl ChinesePinyin {
         text: &str,
         lengths: &[usize],
     ) -> Result<String, PinyinError> {
-        let readings = self.readings(text);
-        let expected = readings.len();
-        let found = readings.iter().filter(|reading| reading.is_some()).count();
+        let readings = self.complete_readings(text)?;
 
-        if found != expected {
-            return Err(PinyinError::UnreadableCharacters {
-                found,
-                expected,
-                text: text.to_string(),
-            });
-        }
-
-        let mut syllables = Vec::with_capacity(expected);
-        for reading in readings.into_iter().flatten() {
+        let mut syllables = Vec::with_capacity(readings.len());
+        for reading in readings {
             syllables.push(self.syllable_to_ipa(reading.as_str(), text)?);
         }
 
         join_by_words(&syllables, lengths, text)
+    }
+
+    /// A run's syllables to IPA, grouped into words.
+    ///
+    /// The same spacing as [`ChinesePinyin::han_to_ipa_by_words`], for a caller
+    /// that already has the syllables: the tone rules rewrite them (phase 9D),
+    /// and a syllable they produced is one the syllable table can read —
+    /// `wanr2` — but not one [`ChinesePinyin::readings`] produced.
+    ///
+    /// The two refusals are the last two of the three above, in the same order:
+    /// a syllable the table is missing, then boundaries that do not cover the
+    /// syllables.
+    pub fn syllables_to_ipa_by_words(
+        &self,
+        syllables: &[String],
+        lengths: &[usize],
+        text: &str,
+    ) -> Result<String, PinyinError> {
+        let mut ipa = Vec::with_capacity(syllables.len());
+        for syllable in syllables {
+            ipa.push(self.syllable_to_ipa(syllable, text)?);
+        }
+        join_by_words(&ipa, lengths, text)
     }
 
     // ------------------------------------------------------------- internals

@@ -29,10 +29,6 @@ __pycache__/
 # directory with it.
 public/dictionaries/
 
-# Dictionary files are built into scripts/public/dictionaries/ and symlinked to
-# public/dictionaries/. Ignore the actual files.
-scripts/public/
-
 # POC and test scripts
 poc/
 

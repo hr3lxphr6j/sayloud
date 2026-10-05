@@ -24,7 +24,11 @@
 # download that did not happen, and something still says so.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Two levels, not one: this file lives in `scripts/setup/`, and `public/dictionaries`
+# below is repository-relative. One `..` lands in `scripts/`, which is not an error —
+# the asset is built into `scripts/public/dictionaries/` and nothing reads it, so the
+# failure only shows up later as a missing dictionary.
+cd "$(dirname "$0")/../.."
 
 # Pinned: the dictionary and the crate that reads it have to be the same
 # generation. lindera's format version is checked by `Metadata::validate` at load

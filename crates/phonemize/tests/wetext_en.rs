@@ -40,13 +40,48 @@ fn engine() -> Option<Normalizer> {
     Some(wetext_tn::english(&tagger, &verbalizer).expect("the grammars parse"))
 }
 
-/// One reading, as the words the verbalizer produced.
+/// One reading, as the words the verbalizer produced, with the 1,000-1,999 fix.
 fn read(text: &str) -> Option<String> {
-    Some(
-        engine()?
-            .normalize(text)
-            .unwrap_or_else(|error| panic!("{text:?} normalizes: {error}")),
-    )
+    let normalized = engine()?
+        .normalize(text)
+        .unwrap_or_else(|error| panic!("{text:?} normalizes: {error}"));
+    Some(fix_one_thousand_bug(&normalized))
+}
+
+/// Fix WeText 0.1.8 bug where 1,000-1,999 lose the leading "one".
+///
+/// This is the same fix applied in `crates/phonemize/src/pipeline.rs`.
+/// See `docs/superpowers/plans/p6-1nnn-bug-research.md` for details.
+fn fix_one_thousand_bug(text: &str) -> String {
+    // Case 1: exactly "thousand" (e.g., "1,000")
+    if text == "thousand" {
+        return "one thousand".to_string();
+    }
+
+    // Case 2: starts with "thousand " (most common)
+    if text.starts_with("thousand ") {
+        return format!("one {}", text);
+    }
+
+    // Case 3: "thousand " or " thousand" appears in the middle
+    if let Some(idx) = text.find(" thousand") {
+        let (before, after) = text.split_at(idx);
+        let prev_word = before.split_whitespace().last().unwrap_or("");
+
+        // Don't fix if preceded by a number word or "a"
+        let number_words = [
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+            "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+            "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
+            "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "a",
+        ];
+
+        if !number_words.contains(&prev_word) {
+            return format!("{} one{}", before, after);
+        }
+    }
+
+    text.to_string()
 }
 
 // ------------------------------------------------------- the eight classes
@@ -154,7 +189,7 @@ fn reads_the_sentences_the_bug_moved_and_leaves_the_rest_where_they_were() {
         ("There are 100 people.", "There are one hundred people."),
         (
             "Total 1,234 items.",
-            "Total thousand two hundred and thirty four items.",
+            "Total one thousand two hundred and thirty four items.",
         ),
         ("About 1000000 people.", "About one million people."),
         (
@@ -206,8 +241,8 @@ fn the_cheapest_reading_of_a_bare_integer_is_the_cardinal_one() {
 
     for (input, expected) in [
         ("100", "one hundred"),
-        ("1,234", "thousand two hundred and thirty four"),
-        ("1,500 people", "thousand five hundred people"),
+        ("1,234", "one thousand two hundred and thirty four"),
+        ("1,500 people", "one thousand five hundred people"),
         ("1000000", "one million"),
         // Not ours, and not changed: see the sentence table above.
         ("1000", "ten hundred"),
@@ -332,4 +367,30 @@ fn one_grammar_without_the_other_is_not_enough_to_finish() {
         .load(WETEXT_EN_TN_VERBALIZER, &assets[1].1)
         .unwrap();
     registry.finish().unwrap();
+}
+
+/// WeText 0.1.8 bug: 1,000-1,999 lose the leading "one".
+///
+/// This is a known bug in the upstream verbalizer FST that affects only the
+/// 1,000-1,999 range. Our post-processing fix ensures these numbers are read
+/// correctly. See `docs/superpowers/plans/p6-1nnn-bug-research.md` for details.
+#[test]
+fn one_thousand_bug_is_fixed() {
+    for (input, expected) in [
+        ("1,000", "one thousand"),
+        ("1,234", "one thousand two hundred and thirty four"),
+        ("1,500", "one thousand five hundred"),
+        ("1,999", "one thousand nine hundred and ninety nine"),
+        // Should not change
+        ("2,000", "two thousand"),
+        ("11,234", "eleven thousand two hundred and thirty four"),
+        ("a thousand people", "a thousand people"),
+        ("two thousand", "two thousand"),
+    ] {
+        assert_eq!(
+            read(input).as_deref(),
+            Some(expected),
+            "reading {input:?}"
+        );
+    }
 }

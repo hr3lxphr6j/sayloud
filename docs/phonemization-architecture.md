@@ -39,14 +39,15 @@ offscreen 主线程   lib/models/worker-engine.ts
 
 ## Rust crate：`crates/phonemize`
 
-一个 wasm（`phonemize_bg.wasm`，5.08 MB），按"前端 / 后端"分层：
+一个 wasm（`phonemize_bg.wasm`，6.09 MB），按**数据流的三个阶段**分层：
 
 | 层 | 内容 |
 |---|---|
-| `frontends/` | 每个音素集一个：`ja_ipa`（v1.0 日语）、`zh_ipa`、`zh_zhuyin`（v1.1-zh）。最后一步，也是唯一知道模型词表的一层 |
-| `backends/` | 各语言的 G2P 与切词：`segmenter_ja`（lindera IPADic）、`segmenter_zh`（jieba-rs）、`pinyin`（pinyin-pro 的移植）、`tone_sandhi`（阶段 9D：普通话变调与儿化音）、`numbers`/`numbers_zh`（数字读法）、`g2p_en`（piper-plus-g2p，CMU Dict + ARPAbet→IPA） |
-| `text.rs` / `zh_text.rs` | 标点归一、脚本切分、空白处理 |
-| `vocab.rs` | **词表闸门**：输出的每个字符必须在所选音色的词表里，否则报错而不是静默丢字 |
+| `tn/` | 文本 → 文本：vendored WeText 引擎（`wetext/`）、它前面的英文门控（`gate.rs`）、按语言构造的接线（`engine.rs`）、以及引擎缺席时顶上的三个手写读数器（`readers/`）。`mod.rs` 是 `normalize(text, Lang, engine)` |
+| `g2p/` | 文本 → 音素，按语言分目录：`ja/`（lindera IPADic + 假名表）、`zh/`（jieba-rs 切词、pinyin-pro 读音、变调与儿化、中文标点规则）、`en/`（CMU Dict + NRL 7948 规则 + 字母） |
+| `pipeline.rs` | 编排：每语言一个函数、`ToneRules`、返回的错误与告警 |
+| `text.rs` / `kana.rs` | 共用原语：标点归一、脚本切分、空白处理、假名谓词 |
+| `vocab.rs` | **词表闸门**：输出的每个字符必须在所选音色的词表里，否则报错而不是静默丢字（“frontend”一词的唯一语义所在） |
 | `dictionary.rs` | 字典协议：`prepare` 时按名字取 `.bin.zst`，wasm 内解压（`ruzstd`） |
 
 ### 词表闸门为什么是错误而不是警告
@@ -104,7 +105,7 @@ OpenAI / DashScope / Volcengine / Azure / ElevenLabs / OpenAI-compat 收原始�
 这些是听感/工程验证出来的，和实现语言无关，仍然成立；细节在括号里的地方：
 
 - **中文全角逗号 → 句号**（比逗号停顿更明显）。7 个变体由用户试听后选定。
-  （`crates/phonemize/src/backends/zh_text.rs`、P5 spec）
+  （`crates/phonemize/src/g2p/zh/text.rs`、P5 spec）
 - **顿号 → ASCII 逗号**，全角句号 → ASCII 句号，`「」《》` → ASCII 引号。
 - **拉丁段：全大写 = 逐字母拼读，混合大小写 = 当一个词**（`g2p_en` 与 kokoro-js
   内部路径都这么做）。
@@ -114,7 +115,7 @@ OpenAI / DashScope / Volcengine / Azure / ElevenLabs / OpenAI-compat 收原始�
 - **中文声调是箭头**（↗↘），不是变音符号；v1.1-zh 用注音 + 声调数字。
 - **中文变调与儿化音是阶段 9D 加的，而且可关**（`pipeline::ToneRules`）：
   P5 §1.5 的论证是 v1.0 音色训练时不做这两件事，所以 `Off` 保留为阶段 6 管线的逐字
-  复现，冻结语料一直跑 `Off`。两边的证据在 `crates/phonemize/src/backends/tone_sandhi/mod.rs`。
+  复现，冻结语料一直跑 `Off`。两边的证据在 `crates/phonemize/src/g2p/zh/tone_sandhi/mod.rs`。
 
 ## 对照语料：三份冻结的黄金文件
 
@@ -130,11 +131,11 @@ JS 当年产出上，谁也不能再改语料。三份测试的注释都改成�
 
 | 文件 | 生成脚本 | CI |
 |---|---|---|
-| `pinyin-{chars,phrases,special,syllables}.txt` | `scripts/gen-pinyin-pro-data.mjs` | `--check` ✅ |
-| `pinyin-table.json`（**源**） | `scripts/gen-pinyin-table.py` | 有 `--check` |
-| `vocab-v1.txt`、`vocab-v11-zh.txt` | `scripts/gen-kokoro-vocab.mjs`（源 `tests/v0/kokoro-vocabs.json`） | `--check` ✅ |
+| `pinyin-{chars,phrases,special,syllables}.txt` | `scripts/generate/gen-pinyin-pro-data.mjs` | `--check` ✅ |
+| `pinyin-table.json`（**源**） | `scripts/generate/gen-pinyin-table.py` | 有 `--check` |
+| `vocab-v1.txt`、`vocab-v11-zh.txt` | `scripts/generate/gen-kokoro-vocab.mjs`（源 `tests/v0/kokoro-vocabs.json`） | `--check` ✅ |
 | `ja-ipa-table.json`（**源**） | 手工维护 | — |
-| `ja_ipa_table.rs` | `scripts/gen-ja-ipa-table.py` | 有 `--check`；`cargo test` 的 `ja_ipa_table_parity.rs` 会读 JSON 回比 |
+| `ja_ipa_table.rs` | `scripts/generate/gen-ja-ipa-table.py` | 有 `--check`；`cargo test` 的 `ja_ipa_table_parity.rs` 会读 JSON 回比 |
 
 阶段 8 把两个"源"从已删除的 JS 链里搬了过来（`pinyin-table.json` 来自
 `lib/models/phonemize/`，`ja-ipa-table.json` 来自 `japanese.ts` 的

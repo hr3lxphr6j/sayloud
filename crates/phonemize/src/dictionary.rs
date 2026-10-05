@@ -35,7 +35,7 @@ pub const IPADIC_JA: &str = "lindera-ipadic-ja";
 /// `include-flate`, and that path pulls in the C `zstd` crate at runtime, which
 /// cannot link for `wasm32-unknown-unknown` on macOS (see
 /// `scripts/setup-jieba-dict.sh`). Shipping it as an asset also keeps 4.8 MB of
-/// dictionary out of a wasm that is otherwise 4.2 MB.
+/// dictionary out of the wasm.
 ///
 /// 1.6 MB compressed, built by `scripts/setup-jieba-dict.sh`.
 pub const JIEBA_ZH: &str = "jieba-zh-dict";
@@ -47,7 +47,7 @@ pub const JIEBA_ZH: &str = "jieba-zh-dict";
 /// compiled in — but its *numerals* come from the vendored WeText engine
 /// (`crate::tn::wetext`), and that engine's grammars are OpenFST binaries,
 /// so they arrive through the registry like everything else rather than being
-/// embedded (spec decision #4).
+/// embedded rather than fetched.
 ///
 /// **The grammars are small where the numbers are.** English's pair is 707 KB
 /// compressed because its cardinal grammar is enormous; Chinese's is 160 KB and
@@ -340,8 +340,9 @@ impl DictionaryRegistry {
 
     /// Check that everything the last request asked for has arrived.
     ///
-    /// Building the actual indices belongs here once there are any; today the
-    /// bytes *are* the index.
+    /// This only answers "did everything arrive". Turning the bytes into
+    /// something usable is the next step, and it is `Phonemizer::finish_loading`
+    /// that takes it: the segmenters and the text normalizers are built there.
     pub fn finish(&self) -> Result<(), DictionaryError> {
         let missing: Vec<String> = self
             .required

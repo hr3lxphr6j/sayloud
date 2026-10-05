@@ -5,7 +5,7 @@
 //! - the segmenter tests say what the dictionary reads a word as, which is where
 //!   a lindera or IPADic change would show up;
 //! - the parity corpus says the whole pipeline still produces the phonemes the
-//!   JavaScript one produced, which is the P6 acceptance criterion (§0.4).
+//!   JavaScript one produced, which is the P6 acceptance criterion.
 //!
 //! The corpus is `tests/fixtures/ja-parity.json`, generated from the JavaScript
 //! pipeline by `tests/unit/models/phonemize/ja-parity.test.ts` before phase 8

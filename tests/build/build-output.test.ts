@@ -503,7 +503,13 @@ describe('the build output', () => {
     // `scripts/build/build-phonemize-wasm.sh`), so nothing rebuilt the module; and it
     // left the four `pinyin-*.txt` files un-regenerated, which `gen-pinyin-pro-data
     // --check` rejects in CI.
-    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_091_829);
+    //
+    // **6,091,596 as of the `tn` / `g2p` module reorganisation**, which is **−233 B**:
+    // that change moved thirty files, and every `panic!` embeds its file path, so
+    // the binary carries `src/tn/…` and `src/g2p/ja/…` where it used to carry
+    // `src/backends/…` — shorter strings, ten of them. Measured by building both
+    // trees in the same session. Nothing else about the move reaches the module.
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_091_596);
   });
 
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {

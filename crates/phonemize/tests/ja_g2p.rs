@@ -378,8 +378,9 @@ fn classifies_an_astral_kanji_as_other() {
     // `segmentText` tests `char.charCodeAt(0)` against `0x20000..=0x2ebef`, but
     // `charCodeAt(0)` on a character outside the BMP returns a surrogate — so
     // that branch is unreachable and an Extension B kanji falls through to
-    // `other`. This pins the reachable behaviour, which is what parity requires;
-    // the fix belongs on the JavaScript side, and phase 8.4 removes that side.
+    // `other`. This pins the reachable behaviour: the JavaScript side this was
+    // ported from no longer exists, so it is what the crate does, and adding the
+    // branch back is what this test would catch.
     let runs = segment_text("\u{20000}");
     assert_eq!(runs, vec![ScriptRun::Other("\u{20000}".to_string())]);
 }

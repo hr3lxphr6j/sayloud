@@ -400,8 +400,8 @@ fn the_fallback_the_gate_bypasses_is_a_no_op_on_every_skipped_entry() {
 /// Two calls through the real pipeline, with the engine deliberately excluded
 /// from the right-hand side: the left one lets the gate decide, the right one
 /// runs the pipeline on what the engine *would* have produced. They agree exactly
-/// when a skip was correct — the same "did skipping cost anything audible?"
-/// question the plan measures, asserted instead of measured.
+/// when a skip was correct — the "did skipping cost anything audible?"
+/// question, asserted instead of measured.
 ///
 /// This is the strongest of the three because it is the level the user hears, and
 /// it is the one that would have caught the phase's own measurement mistake: the

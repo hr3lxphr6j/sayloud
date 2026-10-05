@@ -305,7 +305,7 @@ a5 a
 Generates Japanese katakana-to-IPA mapping table.
 
 **Input:** Hard-coded Japanese phonology rules (based on kokoro-js)  
-**Output:** `crates/phonemize/src/frontends/ja_ipa_table.rs` (Rust code)
+**Output:** `crates/phonemize/src/g2p/ja/table.rs` (Rust code)
 
 **Usage:**
 ```bash
@@ -331,7 +331,7 @@ python3 scripts/generate/gen-ja-ipa-table.py
 Transcribes HeadTTS pronunciation rules into Rust code.
 
 **Input:** `tests/fixtures/headtts-parity.json` (extracted by `headtts-parity.mjs`)  
-**Output:** `crates/phonemize/src/backends/headtts_en/rules.rs` (7,948 rules)
+**Output:** `crates/phonemize/src/g2p/en/headtts/rules.rs` (7,948 rules)
 
 **Status:** ⚠️ **Frozen** — rules already generated and committed. Only re-run if HeadTTS upstream updates.
 
@@ -513,8 +513,8 @@ GitHub Actions workflow uses these scripts:
 
 **Which files:**
 - `crates/phonemize/data/*.txt` (pinyin, vocab, IPA tables)
-- `crates/phonemize/src/frontends/ja_ipa_table.rs` (generated code)
-- `crates/phonemize/src/backends/headtts_en/rules.rs` (generated code)
+- `crates/phonemize/src/g2p/ja/table.rs` (generated code)
+- `crates/phonemize/src/g2p/en/headtts/rules.rs` (generated code)
 - `tests/fixtures/headtts-parity.json` (frozen test data)
 
 **Not committed:**

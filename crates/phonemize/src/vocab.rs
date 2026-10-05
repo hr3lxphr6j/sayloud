@@ -25,7 +25,8 @@
 //!
 //! # One thing is repaired rather than refused
 //!
-//! espeak reads `never` as `nˈɛvɚ`, and v1.1-zh has no `ɚ` — so the tokenizer
+//! the CMU dictionary reads `never` as `nˈɛvɚ`, and v1.1-zh has no `ɚ` — so the
+//! tokenizer
 //! would silently drop the rhotic and the word would lose its last sound. `əɹ` is
 //! what it should have been, and both characters are in the vocabulary. The
 //! substitution is per vocabulary rather than global, because v1.0 *does* have

@@ -30,7 +30,7 @@
 //! Upstream loads FSTs on demand from a directory through `std::fs`. There is
 //! no filesystem here (see the crate README), so [`Normalizer::from_bytes`] is
 //! the only constructor and every FST a configuration can ask for has to be
-//! supplied up front. That is modification 2 of the four in `NOTICE`, and it is
+//! supplied up front. That is modification 2 in `NOTICE`, and it is
 //! also why [`Normalizer::normalize`] takes `&self`: with nothing left to load
 //! lazily there is no cache to mutate.
 

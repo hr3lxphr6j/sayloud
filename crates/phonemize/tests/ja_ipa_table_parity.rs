@@ -19,7 +19,7 @@
 
 use std::path::PathBuf;
 
-use phonemize::frontends::ja_ipa::KATAKANA_TO_IPA;
+use phonemize::g2p::ja::KATAKANA_TO_IPA;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

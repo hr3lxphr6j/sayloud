@@ -28,9 +28,8 @@ use std::sync::OnceLock;
 
 use wasm_bindgen::prelude::*;
 
-pub mod backends;
 pub mod dictionary;
-pub mod frontends;
+pub mod g2p;
 pub mod kana;
 pub mod pipeline;
 pub mod text;
@@ -38,14 +37,14 @@ pub mod tn;
 mod types;
 pub mod vocab;
 
-use backends::g2p_en::EnglishG2p;
-use backends::segmenter_ja::{SegmenterError, SegmenterJa};
-use backends::segmenter_zh::{SegmenterZh, SegmenterZhError};
 use dictionary::{
     DictionaryError, DictionaryRegistry, IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER,
     WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER, WETEXT_ZH_TN_TAGGER,
     WETEXT_ZH_TN_VERBALIZER,
 };
+use g2p::en::EnglishG2p;
+use g2p::ja::{SegmenterError, SegmenterJa};
+use g2p::zh::{SegmenterZh, SegmenterZhError};
 use pipeline::PipelineError;
 use tn::{Normalizer as WeTextNormalizer, WeTextError};
 use vocab::{validate_phonemes, Vocab, VocabError};

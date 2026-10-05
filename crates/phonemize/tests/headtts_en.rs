@@ -23,7 +23,8 @@
 //! upstream, taken by running it — see that script for the provenance block it
 //! records, which this file does not re-derive and cannot.
 
-use phonemize::backends::headtts_en::{self, rules, to_ipa};
+use phonemize::g2p::en::headtts as headtts_en;
+use phonemize::g2p::en::headtts::{rules, to_ipa};
 use serde_json::Value;
 
 /// The fixture, parsed once. 58 KB of JSON is worth reading once per binary.
@@ -357,7 +358,7 @@ fn a_word_of_silent_letters_reads_as_nothing_rather_than_failing() {
     // one — the pipeline spells such a word out — but this module must not
     // confuse "silent" with "no idea", which is `None`.
     assert_eq!(
-        phonemize::backends::headtts_en::phonemize("hhh"),
+        phonemize::g2p::en::headtts::phonemize("hhh"),
         Some(String::new())
     );
     assert_eq!(native("hhh"), "");

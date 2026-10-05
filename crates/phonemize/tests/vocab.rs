@@ -12,7 +12,7 @@
 
 mod common;
 
-use phonemize::backends::ChinesePinyin;
+use phonemize::g2p::ChinesePinyin;
 use phonemize::vocab::{validate_phonemes, Vocab, VocabError};
 use phonemize::{PhonemizeError, PhonemizeOptions, Phonemizer};
 

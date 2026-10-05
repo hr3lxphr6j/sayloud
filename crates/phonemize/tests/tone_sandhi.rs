@@ -22,9 +22,9 @@ mod common;
 
 use std::io::Read;
 
-use phonemize::backends::pinyin::ChinesePinyin;
-use phonemize::backends::segmenter_zh::SegmenterZh;
-use phonemize::backends::tone_sandhi::{self, Plan};
+use phonemize::g2p::zh::tone_sandhi::{self, Plan};
+use phonemize::g2p::zh::SegmenterZh;
+use phonemize::g2p::ChinesePinyin;
 
 /// The real segmenter and the real syllable table, for a test that needs them.
 ///

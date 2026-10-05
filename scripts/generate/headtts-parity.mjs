@@ -10,7 +10,7 @@
  *
  * It runs **upstream JavaScript**, not a copy of it: every `phonemes` string in
  * the output is what `Language#phonemizeWord` returned, so the Rust engine in
- * `crates/phonemize/src/backends/headtts_en/` is checked against HeadTTS rather
+ * `crates/phonemize/src/g2p/en/headtts/` is checked against HeadTTS rather
  * than against this repository's idea of HeadTTS. `rules` is dumped for the same
  * reason — it is upstream's own `{regex, move, phonemes}` triples — and
  * `scripts/generate/gen-headtts-rules.mjs` transcribes it into `rules.rs`.

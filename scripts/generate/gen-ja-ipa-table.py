@@ -4,7 +4,7 @@
 The table is data, and the Rust side needs it as a `&[(&str, &str)]` with no
 parser at runtime, so it is generated rather than written by hand. It was
 duplicated by hand before phase 8 — once in the JavaScript phonemize chain, once
-in `crates/phonemize/src/frontends/ja_ipa_table.rs` — and a 193-entry table is
+in `crates/phonemize/src/g2p/ja/table.rs` — and a 193-entry table is
 exactly the kind of thing that drifts by one entry when it is copied.
 
 The JavaScript copy is gone (phase 8 deleted that chain), so the source of truth
@@ -29,7 +29,7 @@ writing anything, which is what a reviewer wants. CI does not need it — the Ru
 parity test makes the same comparison on every `cargo test` — but it names the
 offending file rather than a table entry.
 
-Writes `crates/phonemize/src/frontends/ja_ipa_table.rs`.
+Writes `crates/phonemize/src/g2p/ja/table.rs`.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 SOURCE = ROOT / "crates" / "phonemize" / "data" / "ja-ipa-table.json"
-OUTPUT = ROOT / "crates" / "phonemize" / "src" / "frontends" / "ja_ipa_table.rs"
+OUTPUT = ROOT / "crates" / "phonemize" / "src" / "g2p" / "ja" / "table.rs"
 
 
 def parse_table(source: str) -> list[tuple[str, str]]:

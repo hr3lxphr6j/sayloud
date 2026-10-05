@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../..');
 const SOURCE = join(ROOT, 'crates', 'phonemize', 'tests', 'fixtures', 'headtts-en-parity.json');
-const OUT = join(ROOT, 'crates', 'phonemize', 'src', 'backends', 'headtts_en', 'rules.rs');
+const OUT = join(ROOT, 'crates', 'phonemize', 'src', 'g2p', 'en', 'headtts', 'rules.rs');
 
 /** A Rust string literal, with the two characters that cannot appear raw. */
 function literal(text) {

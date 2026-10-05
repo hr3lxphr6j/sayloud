@@ -18,7 +18,7 @@
 //! between syllables, which is what the JavaScript side's `singleSyllableWords`
 //! does, and grouping them into words needs jieba (phase 6).
 
-use phonemize::backends::{ChinesePinyin, PinyinError};
+use phonemize::g2p::{ChinesePinyin, PinyinError};
 
 /// The readings of one text, as `pinyin-pro` reports them with `toneType: 'num'`.
 fn pinyin(text: &str) -> Vec<&'static str> {

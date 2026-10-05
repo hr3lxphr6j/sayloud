@@ -58,20 +58,20 @@
 //! the production spacing and takes the boundaries from jieba as an argument,
 //! because the readings and the boundaries come from different places and this
 //! module only owns the readings. The punctuation, numeral and Latin-run rules
-//! around the Han run are [`super::zh_text`] and [`crate::tn::numbers_to_han`].
+//! around the Han run are [`super::text`] and [`crate::tn::numbers_to_han`].
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 /// `DICT1`, inverted: one line per character, its readings in priority order.
-const CHARACTERS: &str = include_str!("../../data/pinyin-chars.txt");
+const CHARACTERS: &str = include_str!("../../../data/pinyin-chars.txt");
 /// `DICT2`–`DICT5` plus the numeral rule table.
-const PHRASES: &str = include_str!("../../data/pinyin-phrases.txt");
+const PHRASES: &str = include_str!("../../../data/pinyin-phrases.txt");
 /// The 一/不/了/々 rules, precomputed.
-const SPECIAL: &str = include_str!("../../data/pinyin-special.txt");
+const SPECIAL: &str = include_str!("../../../data/pinyin-special.txt");
 /// Pinyin to IPA, with a `0` where the tone goes.
-const SYLLABLES: &str = include_str!("../../data/pinyin-syllables.txt");
+const SYLLABLES: &str = include_str!("../../../data/pinyin-syllables.txt");
 
 /// `Probability.DICT` — what a phrase from `DICT2`–`DICT5` is worth.
 const PROBABILITY_DICT: f64 = 2e-8;
@@ -466,7 +466,7 @@ impl ChinesePinyin {
     /// A run of Chinese characters to IPA, grouped into words.
     ///
     /// `lengths` is how many characters each word has, in order — jieba's answer,
-    /// from [`SegmenterZh::word_lengths`](crate::backends::SegmenterZh::word_lengths).
+    /// from [`SegmenterZh::word_lengths`](crate::g2p::zh::SegmenterZh::word_lengths).
     /// One space goes between words and none inside one, which is misaki's
     /// spacing and the shape Kokoro was trained on: one space per *syllable*
     /// instead made the model pause inside words (人设, 曾经).

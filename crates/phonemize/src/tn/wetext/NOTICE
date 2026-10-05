@@ -56,7 +56,7 @@ normalization logic was touched.
 
 4. `contractions.rs`: the three embedded JSON paths are module-relative
    (`data/...`) rather than crate-relative (`../data/...`), because the file
-   moved into `backends/wetext/`. `token_parser.rs`/`contractions.rs` import
+   moved into `tn/wetext/`. `token_parser.rs`/`contractions.rs` import
    through `super::` for the same reason. No behaviour change.
 
 5. `normalizer.rs`: `should_normalize` regained the `lang` parameter the port

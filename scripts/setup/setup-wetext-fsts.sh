@@ -83,7 +83,7 @@ done
 if [ ${#missing[@]} -gt 0 ]; then
   echo "⚠️  Cannot build the text-normalization grammars: missing ${missing[*]}" >&2
   echo "   Install them (macOS: brew install zstd) and re-run:" >&2
-  echo "   FORCE=1 ./scripts/setup-wetext-fsts.sh" >&2
+  echo "   FORCE=1 ./scripts/setup/setup-wetext-fsts.sh" >&2
   exit 1
 fi
 

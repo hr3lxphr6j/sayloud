@@ -19,8 +19,8 @@ jobs:
       # true of a hand edit to `rules.rs`. All three scripts have a `--check` mode
       # for exactly that, and this is the only place it runs. They need
       # `node_modules`, hence the position.
-      - run: node scripts/gen-pinyin-pro-data.mjs --check
-      - run: node scripts/gen-kokoro-vocab.mjs --check
+      - run: node scripts/generate/gen-pinyin-pro-data.mjs --check
+      - run: node scripts/generate/gen-kokoro-vocab.mjs --check
       - run: pnpm check:headtts
       # The phonemize wrapper imports wasm-pack's output, and `pnpm build` runs
       # the wasm build through its `prebuild` hook — so the Rust toolchain is a

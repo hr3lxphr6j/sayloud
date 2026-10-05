@@ -19,8 +19,8 @@ __pycache__/
 *.pyc
 
 # The Japanese and Chinese dictionaries for the Rust phonemizer, built by
-# scripts/setup-lindera-dict.sh, scripts/setup-jieba-dict.sh and
-# scripts/setup-wetext-fsts.sh on install. 8.5 MB of IPADic, 1.6 MB of jieba's
+# scripts/setup/setup-lindera-dict.sh, scripts/setup/setup-jieba-dict.sh and
+# scripts/setup/setup-wetext-fsts.sh on install. 8.5 MB of IPADic, 1.6 MB of jieba's
 # word list and 707 KB of English text-normalization grammars, regenerated rather
 # than tracked.
 #
@@ -28,6 +28,10 @@ __pycache__/
 # for the JavaScript phonemize chain. Phase 8 deleted that chain and the 17 MB
 # directory with it.
 public/dictionaries/
+
+# Dictionary files are built into scripts/public/dictionaries/ and symlinked to
+# public/dictionaries/. Ignore the actual files.
+scripts/public/
 
 # POC and test scripts
 poc/

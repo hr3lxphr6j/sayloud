@@ -26,9 +26,6 @@ importers:
       path-browserify:
         specifier: ^1.0.1
         version: 1.0.1
-      pinyin-pro:
-        specifier: 3.29.4
-        version: 3.29.4
     devDependencies:
       '@babel/core':
         specifier: ^8.0.6
@@ -72,6 +69,9 @@ importers:
       patch-package:
         specifier: ^8.0.1
         version: 8.0.1
+      pinyin-pro:
+        specifier: 3.29.4
+        version: 3.29.4
       preact:
         specifier: 10.29.8
         version: 10.29.8

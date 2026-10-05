@@ -54,7 +54,7 @@ fn every_table_entry_only_spells_with_characters_kokoro_has() {
 fn the_table_has_no_duplicate_keys() {
     // A duplicate in the JavaScript object literal would be silently collapsed
     // (last one wins), while a Rust slice would keep both and a first-match
-    // lookup would pick the other one. `scripts/gen-ja-ipa-table.py` rejects
+    // lookup would pick the other one. `scripts/generate/gen-ja-ipa-table.py` rejects
     // them at generation time; this is the check that survives someone editing
     // the generated file.
     let mut seen = HashSet::new();

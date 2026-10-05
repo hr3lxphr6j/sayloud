@@ -18,7 +18,7 @@ use rustfst::semirings::TropicalWeight;
 use rustfst::utils::acceptor;
 use rustfst::{Label, StateId, EPS_LABEL};
 
-use crate::backends::wetext::error::{Result, WeTextError};
+use crate::tn::wetext::error::{Result, WeTextError};
 
 /// FST-based text normalizer
 ///

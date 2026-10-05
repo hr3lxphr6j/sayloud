@@ -9,7 +9,7 @@
 //! deliberately not gated on digits — `should_normalize` returns true for any
 //! non-empty English text (the condition is `lang != "en"` in the Python
 //! reference and in the vendored copy; see modification 5 in
-//! `src/backends/wetext/NOTICE`). So the only place a cheaper decision can be
+//! `src/tn/wetext/NOTICE`). So the only place a cheaper decision can be
 //! made is *before* the tagger.
 //!
 //! The gate answers one question — "could this text contain anything TN would

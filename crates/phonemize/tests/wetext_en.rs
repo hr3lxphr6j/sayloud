@@ -18,9 +18,9 @@
 
 mod common;
 
-use phonemize::backends::wetext::Normalizer;
-use phonemize::backends::wetext_tn;
 use phonemize::dictionary::{DictionaryRegistry, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER};
+use phonemize::tn;
+use phonemize::tn::wetext::Normalizer;
 use phonemize::Phonemizer;
 
 use common::{
@@ -35,7 +35,7 @@ use common::{
 /// to be.
 fn engine() -> Option<Normalizer> {
     let (tagger, verbalizer) = wetext_fsts(WETEXT_EN_NAMES)?;
-    Some(wetext_tn::english(&tagger, &verbalizer).expect("the grammars parse"))
+    Some(tn::english(&tagger, &verbalizer).expect("the grammars parse"))
 }
 
 /// One reading, as the words the verbalizer produced, with the 1,000-1,999 fix.

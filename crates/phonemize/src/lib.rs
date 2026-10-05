@@ -16,7 +16,7 @@
 //! [`dictionary::JIEBA_ZH`]).
 //!
 //! **All three languages fetch the same two text-normalization grammars.**
-//! Phases 9B and 9E wired them up per language ([`wetext_tn`]), so each language
+//! Phases 9B and 9E wired them up per language ([`crate::tn`]), so each language
 //! carries two more fetched files and one more `Option<Normalizer>`; the
 //! hand-written numeral readers they replace are still here as the fallback for a
 //! caller that never prepared, and as the phase 6 pipeline the JavaScript parity
@@ -34,20 +34,20 @@ pub mod frontends;
 pub mod kana;
 pub mod pipeline;
 pub mod text;
+pub mod tn;
 mod types;
 pub mod vocab;
 
 use backends::g2p_en::EnglishG2p;
 use backends::segmenter_ja::{SegmenterError, SegmenterJa};
 use backends::segmenter_zh::{SegmenterZh, SegmenterZhError};
-use backends::wetext::{Normalizer as WeTextNormalizer, WeTextError};
-use backends::wetext_tn;
 use dictionary::{
     DictionaryError, DictionaryRegistry, IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER,
     WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER, WETEXT_ZH_TN_TAGGER,
     WETEXT_ZH_TN_VERBALIZER,
 };
 use pipeline::PipelineError;
+use tn::{Normalizer as WeTextNormalizer, WeTextError};
 use vocab::{validate_phonemes, Vocab, VocabError};
 
 pub use types::{FrontendId, PhonemeSpan, PhonemizeOptions, PhonemizeResult};
@@ -350,7 +350,7 @@ impl Phonemizer {
                 WETEXT_EN_TN_TAGGER,
                 WETEXT_EN_TN_VERBALIZER,
                 "English",
-                wetext_tn::english,
+                tn::english,
             )?;
         }
         if self.chinese_tn.is_none() {
@@ -359,7 +359,7 @@ impl Phonemizer {
                 WETEXT_ZH_TN_TAGGER,
                 WETEXT_ZH_TN_VERBALIZER,
                 "Chinese",
-                wetext_tn::chinese,
+                tn::chinese,
             )?;
         }
         if self.japanese_tn.is_none() {
@@ -368,7 +368,7 @@ impl Phonemizer {
                 WETEXT_JA_TN_TAGGER,
                 WETEXT_JA_TN_VERBALIZER,
                 "Japanese",
-                wetext_tn::japanese,
+                tn::japanese,
             )?;
         }
         Ok(())

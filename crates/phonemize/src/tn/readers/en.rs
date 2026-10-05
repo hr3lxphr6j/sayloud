@@ -1,6 +1,6 @@
 //! English numeral normalization.
 //!
-//! The English counterpart of [`crate::backends::numbers`], and it runs in the
+//! The English counterpart of [`crate::tn::readers::ja`], and it runs in the
 //! same place for the same reason: **a digit that is still a digit is not spoken
 //! at all.** `segment_text` classifies it `other`, the `other` branch keeps only
 //! punctuation, and the number leaves the IPA with nothing thrown — measured
@@ -30,7 +30,7 @@
 //!
 //! # Known gaps
 //!
-//! The ones [`crate::backends::numbers`] documents, plus two of its own:
+//! The ones [`crate::tn::readers::ja`] documents, plus two of its own:
 //!
 //! - `1,000` reads as `one,zero`: the separator is punctuation, and the comma is
 //!   also a sentence pause, so it cannot be removed globally. The Japanese side

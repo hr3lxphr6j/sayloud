@@ -1,4 +1,4 @@
-//! The two promises [`tn_gate`](phonemize::backends::tn_gate) makes, held against
+//! The two promises [`tn_gate`](phonemize::tn::gate) makes, held against
 //! the shipped grammars (phase 9B.6).
 //!
 //! The gate is a cheap filter in front of English text normalization, and it is
@@ -28,11 +28,11 @@
 mod common;
 
 use phonemize::backends::g2p_en::EnglishG2p;
-use phonemize::backends::tn_gate::needs_normalization;
-use phonemize::backends::wetext::{FstTextNormalizer, Normalizer};
-use phonemize::backends::wetext_tn;
 use phonemize::pipeline::phonemize_en;
 use phonemize::text::normalize_punctuation;
+use phonemize::tn;
+use phonemize::tn::needs_normalization;
+use phonemize::tn::wetext::{FstTextNormalizer, Normalizer};
 
 /// The corpus, as `(text, why it is here)`.
 ///
@@ -279,7 +279,7 @@ fn engine() -> Option<(FstTextNormalizer, Normalizer)> {
     let (tagger, verbalizer) = common::wetext_fsts(common::WETEXT_EN_NAMES)?;
     Some((
         FstTextNormalizer::from_bytes(&tagger).expect("the tagger parses"),
-        wetext_tn::english(&tagger, &verbalizer).expect("both grammars parse"),
+        tn::english(&tagger, &verbalizer).expect("both grammars parse"),
     ))
 }
 
@@ -360,7 +360,7 @@ fn the_gate_never_skips_text_normalization_would_have_changed() {
 /// Skipping is only safe because the fallback is a no-op on the same text.
 ///
 /// [`phonemize_en`] takes an `Option<&Normalizer>` and falls back to
-/// [`numbers_to_english`](phonemize::backends::numbers_en::numbers_to_english)
+/// [`numbers_to_english`](phonemize::tn::numbers_to_english)
 /// when there is no engine; the gate replaces the engine with *the text itself*
 /// on a skip, so the two are the same answer only if the fallback would have
 /// changed nothing. It matches a digit and a minus sign followed by a digit and
@@ -368,7 +368,7 @@ fn the_gate_never_skips_text_normalization_would_have_changed() {
 /// another module, and it is asserted here rather than written in a comment.
 #[test]
 fn the_fallback_the_gate_bypasses_is_a_no_op_on_every_skipped_entry() {
-    use phonemize::backends::numbers_en::numbers_to_english;
+    use phonemize::tn::numbers_to_english;
 
     for (text, why) in CORPUS {
         let text = normalize_punctuation(text);

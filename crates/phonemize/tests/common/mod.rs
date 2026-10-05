@@ -20,12 +20,12 @@ use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 
-use phonemize::backends::wetext::{Normalizer, WeTextError};
-use phonemize::backends::wetext_tn;
 use phonemize::dictionary::{
     IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER,
     WETEXT_JA_TN_VERBALIZER, WETEXT_ZH_TN_TAGGER, WETEXT_ZH_TN_VERBALIZER,
 };
+use phonemize::tn;
+use phonemize::tn::wetext::{Normalizer, WeTextError};
 use phonemize::{PhonemizeOptions, Phonemizer};
 
 /// Where the Japanese dictionary asset lives, from this crate rather than the
@@ -215,12 +215,12 @@ fn normalizer(
 
 /// The Chinese text normalizer.
 pub fn chinese_tn() -> Option<Normalizer> {
-    normalizer(WETEXT_ZH_NAMES, wetext_tn::chinese)
+    normalizer(WETEXT_ZH_NAMES, tn::chinese)
 }
 
 /// The Japanese text normalizer.
 pub fn japanese_tn() -> Option<Normalizer> {
-    normalizer(WETEXT_JA_NAMES, wetext_tn::japanese)
+    normalizer(WETEXT_JA_NAMES, tn::japanese)
 }
 
 /// Options for the v1.0 Japanese frontend.

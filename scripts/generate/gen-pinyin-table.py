@@ -9,7 +9,7 @@ algorithm rather than hand-written.
 
 It lives in the crate's data directory rather than beside a runtime that reads
 it, because since phase 8 nothing reads it at runtime: the JavaScript phonemize
-chain is gone, and `scripts/gen-pinyin-pro-data.mjs` is the only consumer. It
+chain is gone, and `scripts/generate/gen-pinyin-pro-data.mjs` is the only consumer. It
 transcribes this file into `pinyin-syllables.txt`, which is what the wasm
 actually embeds. Hand-writing the
 initial/final split is exactly the mistake this avoids: pypinyin's
@@ -26,7 +26,7 @@ reference verification used.
 Regenerate with:
 
     uv run --with pypinyin==0.55.0 --with ordered-set==4.1.0 \\
-        python3 scripts/gen-pinyin-table.py
+        python3 scripts/generate/gen-pinyin-table.py
 
 `--check` regenerates in memory and compares against the committed file
 without writing anything, which is what CI or a reviewer wants.

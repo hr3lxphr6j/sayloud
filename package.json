@@ -7,11 +7,16 @@
     "dev": "wxt",
     "build": "wxt build",
     "prebuild": "pnpm build:wasm",
-    "build:wasm": "./scripts/build-phonemize-wasm.sh",
-    "gen:headtts": "node scripts/gen-headtts-rules.mjs",
-    "check:headtts": "node scripts/gen-headtts-rules.mjs --check",
+    "build:wasm": "./scripts/build/build-phonemize-wasm.sh",
+    "gen:headtts": "node scripts/generate/gen-headtts-rules.mjs",
+    "gen:vocab": "node scripts/generate/gen-kokoro-vocab.mjs",
+    "gen:pinyin": "node scripts/generate/gen-pinyin-pro-data.mjs",
+    "gen:ja-ipa": "python3 scripts/generate/gen-ja-ipa-table.py",
+    "check:headtts": "node scripts/generate/gen-headtts-rules.mjs --check",
+    "check:vocab": "node scripts/generate/gen-kokoro-vocab.mjs --check",
+    "check:manifest": "node scripts/check/check-manifest.mjs",
+    "check:ja-mutations": "python3 scripts/check/mutation-check-ja.py",
     "build:e2e": "SAYLOUD_E2E=1 wxt build --mode e2e",
-    "check:manifest": "node scripts/check-manifest.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
@@ -22,7 +27,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "postinstall": "wxt prepare && (./scripts/setup-lindera-dict.sh || echo '⚠️  the Japanese dictionary was not built; the Japanese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-lindera-dict.sh') && (./scripts/setup-jieba-dict.sh || echo '⚠️  the Chinese dictionary was not built; the Chinese pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup-jieba-dict.sh') && (./scripts/setup-wetext-fsts.sh || echo '⚠️  the English text-normalization grammars were not built; the English TN tests will fail. Re-run: FORCE=1 ./scripts/setup-wetext-fsts.sh')"
+    "postinstall": "wxt prepare && (./scripts/setup/setup-dictionaries.sh || echo '⚠️  Dictionaries were not built; the pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup/setup-dictionaries.sh')"
   },
   "devDependencies": {
     "@babel/core": "^8.0.6",
@@ -39,6 +44,7 @@
     "happy-dom": "20.14.5",
     "msw": "^3.0.0",
     "patch-package": "^8.0.1",
+    "pinyin-pro": "3.29.4",
     "preact": "10.29.8",
     "typescript": "6.0.3",
     "vite": "^8.3.1",
@@ -51,7 +57,6 @@
     "async": "^3.2.6",
     "kokoro-js": "1.2.1",
     "microsoft-cognitiveservices-speech-sdk": "^1.51.0",
-    "path-browserify": "^1.0.1",
-    "pinyin-pro": "3.29.4"
+    "path-browserify": "^1.0.1"
   }
 }

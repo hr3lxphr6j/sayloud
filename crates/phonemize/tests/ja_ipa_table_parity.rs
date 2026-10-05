@@ -1,6 +1,6 @@
 //! The katakana→IPA table, against the data file it is generated from.
 //!
-//! `KATAKANA_TO_IPA` is generated: `scripts/gen-ja-ipa-table.py` writes it from
+//! `KATAKANA_TO_IPA` is generated: `scripts/generate/gen-ja-ipa-table.py` writes it from
 //! `crates/phonemize/data/ja-ipa-table.json`. This test is what says so, and it
 //! is the only thing that would notice a hand edit of either side — the table has
 //! no other reader, and `cargo test` does not run the generator. (The generator

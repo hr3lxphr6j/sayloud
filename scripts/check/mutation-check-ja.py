@@ -28,7 +28,7 @@ import subprocess
 import sys
 
 # The repository root, from this script rather than the working directory.
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 
 # (file, description, old, new, which test target must fail)
 MUTATIONS: list[tuple[str, str, str, str, str]] = [

@@ -40,7 +40,7 @@
 //!
 //! # Layout
 //!
-//! - [`rules`] is generated (`scripts/gen-headtts-rules.mjs`) from a fixture that
+//! - [`rules`] is generated (`scripts/generate/gen-headtts-rules.mjs`) from a fixture that
 //!   is a dump of upstream's own constructor, so it cannot disagree with HeadTTS
 //!   about what a rule means.
 //! - [`engine`] is the loop, ported from `Language#phonemizeWord`.

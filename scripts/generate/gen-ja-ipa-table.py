@@ -22,7 +22,7 @@ own `tokenizer.json`, so that constant was dropped: the check now uses the
 authoritative set, which is a proof rather than the floor the copy was.
 
 Usage:
-    python3 scripts/gen-ja-ipa-table.py [--check]
+    python3 scripts/generate/gen-ja-ipa-table.py [--check]
 
 `--check` regenerates in memory and compares against the committed file without
 writing anything, which is what a reviewer wants. CI does not need it — the Rust
@@ -39,7 +39,7 @@ import json
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 SOURCE = ROOT / "crates" / "phonemize" / "data" / "ja-ipa-table.json"
 OUTPUT = ROOT / "crates" / "phonemize" / "src" / "frontends" / "ja_ipa_table.rs"
 
@@ -110,7 +110,7 @@ HEADER = '''//! The Japanese katakana→IPA table, generated from the crate's da
 //! **Do not edit by hand.** Regenerate with:
 //!
 //! ```text
-//! python3 scripts/gen-ja-ipa-table.py
+//! python3 scripts/generate/gen-ja-ipa-table.py
 //! ```
 //!
 //! Source of truth: `crates/phonemize/data/ja-ipa-table.json`.

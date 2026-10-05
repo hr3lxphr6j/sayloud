@@ -3,7 +3,7 @@
 //! **Do not edit by hand.** Regenerate with:
 //!
 //! ```text
-//! python3 scripts/gen-ja-ipa-table.py
+//! python3 scripts/generate/gen-ja-ipa-table.py
 //! ```
 //!
 //! Source of truth: `crates/phonemize/data/ja-ipa-table.json`.

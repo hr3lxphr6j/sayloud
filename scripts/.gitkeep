@@ -1,0 +1,6 @@
+# Scripts directory structure:
+# - build/      - Build-time compilation (wasm, etc.)
+# - setup/      - Resource downloading (dictionaries, models)
+# - generate/   - Data file generation (from npm packages or models)
+# - check/      - Validation and verification scripts
+# - misaki/     - Vendored dependency (Kokoro G2P reference)

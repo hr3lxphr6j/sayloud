@@ -17,7 +17,7 @@
 //!
 //! The fixture is committed, so none of this needs a HeadTTS checkout or a
 //! network. Regenerating it is `scripts/headtts-parity.mjs`; regenerating the
-//! rules is `scripts/gen-headtts-rules.mjs`.
+//! rules is `scripts/generate/gen-headtts-rules.mjs`.
 //!
 //! **The expected values are not this repository's opinion.** They are a dump of
 //! upstream, taken by running it — see that script for the provenance block it

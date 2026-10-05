@@ -64,7 +64,7 @@ done
 if [ ${#missing[@]} -gt 0 ]; then
   echo "⚠️  Cannot build the Chinese dictionary: missing ${missing[*]}" >&2
   echo "   Install them (macOS: brew install zstd) and re-run:" >&2
-  echo "   FORCE=1 ./scripts/setup-jieba-dict.sh" >&2
+  echo "   FORCE=1 ./scripts/setup/setup-jieba-dict.sh" >&2
   exit 1
 fi
 

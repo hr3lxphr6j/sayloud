@@ -162,7 +162,8 @@ fn numerals<'a>(
 ) -> Cow<'a, str> {
     match tn {
         Some(tn) if gate == Gate::EngineDecides || tn_gate::needs_normalization(text) => {
-            Cow::Owned(tn.normalize(text).unwrap_or_else(|_| fallback(text)))
+            let normalized = tn.normalize(text).unwrap_or_else(|_| fallback(text));
+            Cow::Owned(fix_one_thousand_bug(&normalized))
         }
         // The engine is there and the gate says there is nothing here for it.
         // Skipping is then the same as running it, because `fallback` is a no-op
@@ -173,6 +174,53 @@ fn numerals<'a>(
         // No engine was built at all.
         None => Cow::Owned(fallback(text)),
     }
+}
+
+/// Fix WeText 0.1.8 bug where 1,000-1,999 lose the leading "one".
+///
+/// WeText's English verbalizer has a bug in the 1,000-1,999 range: it produces
+/// "thousand two hundred and thirty four" instead of "one thousand two hundred
+/// and thirty four". This is documented in
+/// `docs/superpowers/plans/p6-1nnn-bug-research.md` and affects only this range.
+///
+/// Examples:
+/// - "thousand" → "one thousand"
+/// - "thousand two hundred" → "one thousand two hundred"
+/// - "two thousand" → "two thousand" (unchanged)
+/// - "a thousand people" → "a thousand people" (unchanged)
+///
+/// The fix is applied as post-processing after normalization to avoid forking
+/// the upstream FST grammars.
+fn fix_one_thousand_bug(text: &str) -> String {
+    // Case 1: exactly "thousand" (e.g., "1,000")
+    if text == "thousand" {
+        return "one thousand".to_string();
+    }
+
+    // Case 2: starts with "thousand " (most common)
+    if text.starts_with("thousand ") {
+        return format!("one {}", text);
+    }
+
+    // Case 3: "thousand " or " thousand" appears in the middle
+    if let Some(idx) = text.find(" thousand") {
+        let (before, after) = text.split_at(idx);
+        let prev_word = before.split_whitespace().last().unwrap_or("");
+
+        // Don't fix if preceded by a number word or "a"
+        let number_words = [
+            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+            "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+            "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
+            "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "a",
+        ];
+
+        if !number_words.contains(&prev_word) {
+            return format!("{} one{}", before, after);
+        }
+    }
+
+    text.to_string()
 }
 
 /// Japanese text to IPA, for the v1.0 frontend.

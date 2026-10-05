@@ -486,13 +486,10 @@ describe('the build output', () => {
     // fallback for a word it lacks is three orders of magnitude smaller than the
     // table of the words it has.
     //
-    // 6,090,205 as of phase 9E, which is **+1,459 B** for Chinese and Japanese
-    // text normalization — measured against 6,088,746 from a build of the same
-    // tree with the wiring reverted, not against the constant above. The FST
-    // engine (`rustfst`) arrived in 9B and is shared; what is new is two fields,
-    // a shared numeral step and one Unicode digit test. 0.024% of the module for
-    // both languages, against 1.01 MB for English's share of the same engine.
-    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_090_205);
+    // 6,091,773 as of the 1,NNN bug fix (phase P6 follow-up), which is **+1,568 B**
+    // from phase 9E's 6,090,205. The fix adds `fix_one_thousand_bug()` to handle
+    // WeText's 1,000-1,999 bug — about 1.5 KB for the function and string operations.
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_091_773);
   });
 
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {

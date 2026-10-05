@@ -33,7 +33,11 @@
 # `crates/phonemize/tests/common/mod.rs`).
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Two levels, not one: this file lives in `scripts/setup/`, and `public/dictionaries`
+# below is repository-relative. One `..` lands in `scripts/`, which is not an error —
+# the asset is built into `scripts/public/dictionaries/` and nothing reads it, so the
+# failure only shows up later as a missing dictionary.
+cd "$(dirname "$0")/../.."
 
 # Pinned: the dictionary and the crate that reads it have to be the same
 # generation. `jieba-rs` validates nothing about the file it is handed — it is a

@@ -10,7 +10,11 @@
 # before `pnpm typecheck`.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Two levels, not one: this file lives in `scripts/build/`, and everything below
+# is repository-relative. One `..` lands in `scripts/`, where `wasm-pack` finds no
+# crate — and it does that *loudly*, which is the only reason a `..` that is one
+# short can be told apart from a working build.
+cd "$(dirname "$0")/../.."
 
 if ! command -v wasm-pack >/dev/null 2>&1; then
   echo "wasm-pack not found. Install it with: cargo install wasm-pack" >&2

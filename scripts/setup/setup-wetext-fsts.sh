@@ -38,7 +38,11 @@
 # `crates/phonemize/tests/common/mod.rs`).
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Two levels, not one: this file lives in `scripts/setup/`, and `public/dictionaries`
+# below is repository-relative. One `..` lands in `scripts/`, which is not an error —
+# the grammars are built into `scripts/public/dictionaries/` and nothing reads them,
+# so the failure only shows up later as a missing dictionary.
+cd "$(dirname "$0")/../.."
 
 # Pinned: the grammatical content is the data, and the Rust side validates
 # nothing about it. A different wheel is a different normalizer — `1,234` came

@@ -70,10 +70,35 @@ fn fix_one_thousand_bug(text: &str) -> String {
 
         // Don't fix if preceded by a number word or "a"
         let number_words = [
-            "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-            "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
-            "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
-            "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "a",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+            "thirteen",
+            "fourteen",
+            "fifteen",
+            "sixteen",
+            "seventeen",
+            "eighteen",
+            "nineteen",
+            "twenty",
+            "thirty",
+            "forty",
+            "fifty",
+            "sixty",
+            "seventy",
+            "eighty",
+            "ninety",
+            "hundred",
+            "a",
         ];
 
         if !number_words.contains(&prev_word) {
@@ -387,10 +412,6 @@ fn one_thousand_bug_is_fixed() {
         ("a thousand people", "a thousand people"),
         ("two thousand", "two thousand"),
     ] {
-        assert_eq!(
-            read(input).as_deref(),
-            Some(expected),
-            "reading {input:?}"
-        );
+        assert_eq!(read(input).as_deref(), Some(expected), "reading {input:?}");
     }
 }

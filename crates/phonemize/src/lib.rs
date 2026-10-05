@@ -1,28 +1,35 @@
-//! Rust phonemization pipeline for SayLoud (P6).
+//! Rust phonemization pipeline for SayLoud.
 //!
-//! Compiled to a single wasm module that replaces the JavaScript chain
-//! (kuromoji + kuroshiro + jieba + espeak + pinyin-pro).
+//! Compiled to a single wasm module that replaces the JavaScript chain it was
+//! ported from (kuromoji + kuroshiro + jieba + espeak + pinyin-pro). All three
+//! languages are complete: Chinese, Japanese and English each turn text into the
+//! phonemes one of the two Kokoro vocabularies accepts.
 //!
-//! Japanese is the language that works end to end today: the dictionary
-//! protocol (§3.2) is what gets IPADic into the module, and [`pipeline`] is what
-//! turns text into phonemes with it. English is wired as well — first as the
-//! backend the Latin runs of a Japanese sentence go through, then as a pipeline
-//! of its own once the numeral reading landed ([`pipeline::phonemize_en`]); the
-//! CMU dictionary it pronounces with is compiled in, so what it *fetches* is the
-//! WeText grammars its numerals go through. Chinese is complete as of phase 6:
-//! [`pipeline::phonemize_zh`] has the numeral, punctuation, word-boundary and
-//! mixed-script rules, and the one thing it fetches is jieba's word list,
-//! because the crate's own embedded-dictionary feature cannot link for wasm (see
-//! [`dictionary::JIEBA_ZH`]).
+//! # The three stages
 //!
-//! **All three languages fetch the same two text-normalization grammars.**
-//! Phases 9B and 9E wired them up per language ([`crate::tn`]), so each language
-//! carries two more fetched files and one more `Option<Normalizer>`; the
-//! hand-written numeral readers they replace are still here as the fallback for a
-//! caller that never prepared, and as the phase 6 pipeline the JavaScript parity
-//! corpora are pinned against. Since phase 10 all three languages also *render*
-//! the same way — from IPA, through `generate_from_ids` — which is a change in the
-//! extension rather than in this crate.
+//! [`tn`] normalizes the text — numerals, dates, times, money, abbreviations —
+//! through the vendored WeText grammars, with a hand-written reader per language
+//! as the stand-in for a caller that never called `prepare`. [`g2p`] turns that
+//! text into phonemes: segmentation, readings, the Mandarin tone rules, the kana
+//! table, and the English three-layer reader (CMU dictionary, then NRL 7948
+//! rules, then letters). [`pipeline`] is the orchestration — one function per
+//! language, because what a language needs is what differs — and all three end at
+//! [`vocab`], which refuses a phoneme the chosen voice's tokenizer would
+//! otherwise delete in silence.
+//!
+//! # What comes in from outside
+//!
+//! Nothing here reads a file or a socket: `wasm32-unknown-unknown` has neither.
+//! The big dictionaries arrive through [`dictionary`] — compressed, by name,
+//! unpacked inside the module — and everything else is `include_str!`'d at build
+//! time: the CMU dictionary, the letter-to-sound rules, the pinyin tables, the
+//! kana table and both vocabularies. Which languages a frontend can speak, and
+//! which files `prepare` has to fetch for one, is [`dictionary`]'s answer rather
+//! than the caller's.
+//!
+//! The rendering half lives in the extension, not here: all three languages reach
+//! the model as IPA through `generate_from_ids`, which is what
+//! `lib/models/kokoro-engine.ts` does with what this module returns.
 
 use std::sync::OnceLock;
 
@@ -171,8 +178,8 @@ impl Phonemizer {
     ///
     /// Nothing to wait for yet: the module is usable as soon as wasm-bindgen has
     /// instantiated it, which the JS `init()` already awaits. Dictionaries are
-    /// loaded later and explicitly, through `prepare()` on the JS side (spec
-    /// §3.1), so this stays a resolved promise.
+    /// loaded later and explicitly, through `prepare()` on the JS side, so this
+    /// stays a resolved promise.
     pub fn ready(&self) -> js_sys::Promise {
         js_sys::Promise::resolve(&JsValue::NULL)
     }

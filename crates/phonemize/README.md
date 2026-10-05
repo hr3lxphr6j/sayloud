@@ -9,6 +9,22 @@ gate. It replaced a JavaScript chain (kuromoji + kuroshiro + jieba + espeak +
 pinyin-pro) that phase 8 deleted; see
 `docs/phonemization-architecture.md` for where it sits in the extension.
 
+## How the code is laid out
+
+Three directories, one per stage of the pipeline, and a handful of files at the
+top that belong to no stage:
+
+| | |
+|---|---|
+| `src/tn/` | text normalization: text in, text out. The vendored WeText engine (`wetext/`), the English gate in front of it (`gate.rs`), the wiring that builds one per language (`engine.rs`), and the hand-written readers (`readers/`) that stand in for a caller that never called `prepare`. `mod.rs` is `normalize(text, Lang, engine)`. |
+| `src/g2p/` | grapheme to phoneme, one directory per language: `ja/` (lindera, the kana table), `zh/` (jieba, readings, the tone rules, the Chinese punctuation rules), `en/` (the CMU dictionary and the NRL 7948 rules). |
+| `src/pipeline.rs` | the orchestration: one function per language, `ToneRules`, and the error and warning types they return. |
+| `src/lib.rs`, `dictionary.rs`, `vocab.rs`, `text.rs`, `kana.rs`, `types.rs` | the wasm boundary, the dictionary protocol, the vocabulary gate, and the shared text and kana primitives. |
+
+`tn` is the one stage that is not per language, which is why it is not inside the
+language directories: every language runs the same engine, and what differs is
+which reader stands in for it and whether the gate looks first.
+
 ## What it does, and what it deliberately does not
 
 | Language | How | Dictionary |
@@ -32,7 +48,7 @@ spelling. Until it, `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː` �
 as six letters — and a mixed-case proper noun is exactly what a dictionary of
 common English does not have. It now goes through the letter-to-sound rules of NRL
 Report 7948 as HeadTTS adapted them
-(`src/backends/headtts_en/`, MIT): `GitHub` → `ɡɪθəb`, `TypeScript` →
+(`src/g2p/en/headtts/`, MIT): `GitHub` → `ɡɪθəb`, `TypeScript` →
 `tɪpɛskɹɪpt`, `Kokoro` → `kɑkɔɹoʊ`. Three layers, in this order — **the dictionary,
 then the rules, then the letters** — because the dictionary is the only one of the
 three that is a transcription rather than a reading, and because the last layer is
@@ -48,10 +64,10 @@ the "7948" is the report's number, not its size — and it is `const` data: no
 fetched asset, 17,385 B of wasm, and no second dictionary. The measurements, the
 quality comparison (including the readings that are wrong and were kept) and the
 list of what was deliberately not ported are in
-`src/backends/headtts_en/` and its `NOTICE`.
+`src/g2p/en/headtts/` and its `NOTICE`.
 
 Phase 9B replaced the English *numeral* step with weighted FSTs vendored from
-WeTextProcessing (`src/backends/wetext/`), which reads dates, times, money,
+WeTextProcessing (`src/tn/wetext/`), which reads dates, times, money,
 percentages, ordinals and abbreviations where the hand-written reader read a
 number and left the rest. It costs 1 MB of wasm and 707 KB of fetched grammars.
 Until phase 9B.4 it was also measurably **worse at a bare integer** — `123` came
@@ -61,14 +77,14 @@ not: the grammar's cheapest reading of `123` is `one hundred and twenty three`,
 and the copy's path extraction, `rustfst::shortest_path`, was returning a path
 **more expensive** than the minimum because these grammars carry negative arc
 weights that it does not handle. The copy now computes the minimum itself (see
-`src/backends/wetext/text_normalizer.rs`). `1000` still reads
+`src/tn/wetext/text_normalizer.rs`). `1000` still reads
 `ten hundred`, which is the grammar's own tie and not the extraction's. Both
 halves are pinned by tests and written up in that module's `README.md`; the
 hand-written reader is still there as the fallback for a caller that never called
 `prepare`.
 
 Phase 9B.6 put a **gate** in front of that engine
-(`src/backends/tn_gate.rs`), because 92% of its cost is the tagger FST and the
+(`src/tn/gate.rs`), because 92% of its cost is the tagger FST and the
 tagger runs on every English sentence whether or not there is anything in it to
 tag — upstream's English TN is deliberately not gated on digits
 (`should_normalize` has `lang != "en"` on that branch). The gate is a
@@ -95,7 +111,7 @@ skipped. The short version is 1,127 missed
 keys, 182 of them audible, and 0 misses over 127 sentences of real prose.
 
 Phase 9D added the last step of the Chinese pipeline: **Mandarin tone sandhi and
-the erhua coda** (`src/backends/tone_sandhi/`, ported from PaddleSpeech's
+the erhua coda** (`src/g2p/zh/tone_sandhi/`, ported from PaddleSpeech's
 `ToneSandhi` and `_merge_erhua`). `pinyin-pro` gives one tone per character and
 Mandarin does not pronounce them as written — 你好 is *ní hǎo*, 一个 is *yí ge*,
 and the 儿 of 玩儿 is not a syllable but a coda on the one before it (`wanr2`,
@@ -109,7 +125,7 @@ and the corpus in `tests/fixtures/zh-frontend-parity.json` is pinned through it 
 because P5 §1.5 argues the v1.0 voices were trained *without* these rules and the
 only way to keep that decision reversible is to keep the old path runnable and
 tested. `lib.rs` passes `On`; both arguments, and the evidence for each, are in
-`src/backends/tone_sandhi/mod.rs`.
+`src/g2p/zh/tone_sandhi/mod.rs`.
 **And it was verified against the reference rather than against a reading of
 it**: PaddleSpeech's `ToneSandhi` was imported and driven with `pypinyin` and
 jieba's `posseg` on 466 sentences, which found **0 rule differences** and 13
@@ -118,7 +134,7 @@ document). The three places this port deliberately answers differently are in it
 §五, each pinned by a test.
 
 Phase 9E wired the same WeText engine up for **Chinese and Japanese numerals**
-(`src/backends/wetext_tn.rs`), so all three languages read a year as a year, a
+(`src/tn/engine.rs`), so all three languages read a year as a year, a
 clock time as a clock time and a phone number digit by digit rather than through
 three hand-written readers that each only ever matched a digit. It is the
 smallest of the phases — **+1,459 B** of wasm, because the FST engine arrived in
@@ -135,7 +151,7 @@ agreement with `pip install wetext==0.1.8` on Chinese probes and from 23/29 to
 The three hand-written readers stayed, as `Option<&Normalizer>`'s `None`: the
 same argument as `ToneRules`, and the same reason the JavaScript parity corpus is
 still a test of anything. What the two CJK readers cost and buy is pinned in
-`src/backends/wetext_tn.rs`, `tests/wetext_zh.rs` and `tests/wetext_ja.rs` —
+`src/tn/engine.rs`, `tests/wetext_zh.rs` and `tests/wetext_ja.rs` —
 including the two readings this made *worse* (`０１２３` and a lone `０`).
 
 ## Two rules the rest of the crate is shaped by
@@ -189,10 +205,10 @@ JavaScript.
 ## Building and testing
 
 ```bash
-./scripts/build-phonemize-wasm.sh   # wasm-pack → lib/models/phonemize-wasm/
-cargo test --workspace              # 280 tests, native, no browser
+./scripts/build/build-phonemize-wasm.sh   # wasm-pack → lib/models/phonemize-wasm/
+cargo test --workspace              # 299 tests, native, no browser
 cargo clippy --all-targets          # must stay at 0 warnings
-python3 scripts/gen-ja-ipa-table.py --check
+python3 scripts/generate/gen-ja-ipa-table.py --check
 ```
 
 `pnpm build` runs the wasm build first through its `prebuild` hook, and CI runs
@@ -218,27 +234,27 @@ boundary as published, and the first with a `cfg` for a fix rather than a swap.
 
 | File | Source | Regenerate with |
 |---|---|---|
-| `pinyin-chars.txt`, `pinyin-phrases.txt`, `pinyin-special.txt`, `pinyin-syllables.txt` | `pinyin-pro` in `node_modules`, and `pinyin-table.json` | `node scripts/gen-pinyin-pro-data.mjs` (`--check` in CI) |
-| `pinyin-table.json` | pypinyin via misaki's `transcription.py` | `python3 scripts/gen-pinyin-table.py` |
-| `vocab-v1.txt`, `vocab-v11-zh.txt` | the two models' `tokenizer.json`, recorded in `tests/v0/kokoro-vocabs.json` | `node scripts/gen-kokoro-vocab.mjs` (`--check` in CI) |
+| `pinyin-chars.txt`, `pinyin-phrases.txt`, `pinyin-special.txt`, `pinyin-syllables.txt` | `pinyin-pro` in `node_modules`, and `pinyin-table.json` | `node scripts/generate/gen-pinyin-pro-data.mjs` (`--check` in CI) |
+| `pinyin-table.json` | pypinyin via misaki's `transcription.py` | `python3 scripts/generate/gen-pinyin-table.py` |
+| `vocab-v1.txt`, `vocab-v11-zh.txt` | the two models' `tokenizer.json`, recorded in `tests/v0/kokoro-vocabs.json` | `node scripts/generate/gen-kokoro-vocab.mjs` (`--check` in CI) |
 | `ja-ipa-table.json` | hand-maintained; the source of truth for the kana table | — |
 | `pinyin-NOTICE.txt` | — | MIT notices for `pinyin-pro` and misaki |
 
 The English rule table is **not** here either: it lives in
-`src/backends/headtts_en/rules.rs`, generated by
-`node scripts/gen-headtts-rules.mjs` (`--check` in CI as `pnpm check:headtts`)
+`src/g2p/en/headtts/rules.rs`, generated by
+`node scripts/generate/gen-headtts-rules.mjs` (`--check` in CI as `pnpm check:headtts`)
 from `tests/fixtures/headtts-en-parity.json`. That fixture is not a golden file
-of this repository's making — `scripts/headtts-parity.mjs` dumps it by running
+of this repository's making — `scripts/generate/headtts-parity.mjs` dumps it by running
 upstream HeadTTS, and `tests/headtts_en.rs` checks both the 309 rules and the 296
 words against it. It also holds the upstream revision and module SHA-256, which
 `rules.rs` quotes in its own header.
 
 The four word lists of phase 9D are **not** here: they are verbatim upstream data
 rather than something generated, so they live in
-`src/backends/tone_sandhi/tables.rs` with that directory's `NOTICE`.
+`src/g2p/zh/tone_sandhi/tables.rs` with that directory's `NOTICE`.
 
-`src/frontends/ja_ipa_table.rs` is **generated** from `ja-ipa-table.json` by
-`scripts/gen-ja-ipa-table.py`. Do not edit it by hand:
+`src/g2p/ja/table.rs` is **generated** from `ja-ipa-table.json` by
+`scripts/generate/gen-ja-ipa-table.py`. Do not edit it by hand:
 `tests/ja_ipa_table_parity.rs` reads the JSON back and fails if the two differ.
 
 ## Test corpora

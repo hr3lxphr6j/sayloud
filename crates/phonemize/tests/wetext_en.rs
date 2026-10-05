@@ -188,13 +188,14 @@ fn reads_abbreviations_that_have_no_digit_in_them() {
 ///
 /// Two rows need a word of explanation:
 ///
-/// - `Call 555-1234.` — the plan's table wrote the expected column as
+/// - `Call 555-1234.` — an earlier table of expected readings wrote
 ///   `five hundred and fifty five minus …`, and that `minus` is wrong. The
 ///   tagger reads `555-1234` as a `range`, and the cheapest verbalization of a
 ///   range is `… to …` at `-0.000100`; the telephone reading `… minus …` sits at
 ///   `0.000000`. Both were enumerated out of the composed FST. The table's row
 ///   stopped at the punctuation and carried the shipped reading's `minus` into
-///   the expected column, which is why this one does not match the plan.
+///   the expected column, which is why the expected value here is the shipped
+///   reading and not that one.
 /// - `It cost 1000 dollars.` — unchanged, and it reads `ten hundred`. That is
 ///   the grammar's own problem, not the extraction's: `1000` is tagged
 ///   `date { year: "1000" }`, where `ten hundred` and `one thousand` are a

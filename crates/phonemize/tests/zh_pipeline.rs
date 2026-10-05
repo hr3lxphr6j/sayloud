@@ -21,7 +21,7 @@
 //! and asserts from both ends — a sample in the list must differ and match its
 //! new value, and one that is not in the list must be identical under both
 //! pipelines. So "the tone rules are the only difference" is asserted rather
-//! than hoped for, and a later phase that moves the output for some other reason
+//! than hoped for, and any later change that moves the output for some other reason
 //! fails here instead of quietly rewriting the corpus.
 //!
 //! Three independent pins, because they fail for different reasons:
@@ -322,7 +322,7 @@ const TONE_RULE_CHANGES: &[(&str, &str)] = &[
 /// the same test for the other one.
 ///
 /// Asserted from both directions on purpose. A list of changed samples would pass
-/// if a later phase changed a *third* sample and rewrote the corpus; the `None`
+/// if a later change moved a *third* sample and rewrote the corpus; the `None`
 /// arm — every sample not in the table has to come out identical under both
 /// pipelines *and* identical to the JavaScript — is what makes the table a
 /// complete description of the difference rather than a record of part of it.

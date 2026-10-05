@@ -2,9 +2,9 @@
 //!
 //! These mirror the TypeScript interfaces in `lib/models/phonemize-rust.ts`.
 //! Rust keeps snake_case field names; `rename_all` makes the wire format
-//! camelCase to match. The plan's two halves disagreed on that (snake_case in
-//! Rust, camelCase in TypeScript) and nothing would have caught it until the
-//! first real serialization.
+//! camelCase to match. The Rust half is snake_case and the TypeScript half is
+//! camelCase, so the field rename is what makes the wire format the second one —
+//! and nothing else would catch a mismatch before the first real serialization.
 
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;

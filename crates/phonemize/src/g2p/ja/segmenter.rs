@@ -28,7 +28,7 @@
 //! The nine files arrive as one zstd frame holding a tar archive, because the
 //! extension ships one asset per dictionary rather than nine
 //! (`public/dictionaries/lindera-ipadic-ja.bin.zst`, built by
-//! `scripts/setup-lindera-dict.mjs`). The inner format is lindera's own,
+//! `scripts/setup/setup-lindera-dict.sh`). The inner format is lindera's own,
 //! untouched — the tar is a transport wrapper, and `tar tzf` after `zstd -d` is
 //! a complete description of what is inside.
 //!
@@ -163,8 +163,7 @@ impl SegmenterJa {
     /// Build a segmenter from the decompressed dictionary container.
     ///
     /// `container` is the tar archive the registry holds — already decompressed,
-    /// because the zstd frame is unwrapped before it reaches this module (spec
-    /// §4.3).
+    /// because the zstd frame is unwrapped before it reaches this module.
     pub fn from_container(container: &[u8]) -> Result<Self, SegmenterError> {
         let mut files = unpack(container)?;
 

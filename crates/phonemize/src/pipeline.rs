@@ -5,8 +5,7 @@
 //! [`phonemize_en`] does not, and only [`phonemize_zh`] has word boundaries to
 //! respect and a Latin run to hand to another language's engine. The steps around
 //! those differences are the same on all three sides, and the order they run in is
-//! the same too — see [`phonemize_ja`]. A later phase turns this into a dispatch
-//! over the frontends.
+//! the same too — see [`phonemize_ja`].
 //!
 //! Since phase 9E all three share one step that used to be three:
 //! [`crate::tn::normalize`] runs the vendored WeText engine when one was built

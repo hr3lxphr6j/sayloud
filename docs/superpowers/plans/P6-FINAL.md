@@ -80,20 +80,23 @@ IPA / 注音 ──► phonemize worker ──► kokoro worker：tokenizer → 
 
 ## 四、终态：模块与数据
 
-**Rust（`crates/phonemize`，src ≈9.9k 行 + tests ≈5.7k 行）**
+**Rust（`crates/phonemize`，src ≈9.9k 行 + tests ≈5.7k 行）。分三个阶段：`tn` → `g2p` → `pipeline`；不属于任何一段的基础件留在顶层**
 
 | 路径 | 职责 |
 |---|---|
 | `src/lib.rs` | wasm 边界：`Phonemizer::{new, required_dictionaries, load_dictionary, finish_loading, ready, phonemize, phonemize_with}` 与错误码 |
-| `src/pipeline.rs` | 三条管线、`ToneRules`、`Gate`、`fix_one_thousand_bug` |
-| `src/dictionary.rs` | 字典注册表与 per-`(frontend, lang)` 需求表 |
-| `src/vocab.rs` / `src/text.rs` / `src/types.rs` / `src/kana.rs` | 词表闸门、分段与标点、类型、假名规范化 |
-| `src/frontends/ja_ipa.rs` (+ 生成的 `ja_ipa_table.rs`) | 假名 → IPA |
-| `src/backends/segmenter_ja.rs` `.zh.rs`, `pinyin.rs`, `zh_text.rs` | 分词与中文文本规则 |
-| `src/backends/g2p_en.rs` + `headtts_en/` | 英文三层 G2P（词典 → 309 条规则 → 字母） |
-| `src/backends/numbers*.rs` | 三个手写读数器（fallback） |
-| `src/backends/wetext/` + `wetext_tn.rs` + `tn_gate.rs` | vendored WeText 引擎（`NOTICE` 列 7 处改动）、三语言接线、英文门控 |
-| `src/backends/tone_sandhi/` | 中文变调与儿化（4 张词表，509 条） |
+| `src/pipeline.rs` | 编排：`phonemize_{ja,en,zh}`、`ToneRules`、`Phonemized`、`PipelineError` |
+| `src/dictionary.rs` | 字典协议：注册表与 per-`(frontend, lang)` 需求表 |
+| `src/vocab.rs` | 词表闸门（"frontend" 一词的唯一语义所在） |
+| `src/text.rs` / `src/kana.rs` / `src/types.rs` | 共用原语：分段与标点、假名谓词、跨界形状 |
+| `src/tn/mod.rs` | `normalize(text, Lang, engine)`：语言自带的 fallback、门控与后处理 |
+| `src/tn/engine.rs` + `src/tn/wetext/` | WeText 接线与 vendored 引擎（`NOTICE` 列 7 处改动） |
+| `src/tn/gate.rs` | 英文 TN 门控 |
+| `src/tn/readers/{ja,zh,en}.rs` | 三个手写读数器（引擎缺席时的答案） |
+| `src/g2p/ja/{segmenter,ipa,table}.rs` | lindera 分词、假名 → IPA、生成的假名表 |
+| `src/g2p/zh/{segmenter,pinyin,text}.rs` | jieba 分词、读音与音节表、中文标点与分行 |
+| `src/g2p/zh/tone_sandhi/` | 中文变调与儿化（4 张词表，509 条） |
+| `src/g2p/en/mod.rs` + `headtts/` | 英文三层 G2P（词典 → 309 条规则 → 字母） |
 
 **资产（`public/dictionaries/`，按需 fetch，全部 zstd）**
 
@@ -128,8 +131,8 @@ IPA / 注音 ──► phonemize worker ──► kokoro worker：tokenizer → 
 
 | 指标 | 值 |
 |---|---|
-| `phonemize_bg.wasm` | **6,091,829 B** |
-| 扩展总计 | **40,523,112 B**（ORT 21,596,019 + IPADic 8.5 MB + wasm 6.1 MB + …） |
+| `phonemize_bg.wasm` | **6,091,596 B** |
+| 扩展总计 | **40,522,879 B**（ORT 21,596,019 + IPADic 8.5 MB + wasm 6.1 MB + …） |
 | kokoro worker chunk | 904,615 B（阶段 10 前 2,225,156 B） |
 | Rust 测试 | **297 passed / 0 failed**（+2 个 ignored doc-test） |
 | TS 测试 | **1397 passed**（66 文件） |

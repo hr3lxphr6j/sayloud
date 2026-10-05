@@ -19,7 +19,8 @@ pub enum ScriptRun {
     /// Hiragana and katakana. Read through the dictionary as well, because a run
     /// of kana still has to become katakana.
     Kana(String),
-    /// `A-Z`, `a-z`. Spelled out through espeak (phase 4).
+    /// `A-Z`, `a-z`. Read through the English G2P: the CMU dictionary, then the
+    /// NRL 7948 rules, then the letters.
     Latin(String),
     /// Everything else, of which only [`keep_punctuation`]'s set survives.
     Other(String),
@@ -86,9 +87,11 @@ pub fn to_half_width(text: &str) -> String {
 /// `0x20000..=0x2ebef`, but `charCodeAt(0)` on a character outside the BMP
 /// returns a *surrogate* (`0xd800..=0xdfff`), never a code point — so that
 /// branch cannot be taken, and an Extension B kanji is classified `other` and
-/// then dropped by [`keep_punctuation`]. Reproducing the reachable behaviour is
-/// what parity requires; the fix belongs on the JavaScript side, and phase 8.4
-/// removes that side entirely.
+/// then dropped by [`keep_punctuation`]. Reproducing the reachable behaviour was
+/// what parity required while the JavaScript side existed; it is gone, so this is
+/// simply what the crate does now — pinned by
+/// `classifies_an_astral_kanji_as_other`, which is the test that would fail if
+/// someone added the branch back.
 pub fn segment_text(text: &str) -> Vec<ScriptRun> {
     let mut runs: Vec<ScriptRun> = Vec::new();
 

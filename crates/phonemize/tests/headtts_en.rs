@@ -16,7 +16,7 @@
 //!    exactly the four that cannot fire.
 //!
 //! The fixture is committed, so none of this needs a HeadTTS checkout or a
-//! network. Regenerating it is `scripts/headtts-parity.mjs`; regenerating the
+//! network. Regenerating it is `scripts/generate/headtts-parity.mjs`; regenerating the
 //! rules is `scripts/generate/gen-headtts-rules.mjs`.
 //!
 //! **The expected values are not this repository's opinion.** They are a dump of
@@ -126,7 +126,7 @@ fn every_fixture_word_reads_the_way_headtts_reads_it() {
 fn the_fixture_reaches_all_but_the_four_rules_that_cannot_fire() {
     // A parity corpus is only as good as its coverage, and the coverage is
     // measured rather than assumed: the covering pass in
-    // `scripts/headtts-parity.mjs` chose the words, so every rule that a spelling
+    // `scripts/generate/headtts-parity.mjs` chose the words, so every rule that a spelling
     // can reach is reached here.
     //
     // The four that are not are shadowed by an earlier rule in their own group,

@@ -254,7 +254,7 @@ describe('RustPhonemizer', () => {
     const phonemizer = new RustPhonemizer({ wasm: WASM });
     await phonemizer.ready;
 
-    expect(() => phonemizer.phonemize('你好', { frontend: 'kokoro-v1', lang: 'zh-CN' })).toThrow(
+    expect(() => phonemizer.phonemize('你好', { vocab: 'kokoro-v1', lang: 'zh-CN' })).toThrow(
       /dictionary-not-loaded/
     );
   });
@@ -305,12 +305,12 @@ describe('RustPhonemizer.prepare', () => {
     await phonemizer.ready;
 
     expect(
-      phonemizer.phonemize('I have 3 cats', { frontend: 'kokoro-v1', lang: 'en-US' }).phonemes
+      phonemizer.phonemize('I have 3 cats', { vocab: 'kokoro-v1', lang: 'en-US' }).phonemes
     ).toBe('aɪ hæv θɹˈiː kˈæts');
   });
 
-  it('rejects a language the frontend cannot speak', async () => {
-    // v1.1-zh has no Japanese frontend. Reported
+  it('rejects a language the vocabulary cannot speak', async () => {
+    // v1.1-zh has no Japanese pipeline. Reported
     // here rather than at the first sentence, because this runs when the voice
     // is picked — before anything is playing.
     const { phonemizer, fetch } = phonemizerWith();
@@ -434,14 +434,14 @@ describe('RustPhonemizer.phonemize', () => {
   it.skipIf(!hasDictionary)("returns the pipeline's phonemes", async () => {
     const phonemizer = await prepared();
 
-    expect(phonemizer.phonemize('経営', { frontend: 'kokoro-v1', lang: 'ja-JP' })).toEqual({
+    expect(phonemizer.phonemize('経営', { vocab: 'kokoro-v1', lang: 'ja-JP' })).toEqual({
       phonemes: 'keiei',
     });
   });
 
   it.skipIf(!hasDictionary)('phonemizes a Latin run instead of passing it through', async () => {
     const phonemizer = await prepared();
-    const options = { frontend: 'kokoro-v1', lang: 'ja-JP' } as const;
+    const options = { vocab: 'kokoro-v1', lang: 'ja-JP' } as const;
 
     // Phase 3 handed the characters through, which is what these two samples
     // used to record as a divergence. The corpus says the same thing on the Rust
@@ -460,7 +460,7 @@ describe('RustPhonemizer.phonemize', () => {
     // `crates/phonemize/tests/ja_pipeline.rs`; this one says it survives the wasm
     // boundary, which is the half a `cargo test` cannot check.
     const result = phonemizer.phonemize('Kokoroを使う', {
-      frontend: 'kokoro-v1',
+      vocab: 'kokoro-v1',
       lang: 'ja-JP',
     });
 
@@ -477,7 +477,7 @@ describe('RustPhonemizer.phonemize', () => {
     const { phonemizer } = phonemizerWith();
     await phonemizer.ready;
 
-    expect(() => phonemizer.phonemize('経営', { frontend: 'kokoro-v1', lang: 'ja-JP' })).toThrow(
+    expect(() => phonemizer.phonemize('経営', { vocab: 'kokoro-v1', lang: 'ja-JP' })).toThrow(
       /dictionary-not-loaded/
     );
   });

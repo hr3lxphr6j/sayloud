@@ -124,7 +124,7 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  * because the string fitted inside the section's padding.
  *
  * The 1.6 MB Chinese word list stayed. It is not the deleted chain's: it is what
- * the Rust frontend segments with, and it lives in `public/` for the same reason
+ * the Rust pipeline segments with, and it lives in `public/` for the same reason
  * kuromoji's dictionary did.
  *
  * **Phase 9B: +1,013,905 B of wasm (`rustfst`, for the vendored WeText engine)
@@ -509,6 +509,12 @@ describe('the build output', () => {
     // the binary carries `src/tn/…` and `src/g2p/ja/…` where it used to carry
     // `src/backends/…` — shorter strings, ten of them. Measured by building both
     // trees in the same session. Nothing else about the move reaches the module.
+    //
+    // The `frontend` → `vocab` rename that followed it (the wasm's options object,
+    // its error codes, and the TS type) changed nothing here: 6,091,596 B before
+    // and after, measured the same way. It did shave 42 B off the extension
+    // (40,522,879 → 40,522,837), because the worker's messages and the calls into
+    // the wasm spell the field name in JavaScript.
     expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_091_596);
   });
 

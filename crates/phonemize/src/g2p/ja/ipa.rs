@@ -1,4 +1,4 @@
-//! The Japanese frontend: kana to IPA (frontend `Ja Ipa`).
+//! Japanese kana to IPA.
 //!
 //! This is the half of the Japanese pipeline that does not need a dictionary:
 //! once text has been read out as katakana — by [`crate::g2p::ja::segmenter`]
@@ -17,7 +17,7 @@ use std::sync::OnceLock;
 
 use crate::kana::to_raw_katakana;
 
-/// Re-exported so the table is reachable from the frontend it belongs to.
+/// Re-exported so the table is reachable from the module it belongs to.
 pub use crate::g2p::ja::table::KATAKANA_TO_IPA;
 
 /// The numeral sound changes the dictionary does not make.

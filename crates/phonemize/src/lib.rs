@@ -23,7 +23,7 @@
 //! The big dictionaries arrive through [`dictionary`] — compressed, by name,
 //! unpacked inside the module — and everything else is `include_str!`'d at build
 //! time: the CMU dictionary, the letter-to-sound rules, the pinyin tables, the
-//! kana table and both vocabularies. Which languages a frontend can speak, and
+//! kana table and both vocabularies. Which languages a vocabulary can speak, and
 //! which files `prepare` has to fetch for one, is [`dictionary`]'s answer rather
 //! than the caller's.
 //!
@@ -56,7 +56,7 @@ use pipeline::PipelineError;
 use tn::{Normalizer as WeTextNormalizer, WeTextError};
 use vocab::{validate_phonemes, Vocab, VocabError};
 
-pub use types::{FrontendId, PhonemeSpan, PhonemizeOptions, PhonemizeResult};
+pub use types::{PhonemeSpan, PhonemizeOptions, PhonemizeResult};
 
 /// Text-to-phonemes engine.
 ///
@@ -126,7 +126,7 @@ impl Phonemizer {
         Self::default()
     }
 
-    /// Which dictionaries this `(frontend, lang)` pair needs, by name.
+    /// Which dictionaries this `(vocab, lang)` pair needs, by name.
     ///
     /// The JS side asks rather than decides: which files a dictionary consists
     /// of is a Rust-side detail, and a change of format should not be a change
@@ -134,15 +134,15 @@ impl Phonemizer {
     /// bytes come from, because the extension already has a resource cache and
     /// the wasm should not grow a second one.
     ///
-    /// Throws for a frontend this build does not know, and for a language that
-    /// frontend cannot speak.
+    /// Throws for a vocabulary this build does not know, and for a language that
+    /// vocabulary cannot speak.
     pub fn required_dictionaries(
         &mut self,
-        frontend: &str,
+        vocab: &str,
         lang: &str,
     ) -> Result<Vec<String>, JsValue> {
         self.dictionaries
-            .declare_required(frontend, lang)
+            .declare_required(vocab, lang)
             .map_err(dictionary_error)
     }
 
@@ -186,7 +186,7 @@ impl Phonemizer {
 
     /// Text to phonemes, synchronously.
     ///
-    /// Throws when the frontend cannot speak `lang`, and when `prepare` was
+    /// Throws when the vocabulary cannot speak `lang`, and when `prepare` was
     /// never called for it — a missing dictionary is a failure to phonemize, not
     /// a sentence that comes out short.
     pub fn phonemize(&self, text: &str, options: &JsValue) -> Result<JsValue, JsValue> {
@@ -215,11 +215,11 @@ impl Phonemizer {
         text: &str,
         options: &PhonemizeOptions,
     ) -> Result<PhonemizeResult, PhonemizeError> {
-        // Which languages a frontend can speak is the dictionary table's
+        // Which languages a vocabulary can speak is the dictionary table's
         // question, so ask it rather than repeating the answer — this is the
         // same check `required_dictionaries` makes, and the same one that
         // rejects a Japanese voice on v1.1-zh.
-        dictionary::dictionary_names(&options.frontend, &options.lang)
+        dictionary::dictionary_names(&options.vocab, &options.lang)
             .map_err(PhonemizeError::Dictionary)?;
 
         let language = dictionary::primary_language(&options.lang);
@@ -268,9 +268,9 @@ impl Phonemizer {
                 )
                 .map_err(PhonemizeError::Pipeline)?
             }
-            // Every language the frontend table lists has a pipeline now, so this
-            // arm is unreachable through `phonemize_with` — the frontend check at
-            // the top of this function rejects anything else first. It stays as
+            // Every language the vocabulary table lists has a pipeline now, so
+            // this arm is unreachable through `phonemize_with` — the vocabulary
+            // check at the top of this function rejects anything else first. It stays as
             // the honest answer for the next language that is added to
             // `supported_languages` before its pipeline exists: an error rather
             // than an empty string, because a sentence that phonemizes to nothing
@@ -283,16 +283,16 @@ impl Phonemizer {
             }
         };
 
-        // The gate. Every pipeline ends here, so a frontend
-        // whose inventory does not match the phonemes fails loudly instead of
-        // losing the characters the tokenizer would silently delete.
+        // The gate. Every pipeline ends here, so a vocabulary that does not
+        // match the phonemes fails loudly instead of losing the characters the
+        // tokenizer would silently delete.
         //
-        // The frontend was already checked by `dictionary_names` above, so this
+        // The name was already checked by `dictionary_names` above, so this
         // lookup cannot fail — and an error rather than a panic, because a panic
         // inside the wasm takes the worker with it.
-        let vocab = Vocab::for_frontend(&options.frontend).ok_or_else(|| {
-            PhonemizeError::Dictionary(DictionaryError::UnknownFrontend {
-                frontend: options.frontend.clone(),
+        let vocab = Vocab::for_id(&options.vocab).ok_or_else(|| {
+            PhonemizeError::Dictionary(DictionaryError::UnknownVocab {
+                vocab: options.vocab.clone(),
             })
         })?;
         // Repair before validating, so that a character the vocabulary cannot
@@ -409,19 +409,19 @@ fn build_tn(
 /// Why phonemizing failed.
 #[derive(Debug)]
 pub enum PhonemizeError {
-    /// The frontend is unknown, or cannot speak the language.
+    /// The vocabulary is unknown, or cannot speak the language.
     Dictionary(DictionaryError),
     /// The language's dictionary was never loaded — `prepare` was not called, or
     /// the caller did not check its result.
     NotPrepared { lang: String },
-    /// This build has no pipeline for a language the frontend can speak.
+    /// This build has no pipeline for a language the vocabulary can speak.
     ///
     /// Distinct from [`DictionaryError::UnsupportedLanguage`]: the voice is
     /// fine, the migration is not finished.
     NotImplemented { lang: String },
     /// The pipeline itself failed.
     Pipeline(PipelineError),
-    /// The phonemes do not belong to the frontend's vocabulary, and the tokenizer
+    /// The phonemes do not belong to the vocabulary, and the tokenizer
     /// would drop the characters it does not know without saying so.
     Vocab(VocabError),
 }

@@ -157,7 +157,7 @@ describe('PhonemizeService', () => {
   it.skipIf(!hasWetextEn)('reads English through its text-normalization grammars', async () => {
     // As of phase 9B a `prepare` for English does fetch something, so this is no
     // longer a test that it fetches *nothing* (there is one of those further
-    // down, for the frontend table). What it pins is the seam: the two grammars
+    // down, for the vocabulary table). What it pins is the seam: the two grammars
     // are loaded, the pipeline uses them, and the sentence still comes out.
     const service = serviceWith(wetextEnRoutes());
     await service.init();
@@ -210,8 +210,8 @@ describe('PhonemizeService', () => {
     expect(service.phonemize('2024年', 'kokoro-v1', 'zh-CN').phonemes).toBe('ɚ↘li↗ŋɚ↘ sɹ̩↘njɛ↗n');
   });
 
-  it.skipIf(REAL_JIEBA === null)('refuses a language the frontend cannot speak', async () => {
-    // v1.1-zh has no Japanese frontend. The reason is what the worker turns
+  it.skipIf(REAL_JIEBA === null)('refuses a language the vocabulary cannot speak', async () => {
+    // v1.1-zh has no Japanese pipeline. The reason is what the worker turns
     // into a provider code, so it has to survive the wasm boundary intact.
     const service = serviceWith({});
     await service.init();

@@ -47,7 +47,7 @@ offscreen 主线程   lib/models/worker-engine.ts
 | `g2p/` | 文本 → 音素，按语言分目录：`ja/`（lindera IPADic + 假名表）、`zh/`（jieba-rs 切词、pinyin-pro 读音、变调与儿化、中文标点规则）、`en/`（CMU Dict + NRL 7948 规则 + 字母） |
 | `pipeline.rs` | 编排：每语言一个函数、`ToneRules`、返回的错误与告警 |
 | `text.rs` / `kana.rs` | 共用原语：标点归一、脚本切分、空白处理、假名谓词 |
-| `vocab.rs` | **词表闸门**：输出的每个字符必须在所选音色的词表里，否则报错而不是静默丢字（“frontend”一词的唯一语义所在） |
+| `vocab.rs` | **词表闸门**：输出的每个字符必须在所选音色的词表里，否则报错而不是静默丢字。同一个文件也持有「哪个 id（`kokoro-v1` / `kokoro-v11-zh`）对应哪套词表」 |
 | `dictionary.rs` | 字典协议：`prepare` 时按名字取 `.bin.zst`，wasm 内解压（`ruzstd`） |
 
 ### 词表闸门为什么是错误而不是警告

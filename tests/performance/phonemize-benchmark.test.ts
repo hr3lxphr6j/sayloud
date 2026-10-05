@@ -98,13 +98,13 @@ const CHINESE = '这是一段测试文本用于验证音素化的性能表现是
 const JAPANESE = 'これはテストテキストで、音素化のパフォーマンスが期待通りか検証します。';
 const ENGLISH = 'This is a test sentence, used to check how long phonemization takes.';
 
-type Options = { frontend: 'kokoro-v1'; lang: string };
+type Options = { vocab: 'kokoro-v1'; lang: string };
 
 /** A prepared phonemizer, and the number of calls it has already answered. */
 async function prepared(options: Options): Promise<RustPhonemizer> {
   const phonemizer = newPhonemizer();
   await phonemizer.ready;
-  await phonemizer.prepare(options.frontend, options.lang);
+  await phonemizer.prepare(options.vocab, options.lang);
   return phonemizer;
 }
 
@@ -161,7 +161,7 @@ const COLD_BOUND_MS = 1000;
 
 describe('the cost of one sentence, warm', () => {
   it('Chinese', async () => {
-    const options: Options = { frontend: 'kokoro-v1', lang: 'zh-CN' };
+    const options: Options = { vocab: 'kokoro-v1', lang: 'zh-CN' };
     const phonemizer = await prepared(options);
 
     const median = medianMs(phonemizer, CHINESE, options);
@@ -170,7 +170,7 @@ describe('the cost of one sentence, warm', () => {
   });
 
   it('Japanese', async () => {
-    const options: Options = { frontend: 'kokoro-v1', lang: 'ja-JP' };
+    const options: Options = { vocab: 'kokoro-v1', lang: 'ja-JP' };
     const phonemizer = await prepared(options);
 
     const median = medianMs(phonemizer, JAPANESE, options);
@@ -179,7 +179,7 @@ describe('the cost of one sentence, warm', () => {
   });
 
   it('English, with the first call reported separately', async () => {
-    const options: Options = { frontend: 'kokoro-v1', lang: 'en-US' };
+    const options: Options = { vocab: 'kokoro-v1', lang: 'en-US' };
     const phonemizer = await prepared(options);
 
     const start = performance.now();
@@ -203,7 +203,7 @@ describe('the cost of one sentence, warm', () => {
 describe('the cost of starting from nothing', () => {
   it('Chinese, including its 1.6 MB dictionary', async () => {
     const start = performance.now();
-    await prepared({ frontend: 'kokoro-v1', lang: 'zh-CN' });
+    await prepared({ vocab: 'kokoro-v1', lang: 'zh-CN' });
     const elapsed = performance.now() - start;
 
     console.log(`Cold start, Chinese: ${elapsed.toFixed(1)} ms (wasm + 1.6 MB dictionary)`);
@@ -212,7 +212,7 @@ describe('the cost of starting from nothing', () => {
 
   it('Japanese, including its 8.5 MB dictionary', async () => {
     const start = performance.now();
-    await prepared({ frontend: 'kokoro-v1', lang: 'ja-JP' });
+    await prepared({ vocab: 'kokoro-v1', lang: 'ja-JP' });
     const elapsed = performance.now() - start;
 
     console.log(`Cold start, Japanese: ${elapsed.toFixed(1)} ms (wasm + 8.5 MB dictionary)`);
@@ -225,7 +225,7 @@ describe('the cost of starting from nothing', () => {
     // grammars, and this is what fetching and parsing 12 MB of OpenFST costs:
     // one decompression and one parse, per worker, before the first sentence.
     const start = performance.now();
-    await prepared({ frontend: 'kokoro-v1', lang: 'en-US' });
+    await prepared({ vocab: 'kokoro-v1', lang: 'en-US' });
     const elapsed = performance.now() - start;
 
     console.log(`Cold start, English: ${elapsed.toFixed(1)} ms (wasm + 0.7 MB grammars)`);

@@ -56,11 +56,11 @@ fn fixture_bytes(name: &str) -> Vec<u8> {
 }
 
 /// A registry that has been told which frontend and language to prepare for.
-fn declared(frontend: &str, lang: &str) -> DictionaryRegistry {
+fn declared(vocab: &str, lang: &str) -> DictionaryRegistry {
     let mut registry = DictionaryRegistry::new();
     registry
-        .declare_required(frontend, lang)
-        .unwrap_or_else(|error| panic!("declare_required({frontend}, {lang}): {error}"));
+        .declare_required(vocab, lang)
+        .unwrap_or_else(|error| panic!("declare_required({vocab}, {lang}): {error}"));
     registry
 }
 
@@ -126,7 +126,7 @@ fn the_frontend_decides_which_languages_are_speakable() {
     assert_eq!(
         error,
         DictionaryError::UnsupportedLanguage {
-            frontend: "kokoro-v11-zh".to_string(),
+            vocab: "kokoro-v11-zh".to_string(),
             lang: "ja-JP".to_string(),
         }
     );
@@ -143,8 +143,8 @@ fn an_unknown_frontend_is_an_error_rather_than_an_empty_list() {
 
     assert_eq!(
         error,
-        DictionaryError::UnknownFrontend {
-            frontend: "kokoro-v2".to_string(),
+        DictionaryError::UnknownVocab {
+            vocab: "kokoro-v2".to_string(),
         }
     );
 }
@@ -364,14 +364,14 @@ fn every_failure_has_a_stable_code_for_the_javascript_side() {
     // silent behaviour change over there. Pinned deliberately.
     let codes = [
         (
-            DictionaryError::UnknownFrontend {
-                frontend: String::new(),
+            DictionaryError::UnknownVocab {
+                vocab: String::new(),
             },
-            "unknown-frontend",
+            "unknown-vocab",
         ),
         (
             DictionaryError::UnsupportedLanguage {
-                frontend: String::new(),
+                vocab: String::new(),
                 lang: String::new(),
             },
             "unsupported-language",

@@ -417,17 +417,17 @@ describe('WorkerLocalEngine.synthesize', () => {
     });
   });
 
-  it('asks the frontend the loaded model declares', async () => {
+  it('asks the vocabulary the loaded model declares', async () => {
     // The inventory follows the model, not the language or the text: v1.0 and
     // v1.1-zh produce different characters for the same Chinese sentence.
     const workers = await loaded();
 
     await workers.engine.synthesize('你好', 'zf_xiaobei', 'zh-CN', new AbortController().signal);
 
-    expect(workers.phonemizer.posted[1]).toMatchObject({ type: 'prepare', frontend: 'kokoro-v1' });
+    expect(workers.phonemizer.posted[1]).toMatchObject({ type: 'prepare', vocab: 'kokoro-v1' });
     expect(workers.phonemizer.posted[2]).toMatchObject({
       type: 'phonemize',
-      frontend: 'kokoro-v1',
+      vocab: 'kokoro-v1',
     });
   });
 

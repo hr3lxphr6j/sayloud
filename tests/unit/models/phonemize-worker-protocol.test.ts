@@ -20,14 +20,14 @@ describe('isPhonemizeWorkerRequest', () => {
   it('accepts every request the coordinator sends', () => {
     expect(isPhonemizeWorkerRequest({ type: 'init', id: 1 })).toBe(true);
     expect(
-      isPhonemizeWorkerRequest({ type: 'prepare', id: 2, frontend: 'kokoro-v1', lang: 'ja-JP' })
+      isPhonemizeWorkerRequest({ type: 'prepare', id: 2, vocab: 'kokoro-v1', lang: 'ja-JP' })
     ).toBe(true);
     expect(
       isPhonemizeWorkerRequest({
         type: 'phonemize',
         id: 3,
         text: '経営',
-        frontend: 'kokoro-v11-zh',
+        vocab: 'kokoro-v11-zh',
         lang: 'zh-CN',
       })
     ).toBe(true);
@@ -50,18 +50,18 @@ describe('isPhonemizeWorkerRequest', () => {
     expect(isPhonemizeWorkerRequest({ type: 'init', id: '1' })).toBe(false);
   });
 
-  it('refuses a frontend this build does not know', () => {
+  it('refuses a vocabulary this build does not know', () => {
     // The wasm would reject it, but not before the request crossed a thread
     // boundary and a worker went looking for a dictionary that cannot exist.
     expect(
-      isPhonemizeWorkerRequest({ type: 'prepare', id: 1, frontend: 'kokoro-v2', lang: 'en-US' })
+      isPhonemizeWorkerRequest({ type: 'prepare', id: 1, vocab: 'kokoro-v2', lang: 'en-US' })
     ).toBe(false);
     expect(
       isPhonemizeWorkerRequest({
         type: 'phonemize',
         id: 1,
         text: 'a',
-        frontend: undefined,
+        vocab: undefined,
         lang: 'en-US',
       })
     ).toBe(false);
@@ -69,14 +69,14 @@ describe('isPhonemizeWorkerRequest', () => {
 
   it('requires the text a phonemize request is about', () => {
     expect(
-      isPhonemizeWorkerRequest({ type: 'phonemize', id: 1, frontend: 'kokoro-v1', lang: 'en-US' })
+      isPhonemizeWorkerRequest({ type: 'phonemize', id: 1, vocab: 'kokoro-v1', lang: 'en-US' })
     ).toBe(false);
     expect(
       isPhonemizeWorkerRequest({
         type: 'phonemize',
         id: 1,
         text: 7,
-        frontend: 'kokoro-v1',
+        vocab: 'kokoro-v1',
         lang: 'en-US',
       })
     ).toBe(false);
@@ -131,7 +131,7 @@ describe('phonemizeErrorCode', () => {
       'dictionary-decompress',
       'unknown-dictionary',
       'missing-dictionaries',
-      'unknown-frontend',
+      'unknown-vocab',
     ] as const) {
       expect(phonemizeErrorCode(new DictionaryLoadError(reason, 'nope'))).toBe('model-load-failed');
     }

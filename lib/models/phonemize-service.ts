@@ -11,7 +11,7 @@
  * no wasm behind it, and handing the same rejection back would make the retry
  * meaningless.
  */
-import { type FrontendId, type PhonemizeResult, RustPhonemizer } from './phonemize-rust';
+import { type PhonemizeResult, RustPhonemizer, type VocabId } from './phonemize-rust';
 
 export interface PhonemizeServiceDeps {
   /**
@@ -48,21 +48,21 @@ export class PhonemizeService {
   }
 
   /**
-   * Load the dictionaries `(frontend, lang)` needs.
+   * Load the dictionaries `(vocab, lang)` needs.
    *
    * Not cached here: the coordinator already keys its own `prepare` by
-   * `(frontend, lang)`, and a second cache would be a second thing to
+   * `(vocab, lang)`, and a second cache would be a second thing to
    * invalidate. The wasm keeps the dictionaries it has loaded, so a repeated
    * call costs a fetch that hits Cache Storage and a decompression that the
    * wasm skips.
    */
-  async prepare(frontend: FrontendId, lang: string): Promise<void> {
-    await this.require().prepare(frontend, lang);
+  async prepare(vocab: VocabId, lang: string): Promise<void> {
+    await this.require().prepare(vocab, lang);
   }
 
   /** Text to phonemes. Synchronous once the wasm is instantiated. */
-  phonemize(text: string, frontend: FrontendId, lang: string): PhonemizeResult {
-    return this.require().phonemize(text, { frontend, lang });
+  phonemize(text: string, vocab: VocabId, lang: string): PhonemizeResult {
+    return this.require().phonemize(text, { vocab, lang });
   }
 
   /**

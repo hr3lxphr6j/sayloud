@@ -239,7 +239,7 @@ fn phonemizes_a_whole_english_sentence_now_that_numerals_are_read() {
     // `lib.rs` no longer reports it as unimplemented.
     let phonemizer = phonemize::Phonemizer::new();
     let options = phonemize::PhonemizeOptions {
-        frontend: "kokoro-v1".to_string(),
+        vocab: "kokoro-v1".to_string(),
         lang: "en-US".to_string(),
     };
 
@@ -267,7 +267,7 @@ fn every_language_the_frontend_lists_reaches_a_pipeline() {
 
     for lang in ["zh-CN", "ja-JP"] {
         let options = phonemize::PhonemizeOptions {
-            frontend: "kokoro-v1".to_string(),
+            vocab: "kokoro-v1".to_string(),
             lang: lang.to_string(),
         };
 
@@ -285,7 +285,7 @@ fn every_language_the_frontend_lists_reaches_a_pipeline() {
     // compiled in — so this is the arm where "wired up" and "ready" are the same
     // thing.
     let options = phonemize::PhonemizeOptions {
-        frontend: "kokoro-v1".to_string(),
+        vocab: "kokoro-v1".to_string(),
         lang: "en-US".to_string(),
     };
     assert!(phonemizer.phonemize_with("hello", &options).is_ok());
@@ -312,7 +312,7 @@ fn reports_a_language_the_frontend_cannot_speak_as_a_frontend_problem() {
     // this is "that voice cannot read this", not "this build is unfinished".
     let phonemizer = phonemize::Phonemizer::new();
     let options = phonemize::PhonemizeOptions {
-        frontend: "kokoro-v11-zh".to_string(),
+        vocab: "kokoro-v11-zh".to_string(),
         lang: "ja-JP".to_string(),
     };
 

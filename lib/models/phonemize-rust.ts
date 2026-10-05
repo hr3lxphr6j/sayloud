@@ -14,7 +14,6 @@
  * it through its `prebuild` hook.
  */
 
-import type { FrontendId } from './frontend';
 import {
   type DictionaryCacheStorage,
   DictionaryLoadError,
@@ -23,18 +22,19 @@ import {
   fetchDictionary,
 } from './phonemize-dict';
 import init, { type InitInput, Phonemizer as WasmPhonemizer } from './phonemize-wasm/phonemize';
+import type { VocabId } from './vocab';
 
 /**
  * The phoneme inventory to produce. Follows the chosen voice, not the text.
  *
- * Declared in `./frontend` so the model registry can name one without reaching
+ * Declared in `./vocab` so the model registry can name one without reaching
  * this module's wasm; re-exported because this is where a caller of the
  * phonemizer expects to find it.
  */
-export type { FrontendId };
+export type { VocabId };
 
 export interface PhonemizeOptions {
-  readonly frontend: FrontendId;
+  readonly vocab: VocabId;
   /** BCP-47 tag of the text. */
   readonly lang: string;
 }
@@ -108,7 +108,7 @@ export class RustPhonemizer {
   }
 
   /**
-   * Preload the dictionaries `(frontend, lang)` needs.
+   * Preload the dictionaries `(vocab, lang)` needs.
    *
    * Asynchronous because it is fetch plus decompression. Kept out of
    * `phonemize` on purpose: the caller already knows which language is involved
@@ -116,16 +116,16 @@ export class RustPhonemizer {
    * for loading, and `phonemize` can stay synchronous. Calling it as soon as the
    * voice is picked is what keeps the cost off the first sentence.
    *
-   * Throws a {@link DictionaryLoadError}, including for a voice the frontend
+   * Throws a {@link DictionaryLoadError}, including for a voice the vocabulary
    * cannot speak. Safe to call again for a language already loaded: the wasm
    * keeps the first copy.
    */
-  async prepare(frontend: FrontendId, lang: string): Promise<void> {
+  async prepare(vocab: VocabId, lang: string): Promise<void> {
     const instance = this.requireInstance();
 
     // The wasm decides which dictionaries exist and what they are called; this
     // side only moves the bytes.
-    const names = this.callWasm(() => instance.required_dictionaries(frontend, lang));
+    const names = this.callWasm(() => instance.required_dictionaries(vocab, lang));
 
     // All at once, then fed one by one: the fetches are independent, and the
     // wasm is single-threaded anyway.
@@ -143,7 +143,7 @@ export class RustPhonemizer {
    * Text to phonemes. Synchronous once `ready` has resolved.
    *
    * Throws if a dictionary is missing rather than degrading quietly, and throws
-   * when the frontend cannot speak `lang`.
+   * when the vocabulary cannot speak `lang`.
    *
    * The wasm's error is passed through rather than put through
    * {@link dictionaryFailure}: these failures are not dictionary *loads* — a

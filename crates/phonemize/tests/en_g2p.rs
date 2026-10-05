@@ -24,7 +24,7 @@ use phonemize::{PhonemizeOptions, Phonemizer};
 /// What a v1.0 English voice asks for.
 fn options() -> PhonemizeOptions {
     PhonemizeOptions {
-        frontend: "kokoro-v1".to_string(),
+        vocab: "kokoro-v1".to_string(),
         lang: "en-US".to_string(),
     }
 }

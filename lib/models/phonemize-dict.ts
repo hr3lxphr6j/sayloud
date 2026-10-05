@@ -70,7 +70,7 @@ export type DictionaryFailureReason =
   | 'dictionary-decompress'
   | 'unknown-dictionary'
   | 'missing-dictionaries'
-  | 'unknown-frontend'
+  | 'unknown-vocab'
   | 'unsupported-language'
   /** The wasm threw something this module does not recognise. */
   | 'unknown';
@@ -81,7 +81,7 @@ const FROM_WASM: ReadonlySet<string> = new Set([
   'dictionary-decompress',
   'unknown-dictionary',
   'missing-dictionaries',
-  'unknown-frontend',
+  'unknown-vocab',
   'unsupported-language',
 ]);
 

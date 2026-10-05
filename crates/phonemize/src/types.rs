@@ -7,26 +7,21 @@
 //! and nothing else would catch a mismatch before the first real serialization.
 
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
-
-/// Which phoneme inventory the output has to belong to.
-///
-/// The two Kokoro models do not share a vocabulary — v1.0 keeps 115 characters
-/// and v1.1-zh keeps 172, and each drops characters the other keeps. The
-/// frontend follows the voice the user picked, not the language of the page.
-#[wasm_bindgen]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FrontendId {
-    KokoroV1 = "kokoro-v1",
-    KokoroV11Zh = "kokoro-v11-zh",
-}
 
 /// What to phonemize with.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhonemizeOptions {
-    /// [`FrontendId`] as a string, so the boundary stays a plain object.
-    pub frontend: String,
+    /// Which phoneme inventory the output has to belong to, by name:
+    /// `"kokoro-v1"` or `"kokoro-v11-zh"`.
+    ///
+    /// The two Kokoro models do not share a vocabulary — v1.0 keeps 115
+    /// characters, v1.1-zh 172, and each drops characters the other keeps — so
+    /// this follows the *voice* the user picked rather than the language of the
+    /// page. A string rather than an enum, so the whole options object stays a
+    /// plain object across the boundary; [`crate::vocab::Vocab`] is the Rust
+    /// side of it, and the name is the model's.
+    pub vocab: String,
     /// BCP-47 tag of the text.
     pub lang: String,
 }

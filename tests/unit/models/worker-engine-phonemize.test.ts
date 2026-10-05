@@ -3,7 +3,7 @@
  *
  * `worker-engine.test.ts` proves the scheduling with fakes on both sides, and
  * `phonemize-rust.test.ts` proves the pipeline. What neither can prove is that
- * the two fit: that the frontend and language the coordinator decides on reach
+ * the two fit: that the vocabulary and language the coordinator decides on reach
  * the wasm, and that the phonemes that come back are what the model is handed.
  * A seam that quietly passed the wrong language would satisfy both suites and
  * read Japanese as English.
@@ -138,11 +138,11 @@ class PhonemizeWorkerStub implements WorkerLike {
           this.reply({ type: 'ready', id: request.id });
           return;
         case 'prepare':
-          await this.service.prepare(request.frontend, request.lang);
+          await this.service.prepare(request.vocab, request.lang);
           this.reply({ type: 'prepared', id: request.id });
           return;
         default: {
-          const result = this.service.phonemize(request.text, request.frontend, request.lang);
+          const result = this.service.phonemize(request.text, request.vocab, request.lang);
           this.reply({ type: 'phonemized', id: request.id, phonemes: result.phonemes });
         }
       }

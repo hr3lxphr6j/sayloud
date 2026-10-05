@@ -67,7 +67,7 @@
 //!
 //! Each is one line of reasoning and one test, and they are the only three places
 //! a difference from PaddleSpeech is not the reader's fault. The 466-sentence
-//! comparison in `docs/superpowers/plans/p6-9d-tone-sandhi-erhua.md` §四 found no
+//! comparison against PaddleSpeech found no
 //! others.
 //!
 //! 1. **一/不 are applied as written, so `pinyin-pro`'s exception list is lost.**
@@ -119,8 +119,7 @@
 //!
 //! Not against a reading of it. `ToneSandhi` was imported from the PaddleSpeech
 //! checkout and driven with `pypinyin` and jieba's own `posseg` on the same
-//! sentences (`/tmp/oracle/oracle.py`, quoted in
-//! `docs/superpowers/plans/p6-9d-tone-sandhi-erhua.md`), and the differences were
+//! sentences (`/tmp/oracle/oracle.py`), and the differences were
 //! triaged one at a time: every one is either a reading difference between
 //! `pypinyin` and `pinyin-pro` or an OOV tag.
 

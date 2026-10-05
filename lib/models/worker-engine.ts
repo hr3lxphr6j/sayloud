@@ -1,6 +1,6 @@
 /**
  * The `OnDeviceEngine` that owns the offscreen document's two workers (P4 spec
- * §3.3, §3.16; P6 spec §2.4).
+ * §3.3, §3.16).
  *
  * Everything here is bookkeeping: give each request an id, keep the promise
  * that is waiting for it, and make sure nothing is left waiting when a worker
@@ -452,8 +452,8 @@ export class WorkerLocalEngine implements OnDeviceEngine {
    * Awaited by every sentence and paid for by the first one, because nothing
    * above knows which voice the user has chosen until it synthesizes — the
    * offscreen document is given a voice with each sentence and has no channel
-   * for "the voice changed" (P6 spec §2.4 chose to prepare at voice selection,
-   * which would need one). What it costs is decompression from files the
+   * for "the voice changed" — preparing at voice selection would need one. What
+   * it costs is decompression from files the
    * extension already ships, and every language needs something now: English's
    * pronunciation dictionary is compiled in, but its numerals come from two
    * WeText grammars (phase 9B) as Chinese's and Japanese's do (9E).

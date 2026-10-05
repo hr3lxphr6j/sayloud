@@ -6,9 +6,8 @@
 //! weighted-FST text normalizer PaddleSpeech uses — kept in-tree rather than
 //! depended on, because the crate cannot be used from
 //! `wasm32-unknown-unknown` as published and this project will not carry a git
-//! fork of a nine-star crate. See `NOTICE` for the licence and the six
-//! modifications, and `p6-wetext-evaluation.md` §五 for the measurements behind
-//! that decision.
+//! fork of a nine-star crate. See `NOTICE` for the licence and the seven
+//! modifications, and `README.md` beside it for what the copy does differently.
 //!
 //! # What it does
 //!

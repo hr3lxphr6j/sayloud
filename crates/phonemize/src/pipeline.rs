@@ -180,8 +180,7 @@ fn numerals<'a>(
 ///
 /// WeText's English verbalizer has a bug in the 1,000-1,999 range: it produces
 /// "thousand two hundred and thirty four" instead of "one thousand two hundred
-/// and thirty four". This is documented in
-/// `docs/superpowers/plans/p6-1nnn-bug-research.md` and affects only this range.
+/// and thirty four". It affects only this range.
 ///
 /// Examples:
 /// - "thousand" → "one thousand"
@@ -375,8 +374,7 @@ pub fn phonemize_ja(
 /// was not: the grammar's cheapest reading is `one hundred and twenty three`,
 /// and `rustfst::shortest_path` — which assumes non-negative arc weights and
 /// these grammars have `-0.0001` ones — was returning a more expensive path.
-/// `src/backends/wetext/text_normalizer.rs` now computes the true minimum, and
-/// `docs/superpowers/plans/p6-9b4-shortest-path-bug.md` is the write-up.
+/// `src/backends/wetext/text_normalizer.rs` now computes the true minimum.
 /// `1000` is still `ten hundred`, and that one *is* the grammar: the tagger reads
 /// it as a year, where `ten hundred` and `one thousand` cost the same and the
 /// Python reference picks `ten hundred` too. `tests/wetext_en.rs` pins the
@@ -406,8 +404,8 @@ pub fn phonemize_ja(
 /// that the tagger found nothing but its two pass-through classes, that the whole
 /// engine would have returned the text unchanged, and that the phonemes do not
 /// depend on whether the engine was asked. Where it is still wrong — the
-/// grammar's whitelist is 3,050 strings with no shape to recognise — the plan
-/// measures it (`docs/superpowers/plans/p6-9b6-tn-gate.md` §四).
+/// grammar's whitelist is 3,050 strings with no shape to recognise — this gate
+/// skips 1,127 of them and 182 of those change the phonemes.
 ///
 /// # What is dropped
 ///

@@ -1,6 +1,6 @@
 /**
  * The wire protocol between `WorkerLocalEngine` and the phonemize worker
- * (P6 spec §2.4, phase 7).
+ *.
  *
  * Two workers rather than one, because the two halves have nothing in common:
  * phonemization is pure computation with no I/O once the dictionaries are in

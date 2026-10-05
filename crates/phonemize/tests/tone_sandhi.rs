@@ -3,8 +3,8 @@
 //! Every expectation here was checked against PaddleSpeech's own `ToneSandhi`
 //! and `_merge_erhua` driven with `pypinyin` and jieba's `posseg` on the same
 //! sentence, not derived by reading the Python. The method, and the three places
-//! this port deliberately answers differently, are in
-//! `docs/superpowers/plans/p6-9d-tone-sandhi-erhua.md`.
+//! this port deliberately answers differently, are at the top of
+//! `src/backends/tone_sandhi/mod.rs` and beside that module's `NOTICE`.
 //!
 //! What does **not** show up here is the reader. The rules only ever change a
 //! tone, so a sentence whose *syllables* differ from the reference's is

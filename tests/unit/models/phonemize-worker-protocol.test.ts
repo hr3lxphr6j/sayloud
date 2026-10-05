@@ -117,7 +117,7 @@ describe('isPhonemizeWorkerReply', () => {
 describe('phonemizeErrorCode', () => {
   it('reports a voice that cannot speak the language as a voice mismatch', () => {
     // The one failure here a user can fix by picking something else, which is
-    // why it is the one that gets a code of its own (P6 spec §2.2, §8.1).
+    // why it is the one that gets a code of its own.
     expect(phonemizeErrorCode(new DictionaryLoadError('unsupported-language', 'no ja here'))).toBe(
       'voice-mismatch'
     );

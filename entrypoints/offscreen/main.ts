@@ -81,7 +81,7 @@ function localProvider(): LocalProvider {
  * silence.
  *
  * Both workers are started here, and both belong to the one engine: it is what
- * decides which of them does what (P6 spec §2.4), and it tears both down when
+ * decides which of them does what, and it tears both down when
  * either one dies. Starting them anywhere else would put that policy in two
  * places.
  */

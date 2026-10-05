@@ -1,862 +1,206 @@
-# P6 Rust Phonemize 项目 - 最终架构文档
+# P6：Rust 音素化 —— 选型与终态
 
-**项目名称**: P6 Rust Phonemize  
-**最后更新**: 2026-10-04  
-**状态**: 阶段 1-8 已完成；阶段 9 的 9A（英文 OOV）、9B（英文 TN）、9D（中文变调/儿化）、
-9E（中日文 TN）已落地，9C 未做；阶段 10（英文接入 Rust、移除 espeak）已落地
+**状态**：已落地。文本 → 音素（IPA / 注音）的**全部**预处理在 `crates/phonemize`，
+编译成单个 wasm，跑在 offscreen 文档的 phonemize worker 里。
 
----
+**本文只写两件事**：每个问题域**选了什么、为什么**，以及**现在树里是什么样**。
+过程（谁提出、任务书怎么写的、哪条假设错了、逐阶段实测的来龙去脉）不在本文范围，
+也不该再写回来——那部分随各阶段文档一起删除了。代码注释里出现的 `phase 9B` / `9E`
+一类标签，用 §附录 的对照表解读。
 
-## 📋 目录
-
-1. [项目概述](#项目概述)
-2. [已完成工作（阶段 1-8）](#已完成工作阶段-1-8)
-3. [当前架构](#当前架构)
-4. [最终目标架构（阶段 9）](#最终目标架构阶段-9)
-5. [关键技术决策](#关键技术决策)
-6. [实施路线图](#实施路线图)
-7. [附录：历史决策与教训](#附录历史决策与教训)
+**数字口径**：§六 的数字都是在 macOS 上、`cargo test` + `pnpm test` + `pnpm test:build`
++ `pnpm test:performance` 实测（2026-10-05）；除非写明「早先测量」，不要跨机器对比。
 
 ---
 
-## 项目概述
+## 一、约束（决定了下面所有选型）
 
-### 目标
-
-将 TTS-NG 的多语言音素化（phonemize）管线从 JavaScript 迁移到 Rust，编译为单个 wasm 模块，支持中文、日语、英文三种语言。
-
-### 核心需求
-
-1. ✅ **单 wasm 模块**：所有三语言的 G2P 逻辑编译到一个 wasm
-2. ✅ **MIT/Apache-2.0 许可证**：无 GPL 依赖
-3. ✅ **字典协议**：大字典（IPADic/jieba）按需加载，不编进 wasm
-4. ✅ **OOV 处理**：未知词不能静默丢失
-5. ✅ **输出匹配 JS**：100% 对照测试通过
-6. ⚠️ **性能**：冷启动 < 100ms（日语 164ms，未达标但可接受）
+1. **单 wasm，三语言**（`zh-CN` / `ja-JP` / `en-US`，英语还要处理中日文句中的拉丁段）。
+2. **许可证**：只能 MIT / Apache-2.0。没有 GPL，也没有需要系统库或文件系统的 C 依赖。
+3. **`wasm32-unknown-unknown`**：没有文件系统、没有网络、没有 libc。大字典按名
+   fetch（zstd 帧）后在模块内解压；其余数据 `include_str!` 编译进模块。
+4. **未知词不能静默丢失**：读不出来要报错或给保底读法，输出还要过词表闸门。
+5. **体积是产品指标**：扩展 40.5 MB，其中 21.6 MB 是 ONNX Runtime，音素化这一半约 6.1 MB。
 
 ---
 
-## 已完成工作（阶段 1-8）
+## 二、选型结果
 
-### 阶段概览
+| # | 问题域 | 选择 | 为什么 | 否决掉的 |
+|---|---|---|---|---|
+| 1 | 计算边界 | Rust → 单个 wasm；JS 只搬字节（给**名字**不给 URL） | 一份实现三语言共用；字典格式变化不动 JS | 每语言一个模块；把 G2P 留在 JS |
+| 2 | 字典协议 | 压缩帧按名 fetch，`load_dictionary(bytes)`，模块内解压 | 让 8.5 MB 的 IPADic 不进 wasm，同时保持离线可用 | 编进 wasm（>20 MB）；首次使用时联网下载（破坏离线）；git LFS |
+| 3 | 日语分词 | `lindera` + IPADic（MIT） | 全上下文标注 + 假名读音，纯 Rust | kuromoji（JS，随阶段 8 删除） |
+| 4 | 日语读音 | 自维护 `ja-ipa-table.json` → 生成 Rust 表 | 表驱动、无依赖、可逐条钉住 | espeak-ng 与 OpenJTalk（C、要文件系统、许可） |
+| 5 | 英文读音 | CMU 词典（`piper-plus-g2p`，123,455 词，3.75 MB，**编进 wasm**） | 词典是转写而不是「读法」，命中即准 | espeak-ng 的全部路线；用 HeadTTS 的 125,829 词词典替换它（与 CMU 重复，且那 2.79 MB 资产当时无人引用） |
+| 6 | 英文 OOV | HeadTTS 的 NRL Report 7948 规则表（**309 条**，MIT） | 词典没有的词给真实读音，而不是逐字母；+17,385 B | 字母拼读（`GitHub` → 六个字母）；「7948 条规则」的误解（7948 是报告编号） |
+| 7 | 中文分词 | `jieba-rs`（MIT，HMM 打开） | 与 misaki 的切分对齐；词典按协议加载 | jieba-wasm；C 版 jieba |
+| 8 | 中文读音 | `pinyin-pro` 静态表 + `pinyin-table.json`（pypinyin / misaki） | 静态、零依赖、可生成可校验 | g2pW（见 #12）；PaddleSpeech 的 Python G2P |
+| 9 | 数字与实体 TN | **WeTextProcessing 的加权 FST**，三语言共用（vendored 源码 + 上游 FST，Apache-2.0） | 日期/时间/金额/百分比/序数/单位/缩写一次覆盖；实体上明显强于手写读数器 | 把 `wetext-rs` 当依赖（wasm 下不可用，且有两个缺陷）；git fork；只做英文；HeadTTS 自带 TN（要重写已覆盖的实体） |
+| 10 | 英文 TN 门控 | 手写字节扫描（`tn_gate`，+977 B，2.8 µs / 950 字符） | 不门控就要**每句**付 33 ms / 710 字符的 tagger；正则要编译自动机且每句都跑 | 不门控；正则门控 |
+| 11 | 中文音系 | PaddleSpeech 的 `ToneSandhi` + `_merge_erhua` 移植（Apache-2.0），开关 `ToneRules` | 变调/儿化是听感最明显的缺口，且零额外依赖 | 只靠 `pinyin-pro`（它内置一/不 变调，但没有三声连读之外的词层规则与儿化） |
+| 12 | 中文多音字消歧 | **不做**（g2pW ONNX） | 模型 ≈5 MB + 运行时 + 首句延迟，收益只在少数词；同一份工作量在 #11 上听感更明显 | g2pW / g2pM（记录在案，不落地） |
+| 13 | 合成入口 | 三语言统一 `IPA → tokenizer → generate_from_ids()`；裸模块名 `phonemizer` 别名到 throwing stub | 英文曾走 `kokoro-js` 的 `generate(text)`（内部 espeak），等于第二个前端，且 token 数按 Rust IPA 算、音频按 espeak IPA 合成 | 英文继续走 `generate(text)`（+2.5 MB espeak 数据） |
+| 14 | 输出校验 | 词表闸门**报错**，并在校验前做 `ɚ → əɹ` 之类 repair | tokenizer 的正常化是空串替换：表外音素会被**静默删除**（ガ行读成ア行就是这么来的） | warning；静默通过 |
+| 15 | 音素表 | v1.0 用 IPA（声调是箭头）；`v1.1-zh` 用注音 + 数字 | 两个模型两套词表，frontend 跟着**音色**走，不跟语言走 | 统一成一套 IPA |
 
-| 阶段 | 内容 | Commits | 测试 | 状态 |
-|------|------|---------|------|------|
-| 1-2 | Workspace + 字典协议 | 4 | - | ✅ |
-| 3 | 日语 G2P | 1 | 58 | ✅ |
-| 4 | 英文 G2P | 1 | 71 | ✅ |
-| 4.5 | 英文数字 | 2 | 89 | ✅ |
-| 5 | 中文 G2P + vocab | 4 | 128 | ✅ |
-| 6 | 中文前端组装 | 6 | 168 | ✅ |
-| 7 | 双 worker 架构 | 3 | 169 | ✅ |
-| 8 | JS 链清理 | 1 | 170 | ✅ |
-
-**总计**: 22 commits, 170 Rust tests, 1393 TS tests
-
-### 技术统计
-
-**代码量**：
-- Rust: ~6,500 行（src ~3,500 + tests ~2,800）
-- 删除 JS: ~1,200 行
-
-**体积**：
-- phonemize.wasm: 5.1 MB (gzip 1.4 MB)
-- 扩展包: 57.7 MB → 39.9 MB (-17.8 MB)
-
-**性能**（热路径）：
-- 中文: 0.050 ms / 32 字
-- 日语: 0.039 ms / 35 字
-- 英文: 0.037 ms
-
-**性能**（冷启动）：
-- 中文: 82.6 ms（jieba 词典 1.6 MB 解压）
-- 日语: 164.3 ms（IPADic 词典 8.5 MB 解压）⚠️
-- 英文: 18.0 ms（CMU Dict 哈希表构建）
+**#9 的两个附带决定**：旧的手写读数器（`numbers.rs` / `numbers_zh.rs` / `numbers_en.rs`）
+**保留**，作为 `Option<&Normalizer>` 为 `None` 时的 fallback——它等于没有 TN 的历史行为，
+JS 时代的对照语料靠它才还有意义；中文的旧读数器不是「重复代码」而是**另一个答案**
+（`2024` 一律当量词读，WeText 在有「年」时读年份）。同理 `ToneRules::Off` 是阶段 6 管线的
+逐字复现，`lib.rs` 传 `On`，一行可回滚。
 
 ---
 
-## 当前架构
+## 三、终态：管线
 
-### 三语言管线（阶段 1-8 完成）
-
-#### 日语
 ```
 输入文本
   ↓
-lindera 分词 (MIT)
+分段（Han / Kana / Latin / Other）＋标点规范化          text.rs, zh_text.rs
   ↓
-数字转换（自实现）
+数字与实体 TN：WeText 加权 FST（无 prepare 时退回手写读数器）   wetext_tn.rs, tn_gate.rs
   ↓
-lindera 全上下文标注
+┌── 日语 ────────────┐ ┌── 中文 ─────────────────────┐ ┌── 英文 ──────────────────┐
+│ lindera IPADic 分词 │ │ jieba-rs 分词                │ │ 不分词                    │
+│ 假名 → IPA 表       │ │ pinyin-pro 读音              │ │ CMU 词典（编进 wasm）      │
+│                     │ │ 变调 + 儿化（ToneRules，可关）│ │ → 词典外：NRL 7948 规则    │
+│                     │ │                              │ │ → 再外：字母拼读          │
+└─────────────────────┘ └──────────────────────────────┘ └───────────────────────────┘
   ↓
-韵律标记提取 + PUA 映射
+词表闸门（v1.0 IPA / v1.1-zh 注音），先 repair 再校验，越界即报错
   ↓
-Vocab 闸门（V1_0 IPA）
-  ↓
-输出 IPA
+IPA / 注音 ──► phonemize worker ──► kokoro worker：tokenizer → generate_from_ids()
 ```
 
-#### 英文
-```
-输入文本
-  ↓
-Latin 段识别
-  ↓
-数字转换（自实现）
-  ↓
-piper-plus-g2p (MIT)
-  ├─ CMU Dict 查询（123,455 词）
-  └─ OOV fallback: 字母拼读
-  ↓
-Vocab 闸门（V1_0 IPA）
-  ↓
-输出 IPA
-```
-
-#### 中文
-```
-输入文本
-  ↓
-jieba-rs 分词 (MIT)
-  ↓
-数字转换（自实现）
-  ↓
-pinyin-pro 移植（静态表）
-  ↓
-Vocab 闸门（V1_0 IPA / V1_1_ZH Zhuyin）
-  ↓
-输出 IPA/Zhuyin
-```
-
-### 依赖清单（阶段 1-8）
-
-| 组件 | Crate | 许可证 | 用途 |
-|------|-------|--------|------|
-| 日语分词 | lindera | MIT | Mecab 分词 |
-| 英文 G2P | piper-plus-g2p | MIT | CMU Dict |
-| 英文数字 | num2words | MIT | 数字转文字 |
-| 中文分词 | jieba-rs | MIT | HMM 分词 |
-| 字典压缩 | ruzstd | MIT/Apache-2.0 | zstd 解压 |
-
-**结论**: ✅ 100% MIT/Apache-2.0
-
-### 架构特点（阶段 1-8）
-
-✅ **优点**：
-- 单 wasm 模块（5.1 MB）
-- 许可证清洁
-- 三语言全覆盖
-- 170 Rust + 1393 TS 测试
-- 热路径性能优秀（< 0.1ms）
-
-⚠️ **限制**：
-- **英文 OOV**: 字母拼读（"Kokoro" → "K-O-K-O-R-O"）不够准确
-- **英文 TN**: 只支持数字，缺少日期/时间/金额/电话等
-- **中文多音字**: 静态表无法消歧（"重要" vs "重复"）
-- **中文变调**: 无变调规则（"你好" ni3 hao3 → 应该是 ni2 hao3）
-- **中文儿化音**: 无儿化音合并（"玩儿" [wan2, er2] → 应该是 [war2]）
-- **代码重复**: 三个 `numbers*.rs`，职责重叠
+**英文 OOV 是三层、有顺序的**：词典 → 规则 → 字母。全大写 run 当缩写逐字母读
+（`HTTP`），run 里没有 `A/E/I/O/U` 时不试规则（`xyz` 交给字母，规则会把 `sql` 读成 `skl`）。
 
 ---
 
-## 最终目标架构（阶段 9）
+## 四、终态：模块与数据
 
-### 设计原则
+**Rust（`crates/phonemize`，src ≈9.9k 行 + tests ≈5.7k 行）**
 
-1. **统一 TN 层**: 三语言使用同一个 TN 引擎（wetext-rs）
-2. **完整的英文 OOV**: 规则引擎替代字母拼读
-3. **中文质量提升**: 多音字消歧 + 变调 + 儿化音
-4. **删除重复代码**: 统一 TN 后删除 `numbers*.rs`
+| 路径 | 职责 |
+|---|---|
+| `src/lib.rs` | wasm 边界：`Phonemizer::{new, required_dictionaries, load_dictionary, finish_loading, ready, phonemize, phonemize_with}` 与错误码 |
+| `src/pipeline.rs` | 三条管线、`ToneRules`、`Gate`、`fix_one_thousand_bug` |
+| `src/dictionary.rs` | 字典注册表与 per-`(frontend, lang)` 需求表 |
+| `src/vocab.rs` / `src/text.rs` / `src/types.rs` / `src/kana.rs` | 词表闸门、分段与标点、类型、假名规范化 |
+| `src/frontends/ja_ipa.rs` (+ 生成的 `ja_ipa_table.rs`) | 假名 → IPA |
+| `src/backends/segmenter_ja.rs` `.zh.rs`, `pinyin.rs`, `zh_text.rs` | 分词与中文文本规则 |
+| `src/backends/g2p_en.rs` + `headtts_en/` | 英文三层 G2P（词典 → 309 条规则 → 字母） |
+| `src/backends/numbers*.rs` | 三个手写读数器（fallback） |
+| `src/backends/wetext/` + `wetext_tn.rs` + `tn_gate.rs` | vendored WeText 引擎（`NOTICE` 列 7 处改动）、三语言接线、英文门控 |
+| `src/backends/tone_sandhi/` | 中文变调与儿化（4 张词表，509 条） |
 
-### 架构图
+**资产（`public/dictionaries/`，按需 fetch，全部 zstd）**
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    输入文本 (任意语言)                    │
-└─────────────────────────────────────────────────────────┘
-                          ↓
-                ┌─────────────────────┐
-                │  文本规范化 (TN)     │
-                │  wetext-rs           │
-                │  (zh/ja/en 统一)     │
-                └─────────────────────┘
-                          ↓
-        ┌─────────────────┼─────────────────┐
-        ↓                 ↓                 ↓
-   ┌─────────┐      ┌─────────┐      ┌─────────┐
-   │ 日语     │      │ 中文     │      │ 英文     │
-   └─────────┘      └─────────┘      └─────────┘
-        ↓                 ↓                 ↓
-   lindera          jieba-rs          (无需分词)
-   分词              分词
-        ↓                 ↓                 ↓
-   查表              g2pW              HeadTTS
-   (直接)            多音字消歧          NRL 规则
-                          ↓
-                     变调规则
-                          ↓
-                     儿化音合并
-        ↓                 ↓                 ↓
-   ┌─────────────────────────────────────────┐
-   │          Vocab 闸门 (V1_0 / V1_1_ZH)      │
-   └─────────────────────────────────────────┘
-                          ↓
-                   输出 IPA/Zhuyin
-```
+| 资产 | 大小 | 何时来 |
+|---|---|---|
+| `lindera-ipadic-ja.bin.zst` | 8,507,015 B（内存里 ≈45.3 MB，解压 9.6 ms） | `prepare(ja-JP)` |
+| `jieba-zh-dict.bin.zst` | 1,632,261 B | `prepare(zh-CN)` |
+| `wetext-en-tn-{tagger,verbalizer}.bin.zst` | 161,322 + 545,550 B | `prepare(en-US)` |
+| `wetext-ja-tn-{…}.bin.zst` | 29,657 + 33,486 B | `prepare(ja-JP)` |
+| `wetext-zh-tn-{…}.bin.zst` | 53,826 + 105,929 B | `prepare(zh-CN)` |
 
-### 核心变更
+**编译进 wasm（`include_str!`，不 fetch）**：CMU 词典（3.75 MB）、NRL 7948 规则（309 条，
++17,385 B）、pinyin 表（21,132 字符读音 + 4,184 词组 + 426 音节 + 23 条一/不/了 规则）、
+词表（v1.0 115 字符 / v1.1-zh 172 字符）、假名 IPA 表。
 
-#### 1. 统一 TN 层（wetext-rs）
+**TypeScript 侧**：`lib/models/phonemize-rust.ts`（`ready` / `prepare` / `phonemize`，
+拥有 URL 与 Cache Storage）、`phonemize-service.ts`、`phonemize.worker.ts`（offline worker）、
+`worker-engine.ts`（协调器）、`kokoro-engine.ts`（只做推理）、`phonemizer-stub.ts`（别名目标）。
 
-**当前问题**：
-- 三个 `numbers*.rs`（~500 行重复代码）
-- 只支持数字，缺少日期/时间/金额/电话等
-- 英文侧逻辑缺失
+---
 
-**解决方案**：
-```rust
-// 删除：
-// - numbers.rs
-// - numbers_zh.rs
-// - numbers_en.rs
+## 五、终态：对外接口与不变量
 
-// 新增：
-// crates/phonemize/src/backends/wetext_tn.rs
+- **名字不是 URL**：wasm 说「我需要 `lindera-ipadic-ja`」，JS 决定从哪来。
+- **`prepare` 是显式的一步**：第一句之前完成；`phonemize` 之后是同步的（模块内无 I/O）。
+- **三条不变量**（测试钉住）：skip 蕴含 TN 无事可做；词表外音素一定报错；
+  没有 `prepare` 时是历史行为而不是崩溃。
 
-use wetext_rs::Processor;
+---
 
-pub struct WeTextTN {
-    zh_processor: Processor,
-    ja_processor: Processor,
-    en_processor: Processor,
-}
+## 六、实测数字（2026-10-05）
 
-impl WeTextTN {
-    pub fn normalize(&self, text: &str, lang: Language) -> String {
-        match lang {
-            Language::Zh => self.zh_processor.normalize(text),
-            Language::Ja => self.ja_processor.normalize(text),
-            Language::En => self.en_processor.normalize(text),
-        }
-    }
-}
-```
+| 指标 | 值 |
+|---|---|
+| `phonemize_bg.wasm` | **6,091,829 B** |
+| 扩展总计 | **40,523,112 B**（ORT 21,596,019 + IPADic 8.5 MB + wasm 6.1 MB + …） |
+| kokoro worker chunk | 904,615 B（阶段 10 前 2,225,156 B） |
+| Rust 测试 | **297 passed / 0 failed**（+2 个 ignored doc-test） |
+| TS 测试 | **1397 passed**（66 文件） |
+| 构建测试 | 14/14（含 wasm 尺寸、espeak 痕迹、ORT 单例） |
+| 热路径（每句） | 中文 0.081 ms / 32 字；日语 0.035 ms / 35 字；英文 **0.055 ms**（门控跳过的句子；首次调用 30.5 ms 是 CMU 哈希表） |
+| 冷启动 | 中文 88.3 ms；日语 164.9 ms；英文 67.3 ms（含 0.7 MB TN 文法） |
+| `cargo fmt --check` / `clippy -D warnings` / `typecheck` / `biome` | 全绿 |
 
-**收益**：
-- ✅ 删除 ~500 行重复代码
-- ✅ 支持 10+ TN 类型（数字/日期/时间/金额/电话/序数/分数/百分比等）
-- ✅ 三语言统一，维护成本低
-- ✅ 生产级别（wenet-e2e 项目）
-- ✅ Apache-2.0 许可证
+---
 
-**依赖**：
-- 📦 wetext-rs: https://github.com/SpenserCai/wetext-rs
-- 📦 WeTextProcessing: https://github.com/wenet-e2e/WeTextProcessing
+## 七、已知缺口与未做的事
 
-#### 2. 英文 OOV：HeadTTS 规则引擎
+1. **日语冷启动 164.9 ms** 未达「<100 ms」的目标；**日语内存 ≈91 MB**（lindera 的容器
+   与自建副本各持一份 45.3 MB），没有测试也没有优化。
+2. **8 个英式音色（`bf_*` / `bm_*`）走美式音素**，没有 en-GB 路由；espeak 在另一侧更好的
+   几类也因此丢失或保留：缩写按词念（NASA/FAQ）、`to` 的弱读、`$10.50` 的 cents。
+   **听感 A/B 一次都没做过**（模型 163 MB，本机无缓存）。
+3. **`FAQ` → `ˈɛf ə kjˈuː`**：拼出的单个 `A` 走了 CMU 词典里的单词 a。这是刻意保留的旧行为
+   （26 个字母的名字表能修，但会改到中日文里的拉丁段）。
+4. **`1000 → ten hundred`**：这是文法自己的等代价平局（Python 参考也一样），不是缺陷；
+   `1,000–1,999` 丢 `one` 是缺陷，已由 `fix_one_thousand_bug` 后处理修掉（+1,568 B）。
+5. **TN 门控的白名单洞**：3,050 个无形状键里 **1,127** 个被跳过，其中 **182** 个会改变
+   音素（真实散文 127 句上 0 漏报）。要关掉这个洞，门控需要把白名单当输入。
+6. **中文多音字没有上下文消歧**（`重要` vs `重复`），见 §二 #12 的决定。
+7. **中文 TN 让两处读法变差**：`０１２３` 与单独的 `０`（手写读数器更好），已用测试钉住。
+8. **extractor 的两项改进未实施**（`docs/extractor-improvements.md`）：per-site 选择器，
+   以及纯文本引用标记 `[54]` 的清洗。当前只有 DOM 层的 `<sup>` 跳过，正文里的 `[54]`
+   会让整句 TN 放弃。
+9. **`ninety` 的 en-US 改写缺失**（`kokoro-js` 有 `nˈaɪnti → nˈaɪndi`），`render()` 留着
+   `lang` 参数不读，就是为了以后再补这一条。
 
-**当前问题**：
-- piper-plus-g2p 的 OOV fallback 是**字母拼读**
-- "Kokoro" → "kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ" (K-O-K-O-R-O)
-- 不够准确，不是真实发音
+---
 
-**解决方案**：
-```rust
-// 替换 piper-plus-g2p 为 HeadTTS
+## 八、怎么构建与验证
 
-// crates/phonemize/src/backends/headtts_en.rs
-
-pub struct HeadTTSEnglish {
-    rules: HashMap<char, Vec<Rule>>,        // NRL Report 7948 规则
-    dictionary: HashMap<String, String>,     // CMU Dict（可选快速路径）
-}
-
-impl HeadTTSEnglish {
-    pub fn phonemize_word(&self, word: &str) -> String {
-        // 1. 检查词典（快速路径）
-        if let Some(ipa) = self.dictionary.get(word) {
-            return ipa.clone();
-        }
-        
-        // 2. 应用 NRL Report 7948 letter-to-sound 规则
-        self.apply_rules(word)
-    }
-    
-    fn apply_rules(&self, word: &str) -> String {
-        // 712 行规则引擎
-        // 上下文模式匹配：[左上下文] 字母 [右上下文] = 音素输出
-        // 符号：# (元音) / . (浊辅音) / % (后缀) / ^ (辅音) / + (前元音) / : (零个或多个辅音) /   (空格)
-    }
-}
+```bash
+pnpm build:wasm              # wasm-pack → lib/models/phonemize-wasm/（pnpm build 会先跑）
+cargo test --workspace       # 297，原生，无浏览器
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
+pnpm typecheck && pnpm lint && pnpm test        # TS 1397
+pnpm test:build              # 构建产物断言（尺寸、espeak 痕迹、ORT 单例…）
+pnpm test:performance        # 不在 CI：数字只在同一台机器上有意义
+./scripts/setup/setup-dictionaries.sh           # 建 public/dictionaries/（幂等）
+node scripts/generate/gen-pinyin-pro-data.mjs --check   # 与 pnpm check:* 都在 CI 里跑
 ```
 
-**对比**：
+CI（`.github/workflows/ci.yml`）跑：三个生成器的 `--check`、`cargo test`、`typecheck`、
+`lint`、`pnpm test`、e2e、`pnpm build`、`check:manifest`、side-panel smoke。
+**不跑** `cargo fmt` / `cargo clippy` / `test:build` / `test:performance`。
 
-| 方案 | OOV 处理 | 示例 |
-|------|---------|------|
-| piper-plus-g2p | 字母拼读 | "Kokoro" → "K O K O R O" |
-| HeadTTS | NRL 规则引擎 | "Kokoro" → "kɑkɔɹO" |
-
-**收益**：
-- ✅ 真实发音（不是字母拼读）
-- ✅ 基于语言学规则（NRL Report 7948 / Elovitz et al. 1976）
-- ✅ MIT 许可证
-- ✅ 体积更小（规则引擎 ~200 KB vs CMU Dict 3.75 MB）
-- ✅ 可以完全替换 eSpeak
-
-**来源**：
-- 📦 HeadTTS: https://github.com/met4citizen/HeadTTS
-- 📄 NRL Report 7948: https://apps.dtic.mil/sti/pdfs/ADA021929.pdf
-
-#### 3. 中文多音字消歧（g2pW）
-
-**当前问题**：
-- pinyin-pro 是静态表，无法消歧
-- "重要" (zhòng yào) vs "重复" (chóng fù)
-- "长城" (cháng chéng) vs "长大" (zhǎng dà)
-- "行走" (xíng zǒu) vs "银行" (yín háng)
-
-**解决方案**：
-```rust
-// crates/phonemize/src/backends/g2pw_zh.rs
-
-use onnxruntime::Session;
-
-pub struct G2pWZh {
-    model: Session,                     // ONNX 模型
-    vocab: HashMap<String, usize>,      // 词汇表
-}
-
-impl G2pWZh {
-    pub fn predict(&self, text: &str, word: &str, position: usize) -> String {
-        // 1. 上下文编码（左右窗口）
-        let context = self.encode_context(text, position);
-        
-        // 2. ONNX 推理
-        let output = self.model.run(vec![context]);
-        
-        // 3. 解码为拼音
-        self.decode(output)
-    }
-}
-```
-
-**收益**：
-- ✅ 上下文感知，准确率 >95%
-- ✅ 直接影响语意理解
-- ✅ 生产级别（PaddleSpeech 使用）
-
-**代价**：
-- ⚠️ 模型大小 ~5 MB
-- ⚠️ 推理延迟 ~5ms（可接受）
-
-#### 4. 中文变调和儿化音
-
-**当前问题**：
-- 无变调规则："你好" → ni3 hao3（错误，应该是 ni2 hao3）
-- 无儿化音合并："玩儿" → [wan2, er2]（不自然，应该是 [war2]）
-
-**解决方案**：
-```rust
-// crates/phonemize/src/backends/tone_sandhi_zh.rs
-
-pub struct ToneSandhiZh;
-
-impl ToneSandhiZh {
-    pub fn apply(&self, words: &[String], finals: &mut [String]) {
-        self.three_sandhi(words, finals);   // 三声变调：ni3 hao3 → ni2 hao3
-        self.yi_sandhi(words, finals);      // "一" 变调：yi1 ge4 → yi2 ge4
-        self.bu_sandhi(words, finals);      // "不" 变调：bu4 dui4 → bu2 dui4
-        self.neutral_sandhi(words, finals); // 轻声：zi3 → zi5
-    }
-}
-
-// crates/phonemize/src/backends/erhua_zh.rs
-
-pub struct ErhuaZh;
-
-impl ErhuaZh {
-    pub fn merge(&self, word: &str, finals: &mut Vec<String>) {
-        // "玩儿" [wan2, er2] → [war2]
-        // 在韵母和声调之间插入 'r'
-    }
-}
-```
-
-**收益**：
-- ✅ "你好" → ni2 hao3 ✅
-- ✅ "玩儿" → war2 ✅
-- ✅ 听感明显改善
-
-**来源**：
-- PaddleSpeech `tone_sandhi.py`
-- PaddleSpeech `zh_frontend.py::_merge_erhua`
+**维护约定**：本文是 P6 的唯一文档。改动落地后更新 §二/§四/§六，缺口进 §七；
+不要把过程写回来——要留证据就写进代码注释或测试。
 
 ---
 
-## 关键技术决策
-
-### 决策 1: 为什么用 HeadTTS 而不是 piper-plus-g2p？
-
-**理由**：
-1. ✅ **字母拼读不够好**: "Kokoro" → "K-O-K-O-R-O" 不是真实发音
-2. ✅ **NRL 规则引擎更准确**: 基于语言学规则，输出真实发音
-3. ✅ **体积更小**: 规则引擎 ~200 KB vs CMU Dict 3.75 MB
-4. ✅ **MIT 许可证**: 与 piper 相同
-5. ✅ **可以替换 eSpeak**: 统一到 Rust，删除 JS 依赖
-
-**权衡**：
-- ⚠️ 移植工作量: 712 行规则，需要仔细测试
-- ⚠️ 对照测试: 需要重新验证对照结果
-
-### 决策 2: 为什么用 wetext-rs？
-
-**理由**：
-1. ✅ **三语言统一**: zh/ja/en 一个引擎
-2. ✅ **生产级别**: wenet-e2e 项目，已在生产使用
-3. ✅ **完整的 TN**: 10+ 类型（数字/日期/时间/金额/电话/序数/分数/百分比等）
-4. ✅ **删除重复代码**: 三个 `numbers*.rs` → 一个 TN 引擎
-5. ✅ **英文侧逻辑缺失**: 当前只有数字，缺少其他 TN
-6. ✅ **Apache-2.0 许可证**: 清洁
-
-**权衡**：
-- ⚠️ 依赖成熟度: wetext-rs 是社区移植，需要验证质量
-- ⚠️ 体积增加: FST 数据可能增加体积
-
-### 决策 3: 为什么要做中文多音字消歧？
-
-**理由**：
-1. ✅ **直接影响语意理解**: "重要" vs "重复"
-2. ✅ **静态表无法解决**: pinyin-pro 无法上下文感知
-3. ✅ **生产级别方案存在**: g2pW (ONNX)
-4. ✅ **PaddleSpeech 验证**: 已在生产使用
-
-**权衡**：
-- ⚠️ 模型大小: ~5 MB
-- ⚠️ 推理延迟: ~5ms（可接受）
-
-### 决策 4: 为什么要做变调和儿化音？
-
-**理由**：
-1. ✅ **明显的质量问题**: "你好" ni3 hao3 是错误的
-2. ✅ **听感明显**: 变调错误很容易被发现
-3. ✅ **规则明确**: PaddleSpeech 有完整的规则实现
-4. ✅ **无额外依赖**: 纯规则实现
-
-**权衡**：
-- ⚠️ 实现工作量: ~1.5-2 天
-
----
-
-## 实施路线图
-
-### 阶段 9：最终架构实现（8-11 天）
-
-#### 阶段 9A: HeadTTS 集成（2-3 天）
-
-> **状态（2026-10-04）：已完成。**
-> 实施记录（含全部实测数字与质量对照）：[`p6-9a-headtts-integration.md`](./p6-9a-headtts-integration.md)。
-> 新模块 `crates/phonemize/src/backends/headtts_en/`（规则表 + 引擎 + `LICENSE`/`NOTICE`，
-> MIT 署名），`g2p_en.rs` 接线成「**词典 → 规则 → 字母**」三层，wasm **+17,385 B**
-> （6,071,361 → 6,088,746），Rust 测试 **250 → 280**，TS 1394 全绿（改了 1 条期望值）。
->
-> **下面这段任务书有六处与实测不符，按实测收敛如下：**
-> (1) **规则是 309 条，不是 7948 条**——「7948」是 NRL **报告的编号**；任务书另一处写的
-> 「712 行」是 js 字面量的行数。体积因此是 +17 KB 而不是「几百 KB」。
-> (2) **许可证这件事本来就不成立**：piper-plus-g2p 与 HeadTTS 同为 MIT，本阶段不是
-> 「为了许可证替换」，而是「为了 OOV 质量加一层」。
-> (3) **piper 删不掉**：它提供的是 CMU Dict（词典命中那一路，占全英文管线的大头），
-> HeadTTS 的规则表没有等价替代品（它自己的 125,829 词词典是同一件事的第二份答案）。
-> 任务书的「删除 piper-plus-g2p / 删除 `g2p_en.rs`」如果做了，是把英文退回「每个词都按
-> 规则读」。
-> (4) **任务书点名的 OOV 例子大多不是 OOV**：`tough`/`through`/`thorough`/`Shakespeare`/
-> `Einstein`/`Manhattan` 等全在 CMU Dict 里，从来不走这条路。真正走规则的是混合大小写的
-> 专名与产品名（`Kokoro`/`TypeScript`/`PyTorch`/`localhost`/`kubectl`/`nginx`…）。
-> (5) **`xyz`/`http`/`json` 不该「不再字母拼读」**：规则给 `xyz`→`sɪz`、`http`→`ttp`、
-> `sql`→`skl`，比字母差；全大写的那几个先被大小写规则拦下，不受影响，小写的靠一个
-> 「run 里没有 AEIOU 就不试规则」的闸门挡住。
-> (6) **「44 条测试期望值会变」不成立**：`tests/en_g2p.rs` 是 7 条、`tests/wetext_en.rs` 7 条，
-> 逐条实测**一条没变**（句子里的词都在词典里）。全仓真正变的期望值 **2 条**，
-> 新增 OOV 用例 30 条。
->
-> 另：本阶段删掉了阶段 9 早期半途而废的 JS 尝试留下的
-> `public/dictionaries/headtts-en-us.txt`（2,792,055 B，无任何代码引用）与其下载脚本，
-> 扩展产物 net **−2,792,685 B**（44.41 → 41.62 MB）。
-
-**任务 9A.1: 移植 NRL 7948 规则引擎**（1.5 天）
-- 移植 712 行规则（26 个字母各自的规则）
-- 上下文模式匹配实现
-- ARPA → Misaki IPA 转换
-- 单元测试（50+ 测试）
-
-**任务 9A.2: 删除 piper-plus-g2p**（0.5 天）
-- 从 Cargo.toml 删除依赖
-- 删除 `g2p_en.rs`
-- 更新所有测试
-
-**验收标准**：
-- ✅ "Kokoro" → 真实发音（不是 K-O-K-O-R-O）
-- ✅ 所有 26 个字母都有规则
-- ✅ 对照测试通过
-- ✅ 体积减少 ~3 MB
-
----
-
-#### 阶段 9B: WeTextProcessing 集成（2-3 天）
-
-> **状态（2026-10-04）：9B.2 已完成，只做了英文。**
-> 实施记录（含全部实测数字）：[`p6-9b2-implementation.md`](./p6-9b2-implementation.md)。
-> 源码复制进 `crates/phonemize/src/backends/wetext/`（5 处改动，不是依赖；9B.4 后为
-> 6 处），英文 TN
-> 走字典协议接通，wasm 构建 + Rust 187 / TS 1394 测试全绿。
->
-> **下面这段任务书有三条假设与实测不符，按实测收敛如下：**
-> (1) **没有删 `numbers*.rs`。** 本阶段只接英文，删 `numbers.rs`/`numbers_zh.rs` 会让
-> 中日文数字直接读不出来且无替代；`numbers_en.rs` 留着作为未 `prepare` 时的fallback。
-> (2) **体积 +1,013,905 B（+19.9%），不是 +2 MB**；热路径 **0.5–3.5 ms/句，
-> 不是 ~0.001 ms** —— 后者是移植 bug（`should_normalize` 丢了 `lang` 参数，
-> 英文无数字就整个跳过 TN）的副产品，已修（`NOTICE` 改动 #5）。
-> (3) **这个文法对裸整数是弱项**：`123` → `one two three`（参考实现给
-> `one hundred and twenty three`），因为多条路径等代价、消解方式由 FST 引擎决定，
-> 连参考实现自己都不一致。它对**实体**（时间/日期/金额/百分比/序数/分数/单位/缩写）
-> 才是明显更好的那一个。是否按 tagger 的实体名分流，见实施记录 §五.1。
->
-> **9B.4 更正了 (3)。** 不是等代价，也不是引擎口味：`one hundred and twenty three`
-> 是 `0.000000`，`one two three` 是 `0.000200`，`rustfst::shortest_path` 在
-> 负权文法上返回了更贵的那条。抽取已改为自算 Bellman-Ford（`NOTICE` 改动 #6），
-> 18 条探针里 7 条变化。唯一剩下的裸整数差异是 `1000 → ten hundred`，那才是
-> 文法自己的等代价平局（两边一致）。全文：
-> [`p6-9b4-shortest-path-bug.md`](./p6-9b4-shortest-path-bug.md)。
-> 另：`NOTICE` 改动数已从 5 增至 6。
->
-> **9B.6 给 TN 加了一道便宜的门控**（`crates/phonemize/src/backends/tn_gate.rs`），
-> 因为 tagger 占 TN 成本的 92% 而它每条英文句子都跑——上游的英文 TN 故意不做数字
-> 门禁（`should_normalize` 的数字检查只对非英文生效）。门控 2.8 µs / 950 字符，
-> 对比同长度 TN 43 ms；wasm **+977 B**；普通散文句子 10/10 跳过。
-> 实施记录与全部实测：[`p6-9b6-tn-gate.md`](./p6-9b6-tn-gate.md)。
-> **该记录里有一条对 9B.3 的更正**：9B.3 提议的不变量
-> 「`gate` 说 false ⇒ tagger 只输出 `w`/`p`」在上游自己的白名单上**不成立**
-> ——`whitelist` 是一张 3,050 行的字符串表，其中 1,137 个键没有任何形状，
-> 纯形状判据漏掉 1,127 个（182 个音素会变）。真实散文 127 句上 0 漏报。
-> 要彻底关掉这个洞，需要把白名单作为门控的输入（9B.6 §五.5，未做）。
-
-**任务 9B.1: 集成 wetext-rs**（1.5 天）
-- 评估 wetext-rs vs 官方 runtime
-- 添加依赖到 Cargo.toml
-- 实现 `WeTextTN` 结构
-- 三语言处理器初始化
-
-**任务 9B.2: 删除自实现的 TN**（0.5 天）
-- 删除 `numbers.rs`（~200 行）
-- 删除 `numbers_zh.rs`（~150 行）
-- 删除 `numbers_en.rs`（如果有）
-
-**任务 9B.3: 测试**（1 天）
-- 数字、日期、时间、金额、电话等
-- 三语言全覆盖
-- 对照测试更新
-
-**验收标准**：
-- ✅ 删除 ~500 行重复代码
-- ✅ 支持 10+ TN 类型
-- ✅ 三语言测试全绿
-- ✅ 许可证清洁
-
----
-
-#### 阶段 9C: 中文多音字消歧（2-3 天）
-
-**任务 9C.1: 集成 g2pW ONNX 模型**（1.5 天）
-- 下载 g2pW 模型（~5 MB）
-- 集成 onnxruntime-rs
-- 实现上下文编码
-- 实现推理逻辑
-
-**任务 9C.2: 替换 pinyin-pro**（0.5 天）
-- 中文管线改用 g2pW
-- 保留 pinyin-table.json 作为 fallback（字典失败时）
-
-**任务 9C.3: 测试**（1 天）
-- 多音字测试用例（重/长/行/还/处/觉等）
-- 对比 PaddleSpeech
-- 准确率验证
-
-**验收标准**：
-- ✅ "重要" → zhòng yào ✅
-- ✅ "重复" → chóng fù ✅
-- ✅ 准确率 >95%
-- ✅ 推理延迟 <5ms
-
----
-
-#### 阶段 9D: 中文变调和儿化音（1.5-2 天）
-
-> **状态（2026-10-04）：已完成。**
-> 实施记录（含全部实测数字）：[`p6-9d-tone-sandhi-erhua.md`](./p6-9d-tone-sandhi-erhua.md)。
-> 新模块 `crates/phonemize/src/backends/tone_sandhi/`（规则 + 四个词表 + `NOTICE`，
-> Apache-2.0 署名），`phonemize_zh` 接线，wasm **+28,853 B**（6,042,508 → 6,071,361），
-> Rust 测试 **197 → 249**，TS 1394 全绿。
->
-> **下面这段任务书有四处与实测不符，按实测收敛如下：**
-> (1) **一/不 变调本来就在做。** `pinyin-pro` 的 G2P 内置了这套规则（`toneSandhiMap`），
-> 实测 `一次`→yi2、`一天`→yi4、`不对`→bu2、`不好`→bu4 全部已经正确。四条验收标准里
-> 三条动手前就是绿的；本阶段真正补的缺口只有 **V不V 的「不」→轻声**（`看不懂`）与
-> **一 + 轻声 → 二声**。
-> (2) **没有「13 条儿化音变换规则」。** `_merge_erhua` 是**一条**通用规则（把 `r`
-> 追加到前一音节的韵母上）；完整的变换表在 `generate_lexicon.py` 里，是
-> 声母 × 39 韵母 × 儿化标记 × 5 声调的**笛卡尔积**。
-> (3) **「玩儿」不是 `war2`，是 `wanr2`**（*wánr*）。参照实现的代码是
-> `final[:-1] + "r" + tone`，韵尾**保留**；`war2` 是音系学的描述（[waɻ]），不是代码行为。
-> 本实现照抄，并把韵尾在音节表那一层解析为 `ɻ`：`wa↗nɻ`。
-> (4) **P5 §1.5 明确写着 v1.0 音色不该加变调与儿化**（训练目标论证），而生产用的就是 v1.0。
-> 任务书要求接线，接了，但做成了显式开关 `pipeline::ToneRules`（`lib.rs` 一行可回滚，
-> `Off` 是阶段 6 管线的逐字复现，语料测试一直在跑 `Off`）。两边的证据、以及「儿化改变
-> 音节数」这个 §1.6 的「几 Hz」论证保护不了的点，都在实施记录 §八。**听感 A/B 没做。**
-> 另：对照验证是**直接 import PaddleSpeech 的 `ToneSandhi` 跑**（`pypinyin` + jieba `posseg`），
-> 466 句里**规则差异 0 条**；13 句最终输出不同，**全部**是 `pypinyin` 与 `pinyin-pro`
-> 的词典差异（逐条列在实施记录 §四）。3 处刻意偏离参照实现，各有测试钉着（§五）。
-
-**任务 9D.1: 变调规则**（1 天）
-- 三声变调（两个三声连读，前字变二声）
-- "一" 变调（一 + 去声 → 二声）
-- "不" 变调（不 + 去声 → 二声）
-- 轻声标记（助词、语气词等）
-
-**任务 9D.2: 儿化音**（0.5 天）
-- 儿化音合并规则
-- must_erhua / not_erhua 词表
-- 在韵母和声调之间插入 'r'
-
-**验收标准**：
-- ✅ "你好" → ni2 hao3 ✅
-- ✅ "一个" → yi2 ge4 ✅（动手前已通过）
-- ✅ "不对" → bu2 dui4 ✅（动手前已通过）
-- ✅ "玩儿" → **wanr2** ✅（任务书写的 `war2` 不是参照实现的行为，见上）
-
----
-
-### 执行顺序（推荐）
-
-**P0（立即开始）**：
-1. **阶段 9B: WeTextProcessing**（2-3 天）
-   - 理由：三语言都受益，删除重复代码
-   - 风险：低（成熟项目）
-   - 优先级：最高
-
-2. **阶段 9A: HeadTTS**（2-3 天）
-   - 理由：完整的英文 OOV
-   - 风险：中等（712 行规则）
-   - 优先级：高
-
-**P1（随后）**：
-3. **阶段 9D: 变调和儿化音**（1.5-2 天）
-   - 理由：明显的中文质量问题
-   - 风险：低
-   - 优先级：中
-
-4. **阶段 9C: 多音字消歧**（2-3 天）
-   - 理由：语意准确性
-   - 风险：中等（ONNX 模型集成）
-   - 优先级：中
-
-**总计**: 8-11 天
-
----
-
-## 附录：历史决策与教训
-
-### 重要更正
-
-#### 1. piper-plus-g2p 的 OOV 处理
-
-**早期误解**（2026-10-04）：
-- ❌ 我认为 piper-plus-g2p "没有 OOV 处理"
-- ❌ 基于文档（p6-phase4-corrections.md §6.6）说"OOV 静默跳过"
-
-**实际情况**：
-- ✅ 代码**已有字母拼读 fallback**（Decision 1.B）
-- ✅ "Kokoro" → "K O K O R O"（不是静默）
-
-**真相**：
-- 文档描述的是**任务书要求**（OOV 静默跳过）
-- 代码实现**偏离了任务书**（添加了 fallback）
-- 这是一个**好的偏离**
-
-**教训**：
-- 文档和代码可能不一致
-- 验证前提假设，不要依赖文档
-
-#### 2. piper-plus-g2p 的许可证
-
-**早期误解**（2026-10-04）：
-- ❌ 我认为 piper-plus-g2p 是 GPL-3.0
-- ❌ 制定了"阶段 9: GPL 替换"计划
-
-**实际情况**：
-- ✅ piper-plus-g2p 是 **MIT 许可证**
-- ✅ 验证：源码 LICENSE.md、Cargo.toml、crates.io
-
-**真相**：
-- 架构审查时的错误判断
-- TTS-NG 已经是完全 MIT/Apache-2.0 栈
-
-**教训**：
-- 任何"需要替换依赖"的决策前，必须检查源码 LICENSE
-- 不应依赖猜测或间接信息
-- 交叉验证：git 源 + crates.io + cargo tree
-
-#### 3. HeadTTS 替换 piper 的理由
-
-**初始判断**（2026-10-04 早期）：
-- ❌ 理由不成立（piper 已有 OOV）
-
-**用户反馈**（2026-10-04）：
-- ✅ **字母拼读不够好**："Kokoro" → "K-O-K-O-R-O"
-- ✅ **NRL 规则引擎更准确**："Kokoro" → "kɑkɔɹO"
-
-**最终结论**：
-- ✅ 用户的理由成立
-- ✅ HeadTTS 的 letter-to-sound 规则引擎**比字母拼读好得多**
-
-**教训**：
-- OOV "存在" ≠ OOV "足够好"
-- 字母拼读只是最低要求，规则引擎是更好的方案
-
-### 废弃文档列表
-
-以下文档基于错误前提或已过时，不应再参考：
-
-❌ **基于 GPL 误判的文档**：
-- `p6-phase9-final-plan.md` (HeadTTS 移植计划)
-- `p6-final-roadmap.md` (包含 GPL 替换内容)
-- `p6-next-steps.md` (包含 GPL 替换内容)
-- `p6-phase9-headtts-integration.md`
-- `p6-phase9-wetext.md`
-
-❌ **过程性文档**（已被本文档取代）：
-- `p6-architecture-evaluation.md`
-- `p6-architecture-review-summary.md`
-- `p6-complete-work-summary.md`
-- `p6-decision-summary.md`
-- `p6-final-decision.md`
-- `p6-final-recommendation.md`
-- `p6-final-status.md`
-- `p6-license-correction.md`
-- `p6-oov-verification.md`
-- `p6-revised-final-plan.md`
-- `p6-phonemize-architecture-review.md`
-
-✅ **保留的实施记录**（历史价值）：
-- `p6-implementation-summary.md` (阶段 1-3)
-- `p6-phase3-corrections.md` (日语实施)
-- `p6-phase4-corrections.md` (英文实施)
-- `p6-phase5-plan.md` (英文数字)
-- `p6-phase5-rust-vs-js-comparison.md` (阶段 5 对照)
-- `p6-zh-pinyin-and-vocab-gate.md` (中文 G2P)
-- `p6-zh-frontend.md` (中文前端)
-- `p6-phase7-two-workers.md` (双 worker)
-- `p6-phase8-cleanup.md` (JS 链清理)
-- `p6-9b2-implementation.md` / `p6-9b4-shortest-path-bug.md` / `p6-9b6-tn-gate.md` (英文 TN)
-- `p6-9d-tone-sandhi-erhua.md` (中文变调与儿化音)
-
-✅ **保留的调研资料**（参考价值）：
-- `p6-espeak-alternatives-final.md` (英文 G2P 方案对比)
-- `p6-g2p-library-evaluation.md` (G2P 库评估)
-- `p6-paddlespeech-analysis.md` (PaddleSpeech 分析)
-- `p6-piper-plus-g2p-reuse-analysis.md` (piper 复用分析)
-- `p6-v0-failure-analysis.md` (V0 失败分析)
-
-### 关键决策时间线
-
-| 日期 | 事件 | 决策 |
-|------|------|------|
-| 2026-09 | P6 启动 | 目标：单 wasm，三语言，MIT/Apache-2.0 |
-| 2026-09 | 阶段 1-2 | Workspace + 字典协议 |
-| 2026-09 | 阶段 3 | 日语 G2P（lindera） |
-| 2026-10-03 | 阶段 4 | 英文 G2P（piper-plus-g2p，误判为 GPL） |
-| 2026-10-03 | 阶段 4.5 | 英文数字（num2words） |
-| 2026-10-03 | 阶段 5 | 中文 G2P（pinyin-pro 移植） |
-| 2026-10-03 | 阶段 6 | 中文前端组装（jieba-rs） |
-| 2026-10-03 | 阶段 7 | 双 worker 架构 |
-| 2026-10-03 | 阶段 8 | JS 链清理（-17.8 MB） |
-| 2026-10-04 | 架构审查 | 识别问题：OOV/TN/多音字/变调/儿化音 |
-| 2026-10-04 | 许可证更正 | piper-plus-g2p 是 MIT，不是 GPL |
-| 2026-10-04 | 用户反馈 | HeadTTS/wetext-rs/多音字消歧/变调/儿化音 |
-| 2026-10-04 | 最终方案 | 阶段 9A-9D（HeadTTS + wetext-rs + g2pW + 变调儿化音） |
-
----
-
-## 总结
-
-### 阶段 1-8 成就 ✅
-
-- ✅ 单 wasm 模块（5.1 MB）
-- ✅ 三语言支持（中/日/英）
-- ✅ MIT/Apache-2.0 许可证
-- ✅ 170 Rust + 1393 TS 测试
-- ✅ 热路径性能 < 0.1ms
-- ✅ 删除 JS 链（-17.8 MB）
-
-### 阶段 9 目标 🎯
-
-- ✅ 统一 TN 层（wetext-rs，-500 行代码）
-- ✅ 完整的英文 OOV（HeadTTS 规则引擎）
-- ✅ 中文多音字消歧（g2pW ONNX）
-- ✅ 中文变调和儿化音（PaddleSpeech 规则）
-
-### 预期收益 📈
-
-| 维度 | 改进 |
-|------|------|
-| **英文 OOV** | 字母拼读 → NRL 规则引擎 |
-| **英文 TN** | 仅数字 → 10+ 类型 |
-| **中文多音字** | 静态表 → 上下文消歧 (>95%) |
-| **中文变调** | 无 → 正确 |
-| **中文儿化音** | 无 → 正确 |
-| **代码量** | -500 行（TN 统一） |
-| **许可证** | 100% MIT/Apache-2.0 |
-
-### 工作量 ⏱️
-
-- **总计**: 8-11 天
-- **优先级**: 9B → 9A → 9D → 9C
-
-### 阶段 9 已落地的部分（截至 2026-10-04）
-
-| 阶段 | 内容 | 状态 | wasm | Rust 测试 |
-|------|------|------|------|-----------|
-| 9B | 英文 TN（vendored WeText） | ✅ 含 9B.4 最短路径修复、9B.6 门控 | +1,013,905 B | 187 → 197 |
-| 9D | 中文变调 + 儿化音 | ✅ 见 [实施记录](./p6-9d-tone-sandhi-erhua.md) | +28,853 B | 197 → 249 |
-| 9A | 英文 OOV（HeadTTS NRL 7948 规则） | ✅ 见 [实施记录](./p6-9a-headtts-integration.md) | +17,385 B（另删 2,792,055 B 死资产） | 250 → 280 |
-| 9C | 中文多音字消歧（g2pW） | ❌ 未落地 | — | — |
-| 9E | 中日文 TN（同一个 WeText 引擎） | ✅ 见 [实施记录](./p6-9e-cjk-text-normalization.md) | +1,459 B（另 +223,092 B 资产） | 280 → 296 |
-| 10 | 英文接入 Rust phonemize，移除 espeak | ✅ 见 [实施记录](./p6-phase10-english.md) | 0 | 296 |
-
-**阶段 9 之后的模块为 6,090,205 B**；扩展产物 **40,521,530 B**（40.52 MB），比阶段 10 之前
-少 1.32 MB 而多两套中日文文法；TS 测试 1395 全绿，`cargo clippy` 0 warning。
-
-### 阶段 9E 与 10 对「最终目标架构」的两处修正
-
-本文档 §「最终目标架构」写的是「统一 TN 层，**删除** `numbers*.rs`」。**没有删，也不该删。**
-两个原因都在实测里：
-
-1. 它们是 `Option<&Normalizer>` 为 `None` 时的 fallback，而 `None` 就是**阶段 6 管线逐字复现**
-   ——`tests/fixtures/zh-frontend-parity.json` 是 JavaScript 前端的输出，JS 链在阶段 8 删了，
-   语料**无法重新生成**。删掉旧读数器，这张语料就从「对照」退化成「一张过期的期望值表」。
-   `pipeline::ToneRules` 是同一个论证的另一个实例。
-2. **中文的旧读数器不是「重复代码」，是两个不同的答案。** 它读 `2024` 一律当量词
-   （二千零二十四），WeText 把 `2024年` 读作年份（二零二四）——这不是同一件事的两份实现，
-   是「没有上下文」和「有上下文」。
-
-阶段 10 则修正了本文档没写、但代码里一直存在的一条分叉：`KokoroEngine.render()` 曾经
-**按语言选渲染路径**（英文走 `kokoro-js` 的 `generate(text)`，即 espeak；中日文走
-`generate_from_ids(ipa)`）。现在三种语言统一走 IPA，代价是 8 个英式音色失去自己的音素变体，
-获得的是「切片用的 token 数和实际喂给模型的音素终于描述同一件事」。见
-[阶段 10 实施记录](./p6-phase10-english.md) §四（对比）与 §五（缺口，含**未做听感测试**）。
-
----
-
-**文档版本**: 1.0  
-**最后更新**: 2026-10-04  
-**维护者**: TTS-NG 团队  
-**状态**: ✅ 最终版（取代所有其他 P6 文档）
+## 附录：阶段编号对照
+
+代码注释里的 `phase N` 指的是落地顺序，不是文档：
+
+| 标签 | 落地内容 |
+|---|---|
+| 1–2 | workspace 与字典协议 |
+| 3 | 日语 G2P（lindera + IPADic + 假名 IPA 表） |
+| 4 / 4.5 / 5 | 英文 G2P（CMU）；三语言手写读数器；中文 G2P（jieba + pinyin-pro） |
+| 6 | 中文前端组装（标点、分行、变体） |
+| 7 | 拆成 phonemize / kokoro 两个 worker |
+| 8 | 删除 JS 链（kuromoji + kuroshiro + jieba + espeak + pinyin-pro，−17.8 MB） |
+| 9A | 英文 OOV：HeadTTS / NRL 7948 规则（309 条） |
+| 9B | 英文 TN：vendored WeText FST + 最小路径修复 + 门控 |
+| 9C | 中文多音字消歧 —— **决定不做**（§二 #12） |
+| 9D | 中文变调与儿化（可开关） |
+| 9E | 中日文 TN：同一个 WeText 引擎 + 全角数字修复 |
+| 10 | 三语言统一 IPA 渲染，移除 espeak 依赖 |

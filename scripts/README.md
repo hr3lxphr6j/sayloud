@@ -638,6 +638,5 @@ HEADTTS_DIR=/tmp/HeadTTS node scripts/generate/headtts-parity.mjs
 
 ## See Also
 
-- [P6 Rust Phonemize Specification](../docs/superpowers/plans/P6-FINAL.md)
+- [P6: the Rust phonemizer's decisions and final state](../docs/superpowers/plans/P6-FINAL.md)
 - [Build System Overview](../README.md#build)
-- [Dictionary Protocol](../docs/superpowers/plans/p6-implementation-summary.md)

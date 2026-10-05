@@ -177,7 +177,7 @@ fn run_push(run: &mut ScriptRun, ch: char) {
 /// The vocabulary has `—` (U+2014, EM DASH) and no hyphen-minus, and no
 /// apostrophe at all; the JavaScript side's comment says so in as many words.
 /// Both were reaching the output and being deleted by the tokenizer's normaliser
-/// — which is why nothing noticed until the vocabulary gate (spec §1.3) started
+/// — which is why nothing noticed until the vocabulary gate started
 /// checking the output against the vocabulary and refused `don't stop`. The
 /// audible result is unchanged either way, because the tokenizer was already
 /// dropping them; what changes is that `PhonemizeResult::phonemes` now really is

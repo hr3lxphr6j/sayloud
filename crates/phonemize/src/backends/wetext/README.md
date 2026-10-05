@@ -9,7 +9,7 @@ Everything below is written from the English side, because English is where it
 was first wired up and where the interesting behaviour (abbreviations, and a
 3,050-key whitelist with no shape) lives. The other two are the same three-stage
 pipeline over different grammars; what they buy and what they cost is in
-`docs/superpowers/plans/p6-9e-cjk-text-normalization.md`.
+`tests/wetext_zh.rs` and `tests/wetext_ja.rs`.
 
 ## Where it comes from
 
@@ -20,11 +20,11 @@ pipeline over different grammars; what they buy and what they cost is in
 | FST data | the `wetext` Python distribution's own build of the same grammars |
 | Here | a copy, not a dependency — the published crate cannot run in `wasm32-unknown-unknown` |
 
-The reason for a copy rather than a `wetext-rs = "0.1"` line is in
-`docs/superpowers/plans/p6-wetext-evaluation.md`: upstream's only constructor
-reads a directory, upstream has a defect that makes full-width numerals
-normalize to nothing, and the crate is nine stars with one release. Forking it
-means maintaining a fork; copying it means the code is ours to keep building.
+The reason for a copy rather than a `wetext-rs = "0.1"` line: upstream's only
+constructor reads a directory, upstream has a defect that makes full-width
+numerals normalize to nothing, and the crate is nine stars with one release.
+Forking it means maintaining a fork; copying it means the code is ours to keep
+building.
 
 ## What it normalizes
 
@@ -100,8 +100,7 @@ upstream ranks competing readings with `pynutil.add_weight(..., -0.0001)`, and a
 composed FST reaches `-0.0001`. Modification 6 in `NOTICE` replaced it with the
 copy's own Bellman-Ford relaxation over the composed FST; the full write-up,
 including the two independent shortest-path computations that established the
-defect and the enumeration below, is
-`docs/superpowers/plans/p6-9b4-shortest-path-bug.md`. `push_weights` was tried
+defect and the enumeration below, is in `NOTICE`. `push_weights` was tried
 and does not help: it normalises the total weight without changing which reading
 is chosen.
 
@@ -153,9 +152,8 @@ readings differ in cost and the cardinal is strictly the cheapest. The 41 inputs
 it reported as "34 agree, the rest are ties" were probed against
 `pip install wetext==0.1.8` **before modification 6**, so the differences it
 counted were this bug; the probe was a one-off and is not committed, so no
-agreement count is claimed here now. The rerun recipe is
-`docs/superpowers/plans/p6-9b2-implementation.md` §六; what is *pinned* is every
-row of the tables above, in `crates/phonemize/tests/wetext_en.rs`.
+agreement count is claimed here now. The probe is not committed; what is *pinned*
+is every row of the tables above, in `crates/phonemize/tests/wetext_en.rs`.
 
 What it means for this crate: the engine is markedly better than the hand-written
 reader on *entities* — `3:30pm`, `50%`, `1st`, `1/2`, `2,000`, `10/4/2024`,

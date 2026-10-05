@@ -9,12 +9,10 @@
 //! - what the pipeline *does* with them, through `prepare` and the registry, the
 //!   way `ja_pipeline.rs` covers Japanese.
 //!
-//! The eight entity classes are the reason the grammar was vendored at all
-//! (`docs/superpowers/plans/p6-wetext-evaluation.md` §4.1). The bare-number cases
-//! at the bottom were first recorded as this engine's weakness — they came out
-//! digit by digit — and that turned out to be a bug in the copy's *path
-//! extraction* rather than a property of the grammar
-//! (`docs/superpowers/plans/p6-9b4-shortest-path-bug.md`). They are pinned here
+//! The eight entity classes are the reason the grammar was vendored at all. The
+//! bare-number cases at the bottom were first recorded as this engine's weakness
+//! — they came out digit by digit — and that turned out to be a bug in the copy's
+//! *path extraction* rather than a property of the grammar. They are pinned here
 //! so the fix cannot be undone quietly, and so that the readings which still
 //! differ from the hand-written reader stay visible.
 
@@ -51,7 +49,6 @@ fn read(text: &str) -> Option<String> {
 /// Fix WeText 0.1.8 bug where 1,000-1,999 lose the leading "one".
 ///
 /// This is the same fix applied in `crates/phonemize/src/pipeline.rs`.
-/// See `docs/superpowers/plans/p6-1nnn-bug-research.md` for details.
 fn fix_one_thousand_bug(text: &str) -> String {
     // Case 1: exactly "thousand" (e.g., "1,000")
     if text == "thousand" {
@@ -181,8 +178,7 @@ fn reads_abbreviations_that_have_no_digit_in_them() {
 /// The sentences the negative-weight extraction bug moved, and the ones it did
 /// not.
 ///
-/// This is the impact table from
-/// `docs/superpowers/plans/p6-9b4-shortest-path-bug.md` §三, run through the
+/// These are the readings the negative-weight bug got wrong, run through the
 /// engine that ships. The first seven were read along a path that is *more*
 /// expensive than the grammar's cheapest; these are the readings the cheapest
 /// path gives, asserted whole because a wrong reading here is a wrong sentence
@@ -253,9 +249,6 @@ fn reads_the_sentences_the_bug_moved_and_leaves_the_rest_where_they_were() {
 /// `one hundred and twenty three` is the cheapest at `0.000000`, `one two three`
 /// sits at `0.000200`, and `rustfst::shortest_path` — which assumes non-negative
 /// weights and these grammars have `-0.0001` arcs — returned the expensive one.
-/// The enumeration and the two independent shortest-path computations that
-/// established that are in `docs/superpowers/plans/p6-9b4-shortest-path-bug.md`
-/// §一 and §二.
 ///
 /// The assertion is on the exact string and on a bare input, because that is the
 /// case the old behaviour was pinned to and the one that must not come back.
@@ -398,7 +391,7 @@ fn one_grammar_without_the_other_is_not_enough_to_finish() {
 ///
 /// This is a known bug in the upstream verbalizer FST that affects only the
 /// 1,000-1,999 range. Our post-processing fix ensures these numbers are read
-/// correctly. See `docs/superpowers/plans/p6-1nnn-bug-research.md` for details.
+/// correctly.
 #[test]
 fn one_thousand_bug_is_fixed() {
     for (input, expected) in [

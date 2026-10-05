@@ -2,15 +2,15 @@
 //! text into phonemes.
 //!
 //! A backend is whatever a language needs and another does not — a segmenter, a
-//! numeral reader, a pronunciation table. All four languages' backends exist
+//! numeral reader, a pronunciation table. All three languages' backends exist
 //! now: Japanese segmentation, English G2P, Chinese readings, and the Chinese
-//! segmenter and text rules that phase 6 added.
+//! segmenter and text rules the Chinese frontend added.
 //!
 //! Number reading is the one backend with two implementations: the hand-written
-//! `numbers*` readers, and phase 9B's [`wetext`] engine — weighted FSTs from
-//! WeTextProcessing, vendored rather than depended on. English prefers the FSTs
-//! and falls back to `numbers_en`; Chinese and Japanese still use their own
-//! readers, so nothing about their output moved in that phase.
+//! `numbers*` readers, and [`wetext`] — weighted FSTs from WeTextProcessing,
+//! vendored rather than depended on. Every language prefers the FSTs and falls
+//! back to its own reader, which is what a caller that never called `prepare`
+//! gets.
 //!
 //! [`tone_sandhi`] is the one backend that runs *after* a G2P rather than before
 //! it: Mandarin decides a tone twice, once per character from the dictionary and

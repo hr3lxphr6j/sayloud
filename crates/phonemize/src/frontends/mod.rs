@@ -1,5 +1,5 @@
 //! Phoneme frontends: one per phoneme inventory a Kokoro model understands
-//! (spec §2.2).
+//!.
 //!
 //! A frontend is the last stage of the pipeline and the only one that knows the
 //! model's vocabulary. Today only the v1.0 Japanese one exists; `zh_ipa`,

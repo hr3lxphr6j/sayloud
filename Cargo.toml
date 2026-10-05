@@ -1,5 +1,4 @@
 # Rust half of the P6 phonemize migration.
-# See docs/superpowers/plans/2026-10-03-p6-rust-phonemize-spec.md.
 #
 # A virtual workspace: no package of its own. It exists so `cargo` has a single
 # resolution root and a single place for profile settings.

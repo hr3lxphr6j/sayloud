@@ -6,9 +6,8 @@
 # taken from the `wetext` Python distribution — which is the upstream
 # WeTextProcessing project's own build of them, published as part of a wheel
 # rather than as a separate data release. `crates/phonemize/src/backends/wetext/`
-# is a copy of SpenserCai's Rust port that reads exactly this file format; the
-# evaluation that decided to vendor it is
-# `docs/superpowers/plans/p6-wetext-evaluation.md`.
+# is a copy of SpenserCai's Rust port that reads exactly this file format; its
+# `NOTICE` says why the source is copied rather than depended on.
 #
 # **Why the FSTs are not inside the wasm.** Spec decision #4: a dictionary is
 # fetched on `prepare` and decompressed inside the module. Raw, the six frames

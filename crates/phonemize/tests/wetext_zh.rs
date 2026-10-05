@@ -10,8 +10,7 @@
 //! is `1.2.3%`, a malformed number that the reference's chained-regex front end
 //! and this FST composition fragment differently; both answers are arbitrary and
 //! ours happens to be the one the hand-written reader gave, so it is pinned as a
-//! known difference rather than treated as a defect. That probe is not committed
-//! — the recipe is in `docs/superpowers/plans/p6-9e-cjk-text-normalization.md` —
+//! known difference rather than treated as a defect. That probe is not committed,
 //! so what is *pinned* is the tables below.
 //!
 //! The full-width cases are the reason this phase needed a change **inside** the

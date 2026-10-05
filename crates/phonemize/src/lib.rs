@@ -1,8 +1,7 @@
 //! Rust phonemization pipeline for SayLoud (P6).
 //!
 //! Compiled to a single wasm module that replaces the JavaScript chain
-//! (kuromoji + kuroshiro + jieba + espeak + pinyin-pro). See
-//! `docs/superpowers/plans/2026-10-03-p6-rust-phonemize-spec.md`.
+//! (kuromoji + kuroshiro + jieba + espeak + pinyin-pro).
 //!
 //! Japanese is the language that works end to end today: the dictionary
 //! protocol (§3.2) is what gets IPADic into the module, and [`pipeline`] is what
@@ -90,7 +89,7 @@ pub struct Phonemizer {
     ///
     /// `None` until those arrive, and `None` for a caller that never called
     /// `prepare` — which is a state `phonemize_en` is written to tolerate, since
-    /// English's phonemes need no dictionary at all (spec §2.3). Unlike
+    /// English's phonemes need no dictionary at all. Unlike
     /// `japanese`/`chinese` this is not an `Option` a caller can be refused for:
     /// the numeral reader it replaces is still here as the fallback.
     ///
@@ -125,12 +124,12 @@ impl Phonemizer {
     ///
     /// The JS side asks rather than decides: which files a dictionary consists
     /// of is a Rust-side detail, and a change of format should not be a change
-    /// of JavaScript (spec §3.2). Names, not URLs — the caller owns where the
+    /// of JavaScript. Names, not URLs — the caller owns where the
     /// bytes come from, because the extension already has a resource cache and
     /// the wasm should not grow a second one.
     ///
     /// Throws for a frontend this build does not know, and for a language that
-    /// frontend cannot speak (spec §2.2).
+    /// frontend cannot speak.
     pub fn required_dictionaries(
         &mut self,
         frontend: &str,
@@ -213,7 +212,7 @@ impl Phonemizer {
         // Which languages a frontend can speak is the dictionary table's
         // question, so ask it rather than repeating the answer — this is the
         // same check `required_dictionaries` makes, and the same one that
-        // rejects a Japanese voice on v1.1-zh (spec §1.3, review focus #3).
+        // rejects a Japanese voice on v1.1-zh.
         dictionary::dictionary_names(&options.frontend, &options.lang)
             .map_err(PhonemizeError::Dictionary)?;
 
@@ -278,7 +277,7 @@ impl Phonemizer {
             }
         };
 
-        // The gate (spec §1.3, §4.2.1). Every pipeline ends here, so a frontend
+        // The gate. Every pipeline ends here, so a frontend
         // whose inventory does not match the phonemes fails loudly instead of
         // losing the characters the tokenizer would silently delete.
         //
@@ -520,7 +519,7 @@ impl From<SegmenterZhError> for BackendError {
 ///
 /// An `Error` rather than the bare string wasm-bindgen would throw for
 /// `JsValue::from_str`: the wrapper has to tell a network failure from a corrupt
-/// file to pick the right message (spec §8.1), and a `code` property is a
+/// file to pick the right message, and a `code` property is a
 /// contract the message text is not. The message keeps the same code as a
 /// prefix, so a log line says which failure it was without a lookup table.
 fn thrown_error(code: &str, message: &str) -> JsValue {

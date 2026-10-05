@@ -1,4 +1,4 @@
-//! English G2P: the Latin runs of a CJK sentence (spec §2.3, phase 4), and the
+//! English G2P: the Latin runs of a CJK sentence, and the
 //! words the dictionary does not have (phase 9A).
 //!
 //! # Why not espeak
@@ -7,8 +7,7 @@
 //! exist: `espeak-ng-sys` is not on crates.io, the C sources do not compile for
 //! `wasm32-unknown-unknown` (no libc, and the host `ar` writes Mach-O archives
 //! that `rust-lld` cannot read), espeak needs a filesystem for its own data, and
-//! the pure-Rust port is GPL-3.0. The measurements are in
-//! `docs/superpowers/plans/p6-phase4-corrections.md`.
+//! the pure-Rust port is GPL-3.0.
 //!
 //! What this module uses instead is [`piper_plus_g2p`]: the CMU Pronouncing
 //! Dictionary (123,455 entries) plus ARPAbet→IPA, MIT-licensed, with the

@@ -1,4 +1,4 @@
-//! The dictionary protocol (spec §3.2), tested through the registry the wasm
+//! The dictionary protocol, tested through the registry the wasm
 //! boundary is a thin wrapper around.
 //!
 //! Deliberately not through `Phonemizer`: its methods return `Result<_, JsValue>`,
@@ -88,9 +88,10 @@ fn japanese_needs_the_ipadic_dictionary_and_two_grammars() {
 #[test]
 fn english_needs_the_two_text_normalization_grammars() {
     // English used to be the case where `prepare` had nothing to fetch — the CMU
-    // dictionary is compiled into the wasm (spec §2.3) — and it is the assertion
-    // that changed in phase 9B, on purpose and with the measurement written
-    // down (`docs/superpowers/plans/p6-9b2-implementation.md`).
+    // dictionary is compiled into the wasm — and it is the assertion
+    // that changed in phase 9B, on purpose: the numeral step is the vendored
+    // WeText engine, and its two grammars are fetched like every other
+    // language's.
     //
     // Two names rather than one archive: the registry's unit is a single zstd
     // frame, and the tagger without the verbalizer can only fail.
@@ -117,7 +118,7 @@ fn chinese_needs_the_jieba_dictionary_and_two_grammars() {
 
 #[test]
 fn the_frontend_decides_which_languages_are_speakable() {
-    // v1.1-zh has no Japanese frontend (spec §2.2, review focus #3).
+    // v1.1-zh has no Japanese frontend.
     let error = DictionaryRegistry::new()
         .declare_required("kokoro-v11-zh", "ja-JP")
         .expect_err("v1.1-zh cannot speak Japanese");

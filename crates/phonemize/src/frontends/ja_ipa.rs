@@ -1,4 +1,4 @@
-//! The Japanese frontend: kana to IPA (spec §2.2, frontend `Ja Ipa`).
+//! The Japanese frontend: kana to IPA (frontend `Ja Ipa`).
 //!
 //! This is the half of the Japanese pipeline that does not need a dictionary:
 //! once text has been read out as katakana — by [`crate::backends::segmenter_ja`]
@@ -58,7 +58,7 @@ pub fn fix_numeral_sound_changes(katakana: &str) -> String {
 /// Lookup is longest-match-first with a two-character lookahead, so キャ is
 /// `kja` and not `ki` + `ja`. A character with no entry is passed through
 /// unchanged, which is also what the JavaScript did; the vocabulary gate
-/// (spec §1.3, phase 5) is what turns that from a silent passthrough into a
+/// is what turns that from a silent passthrough into a
 /// checkable property.
 pub fn kana_to_ipa(kana: &str) -> String {
     let katakana: Vec<char> = to_raw_katakana(kana).chars().collect();

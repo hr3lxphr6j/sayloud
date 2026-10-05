@@ -1,5 +1,5 @@
 /**
- * The phonemize worker's behaviour, without the worker (P6 spec §2.4, phase 7).
+ * The phonemize worker's behaviour, without the worker.
  *
  * Split out for the same reason `KokoroEngine` is not inside `kokoro.worker.ts`:
  * a class buried in a worker module cannot have tests, and the two decisions

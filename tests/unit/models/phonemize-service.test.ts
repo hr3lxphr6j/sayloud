@@ -43,7 +43,7 @@ const JIEBA_URL = `/dictionaries/${JIEBA}.bin.zst`;
  * Every text-normalization grammar the registry can ask for (phases 9B, 9E).
  *
  * English's *pronunciation* dictionary is still compiled into the wasm — the CMU
- * dictionary, spec §2.3 — but all three languages read their numerals through the
+ * dictionary — but all three languages read their numerals through the
  * vendored WeText engine, and those grammars are OpenFST binaries. They arrive
  * the same way IPADic and jieba's word list do.
  */

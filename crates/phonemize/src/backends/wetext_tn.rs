@@ -125,9 +125,7 @@ pub fn english(tagger: &[u8], verbalizer: &[u8]) -> Result<Normalizer, WeTextErr
 /// Measured on 44 probe inputs, 22 move and 5 of those are the corpus's. What it
 /// costs is one class recorded in `tests/wetext_zh.rs`: a zero-padded number is
 /// fragmented rather than stripped, so `０１２３` reads 零一百二十三 where the
-/// hand-written reader said 一百二十三. `tests/zh_pipeline.rs` has the two tables
-/// and `docs/superpowers/plans/p6-9e-cjk-text-normalization.md` has the whole
-/// comparison against the Python reference.
+/// hand-written reader said 一百二十三. `tests/zh_pipeline.rs` has the two tables.
 pub fn chinese(tagger: &[u8], verbalizer: &[u8]) -> Result<Normalizer, WeTextError> {
     build(ZH, tagger, verbalizer)
 }

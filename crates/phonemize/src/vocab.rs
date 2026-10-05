@@ -1,4 +1,4 @@
-//! The vocabulary gate: what stops a phoneme the model cannot use (spec §1.3).
+//! The vocabulary gate: what stops a phoneme the model cannot use.
 //!
 //! The two Kokoro models do not share a phoneme inventory. v1.0 keeps 115
 //! characters and speaks IPA with four tone arrows; v1.1-zh keeps 172 and speaks

@@ -1,5 +1,5 @@
 /**
- * The phonemize worker (P6 spec §2.4, phase 7): Rust wasm and dictionaries, and
+ * The phonemize worker: Rust wasm and dictionaries, and
  * nothing else.
  *
  * It exists so that phonemizing is not a wall the model's session has to wait

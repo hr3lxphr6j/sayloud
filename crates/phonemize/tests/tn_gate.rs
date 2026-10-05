@@ -27,7 +27,7 @@
 
 mod common;
 
-use phonemize::backends::g2p_en::EnglishG2p;
+use phonemize::g2p::EnglishG2p;
 use phonemize::pipeline::phonemize_en;
 use phonemize::text::normalize_punctuation;
 use phonemize::tn;

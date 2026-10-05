@@ -65,7 +65,7 @@ pub enum SegmenterZhError {
 
 impl SegmenterZhError {
     /// A stable code for the JavaScript side, following
-    /// [`SegmenterError::code`](super::segmenter_ja::SegmenterError::code).
+    /// [`SegmenterError::code`](crate::g2p::ja::segmenter::SegmenterError::code).
     pub fn code(&self) -> &'static str {
         match self {
             Self::Dictionary { .. } => "dictionary-component",
@@ -250,7 +250,7 @@ impl SegmenterZh {
     /// from different places and only one of them is wanted: the *readings* are
     /// `pinyin-pro`'s, one per character, and the *boundaries* are jieba's. The
     /// pipeline zips them together — see
-    /// [`ChinesePinyin::han_to_ipa_by_words`](crate::backends::pinyin::ChinesePinyin::han_to_ipa_by_words).
+    /// [`ChinesePinyin::han_to_ipa_by_words`](crate::g2p::zh::pinyin::ChinesePinyin::han_to_ipa_by_words).
     ///
     /// **The coverage check is not defensive.** A mismatch means the segmenter
     /// dropped or invented characters, which would move every following syllable
@@ -353,9 +353,10 @@ mod tests {
         // one dictionary, and this asserts it on a corpus rather than assuming
         // it.
         let segmenter = segmenter();
-        let corpus: serde_json::Value =
-            serde_json::from_str(include_str!("../../tests/fixtures/zh-frontend-parity.json"))
-                .expect("the corpus parses");
+        let corpus: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/zh-frontend-parity.json"
+        ))
+        .expect("the corpus parses");
         let samples = corpus["samples"].as_array().expect("a sample list");
 
         for sample in samples {

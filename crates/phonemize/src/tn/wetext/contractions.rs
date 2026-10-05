@@ -17,7 +17,7 @@ use std::collections::HashMap;
 /// - leftovers_dict.json: Leftover suffixes (~17 rules)
 /// - slang_dict.json: Slang contractions (~50 rules)
 // The paths are module-relative rather than the crate-relative ones upstream
-// uses: this file sits inside `backends/wetext/`, so its data directory is a
+// uses: this file sits inside `tn/wetext/`, so its data directory is a
 // sibling rather than a crate-root `../data`.
 const CONTRACTIONS_JSON: &str = include_str!("data/contractions_dict.json");
 const LEFTOVERS_JSON: &str = include_str!("data/leftovers_dict.json");
@@ -122,7 +122,7 @@ static PATTERNS: Lazy<Vec<(Regex, String)>> = Lazy::new(|| {
 ///
 /// # Example
 /// ```rust,ignore
-/// use phonemize::backends::wetext::contractions::fix_contractions;
+/// use phonemize::tn::wetext::contractions::fix_contractions;
 ///
 /// assert_eq!(fix_contractions("I don't know"), "I do not know");
 /// assert_eq!(fix_contractions("It's gonna be fine"), "It is going to be fine");

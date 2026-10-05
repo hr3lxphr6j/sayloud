@@ -9,7 +9,7 @@
  * network, so those tables are extracted here, once, into text files that
  * `include_str!` puts in the wasm.
  *
- * **This is a port, not a reimplementation.** `crates/phonemize/src/backends/pinyin.rs`
+ * **This is a port, not a reimplementation.** `crates/phonemize/src/g2p/zh/pinyin.rs`
  * reproduces `pinyin-pro`'s algorithm step for step, so the data has to be
  * `pinyin-pro`'s own, and the readings have to stay in the order `pinyin-pro`
  * wrote them (that order *is* the priority: the first reading is the one a

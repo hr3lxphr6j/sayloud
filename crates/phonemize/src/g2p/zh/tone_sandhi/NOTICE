@@ -1,5 +1,5 @@
 ===========================================================================
-Mandarin tone sandhi and erhua (crates/phonemize/src/backends/tone_sandhi/)
+Mandarin tone sandhi and erhua (crates/phonemize/src/g2p/zh/tone_sandhi/)
 ===========================================================================
 
 This module is a port of the rules in PaddleSpeech, by the PaddlePaddle

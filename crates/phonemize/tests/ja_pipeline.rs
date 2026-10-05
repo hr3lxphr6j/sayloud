@@ -16,9 +16,9 @@ mod common;
 
 use std::collections::HashMap;
 
-use phonemize::backends::SegmenterJa;
 use phonemize::dictionary::DictionaryRegistry;
 use phonemize::dictionary::IPADIC_JA;
+use phonemize::g2p::SegmenterJa;
 
 use common::{dictionary_bytes, japanese_options, japanese_phonemizer};
 
@@ -488,7 +488,7 @@ fn the_numeral_step_reads_these_entities() {
     let Some(tn) = common::japanese_tn() else {
         return;
     };
-    let english = phonemize::backends::g2p_en::EnglishG2p::new().ok();
+    let english = phonemize::g2p::EnglishG2p::new().ok();
 
     let table: &[(&str, &str, &str)] = &[
         // A comma-grouped number: the old reader stopped at the separator.

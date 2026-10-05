@@ -14,13 +14,14 @@
 //! language-specific about it is *where* in the sequence it runs — which is the
 //! caller's business and not the step's.
 
-use crate::backends::g2p_en::{EnglishError, EnglishG2p};
-use crate::backends::pinyin::{ChinesePinyin, PinyinError};
-use crate::backends::segmenter_ja::{SegmenterError, SegmenterJa};
-use crate::backends::segmenter_zh::{SegmenterZh, SegmenterZhError};
-use crate::backends::tone_sandhi;
-use crate::backends::zh_text::{self, ZhRun};
-use crate::frontends::ja_ipa::{fix_numeral_sound_changes, kana_to_ipa};
+use crate::g2p::en::{EnglishError, EnglishG2p};
+use crate::g2p::ja::ipa::{fix_numeral_sound_changes, kana_to_ipa};
+use crate::g2p::ja::segmenter::{SegmenterError, SegmenterJa};
+use crate::g2p::zh::pinyin::{ChinesePinyin, PinyinError};
+use crate::g2p::zh::segmenter::{SegmenterZh, SegmenterZhError};
+use crate::g2p::zh::text as zh_text;
+use crate::g2p::zh::text::ZhRun;
+use crate::g2p::zh::tone_sandhi;
 use crate::text::{
     collapse_whitespace, keep_punctuation, normalize_punctuation, segment_text, ScriptRun,
 };
@@ -146,7 +147,7 @@ pub struct Phonemized {
 /// espeak would have invented a pronunciation, and inventing one is how it reads
 /// `RAG` as the word "rag". Phase 9A takes the middle road — the letter-to-sound
 /// rules of NRL Report 7948, which HeadTTS uses for the same job
-/// ([`headtts_en`](crate::backends::headtts_en)) — so the run is neither dropped
+/// ([`headtts_en`](crate::g2p::en::headtts)) — so the run is neither dropped
 /// nor spelled. An initialism is still spelled and still cannot be dropped: it is
 /// read from single letters, and all 26 of them are in the dictionary.
 ///

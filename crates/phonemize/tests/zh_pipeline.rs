@@ -54,7 +54,7 @@
 mod common;
 
 use common::{chinese_options, chinese_phonemizer};
-use phonemize::backends::segmenter_zh::SegmenterZh;
+use phonemize::g2p::zh::SegmenterZh;
 use phonemize::pipeline::{self, ToneRules};
 use phonemize::tn::wetext::Normalizer;
 use phonemize::{PhonemizeError, PhonemizeResult, Phonemizer};

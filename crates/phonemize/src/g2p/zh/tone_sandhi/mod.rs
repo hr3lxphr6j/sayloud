@@ -27,7 +27,7 @@
 //!
 //! It reads the readings one character at a time and writes back one *syllable*
 //! per character that still has one, in the spelling
-//! [`ChinesePinyin::syllable_to_ipa`](crate::backends::pinyin::ChinesePinyin::syllable_to_ipa)
+//! [`ChinesePinyin::syllable_to_ipa`](crate::g2p::zh::pinyin::ChinesePinyin::syllable_to_ipa)
 //! takes: `ni2`, and `wanr2` when the character carries the erhua coda. So it
 //! changes two things and only two: the tone digit, and whether an `r` sits
 //! before it. Everything else — which character reads which syllable, and where
@@ -109,7 +109,7 @@
 //!   per-character tones are fixed before the merge, which is the same thing
 //!   unless a phrase rule would span the seam.
 //! - **No HMM part-of-speech tagging.** See
-//!   [`SegmenterZh::tagged_words`](crate::backends::segmenter_zh::SegmenterZh::tagged_words):
+//!   [`SegmenterZh::tagged_words`](crate::g2p::zh::segmenter::SegmenterZh::tagged_words):
 //!   tags come from jieba's dictionary and a word outside it is `x`.
 //! - **No tone for a syllable the rules never touch.** An unchanged reading is
 //!   echoed back exactly as `pinyin-pro` wrote it, so this layer cannot change the
@@ -127,8 +127,8 @@ mod tables;
 
 use tables::{MUST_ERHUA, MUST_NEURAL_TONE_WORDS, MUST_NOT_NEURAL_TONE_WORDS, NOT_ERHUA};
 
-use crate::backends::pinyin::Syllable;
-use crate::backends::segmenter_zh::{SegmenterZh, TaggedWord};
+use crate::g2p::zh::pinyin::Syllable;
+use crate::g2p::zh::segmenter::{SegmenterZh, TaggedWord};
 
 /// The neutral tone, in the numbering these rules are written against.
 ///
@@ -225,7 +225,7 @@ pub struct Plan {
 /// then the third-tone rules — and that order is load-bearing rather than tidy:
 /// the third-tone rules read the tones the earlier two left behind.
 ///
-/// [`ChinesePinyin::complete_readings`]: crate::backends::pinyin::ChinesePinyin::complete_readings
+/// [`ChinesePinyin::complete_readings`]: crate::g2p::zh::pinyin::ChinesePinyin::complete_readings
 pub fn plan<'a>(
     text: &str,
     words: &[TaggedWord<'a>],
@@ -652,7 +652,7 @@ fn neural_sandhi(word: &[char], tag: &str, tones: &mut [u8], segmenter: &Segment
     //
     // **The name and the group are not the same characters**, which is the
     // reference's doing and not a slip here: see
-    // [`SegmenterZh::split_word`](crate::backends::segmenter_zh::SegmenterZh::split_word)
+    // [`SegmenterZh::split_word`](crate::g2p::zh::segmenter::SegmenterZh::split_word)
     // for 不怎么样, the word where the two disagree. The *name* is what the word
     // list is asked about and the *group* is what loses its last tone.
     let groups = [first, word.len() - first];

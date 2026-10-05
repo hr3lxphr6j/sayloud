@@ -1,6 +1,6 @@
 ===========================================================================
 HeadTTS letter-to-sound rules
-(crates/phonemize/src/backends/headtts_en/)
+(crates/phonemize/src/g2p/en/headtts/)
 ===========================================================================
 
 The rule table in `rules.rs` is a transcription of the English language module

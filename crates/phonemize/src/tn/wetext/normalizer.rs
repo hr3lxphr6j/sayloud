@@ -28,7 +28,7 @@ use super::token_parser::TokenParser;
 ///
 /// # Example
 /// ```rust,ignore
-/// use phonemize::backends::wetext::{Normalizer, NormalizerConfig, Language};
+/// use phonemize::tn::wetext::{Normalizer, NormalizerConfig, Language};
 ///
 /// let config = NormalizerConfig::new().with_lang(Language::En);
 /// let mut normalizer = Normalizer::from_bytes(config, [

@@ -156,7 +156,7 @@ fn reads_the_entity_classes_the_hand_written_reader_could_not() {
 ///
 /// This is the half of English TN that is not about numbers, and the half the
 /// Rust port silently skipped until `should_normalize` regained its `lang`
-/// parameter (modification 5 in `../src/backends/wetext/NOTICE`). A regression
+/// parameter (modification 5 in `../src/tn/wetext/NOTICE`). A regression
 /// here is invisible in every other test in this file, because every other input
 /// has a digit.
 #[test]

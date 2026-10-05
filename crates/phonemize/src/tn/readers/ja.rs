@@ -13,7 +13,7 @@
 //!
 //! Reading them as kanji rather than kana also means the reading comes from the
 //! dictionary rather than from this module — except for the five sound changes
-//! in [`crate::frontends::ja_ipa::fix_numeral_sound_changes`], which the
+//! in [`crate::g2p::ja::ipa::fix_numeral_sound_changes`], which the
 //! dictionary does not make.
 //!
 //! The known gaps are the ones the JavaScript documents and this keeps: `1,234`

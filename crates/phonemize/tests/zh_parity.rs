@@ -25,7 +25,7 @@
 //!   paths are in `tests/pinyin.rs`, because a corpus of successes cannot record
 //!   a refusal.
 
-use phonemize::backends::ChinesePinyin;
+use phonemize::g2p::ChinesePinyin;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

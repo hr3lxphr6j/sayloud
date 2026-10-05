@@ -31,7 +31,7 @@
 //! not in it. Until phase 9A they were spelled letter by letter, which is not a
 //! pronunciation — `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː`, six letters read
 //! as six letters — and phase 9A is the fix:
-//! [`headtts_en`](crate::backends::headtts_en), the letter-to-sound rules of NRL
+//! [`headtts_en`](crate::g2p::en::headtts), the letter-to-sound rules of NRL
 //! Report 7948 as HeadTTS adapted them, gives `GitHub` `ɡɪθəb` and `TypeScript`
 //! `tɪpɛskɹɪpt`. The dictionary is still asked first, so the change is confined
 //! to words that used to get nothing.
@@ -44,7 +44,7 @@
 //! rules. See [`has_vowel_letter`], which is where the line is drawn and why it is
 //! drawn on the input rather than on the answer.
 
-use crate::backends::headtts_en;
+pub mod headtts;
 use piper_plus_g2p::english::EnglishPhonemizer;
 use piper_plus_g2p::Phonemizer;
 
@@ -68,7 +68,7 @@ pub enum EnglishError {
 
 impl EnglishError {
     /// A stable code for the JavaScript side, following
-    /// [`SegmenterError::code`](crate::backends::SegmenterError::code).
+    /// [`SegmenterError::code`](crate::g2p::ja::segmenter::SegmenterError::code).
     pub fn code(&self) -> &'static str {
         match self {
             Self::Dictionary { .. } => "english-dictionary",
@@ -125,7 +125,7 @@ impl EnglishG2p {
     /// 1. **The dictionary**, which is the only one of the three that is a
     ///    pronunciation rather than a reading of the spelling.
     /// 2. **The rules**, for a word the dictionary does not have — see the module
-    ///    docs, and [`headtts_en`](crate::backends::headtts_en) for what they are
+    ///    docs, and [`headtts_en`](crate::g2p::en::headtts) for what they are
     ///    and are not.
     /// 3. **The letters**, for a run with no vowel letter in it and for the empty
     ///    run. This is what every OOV word used to get, kept as the last resort so
@@ -162,7 +162,7 @@ impl EnglishG2p {
         // dictionary had nothing for it. Phase 9A reads it by rule instead of
         // spelling it — unless it is not shaped like a word at all.
         if has_vowel_letter(run) {
-            if let Some(ipa) = headtts_en::phonemize(run) {
+            if let Some(ipa) = headtts::phonemize(run) {
                 if !ipa.is_empty() {
                     return Ok(ipa);
                 }

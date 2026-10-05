@@ -159,7 +159,7 @@ export class KokoroEngine {
    * rendering decision already known — `kokoro-js` rewrites `nˈaɪntɪ` to
    * `nˈaɪndi` for en-US and for no other variety — would need it. Making it a
    * silent parameter rather than a re-plumbing job is the cheaper half of that
-   * trade; `docs/superpowers/plans/p6-phase10-english.md` §五 records the gap.
+   * trade.
    */
   private async render(
     piece: SynthesizePiece,

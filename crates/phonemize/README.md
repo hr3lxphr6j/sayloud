@@ -7,8 +7,7 @@ This crate is the **whole** of text preprocessing: number reading, punctuation
 normalisation, script segmentation, dictionary lookup, G2P, and the vocabulary
 gate. It replaced a JavaScript chain (kuromoji + kuroshiro + jieba + espeak +
 pinyin-pro) that phase 8 deleted; see
-`docs/phonemization-architecture.md` for where it sits in the extension and
-`docs/superpowers/plans/2026-10-03-p6-rust-phonemize-spec.md` for why it exists.
+`docs/phonemization-architecture.md` for where it sits in the extension.
 
 ## What it does, and what it deliberately does not
 
@@ -25,8 +24,8 @@ crate had already phonemized, and one whose IPA never matched the token count th
 sentence was cut with. All three languages now reach the model as IPA through
 `generate_from_ids()`. The trade that came with it is real and documented
 (en-GB voices have no variant of their own here, and espeak read a few classes
-better): `docs/superpowers/plans/p6-phase10-english.md` §四 has the comparison and
-§五 the gaps, and **the listening test has not been done**.
+better): en-GB voices have no variant of their own here, and espeak read a few
+classes better. **The listening test has not been done.**
 
 Phase 9A gave the words that CMU dictionary does not have a reading instead of a
 spelling. Until it, `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː` — six letters read
@@ -49,7 +48,7 @@ the "7948" is the report's number, not its size — and it is `const` data: no
 fetched asset, 17,385 B of wasm, and no second dictionary. The measurements, the
 quality comparison (including the readings that are wrong and were kept) and the
 list of what was deliberately not ported are in
-`docs/superpowers/plans/p6-9a-headtts-integration.md`.
+`src/backends/headtts_en/` and its `NOTICE`.
 
 Phase 9B replaced the English *numeral* step with weighted FSTs vendored from
 WeTextProcessing (`src/backends/wetext/`), which reads dates, times, money,
@@ -62,8 +61,7 @@ not: the grammar's cheapest reading of `123` is `one hundred and twenty three`,
 and the copy's path extraction, `rustfst::shortest_path`, was returning a path
 **more expensive** than the minimum because these grammars carry negative arc
 weights that it does not handle. The copy now computes the minimum itself (see
-`src/backends/wetext/text_normalizer.rs`); the case is written up in
-`docs/superpowers/plans/p6-9b4-shortest-path-bug.md`. `1000` still reads
+`src/backends/wetext/text_normalizer.rs`). `1000` still reads
 `ten hundred`, which is the grammar's own tie and not the extraction's. Both
 halves are pinned by tests and written up in that module's `README.md`; the
 hand-written reader is still there as the fallback for a caller that never called
@@ -93,8 +91,7 @@ it, and every one of them passes vacuously — so the failure mode of removing i
 is the 33 ms/710 characters, not wrong audio. What the gate *can* get wrong is
 the other direction, and it does: the grammar's whitelist is 3,050 strings with
 no shape at all, so a proper noun in it that the pipeline would have respelled is
-skipped. That is measured, quantified and written up in
-`docs/superpowers/plans/p6-9b6-tn-gate.md` §四; the short version is 1,127 missed
+skipped. The short version is 1,127 missed
 keys, 182 of them audible, and 0 misses over 127 sentences of real prose.
 
 Phase 9D added the last step of the Chinese pipeline: **Mandarin tone sandhi and
@@ -111,8 +108,8 @@ Two things about it are worth knowing before touching it. **It is switchable**:
 and the corpus in `tests/fixtures/zh-frontend-parity.json` is pinned through it —
 because P5 §1.5 argues the v1.0 voices were trained *without* these rules and the
 only way to keep that decision reversible is to keep the old path runnable and
-tested. `lib.rs` passes `On`; see
-`docs/superpowers/plans/p6-9d-tone-sandhi-erhua.md` §八 for both sides of it.
+tested. `lib.rs` passes `On`; both arguments, and the evidence for each, are in
+`src/backends/tone_sandhi/mod.rs`.
 **And it was verified against the reference rather than against a reading of
 it**: PaddleSpeech's `ToneSandhi` was imported and driven with `pypinyin` and
 jieba's `posseg` on 466 sentences, which found **0 rule differences** and 13
@@ -137,9 +134,9 @@ agreement with `pip install wetext==0.1.8` on Chinese probes and from 23/29 to
 
 The three hand-written readers stayed, as `Option<&Normalizer>`'s `None`: the
 same argument as `ToneRules`, and the same reason the JavaScript parity corpus is
-still a test of anything. `docs/superpowers/plans/p6-9e-cjk-text-normalization.md`
-has the delta tables — including the two readings this made *worse* (`０１２３` and
-a lone `０`) — and the three places the task's description did not match the tree.
+still a test of anything. What the two CJK readers cost and buy is pinned in
+`src/backends/wetext_tn.rs`, `tests/wetext_zh.rs` and `tests/wetext_ja.rs` —
+including the two readings this made *worse* (`０１２３` and a lone `０`).
 
 ## Two rules the rest of the crate is shaped by
 
@@ -186,7 +183,7 @@ From TypeScript, use the wrapper rather than the generated bindings:
 entries and the per-`(frontend, lang)` preparation state, and exposes the three
 methods callers actually want (`ready`, `prepare`, `phonemize`). The generated
 `Phonemizer` is the layer below it and knows nothing about where bytes come from
-— by design (spec §3.2), so that a change of dictionary format is not a change of
+— by design, so that a change of dictionary format is not a change of
 JavaScript.
 
 ## Building and testing

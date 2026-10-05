@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-/// Which phoneme inventory the output has to belong to (spec §1.3).
+/// Which phoneme inventory the output has to belong to.
 ///
 /// The two Kokoro models do not share a vocabulary — v1.0 keeps 115 characters
 /// and v1.1-zh keeps 172, and each drops characters the other keeps. The
@@ -36,11 +36,11 @@ pub struct PhonemizeOptions {
 #[serde(rename_all = "camelCase")]
 pub struct PhonemizeResult {
     /// Exactly what goes into the tokenizer, guaranteed to contain only
-    /// characters the target model's vocabulary keeps (spec §1.3).
+    /// characters the target model's vocabulary keeps.
     pub phonemes: String,
     /// Offsets for word-level highlighting. Unpopulated in v1: the engine
     /// highlights per sentence today, and this is here so adding word-level
-    /// later does not change the signature (spec §3.1).
+    /// later does not change the signature.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spans: Option<Vec<PhonemeSpan>>,
     /// Runs of text that produced no phonemes, one message each.

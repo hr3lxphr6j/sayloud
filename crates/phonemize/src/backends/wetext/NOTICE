@@ -26,11 +26,10 @@ Modifications made for tts-ng
 ---------------------------------------------------------------------------
 
 The copy is upstream's `src/` at version 0.1.2 with the following changes.
-The first five are the ones the P6 phase 9B evaluation measured and recommended
-(`docs/superpowers/plans/p6-wetext-evaluation.md`, appendix B); the sixth is a
-correctness fix phase 9B.4 made after the evaluation, and the seventh is what
-phase 9E needed before it could wire Chinese and Japanese up at all. Nothing
-else about the normalization logic was touched.
+The first five came out of the evaluation that decided on a copy rather than a
+dependency; the sixth is a correctness fix found after the copy landed, and the
+seventh is what wiring Chinese and Japanese up needed. Nothing else about the
+normalization logic was touched.
 
 1. `text_normalizer.rs`: added `FstTextNormalizer::from_bytes`, and removed
    `from_file`. `rustfst`'s `SerializableFst::load` takes the whole OpenFST
@@ -73,8 +72,7 @@ else about the normalization logic was touched.
    readings were not equally costly. The probe was a one-off against
    `pip install wetext==0.1.8` and is not committed, so this note does not claim
    a new number for it — only that the old one should not be read as a limit on
-   how well the two agree now. See `README.md` and
-   `docs/superpowers/plans/p6-9b4-shortest-path-bug.md`.
+   how well the two agree now. See `README.md`.
 
 6. `text_normalizer.rs`: the one-best path is no longer extracted with
    `rustfst::shortest_path`. That function does not handle **negative arc
@@ -125,8 +123,7 @@ the configuration this crate builds for English leaves it off.
    gives the same answer as not having this engine, so no test that only checked
    the output could tell the difference.
 
-   Measured against `pip install wetext==0.1.8` (`docs/superpowers/plans/p6-9e-cjk-text-normalization.md`
-   §三): of 48 Chinese probe inputs the copy agreed on 45 before this change and
+   Measured against `pip install wetext==0.1.8`: of 48 Chinese probe inputs the copy agreed on 45 before this change and
    47 after; of 29 Japanese inputs it agreed on 23 before and **29 after**. Every
    remaining disagreement is `1.2.3%`, a malformed number that the reference's
    chained-regex front end and this FST composition fragment differently, and that

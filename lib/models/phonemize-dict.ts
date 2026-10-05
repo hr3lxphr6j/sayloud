@@ -1,5 +1,5 @@
 /**
- * Fetching dictionary bytes for the Rust phonemizer (spec §3.2).
+ * Fetching dictionary bytes for the Rust phonemizer.
  *
  * The wasm decides *which* dictionaries it needs and what is inside one; this
  * module only moves bytes. That is why nothing here knows a dictionary's

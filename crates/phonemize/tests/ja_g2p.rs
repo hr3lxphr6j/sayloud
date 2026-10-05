@@ -170,7 +170,7 @@ fn reads_a_particle_ha_as_ha() {
 fn keeps_an_unknown_character_rather_than_dropping_it() {
     // A silent drop is the failure mode this whole table exists to avoid, so the
     // unknown path is the one thing that must stay visible. The vocabulary gate
-    // (spec §1.3, phase 5) is what turns it into a report.
+    // is what turns it into a report.
     assert_eq!(kana_to_ipa("あQい"), "aQi");
 }
 

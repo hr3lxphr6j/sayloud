@@ -99,7 +99,7 @@ export interface OnDeviceModel {
   /** BCP-47 tags this model can actually speak. */
   readonly languages: readonly string[];
   /**
-   * The phoneme inventory its voices need (P6 spec §1.3).
+   * The phoneme inventory its voices need.
    *
    * A property of the model rather than of the text or the voice: v1.0 and
    * v1.1-zh are two models with two inventories, and the same Chinese sentence

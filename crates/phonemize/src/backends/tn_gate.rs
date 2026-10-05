@@ -3,7 +3,7 @@
 //! # Why there is a gate at all
 //!
 //! English TN is two weighted-FST compositions, and 92% of the cost is the
-//! tagger (`docs/superpowers/plans/p6-9b3-fst-and-gate.md` §五): 33 ms for 710
+//! tagger: 33 ms for 710
 //! characters of prose in a release build, growing linearly with the input. That
 //! cost is paid on *every* English sentence, because upstream's English TN is
 //! deliberately not gated on digits — `should_normalize` returns true for any
@@ -40,8 +40,7 @@
 //! it, and `piper-plus-g2p` links it), so it would cost no new dependency — but
 //! it would cost a compiled automaton, and this runs on every English sentence
 //! including the ones with nothing in them. The scan is one pass, no allocation,
-//! and measures 4–5 µs for 710 characters against the 33 ms it decides about
-//! (see `p6-9b6-tn-gate.md` §三).
+//! and measures 4–5 µs for 710 characters against the 33 ms it decides about.
 //!
 //! # The one criterion that is not a shape
 //!
@@ -50,8 +49,8 @@
 //! ordinary title-cased or all-caps words. They come from
 //! `tn/english/data/whitelist/alternatives.tsv`, which the tagger reads as a
 //! string map, and the only way to see them without running the tagger is to
-//! know the words. [`SHAPE_LESS_ABBREVIATIONS`] is that list, and
-//! `p6-9b6-tn-gate.md` §四 measures how much of the same class is *not* in it.
+//! know the words. [`SHAPE_LESS_ABBREVIATIONS`] is that list; the part of the same
+//! class it cannot cover is quantified on it below.
 
 /// Characters upstream's `tn/english/data/whitelist/symbol.tsv` maps to a spoken
 /// word, plus the `/` that only ever appears next to one of them.
@@ -114,9 +113,9 @@ fn is_normalized_symbol(character: char) -> bool {
 /// reads the table as a string map and a string map has no shape. What is here is
 /// the subset that has no dot, digit, symbol or capital run to be recognised by
 /// *and* whose reading is a different word rather than the same word in capitals —
-/// the subset that can be heard. `p6-9b6-tn-gate.md` §四 measures what is missing
-/// from it: of the 1,127 shape-less whitelist keys this gate skips, 182 change the
-/// phonemes and the other 945 are proper nouns (`Acis`, `Uusi`, `Vrtis`) whose
+/// the subset that can be heard. What is missing from it: of the 1,127 shape-less
+/// whitelist keys this gate skips, 182 change the phonemes and the other 945 are
+/// proper nouns (`Acis`, `Uusi`, `Vrtis`) whose
 /// capitalisation the pipeline's G2P spells out the same way either way.
 const SHAPE_LESS_ABBREVIATIONS: [&str; 15] = [
     // Days.
@@ -167,7 +166,7 @@ fn has_capital_run(text: &str) -> bool {
 /// `false`. It is left that way on purpose: the alternative is to fire on prose
 /// whose sentences end in any word of five letters or fewer, which is a large
 /// fraction of real input, and the cost of this one is a miss on a shape that is
-/// rare at the end of a sentence. `p6-9b6-tn-gate.md` §四.3 has the measurement.
+/// rare at the end of a sentence.
 fn has_terminated_abbreviation(text: &str) -> bool {
     let bytes = text.as_bytes();
     for (dot, byte) in bytes.iter().enumerate() {

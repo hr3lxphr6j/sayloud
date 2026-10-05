@@ -54,11 +54,21 @@ const IPADIC_URL = '/dictionaries/lindera-ipadic-ja.bin.zst';
 const JIEBA_URL = '/dictionaries/jieba-zh-dict.bin.zst';
 
 /**
- * The English text-normalization grammars (phase 9B), by the names the wasm
- * asks for. English's pronunciation dictionary is compiled in; these are what
- * `prepare` fetches, and what the English benchmark below now pays for.
+ * The text-normalization grammars `prepare` fetches, by the names the wasm asks
+ * for. The pronunciation dictionary (English's CMU) and the pinyin tables are
+ * compiled in; these are the assets the numeral step needs, and **every**
+ * language needs a pair now — English's since phase 9B, Chinese's and
+ * Japanese's since 9E. The Chinese and Japanese benchmarks below fail with
+ * "no fake route" if these are not all here.
  */
-const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
+const WETEXT = [
+  'wetext-en-tn-tagger',
+  'wetext-en-tn-verbalizer',
+  'wetext-ja-tn-tagger',
+  'wetext-ja-tn-verbalizer',
+  'wetext-zh-tn-tagger',
+  'wetext-zh-tn-verbalizer',
+] as const;
 
 function asset(name: string): DictionaryBytes {
   return new Uint8Array(readFileSync(resolve(ROOT, `public/dictionaries/${name}.bin.zst`)));
@@ -76,7 +86,7 @@ function newPhonemizer(): RustPhonemizer {
       [IPADIC_URL]: { bytes: asset('lindera-ipadic-ja') },
       [JIEBA_URL]: { bytes: asset('jieba-zh-dict') },
       ...Object.fromEntries(
-        WETEXT_EN.map((name) => [`/dictionaries/${name}.bin.zst`, { bytes: asset(name) }])
+        WETEXT.map((name) => [`/dictionaries/${name}.bin.zst`, { bytes: asset(name) }])
       ),
     }),
     cacheStorage: new FakeCaches(),

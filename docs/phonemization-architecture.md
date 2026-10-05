@@ -6,8 +6,7 @@
 > 以及 `kuromoji`/`kuroshiro`/`jieba-wasm`/`phonemizer` 依赖都不在了。
 >
 > 本文上一版描述的是那条 JS 链，并在开头写着"迁移落地后应重写"——现在重写了。
-> 分阶段记录见 `docs/superpowers/plans/p6-phase*-*.md`，设计与理由见
-> `docs/superpowers/plans/2026-10-03-p6-rust-phonemize-spec.md`。
+> 选型与终态见 `docs/superpowers/plans/P6-FINAL.md`。
 
 ## 一句话
 
@@ -89,8 +88,8 @@ verbalizer 说出来。英文的**发音**词典仍然是编进 wasm 的 CMU Dic
 1. **渲染路径**。阶段 10 之前 `KokoroEngine.render()` 按语言分叉：英文走
    `tts.generate(piece.text)`（kokoro-js 内部 espeak），中日文走 `generate_from_ids(ipa)`。
    现在三种语言都走 IPA。代价与缺口（尤其是 8 个英式音色没有自己的音素变体、
-   `nˈaɪnti`→`nˈaɪndi` 这类 en-US 专属改写的缺失）在
-   `docs/superpowers/plans/p6-phase10-english.md` §四/§五，**听感测试未做**。
+   `nˈaɪnti`→`nˈaɪndi` 这类 en-US 专属改写的缺失）见 `crates/phonemize/README.md`，
+   **听感测试未做**。
 2. **token 数与音频不一致**。`worker-engine.ts` 对所有语言都调 phonemize worker，
    英文也不例外——于是英文那句的 token 数按 Rust IPA 算、音频按 espeak IPA 合成，
    两者长度不同，切句估算因此对英文略偏。阶段 10 之后两者是同一串 IPA，这条不一致消失。
@@ -115,7 +114,7 @@ OpenAI / DashScope / Volcengine / Azure / ElevenLabs / OpenAI-compat 收原始�
 - **中文声调是箭头**（↗↘），不是变音符号；v1.1-zh 用注音 + 声调数字。
 - **中文变调与儿化音是阶段 9D 加的，而且可关**（`pipeline::ToneRules`）：
   P5 §1.5 的论证是 v1.0 音色训练时不做这两件事，所以 `Off` 保留为阶段 6 管线的逐字
-  复现，冻结语料一直跑 `Off`。两边的证据在 `docs/superpowers/plans/p6-9d-tone-sandhi-erhua.md` §八。
+  复现，冻结语料一直跑 `Off`。两边的证据在 `crates/phonemize/src/backends/tone_sandhi/mod.rs`。
 
 ## 对照语料：三份冻结的黄金文件
 
@@ -154,8 +153,7 @@ JS 当年产出上，谁也不能再改语料。三份测试的注释都改成�
 
 ## 参考
 
-- 设计与理由：`docs/superpowers/plans/2026-10-03-p6-rust-phonemize-spec.md`
-- 分阶段记录：`p6-zh-frontend.md`、`p6-phase7-two-workers.md`、`p6-phase8-cleanup.md`
+- 选型与终态：`docs/superpowers/plans/P6-FINAL.md`
 - crate 说明：`crates/phonemize/README.md`
 - 中文 G2P 的听感验证：`docs/superpowers/plans/2026-10-01-p5-chinese-g2p-v11zh-spec.md`
 - [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)、[misaki](https://github.com/hexgrad/misaki)

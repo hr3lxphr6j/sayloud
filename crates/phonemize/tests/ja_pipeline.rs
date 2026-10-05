@@ -308,7 +308,7 @@ fn the_unwired_language_code_is_still_stable() {
 
 #[test]
 fn reports_a_language_the_frontend_cannot_speak_as_a_frontend_problem() {
-    // The distinction that matters for the message the user sees (spec §8.1):
+    // The distinction that matters for the message the user sees:
     // this is "that voice cannot read this", not "this build is unfinished".
     let phonemizer = phonemize::Phonemizer::new();
     let options = phonemize::PhonemizeOptions {

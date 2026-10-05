@@ -1,4 +1,4 @@
-//! The dictionary protocol (spec §3.2).
+//! The dictionary protocol.
 //!
 //! The wasm is the source of truth for *which* dictionaries are needed and what
 //! is inside one; the JavaScript side only moves bytes. That split is why this
@@ -6,8 +6,8 @@
 //! bytes and does the unpacking itself: swapping a dictionary format must not
 //! make the JS change.
 //!
-//! The registry holds decompressed bytes. That is the format spec §4.3 asks for
-//! — "解压即可用" — and the one the lindera dictionary already has: its trie and
+//! The registry holds decompressed bytes. That is the format the protocol asks
+//! for — "解压即可用" — and the one the lindera dictionary already has: its trie and
 //! connection matrix are prebuilt, so decompression is the whole of the load
 //! (measured: 45.3 MB in 9.6 ms).
 
@@ -93,12 +93,12 @@ pub const WETEXT_JA_TN_TAGGER: &str = "wetext-ja-tn-tagger";
 /// 36 KB compressed. See [`WETEXT_JA_TN_TAGGER`].
 pub const WETEXT_JA_TN_VERBALIZER: &str = "wetext-ja-tn-verbalizer";
 
-/// What each frontend can speak (spec §2.2).
+/// What each frontend can speak.
 ///
 /// The frontend is the model's phoneme inventory, and the two do not cover the
 /// same languages: v1.1-zh has no Japanese frontend, so a Japanese voice on that
 /// model has to fail loudly rather than phonemize into characters its tokenizer
-/// drops (spec §1.3, review focus #3).
+/// drops.
 pub fn supported_languages(frontend: &str) -> Option<&'static [&'static str]> {
     match frontend {
         "kokoro-v1" => Some(&["zh", "ja", "en"]),
@@ -114,16 +114,16 @@ pub fn supported_languages(frontend: &str) -> Option<&'static [&'static str]> {
 ///
 /// Empty is still a real answer, though no language gives it today: the English
 /// CMU dictionary and the Chinese pinyin tables are compiled into the wasm
-/// (spec §2.3), and only the parts that cannot be are fetched.
+///, and only the parts that cannot be are fetched.
 ///
 /// **Every language now fetches the two WeText TN grammars, and that is the
 /// whole of what phase 9E changed here.** They are the *numeral* step rather
-/// than the phoneme step, which is why a non-empty list is not a contradiction
-/// of spec §2.3.
+/// than the phoneme step, which is why a non-empty list here does not contradict
+/// the rule that the phoneme data is compiled in.
 fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
     match language {
         // IPADic: prebuilt trie + connection matrix, ~10 MB compressed and
-        // 45.3 MB in memory (spec §1.4).
+        // 45.3 MB in memory.
         "ja" => Some(&[IPADIC_JA, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER]),
         // jieba's word list: plain text, 1.6 MB compressed and 4.8 MB in memory,
         // read by `jieba-rs` rather than by a dictionary builder. It is the one
@@ -341,7 +341,7 @@ impl DictionaryRegistry {
     /// Check that everything the last request asked for has arrived.
     ///
     /// Building the actual indices belongs here once there are any; today the
-    /// bytes *are* the index (spec §4.3).
+    /// bytes *are* the index.
     pub fn finish(&self) -> Result<(), DictionaryError> {
         let missing: Vec<String> = self
             .required

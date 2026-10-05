@@ -17,8 +17,8 @@ serde = { version = "1.0", features = ["derive"] }
 # The JS-facing shapes cross the boundary as plain objects, not JSON strings.
 serde-wasm-bindgen = "0.6"
 
-# Dictionary decompression (spec §2.5: shipped compressed, unpacked inside the
-# wasm). This is the pure-Rust decoder rather than the C `zstd` crate, which
+# Dictionary decompression: shipped compressed, unpacked inside the wasm. This is
+# the pure-Rust decoder rather than the C `zstd` crate, which
 # cannot link for `wasm32-unknown-unknown` on macOS: zstd-sys compiles the C
 # sources to wasm objects correctly, but archives them with the host `ar`, which
 # only understands Mach-O. It silently writes an archive holding just
@@ -31,7 +31,7 @@ serde-wasm-bindgen = "0.6"
 # the wasm does. Cost: ~120 ms for a 45 MB dictionary, measured in wasm.
 ruzstd = "0.9"
 
-# Japanese segmentation (spec §1.4). `default-features = false` is required
+# Japanese segmentation. `default-features = false` is required
 # rather than tidy: the default feature is `mmap`, and there is nothing to memory
 # map on `wasm32-unknown-unknown`. The dictionary crate is a direct dependency as
 # well because `lindera::dictionary::Dictionary` is a type *alias* for
@@ -39,9 +39,9 @@ ruzstd = "0.9"
 # naming its component types — `lindera` re-exports `Dictionary` and `Metadata`
 # and nothing else. See `src/backends/segmenter_ja.rs` for why that is necessary
 # at all: the crate has no `load_from_bytes`.
-# English G2P (spec §2.3, phase 4): CMU Dict + ARPAbet→IPA, which is what the
-# Latin runs of a CJK sentence need. The data is compiled into the wasm, the way
-# spec §2.3 asks for it, so this language fetches no dictionary.
+# English G2P: CMU Dict + ARPAbet→IPA, which is what the Latin runs of a CJK
+# sentence need. The data is compiled into the wasm, so this language fetches no
+# dictionary.
 #
 # **A git dependency, and that is the point rather than a shortcut.** The
 # published 0.4.0 does not ship the dictionary at all: its `EnglishPhonemizer::new()`
@@ -49,9 +49,8 @@ ruzstd = "0.9"
 # `/usr/share/piper/...`), and `wasm32-unknown-unknown` has no filesystem — the
 # crate's own `data/` directory and the `bundled-dicts` feature that reads it
 # with `include_str!` landed after 0.4.0 and are unreleased. The alternatives
-# (espeak-ng-sys does not exist, compiling espeak's C sources needs a libc and a
-# working archiver, espeak-ng-rs is GPL-3.0) are measured in
-# `docs/superpowers/plans/p6-espeak-alternatives-final.md`.
+# (espeak-ng-sys is not on crates.io, the C sources do not build for
+# `wasm32-unknown-unknown`, and the pure-Rust port is GPL-3.0).
 #
 # Pinned to a revision rather than a branch: the 3.75 MB dictionary is embedded
 # in the module, so an unpinned revision would make the wasm's contents a
@@ -80,9 +79,9 @@ tar = "0.4"
 # A crate rather than a hand-written table, because the hard part is not 0–19: it
 # is 1001 gaining an "and", 999 losing it, a minus sign, a decimal point, and the
 # magnitude names. MIT OR Apache-2.0, no C sources and no filesystem, ~152 KB in
-# the release wasm (measured in `docs/superpowers/plans/p6-phase5-plan.md`).
-# `num2words2-core`, the alternative that also covers Chinese, was measured at
-# 2.7 MB and rejected — the Chinese reading is already in `numbers.rs`.
+# the release wasm. `num2words2-core`, the alternative that also covers Chinese,
+# was measured at 2.7 MB and rejected — the Chinese reading is already in
+# `numbers.rs`.
 #
 # 1.2.0 is the version that was measured; a bump changes the wording of numerals,
 # and that wording is what the English pipeline's tests pin.
@@ -115,9 +114,9 @@ jieba-rs = { version = "0.11", default-features = false }
 # of `wetext-rs` 0.1.2 with the five changes `NOTICE` lists, because the
 # published crate can only load FSTs from a directory, has a defect that makes
 # `２０２２年` normalize to nothing, and has a second one that made English TN skip
-# every sentence with no digit in it. The evaluation that decided to vendor it —
-# including why a fork was not the answer — is
-# `docs/superpowers/plans/p6-wetext-evaluation.md`.
+# every sentence with no digit in it. What those three have in common is that
+# they are all in the published crate's shape rather than in its behaviour, and
+# copying the source is what makes them fixable here.
 #
 # **`SerializableFst::load` takes a `&[u8]`**, which is why the copy needs no
 # filesystem: the only constructor it has parses a slice the dictionary protocol

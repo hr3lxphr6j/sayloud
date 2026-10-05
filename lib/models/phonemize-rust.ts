@@ -2,12 +2,11 @@
  * The Rust phonemizer (P6).
  *
  * Replaces the JavaScript chain — kuromoji + kuroshiro + jieba + espeak +
- * pinyin-pro — with a single wasm module. See
- * `docs/superpowers/plans/2026-10-03-p6-rust-phonemize-spec.md`.
+ * pinyin-pro — with a single wasm module.
  *
  * `ready` is the whole async story. Once it resolves, `phonemize` is
  * synchronous: the pipeline runs entirely inside the wasm, with no I/O, which is
- * the point of the migration (spec §3.1). Dictionaries are the one exception and
+ * the point of the migration. Dictionaries are the one exception and
  * are loaded explicitly through `prepare`, before the first call.
  *
  * `./phonemize-wasm/` is wasm-pack output — a build artifact, not source. Run
@@ -113,7 +112,7 @@ export class RustPhonemizer {
    *
    * Asynchronous because it is fetch plus decompression. Kept out of
    * `phonemize` on purpose: the caller already knows which language is involved
-   * — it comes from the selected voice (spec §1.5) — so it decides when to pay
+   * — it comes from the selected voice — so it decides when to pay
    * for loading, and `phonemize` can stay synchronous. Calling it as soon as the
    * voice is picked is what keeps the cost off the first sentence.
    *
@@ -125,7 +124,7 @@ export class RustPhonemizer {
     const instance = this.requireInstance();
 
     // The wasm decides which dictionaries exist and what they are called; this
-    // side only moves the bytes (spec §3.2).
+    // side only moves the bytes.
     const names = this.callWasm(() => instance.required_dictionaries(frontend, lang));
 
     // All at once, then fed one by one: the fetches are independent, and the
@@ -150,7 +149,7 @@ export class RustPhonemizer {
    * {@link dictionaryFailure}: these failures are not dictionary *loads* — a
    * segmenter that could not be built, or a `prepare` that never ran — and
    * classifying them as load failures would report the wrong reason. The wasm
-   * already throws an `Error` carrying a stable `code` (spec §8.1).
+   * already throws an `Error` carrying a stable `code`.
    */
   phonemize(text: string, options: PhonemizeOptions): PhonemizeResult {
     const instance = this.requireInstance();

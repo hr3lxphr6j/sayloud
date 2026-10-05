@@ -18,7 +18,7 @@ cd "$(dirname "$0")/../.."
 
 if ! command -v wasm-pack >/dev/null 2>&1; then
   echo "wasm-pack not found. Install it with: cargo install wasm-pack" >&2
-  echo "See docs/superpowers/plans/2026-10-03-p6-rust-phonemize-implementation.md" >&2
+  echo "See docs/superpowers/plans/P6-FINAL.md" >&2
   exit 1
 fi
 

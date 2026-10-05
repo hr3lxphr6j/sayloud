@@ -9,7 +9,7 @@
 # (decision #18) and re-packing it would be a second format to keep working.
 #
 # The frame is zstd rather than the release's deflate for a reason worth writing
-# down: the wasm decompresses it with `ruzstd` (spec §2.5), and zstd over the raw
+# down: the wasm decompresses it with `ruzstd`, and zstd over the raw
 # files is ~4.5x. Over the release's *zip* it would be nothing at all, because
 # deflate output is already incompressible — which is why the zip is unpacked here
 # rather than shipped.

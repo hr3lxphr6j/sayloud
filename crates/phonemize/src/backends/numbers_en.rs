@@ -24,8 +24,7 @@
 //! not 0–19 — it is everything else: 1001 gaining an "and", 999 losing it, a
 //! minus sign, a decimal point, and the magnitude names past a billion. The
 //! crate is MIT OR Apache-2.0, has no C and no filesystem, and costs ~152 KB in
-//! the release wasm (measured in `docs/superpowers/plans/p6-phase5-plan.md`).
-//! The alternative that also covers Chinese, `num2words2-core`, was measured at
+//! the release wasm. The alternative that also covers Chinese, `num2words2-core`, was measured at
 //! 2.7 MB and rejected for that reason — the Chinese reading already exists in
 //! `numbers.rs`.
 //!

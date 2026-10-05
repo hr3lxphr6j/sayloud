@@ -20,8 +20,7 @@
 //! is in the list, because a corpus is only evidence to the extent a reader can
 //! see what it covers.
 //!
-//! **What these tests cannot see is documented in
-//! `docs/superpowers/plans/p6-9b6-tn-gate.md` §四**: the grammar's whitelist
+//! **What these tests cannot see:** the grammar's whitelist
 //! contains 3,050 strings with no shape at all, and a gate that never runs the
 //! tagger cannot enumerate them. The corpus pins the ones that are common English
 //! words; the proper nouns are a measured, quantified hole.
@@ -458,7 +457,7 @@ fn skipping_is_the_same_as_the_pipeline_without_the_engine() {
 /// paragraph fires whenever one of its sentences ends in a word of five letters or
 /// fewer — which, measured on this crate's own English README, is 9 of 12
 /// paragraphs. A paragraph whose sentences all end in longer words is quiet, and
-/// this is one; `p6-9b6-tn-gate.md` §三 has the measured cost of the other kind.
+/// this is one.
 #[test]
 fn a_paragraph_with_nothing_in_it_goes_through_the_pipeline_unchanged() {
     let Some((_, normalizer)) = engine() else {

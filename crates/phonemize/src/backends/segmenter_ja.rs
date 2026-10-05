@@ -1,4 +1,4 @@
-//! Japanese segmentation, on lindera with IPADic (spec §1.4, §2.3).
+//! Japanese segmentation, on lindera with IPADic.
 //!
 //! # Why this builds a `Dictionary` by hand
 //!
@@ -36,12 +36,13 @@
 //!
 //! The registry keeps the decompressed tar (45.4 MB), and the `Dictionary` built
 //! from it holds a second copy of the same nine files. That is ~91 MB for
-//! Japanese, against the 45.3 MB the spec budgets. It is a known cost, not an
-//! oversight: the fix is either to release the container once the dictionary is
-//! built, or to leak one aligned buffer and hand lindera `Data::Static` slices
-//! of it, and both change the phase 2 registry contract or depend on worker
-//! recycling behaviour that spec §7 V8 has not verified yet. Plan task 8.2 is
-//! where the memory budget is validated; this is the item it should start from.
+//! Japanese, against the 45.3 MB the dictionary itself needs. It is a known cost,
+//! not an oversight: the fix is either to release the container once the
+//! dictionary is built, or to leak one aligned buffer and hand lindera
+//! `Data::Static` slices of it, and both change the phase 2 registry contract or
+//! depend on worker recycling behaviour that nothing here has verified yet. The
+//! memory budget has no test on either side of that trade; this is the item such
+//! a test should start from.
 
 use std::borrow::Cow;
 use std::io::Read;

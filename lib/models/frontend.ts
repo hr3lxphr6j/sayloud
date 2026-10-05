@@ -1,5 +1,5 @@
 /**
- * Which phoneme inventory a voice needs (P6 spec §1.3, §2.2).
+ * Which phoneme inventory a voice needs.
  *
  * A frontend is not a language. v1.0 and v1.1-zh are two models with two
  * *inventories* — IPA with arrow tones against zhuyin with digit tones — and

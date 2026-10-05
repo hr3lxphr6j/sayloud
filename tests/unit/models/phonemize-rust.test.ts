@@ -146,7 +146,7 @@ function chinesePhonemizerWith(bytes: DictionaryBytes) {
  *
  * All three languages read their numerals through the vendored WeText engine:
  * English's pair since phase 9B, Chinese's and Japanese's since 9E. English's
- * *pronunciation* dictionary is compiled into the wasm (spec §2.3) — the CMU
+ * *pronunciation* dictionary is compiled into the wasm — the CMU
  * dictionary — so for English these two are the whole of what `prepare`
  * fetches, and for the other two they arrive alongside IPADic or jieba's word
  * list.
@@ -269,7 +269,7 @@ describe('RustPhonemizer.prepare', () => {
 
     // The names come from the wasm, not from this side — `required_dictionaries`
     // is the one place that decides what a language costs, which is what keeps a
-    // dictionary swap from being a JavaScript change (spec §3.2). Three since
+    // dictionary swap from being a JavaScript change. Three since
     // phase 9E: IPADic and the two Japanese TN grammars.
     expect(fetch.calls).toEqual([IPADIC_URL, ...WETEXT_JA_URLS]);
     for (const url of fetch.calls) {
@@ -310,7 +310,7 @@ describe('RustPhonemizer.prepare', () => {
   });
 
   it('rejects a language the frontend cannot speak', async () => {
-    // v1.1-zh has no Japanese frontend (spec §2.2, review focus #3). Reported
+    // v1.1-zh has no Japanese frontend. Reported
     // here rather than at the first sentence, because this runs when the voice
     // is picked — before anything is playing.
     const { phonemizer, fetch } = phonemizerWith();

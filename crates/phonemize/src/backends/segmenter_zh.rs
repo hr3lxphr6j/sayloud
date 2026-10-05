@@ -1,4 +1,4 @@
-//! Chinese word segmentation, on jieba (spec §3.11, phase 6).
+//! Chinese word segmentation, on jieba.
 //!
 //! # Why there is a segmenter here at all
 //!
@@ -129,7 +129,7 @@ impl SegmenterZh {
     /// `dictionary` is jieba's own `dict.txt` — a `word freq tag` list, one word
     /// per line — because that is the format the crate parses and the format the
     /// asset is stored in. Uncompressed bytes, like every other dictionary: the
-    /// zstd frame is unwrapped before it reaches this module (spec §4.3).
+    /// zstd frame is unwrapped before it reaches this module.
     pub fn from_dictionary(dictionary: &[u8]) -> Result<Self, SegmenterZhError> {
         let mut reader = BufReader::new(dictionary);
         Jieba::with_dict(&mut reader)

@@ -172,8 +172,7 @@ impl FstTextNormalizer {
 /// readings exist, `one hundred and twenty three` costs `0.000000` and is the
 /// cheapest, and `shortest_path` returned `one two three` at `0.000200`. Of 18
 /// probe sentences through the real pipeline, 7 were affected, and every one was
-/// the engine picking a *more* expensive path. See
-/// `docs/superpowers/plans/p6-9b4-shortest-path-bug.md`.
+/// the engine picking a *more* expensive path.
 ///
 /// Algorithm:
 /// 1. relax every arc, `|V|` times, recording the arc each state was reached by;

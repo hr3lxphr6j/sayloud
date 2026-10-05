@@ -226,7 +226,7 @@ pub fn japanese_tn() -> Option<Normalizer> {
 /// Options for the v1.0 Japanese frontend.
 pub fn japanese_options() -> PhonemizeOptions {
     PhonemizeOptions {
-        frontend: "kokoro-v1".to_string(),
+        vocab: "kokoro-v1".to_string(),
         lang: "ja-JP".to_string(),
     }
 }
@@ -234,7 +234,7 @@ pub fn japanese_options() -> PhonemizeOptions {
 /// Options for the v1.0 Chinese frontend.
 pub fn chinese_options() -> PhonemizeOptions {
     PhonemizeOptions {
-        frontend: "kokoro-v1".to_string(),
+        vocab: "kokoro-v1".to_string(),
         lang: "zh-CN".to_string(),
     }
 }
@@ -242,7 +242,7 @@ pub fn chinese_options() -> PhonemizeOptions {
 /// Options for the v1.0 English frontend.
 pub fn english_options() -> PhonemizeOptions {
     PhonemizeOptions {
-        frontend: "kokoro-v1".to_string(),
+        vocab: "kokoro-v1".to_string(),
         lang: "en-US".to_string(),
     }
 }

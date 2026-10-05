@@ -93,14 +93,14 @@ pub const WETEXT_JA_TN_TAGGER: &str = "wetext-ja-tn-tagger";
 /// 36 KB compressed. See [`WETEXT_JA_TN_TAGGER`].
 pub const WETEXT_JA_TN_VERBALIZER: &str = "wetext-ja-tn-verbalizer";
 
-/// What each frontend can speak.
+/// What each vocabulary can speak.
 ///
-/// The frontend is the model's phoneme inventory, and the two do not cover the
-/// same languages: v1.1-zh has no Japanese frontend, so a Japanese voice on that
-/// model has to fail loudly rather than phonemize into characters its tokenizer
-/// drops.
-pub fn supported_languages(frontend: &str) -> Option<&'static [&'static str]> {
-    match frontend {
+/// The name is the model's (`kokoro-v1`, `kokoro-v11-zh`) and the two do not
+/// cover the same languages: v1.1-zh has no Japanese pipeline at all, so a
+/// Japanese voice on that model has to fail loudly rather than phonemize into
+/// characters its tokenizer drops.
+pub fn supported_languages(vocab: &str) -> Option<&'static [&'static str]> {
+    match vocab {
         "kokoro-v1" => Some(&["zh", "ja", "en"]),
         "kokoro-v11-zh" => Some(&["zh", "en"]),
         _ => None,
@@ -152,16 +152,15 @@ pub fn primary_language(lang: &str) -> String {
 }
 
 /// The names one `(frontend, lang)` pair needs, or why it cannot be prepared.
-pub fn dictionary_names(frontend: &str, lang: &str) -> Result<Vec<String>, DictionaryError> {
-    let languages =
-        supported_languages(frontend).ok_or_else(|| DictionaryError::UnknownFrontend {
-            frontend: frontend.to_string(),
-        })?;
+pub fn dictionary_names(vocab: &str, lang: &str) -> Result<Vec<String>, DictionaryError> {
+    let languages = supported_languages(vocab).ok_or_else(|| DictionaryError::UnknownVocab {
+        vocab: vocab.to_string(),
+    })?;
 
     let primary = primary_language(lang);
     if !languages.contains(&primary.as_str()) {
         return Err(DictionaryError::UnsupportedLanguage {
-            frontend: frontend.to_string(),
+            vocab: vocab.to_string(),
             lang: lang.to_string(),
         });
     }
@@ -183,10 +182,10 @@ pub fn dictionary_names(frontend: &str, lang: &str) -> Result<Vec<String>, Dicti
 /// classify the failure without parsing the message, which is free to change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DictionaryError {
-    /// The frontend name is not one this build knows.
-    UnknownFrontend { frontend: String },
-    /// The frontend exists but has no pipeline for this language.
-    UnsupportedLanguage { frontend: String, lang: String },
+    /// The vocabulary name is not one this build knows.
+    UnknownVocab { vocab: String },
+    /// The vocabulary exists but has no pipeline for this language.
+    UnsupportedLanguage { vocab: String, lang: String },
     /// `load` was called with a name `declare_required` never returned.
     UnknownDictionary { name: String, declared: Vec<String> },
     /// The bytes are not a zstd frame at all.
@@ -202,7 +201,7 @@ impl DictionaryError {
     /// `DictionaryFailureReason` in `lib/models/phonemize-dict.ts`.
     pub fn code(&self) -> &'static str {
         match self {
-            Self::UnknownFrontend { .. } => "unknown-frontend",
+            Self::UnknownVocab { .. } => "unknown-vocab",
             Self::UnsupportedLanguage { .. } => "unsupported-language",
             Self::UnknownDictionary { .. } => "unknown-dictionary",
             Self::NotZstd { .. } => "dictionary-format",
@@ -216,11 +215,11 @@ impl std::fmt::Display for DictionaryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: ", self.code())?;
         match self {
-            Self::UnknownFrontend { frontend } => {
-                write!(f, "{frontend:?} is not a frontend this build knows")
+            Self::UnknownVocab { vocab } => {
+                write!(f, "{vocab:?} is not a vocabulary this build knows")
             }
-            Self::UnsupportedLanguage { frontend, lang } => {
-                write!(f, "{frontend} has no pipeline for {lang:?}")
+            Self::UnsupportedLanguage { vocab, lang } => {
+                write!(f, "{vocab} has no pipeline for {lang:?}")
             }
             Self::UnknownDictionary { name, declared } => {
                 write!(f, "{name:?} was never required")?;
@@ -281,7 +280,7 @@ impl DictionaryRegistry {
         Self::default()
     }
 
-    /// Record what `(frontend, lang)` needs, and return those names.
+    /// Record what `(vocab, lang)` needs, and return those names.
     ///
     /// Returns only this pair's names, not the union of every call: the caller
     /// is asking "what do I fetch for this voice", and a list that grew with
@@ -293,10 +292,10 @@ impl DictionaryRegistry {
     /// voice, and nothing is playing yet.
     pub fn declare_required(
         &mut self,
-        frontend: &str,
+        vocab: &str,
         lang: &str,
     ) -> Result<Vec<String>, DictionaryError> {
-        let names = dictionary_names(frontend, lang)?;
+        let names = dictionary_names(vocab, lang)?;
 
         // Only after the fallible part: a rejected call must leave the state the
         // caller can still finish.

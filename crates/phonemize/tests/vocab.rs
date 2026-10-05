@@ -77,7 +77,7 @@ fn accepts_the_empty_string() {
 #[test]
 fn refuses_a_character_only_the_other_model_has() {
     // The four tone arrows are v1.0's and v1.1-zh has none of them; the zhuyin
-    // symbols are v1.1-zh's and v1.0 has none of those. Getting the frontend
+    // symbols are v1.1-zh's and v1.0 has none of those. Getting the vocabulary
     // wrong for the chosen voice is exactly this mistake, and it is the one the
     // gate is for.
     let error = validate_phonemes("ni↓", Vocab::V1_1_ZH).expect_err("v1.1-zh has no arrows");
@@ -117,7 +117,7 @@ fn refuses_an_ascii_g_where_the_vocabulary_has_a_script_g() {
 }
 
 #[test]
-fn reports_which_frontend_the_vocabulary_belongs_to() {
+fn reports_which_id_the_vocabulary_belongs_to() {
     let error = validate_phonemes("↓", Vocab::V1_1_ZH).expect_err("v1.1-zh has no arrows");
     assert_eq!(error.vocab, Vocab::V1_1_ZH);
     assert!(error.to_string().contains("kokoro-v11-zh"), "{error}");
@@ -127,11 +127,11 @@ fn reports_which_frontend_the_vocabulary_belongs_to() {
 // ------------------------------------------------------------ the two tables
 
 #[test]
-fn has_a_vocabulary_for_the_two_frontends_and_no_others() {
-    assert_eq!(Vocab::for_frontend("kokoro-v1"), Some(Vocab::V1_0));
-    assert_eq!(Vocab::for_frontend("kokoro-v11-zh"), Some(Vocab::V1_1_ZH));
-    assert_eq!(Vocab::for_frontend("kokoro-v2"), None);
-    assert_eq!(Vocab::for_frontend(""), None);
+fn has_a_vocabulary_for_the_two_ids_and_no_others() {
+    assert_eq!(Vocab::for_id("kokoro-v1"), Some(Vocab::V1_0));
+    assert_eq!(Vocab::for_id("kokoro-v11-zh"), Some(Vocab::V1_1_ZH));
+    assert_eq!(Vocab::for_id("kokoro-v2"), None);
+    assert_eq!(Vocab::for_id(""), None);
 }
 
 #[test]
@@ -212,11 +212,11 @@ fn the_japanese_pipeline_passes_the_v1_vocabulary() {
 fn the_english_pipeline_passes_both_vocabularies() {
     // The 106 characters the two models share are the whole English IPA set, so
     // English phonemes belong to both — with one exception that the gate has to
-    // repair rather than report: `ɚ`. `never` is the word the spec names.
-    for frontend in ["kokoro-v1", "kokoro-v11-zh"] {
-        let vocab = Vocab::for_frontend(frontend).expect("a known frontend");
+    // repair rather than report: `ɚ`, and `never` is the word it was found on.
+    for id in ["kokoro-v1", "kokoro-v11-zh"] {
+        let vocab = Vocab::for_id(id).expect("a known vocabulary");
         let options = PhonemizeOptions {
-            frontend: frontend.to_string(),
+            vocab: id.to_string(),
             lang: "en-US".to_string(),
         };
 
@@ -228,9 +228,9 @@ fn the_english_pipeline_passes_both_vocabularies() {
         ] {
             let result = Phonemizer::new()
                 .phonemize_with(text, &options)
-                .unwrap_or_else(|error| panic!("{text} ({frontend}): {error}"));
+                .unwrap_or_else(|error| panic!("{text} ({id}): {error}"));
             validate_phonemes(&result.phonemes, vocab)
-                .unwrap_or_else(|error| panic!("{text} ({frontend}): {error}"));
+                .unwrap_or_else(|error| panic!("{text} ({id}): {error}"));
         }
     }
 }
@@ -240,7 +240,7 @@ fn the_english_output_through_v11_zh_has_no_rhotic_vowel() {
     // The repair, end to end rather than as a string function: v1.1-zh cannot
     // have `ɚ` in its output, and `never` is a word espeak gives one to.
     let options = PhonemizeOptions {
-        frontend: "kokoro-v11-zh".to_string(),
+        vocab: "kokoro-v11-zh".to_string(),
         lang: "en-US".to_string(),
     };
     let result = Phonemizer::new()
@@ -258,7 +258,7 @@ fn the_english_output_through_v11_zh_has_no_rhotic_vowel() {
 #[test]
 fn the_chinese_han_run_passes_the_v1_vocabulary() {
     // Phase 5's Chinese work, validated by phase 5's gate. Not yet reachable
-    // through `phonemize` — the Chinese frontend (word boundaries, punctuation,
+    // through `phonemize` — the Chinese pipeline (word boundaries, punctuation,
     // numerals, Latin runs) is phase 6 — so this calls the backend directly.
     let phonemes = ChinesePinyin::new()
         .han_to_ipa("你好世界")
@@ -277,7 +277,7 @@ fn every_punctuation_mark_kept_is_in_both_vocabularies() {
     // has neither, and `don't stop` was the first thing the gate refused.
     //
     // Both vocabularies, because `keep_punctuation` is shared by the Japanese and
-    // English pipelines and either frontend can be the one in use.
+    // English pipelines and either vocabulary can be the one in use.
     let v1 = vocabulary(Vocab::V1_0);
     let v11 = vocabulary(Vocab::V1_1_ZH);
 

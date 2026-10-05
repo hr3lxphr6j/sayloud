@@ -39,7 +39,6 @@ import {
   type RawPcm,
   WORKER_DEAD,
 } from './engine';
-import type { FrontendId } from './frontend';
 import {
   isPhonemizeWorkerReply,
   type PhonemizeWorkerReply,
@@ -47,6 +46,7 @@ import {
 } from './phonemize-worker-protocol';
 import type { ModelTier, OnDeviceFamily, OnDeviceModel } from './registry';
 import type { ModelSource } from './urls';
+import type { VocabId } from './vocab';
 import { isErrorReply } from './worker-message';
 import { isWorkerReply, type WorkerReply, type WorkerRequest } from './worker-protocol';
 
@@ -271,17 +271,17 @@ export class WorkerLocalEngine implements OnDeviceEngine {
   private kokoroReady: Promise<void> | null = null;
   private phonemizerReady: Promise<void> | null = null;
   /**
-   * Dictionaries already loaded, by `(frontend, lang)`.
+   * Dictionaries already loaded, by `(vocab, lang)`.
    *
    * Keyed by both because they are independent: the same language needs
-   * different dictionaries under v1.0 and v1.1-zh, and one frontend speaks
+   * different dictionaries under v1.0 and v1.1-zh, and one vocabulary speaks
    * several languages. The value is the *promise*, so a prefetch and the
    * sentence being listened to cannot both pay for the same 8 MB of
    * decompression.
    */
   private readonly prepared = new Map<string, Promise<void>>();
   /** The inventory the loaded model's voices need; null until `load`. */
-  private frontend: FrontendId | null = null;
+  private vocab: VocabId | null = null;
 
   constructor(options: WorkerLocalEngineOptions) {
     this.source = options.source;
@@ -326,15 +326,15 @@ export class WorkerLocalEngine implements OnDeviceEngine {
     await Promise.all([this.initKokoro(), this.initPhonemizer()]);
     if (signal.aborted) throw abortError();
 
-    const frontend = this.frontend;
-    if (!frontend) throw new Error('the model is not loaded');
+    const vocab = this.vocab;
+    if (!vocab) throw new Error('the model is not loaded');
 
-    await this.prepare(frontend, lang);
+    await this.prepare(vocab, lang);
     if (signal.aborted) throw abortError();
 
     const pieces = await planPieces(text, async (piece) => {
       if (signal.aborted) throw abortError();
-      const ipa = await this.phonemizeText(piece, frontend, lang);
+      const ipa = await this.phonemizeText(piece, vocab, lang);
       return { ipa, tokens: await this.countTokens(ipa) };
     });
     if (signal.aborted) throw abortError();
@@ -393,7 +393,7 @@ export class WorkerLocalEngine implements OnDeviceEngine {
     if (settled.type !== 'loaded') throw unexpected('kokoro', settled.type);
     // Remembered here rather than passed per sentence: the inventory follows
     // the model, and this is the only message that names one.
-    this.frontend = model.frontend;
+    this.vocab = model.vocab;
     return settled.info;
   }
 
@@ -447,7 +447,7 @@ export class WorkerLocalEngine implements OnDeviceEngine {
   }
 
   /**
-   * Load the dictionaries `(frontend, lang)` needs, once.
+   * Load the dictionaries `(vocab, lang)` needs, once.
    *
    * Awaited by every sentence and paid for by the first one, because nothing
    * above knows which voice the user has chosen until it synthesizes — the
@@ -458,13 +458,13 @@ export class WorkerLocalEngine implements OnDeviceEngine {
    * pronunciation dictionary is compiled in, but its numerals come from two
    * WeText grammars (phase 9B) as Chinese's and Japanese's do (9E).
    */
-  private prepare(frontend: FrontendId, lang: string): Promise<void> {
-    const key = `${frontend}\u0000${lang}`;
+  private prepare(vocab: VocabId, lang: string): Promise<void> {
+    const key = `${vocab}\u0000${lang}`;
     const existing = this.prepared.get(key);
     if (existing) return existing;
 
     const loading = this.phonemizer
-      .request((id) => ({ type: 'prepare', id, frontend, lang }))
+      .request((id) => ({ type: 'prepare', id, vocab, lang }))
       .reply.then((reply) => {
         if (reply.type !== 'prepared') throw unexpected('phonemize', reply.type);
       })
@@ -481,12 +481,12 @@ export class WorkerLocalEngine implements OnDeviceEngine {
   }
 
   /** One piece of text to IPA, through the phonemize worker. */
-  private async phonemizeText(text: string, frontend: FrontendId, lang: string): Promise<string> {
+  private async phonemizeText(text: string, vocab: VocabId, lang: string): Promise<string> {
     const { reply } = this.phonemizer.request((id) => ({
       type: 'phonemize',
       id,
       text,
-      frontend,
+      vocab,
       lang,
     }));
     const settled = await reply;

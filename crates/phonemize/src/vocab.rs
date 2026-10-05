@@ -3,7 +3,7 @@
 //! The two Kokoro models do not share a phoneme inventory. v1.0 keeps 115
 //! characters and speaks IPA with four tone arrows; v1.1-zh keeps 172 and speaks
 //! zhuyin with tone digits, a `/` between words and an `R` for 儿化. Each has
-//! characters the other does not — nine and sixty-six of them — so the frontend
+//! characters the other does not — nine and sixty-six of them — so the vocabulary
 //! has to follow the *voice the user picked* and not the language of the page,
 //! and getting it wrong is not a subtle quality difference:
 //!
@@ -53,8 +53,8 @@ const STRIPPED_BY_THE_NORMALIZER: [char; 2] = ['\u{032F}', '\u{0329}'];
 
 /// Which phoneme inventory the output has to belong to.
 ///
-/// The names are the frontend ids the JavaScript side uses (`FrontendId` in
-/// `lib/models/phonemize-rust.ts`), spelled as the model versions they are:
+/// The names are the ids the JavaScript side uses (`VocabId` in
+/// `lib/models/vocab.ts`), spelled as the model versions they are:
 /// `V1_0` is `kokoro-v1` and `V1_1_ZH` is `kokoro-v11-zh`. The underscores are
 /// deliberate — `V1_1Zh` would read as a different model name — which is why the
 /// usual casing lint is off for this enum.
@@ -66,17 +66,18 @@ pub enum Vocab {
 }
 
 impl Vocab {
-    /// The vocabulary a frontend uses, or `None` for a frontend this build does
-    /// not know.
-    pub fn for_frontend(frontend: &str) -> Option<Self> {
-        match frontend {
+    /// The vocabulary behind one id, or `None` for an id this build does not
+    /// know. The id names the *model* (`kokoro-v1`, `kokoro-v11-zh`); that a
+    /// model has exactly one inventory is what makes one lookup enough.
+    pub fn for_id(vocab: &str) -> Option<Self> {
+        match vocab {
             "kokoro-v1" => Some(Self::V1_0),
             "kokoro-v11-zh" => Some(Self::V1_1_ZH),
             _ => None,
         }
     }
 
-    /// The frontend id, for a message a reader can act on.
+    /// The vocabulary's id, for a message a reader can act on.
     pub fn name(self) -> &'static str {
         match self {
             Self::V1_0 => "kokoro-v1",

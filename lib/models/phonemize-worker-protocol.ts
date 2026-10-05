@@ -20,8 +20,8 @@
  * channel, and for the same reason.
  */
 import type { ProviderErrorCode } from '../providers/errors';
-import { type FrontendId, isFrontendId } from './frontend';
 import { isDictionaryLoadError } from './phonemize-dict';
+import { isVocabId, type VocabId } from './vocab';
 import { isMessageId, messageTypeOf } from './worker-message';
 
 /** Main thread → phonemize worker. */
@@ -40,13 +40,13 @@ export type PhonemizeWorkerRequest =
     }
   | {
       /**
-       * Load the dictionaries `(frontend, lang)` needs, before the first
+       * Load the dictionaries `(vocab, lang)` needs, before the first
        * sentence. Idempotent, and a no-op for a language whose dictionary is
        * compiled in (English).
        */
       type: 'prepare';
       id: number;
-      frontend: FrontendId;
+      vocab: VocabId;
       lang: string;
     }
   | {
@@ -62,7 +62,7 @@ export type PhonemizeWorkerRequest =
       type: 'phonemize';
       id: number;
       text: string;
-      frontend: FrontendId;
+      vocab: VocabId;
       lang: string;
     }
   | { type: 'dispose' };
@@ -103,7 +103,7 @@ export function isPhonemizeWorkerRequest(value: unknown): value is PhonemizeWork
     case 'phonemize':
       return (
         isMessageId(message.id) &&
-        isFrontendId(message.frontend) &&
+        isVocabId(message.vocab) &&
         typeof message.lang === 'string' &&
         (type === 'prepare' || typeof message.text === 'string')
       );

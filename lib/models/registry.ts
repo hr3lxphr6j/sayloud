@@ -13,7 +13,7 @@
  * are quoted in MB, so they are the decimal values the repository reports.
  */
 import type { MessageKey } from '../i18n/messages.en';
-import type { FrontendId } from './frontend';
+import type { VocabId } from './vocab';
 
 /** Which engine family implements a model. One family is one adapter. */
 export type OnDeviceFamily = 'kokoro' | 'kitten' | 'piper' | 'vits';
@@ -106,7 +106,7 @@ export interface OnDeviceModel {
    * phonemizes to different characters for each. The language says which
    * pipeline runs; this says which characters come out of it.
    */
-  readonly frontend: FrontendId;
+  readonly vocab: VocabId;
   /** Voices offered, counting only the ones this extension can synthesize. */
   readonly voiceCount: number;
   /** `model+voices` groups its files into tiers; other shapes use `files`. */
@@ -161,7 +161,7 @@ export const KOKORO_82M: OnDeviceModel = {
     url: 'https://www.apache.org/licenses/LICENSE-2.0',
   },
   languages: ['en-US', 'en-GB', 'zh-CN', 'ja'],
-  frontend: 'kokoro-v1',
+  vocab: 'kokoro-v1',
   voiceCount: 41,
   tiers: [
     {

@@ -62,12 +62,12 @@ async function handle(request: PhonemizeWorkerRequest): Promise<void> {
         return;
 
       case 'prepare':
-        await service.prepare(request.frontend, request.lang);
+        await service.prepare(request.vocab, request.lang);
         reply({ type: 'prepared', id: request.id });
         return;
 
       case 'phonemize': {
-        const result = service.phonemize(request.text, request.frontend, request.lang);
+        const result = service.phonemize(request.text, request.vocab, request.lang);
         // `warnings` is sent only when there are some, because the Rust side
         // omits the field when there is nothing to report and an empty array
         // would be a second spelling of "none" for every caller to handle.

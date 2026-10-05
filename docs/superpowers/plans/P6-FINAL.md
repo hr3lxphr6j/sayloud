@@ -42,7 +42,7 @@
 | 12 | 中文多音字消歧 | **不做**（g2pW ONNX） | 模型 ≈5 MB + 运行时 + 首句延迟，收益只在少数词；同一份工作量在 #11 上听感更明显 | g2pW / g2pM（记录在案，不落地） |
 | 13 | 合成入口 | 三语言统一 `IPA → tokenizer → generate_from_ids()`；裸模块名 `phonemizer` 别名到 throwing stub | 英文曾走 `kokoro-js` 的 `generate(text)`（内部 espeak），等于第二个前端，且 token 数按 Rust IPA 算、音频按 espeak IPA 合成 | 英文继续走 `generate(text)`（+2.5 MB espeak 数据） |
 | 14 | 输出校验 | 词表闸门**报错**，并在校验前做 `ɚ → əɹ` 之类 repair | tokenizer 的正常化是空串替换：表外音素会被**静默删除**（ガ行读成ア行就是这么来的） | warning；静默通过 |
-| 15 | 音素表 | v1.0 用 IPA（声调是箭头）；`v1.1-zh` 用注音 + 数字 | 两个模型两套词表，frontend 跟着**音色**走，不跟语言走 | 统一成一套 IPA |
+| 15 | 音素表 | v1.0 用 IPA（声调是箭头）；`v1.1-zh` 用注音 + 数字 | 两个模型两套词表，词表跟着**音色**走，不跟语言走；id 用模型名（`kokoro-v1`），Rust 侧叫 `vocab`、TS 侧叫 `VocabId` | 统一成一套 IPA |
 
 **#9 的两个附带决定**：旧的手写读数器（`numbers.rs` / `numbers_zh.rs` / `numbers_en.rs`）
 **保留**，作为 `Option<&Normalizer>` 为 `None` 时的 fallback——它等于没有 TN 的历史行为，
@@ -86,8 +86,8 @@ IPA / 注音 ──► phonemize worker ──► kokoro worker：tokenizer → 
 |---|---|
 | `src/lib.rs` | wasm 边界：`Phonemizer::{new, required_dictionaries, load_dictionary, finish_loading, ready, phonemize, phonemize_with}` 与错误码 |
 | `src/pipeline.rs` | 编排：`phonemize_{ja,en,zh}`、`ToneRules`、`Phonemized`、`PipelineError` |
-| `src/dictionary.rs` | 字典协议：注册表与 per-`(frontend, lang)` 需求表 |
-| `src/vocab.rs` | 词表闸门（"frontend" 一词的唯一语义所在） |
+| `src/dictionary.rs` | 字典协议：注册表与 per-`(vocab, lang)` 需求表 |
+| `src/vocab.rs` | 词表闸门（`Vocab::for_id`：模型名 → 词表） |
 | `src/text.rs` / `src/kana.rs` / `src/types.rs` | 共用原语：分段与标点、假名谓词、跨界形状 |
 | `src/tn/mod.rs` | `normalize(text, Lang, engine)`：语言自带的 fallback、门控与后处理 |
 | `src/tn/engine.rs` + `src/tn/wetext/` | WeText 接线与 vendored 引擎（`NOTICE` 列 7 处改动） |
@@ -132,8 +132,8 @@ IPA / 注音 ──► phonemize worker ──► kokoro worker：tokenizer → 
 | 指标 | 值 |
 |---|---|
 | `phonemize_bg.wasm` | **6,091,596 B** |
-| 扩展总计 | **40,522,879 B**（ORT 21,596,019 + IPADic 8.5 MB + wasm 6.1 MB + …） |
-| kokoro worker chunk | 904,615 B（阶段 10 前 2,225,156 B） |
+| 扩展总计 | **40,522,837 B**（ORT 21,596,019 + IPADic 8.5 MB + wasm 6.1 MB + …） |
+| kokoro worker chunk | 904,612 B（阶段 10 前 2,225,156 B） |
 | Rust 测试 | **297 passed / 0 failed**（+2 个 ignored doc-test） |
 | TS 测试 | **1397 passed**（66 文件） |
 | 构建测试 | 14/14（含 wasm 尺寸、espeak 痕迹、ORT 单例） |

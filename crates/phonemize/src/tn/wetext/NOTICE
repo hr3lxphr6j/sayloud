@@ -1,5 +1,5 @@
 ===========================================================================
-WeText text normalization (crates/phonemize/src/backends/wetext/)
+WeText text normalization (crates/phonemize/src/tn/wetext/)
 ===========================================================================
 
 This directory is a copy of wetext-rs 0.1.2, by SpenserCai.

@@ -1,7 +1,7 @@
 # Text normalization (`wetext`)
 
 Weighted-FST text normalization, vendored from `wetext-rs` 0.1.2 and wired up for
-all three languages by `crate::backends::wetext_tn` — English in phase 9B,
+all three languages by `crate::tn::engine` — English in phase 9B,
 Chinese and Japanese in 9E. See `NOTICE` in this directory for the licence and the
 seven modifications; this file is about *using* it.
 

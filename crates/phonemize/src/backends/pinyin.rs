@@ -58,7 +58,7 @@
 //! the production spacing and takes the boundaries from jieba as an argument,
 //! because the readings and the boundaries come from different places and this
 //! module only owns the readings. The punctuation, numeral and Latin-run rules
-//! around the Han run are [`super::zh_text`] and [`super::numbers_zh`].
+//! around the Han run are [`super::zh_text`] and [`crate::tn::numbers_to_han`].
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};

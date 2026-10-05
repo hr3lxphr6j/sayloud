@@ -24,7 +24,7 @@
 //!
 //! # What is not here
 //!
-//! The numeral rules, which are [`super::numbers_zh`], and the syllable and tone
+//! The numeral rules, which are [`crate::tn::numbers_to_han`], and the syllable and tone
 //! tables, which are [`super::pinyin`]. The order they run in is the pipeline's:
 //! `map_punctuation(numbers_to_han(text))`, then the runs — the same order
 //! `ChinesePhonemizer.phonemize` uses, and it matters, because the numeral pass

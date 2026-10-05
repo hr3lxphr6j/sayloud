@@ -9,12 +9,12 @@
 
 use std::collections::HashSet;
 
-use phonemize::backends::numbers::{int_to_kanji, numbers_to_kanji};
 use phonemize::frontends::ja_ipa::{fix_numeral_sound_changes, kana_to_ipa, KATAKANA_TO_IPA};
 use phonemize::kana::{is_kanji, is_katakana, to_raw_katakana};
 use phonemize::text::{
     collapse_whitespace, keep_punctuation, normalize_punctuation, segment_text, ScriptRun,
 };
+use phonemize::tn::{int_to_kanji, numbers_to_kanji};
 use phonemize::vocab::{validate_phonemes, Vocab};
 
 // ---------------------------------------------------------------- the table

@@ -17,8 +17,8 @@
 
 mod common;
 
-use phonemize::backends::wetext::Normalizer;
 use phonemize::dictionary::{DictionaryRegistry, IPADIC_JA};
+use phonemize::tn::wetext::Normalizer;
 
 use common::{japanese_tn, wetext_compressed, WETEXT_JA_NAMES};
 
@@ -208,4 +208,39 @@ fn both_grammars_are_declared_for_japanese() {
             "the message names {name}, which is still missing: {error}"
         );
     }
+}
+
+// ------------------------------------------------ the English-only fix
+
+/// **The `1,NNN` fix is English-only, and this is what says so.**
+///
+/// The same test `wetext_zh.rs` makes, for the same reason: the fix belongs to
+/// `tn::Lang::En::postprocess` and not to the shared numeral step, because its
+/// whole job is to insert an `one` in front of the word `thousand` — an English
+/// word a Japanese sentence is free to quote.
+#[test]
+fn the_english_thousand_fix_does_not_reach_japanese() {
+    let Some(tn) = japanese_tn() else {
+        return;
+    };
+
+    let mut saw_the_trigger = false;
+    for input in [
+        "これは thousand です",
+        "thousand two hundred",
+        "千二百三十四と thousand",
+    ] {
+        let engine = read(&tn, input);
+        saw_the_trigger |= engine.contains("thousand");
+        let stepped = phonemize::tn::normalize(input, phonemize::tn::Lang::Ja, Some(&tn));
+        assert_eq!(
+            stepped.as_ref(),
+            engine.as_str(),
+            "{input:?} keeps the engine's answer, unrevised"
+        );
+    }
+    assert!(
+        saw_the_trigger,
+        "none of the probes reached the fix it is guarding against"
+    );
 }

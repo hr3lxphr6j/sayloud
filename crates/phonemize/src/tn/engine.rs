@@ -1,6 +1,6 @@
 //! Text normalization, through the vendored WeText engine.
 //!
-//! The engine itself is [`crate::backends::wetext`]; this module is the seam
+//! The engine itself is [`crate::tn::wetext`]; this module is the seam
 //! between it and the dictionary protocol — it turns the two FSTs the registry
 //! holds into the [`Normalizer`] a pipeline runs, and it is where the design
 //! decisions about that live.
@@ -8,9 +8,9 @@
 //! # Why this is optional everywhere
 //!
 //! Every pipeline takes an `Option<&Normalizer>` and falls back to a hand-written
-//! numeral reader when it is `None`: [`numbers_en`](crate::backends::numbers_en)
-//! for English, [`numbers_to_kanji`](crate::backends::numbers::numbers_to_kanji)
-//! for Japanese, [`numbers_to_han`](crate::backends::numbers_zh::numbers_to_han)
+//! numeral reader when it is `None`: [`numbers_to_english`](crate::tn::numbers_to_english)
+//! for English, [`numbers_to_kanji`](crate::tn::numbers_to_kanji)
+//! for Japanese, [`numbers_to_han`](crate::tn::numbers_to_han)
 //! for Chinese. The FSTs are still declared as required dictionaries, so a caller
 //! that goes through `prepare` gets them or gets an error; the fallback exists for
 //! the caller that did not, and for a build whose assets were not fetched.
@@ -40,7 +40,7 @@
 //! # What it costs at runtime
 //!
 //! English is the only language with a gate in front of it
-//! ([`crate::backends::tn_gate`]), and only because upstream's English TN is
+//! ([`crate::tn::gate`]), and only because upstream's English TN is
 //! deliberately not gated on digits — `should_normalize` returns true for any
 //! non-empty English text, so the engine ran on every sentence whatever it
 //! contained, at ~4.6 ms per 100 characters and 92% of that in the tagger.
@@ -66,7 +66,7 @@ use super::wetext::{Language, Normalizer, NormalizerConfig, WeTextError};
 ///
 /// The two names are the strings upstream would have joined to its FST
 /// directory, kept because they are what the normalizer asks for internally —
-/// see [`crate::backends::wetext::Normalizer`]. The language is what decides
+/// see [`crate::tn::wetext::Normalizer`]. The language is what decides
 /// which pair of those names the configuration looks up.
 type Grammar<'a> = (Language, &'a str, &'a str);
 
@@ -114,7 +114,7 @@ pub fn english(tagger: &[u8], verbalizer: &[u8]) -> Result<Normalizer, WeTextErr
 ///
 /// A *year* is read digit by digit here and a quantity is not, which is the one
 /// place this reading differs most visibly from
-/// [`numbers_to_han`](crate::backends::numbers_zh::numbers_to_han): that reader
+/// [`numbers_to_han`](crate::tn::numbers_to_han): that reader
 /// has no context to tell them apart and reads `2024` as 二千零二十四 either way.
 /// The rest of what it buys is the same list for both languages — money
 /// (`$20.50` → 二十点五零美元, which the old pipeline read as 二十点五零 and
@@ -132,7 +132,7 @@ pub fn chinese(tagger: &[u8], verbalizer: &[u8]) -> Result<Normalizer, WeTextErr
 
 /// The Japanese normalizer: `1/2` → `二分の一`, `2.5km` → `二点五キロメートル`.
 ///
-/// **Not percentages.** [`numbers_to_kanji`](crate::backends::numbers::numbers_to_kanji)
+/// **Not percentages.** [`numbers_to_kanji`](crate::tn::numbers_to_kanji)
 /// already reads `50%` as 五十パーセント; it is the comma-grouped numbers
 /// (`1,234` → 千二百三十四, where the old reader said いち,にひゃくさんじゅうよん) and
 /// the unit-bearing ones (`2.5km` → 二点五キロメートル, where the old reader read the

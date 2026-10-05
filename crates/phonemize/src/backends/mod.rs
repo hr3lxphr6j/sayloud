@@ -6,20 +6,20 @@
 //! now: Japanese segmentation, English G2P, Chinese readings, and the Chinese
 //! segmenter and text rules the Chinese frontend added.
 //!
-//! Number reading is the one backend with two implementations: the hand-written
-//! `numbers*` readers, and [`wetext`] — weighted FSTs from WeTextProcessing,
-//! vendored rather than depended on. Every language prefers the FSTs and falls
-//! back to its own reader, which is what a caller that never called `prepare`
-//! gets.
+//! **The numeral readers have moved out**, to [`crate::tn`], which is where the
+//! stage they belong to lives — they are not per-language work in the same sense
+//! as the rest of this module: every language runs the same WeText engine and
+//! keeps its reader only as the stand-in for a caller that never prepared.
 //!
 //! [`tone_sandhi`] is the one backend that runs *after* a G2P rather than before
 //! it: Mandarin decides a tone twice, once per character from the dictionary and
 //! again from the words the character sits in, and that second pass is what
 //! turns 你好 into *ní hǎo* (phase 9D).
 //!
-//! [`tn_gate`] is not a reader and produces no output: it is the cheap "is there
-//! anything here for the FSTs to do?" question asked before them, because they
-//! answer every English sentence whether or not it has an answer to find.
+//! [`crate::tn::gate`] is not a reader and produces no output: it is the cheap
+//! "is there anything here for the FSTs to do?" question asked before them,
+//! because they answer every English sentence whether or not it has an answer to
+//! find.
 //!
 //! [`headtts_en`] is the other half of the English G2P: the CMU dictionary is a
 //! dictionary, so a word outside it has no reading at all, and the letter-to-sound
@@ -27,16 +27,10 @@
 
 pub mod g2p_en;
 pub mod headtts_en;
-pub mod numbers;
-pub mod numbers_en;
-pub mod numbers_zh;
 pub mod pinyin;
 pub mod segmenter_ja;
 pub mod segmenter_zh;
-pub mod tn_gate;
 pub mod tone_sandhi;
-pub mod wetext;
-pub mod wetext_tn;
 pub mod zh_text;
 
 pub use g2p_en::{EnglishError, EnglishG2p};

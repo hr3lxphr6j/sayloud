@@ -45,7 +45,7 @@ pub const JIEBA_ZH: &str = "jieba-zh-dict";
 /// Phase 9B for English, phase 9E for the two CJK languages below. English is
 /// the one language whose *phonemes* need no dictionary — the CMU dictionary is
 /// compiled in — but its *numerals* come from the vendored WeText engine
-/// (`crate::backends::wetext`), and that engine's grammars are OpenFST binaries,
+/// (`crate::tn::wetext`), and that engine's grammars are OpenFST binaries,
 /// so they arrive through the registry like everything else rather than being
 /// embedded (spec decision #4).
 ///

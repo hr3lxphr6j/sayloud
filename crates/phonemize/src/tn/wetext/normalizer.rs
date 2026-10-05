@@ -60,7 +60,7 @@ impl Normalizer {
     /// to supply `remove_erhua` it will never use, at the price of a late error
     /// for a name that is genuinely missing. The caller is expected to pass the
     /// full set for the language it configured, the way
-    /// [`crate::backends::wetext_tn::english`] does.
+    /// [`crate::tn::engine::english`] does.
     pub fn from_bytes<'a>(
         config: NormalizerConfig,
         fsts: impl IntoIterator<Item = (String, &'a [u8])>,
@@ -223,7 +223,7 @@ impl Normalizer {
     /// English TN: `Dr. Smith` is `doctor Smith` in the reference and was left
     /// untouched here, because it has no digit. What it costs in time is the
     /// early exit — see the module's cost note in
-    /// `crate::backends::wetext::README.md`.
+    /// `crate::tn::wetext::README.md`.
     ///
     /// **The digit test is Unicode-wide, the way the reference's `\d` is.** That
     /// is modification 7 in `NOTICE`, and it is the difference between Chinese

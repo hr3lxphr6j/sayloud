@@ -1,5 +1,5 @@
 /**
- * The offscreen document: the extension's audio engine (spec §3.1).
+ * The offscreen document: the extension's audio engine.
  *
  * Chrome gives a service worker no way to decode or play audio, and gives a
  * content script no way to reach a TTS API without the page's CSP applying to

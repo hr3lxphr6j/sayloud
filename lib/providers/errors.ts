@@ -1,7 +1,7 @@
 import type { MessageKey, MessageParams, Translator } from '../i18n';
 
 /**
- * Unified provider error codes (spec §7.1).
+ * Unified provider error codes.
  *
  * Every adapter maps its service's failures onto this closed set so the
  * playback engine can make one decision — degrade to the browser voice, retry,
@@ -15,7 +15,7 @@ export type ProviderErrorCode =
   | 'rate-limit'
   | 'no-quota'
   | 'network-error'
-  // The on-device model's own failures (P4 spec §3.15). They are separate codes
+  // The on-device model's own failures. They are separate codes
   // rather than `unknown` because each one has a different fix, and every fix is
   // something the user does in the extension: download, pick a source, retry,
   // delete and re-download, or change the device.
@@ -30,7 +30,7 @@ export type ProviderErrorCode =
  * A TTS provider failure with a stable, provider-independent code.
  *
  * `details` carries the provider's own payload (status, error code, response
- * body) so the P3 error UI can show something actionable without every adapter
+ * body) so the error UI can show something actionable without every adapter
  * inventing its own shape. Never put an API key in `details`.
  */
 export class ProviderError extends Error {

@@ -6,7 +6,7 @@
  * *kinds* and nothing about any particular service. Adding a provider to that
  * table is enough to get a row and a form for it here.
  *
- * The list is rows rather than a `<select>` (spec §8.2): a service has a status
+ * The list is rows rather than a `<select>`: a service has a status
  * to show — configured or not, in use or not — and the form for the chosen one
  * opens where the row is, so the panel never loses the user's place. The saved
  * config is passed in rather than read here, so the panel is the only place that
@@ -19,7 +19,7 @@
  * purpose — a button cannot hold another — and because saving a config must not
  * be the thing that starts using it.
  *
- * The form saves itself when a field loses focus (spec §8.2), which is why
+ * The form saves itself when a field loses focus, which is why
  * there is no Save button: there is nothing to press. What it does have is a
  * line saying whether the write happened, because a form that fails validation
  * writes nothing and leaves the typed key in place.

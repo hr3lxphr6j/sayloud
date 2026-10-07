@@ -1,19 +1,19 @@
 /**
- * The kokoro worker: ONNX Runtime and the model, and nothing else (P6 spec
- * §2.4, phase 7).
+ * The kokoro worker: ONNX Runtime and the model, and nothing else.
  *
  * This module is the worker's edges: it configures ONNX Runtime, points
  * transformers.js at the chosen download source, and turns messages into calls
  * on a `KokoroEngine`. The model itself lives in `lib/models/kokoro-engine.ts`,
  * where it can be tested — a class buried in a worker module cannot be.
  *
- * Until phase 7 this worker also phonemized, which is the one thing it no
- * longer does: text now arrives phonemized and already cut to fit, from
- * `phonemize.worker.ts` through the coordinator in `lib/models/worker-engine.ts`.
- * The reason is overlap rather than blocking — both halves were already off the
- * offscreen document's main thread, but on one thread a prefetch's
- * phonemization could not happen while the sentence being listened to was being
- * synthesized.
+ * This worker used to phonemize as well, and no longer does: phonemization
+ * happens in the Rust wasm module (`lib/models/phonemize-rust.ts`), driven
+ * through `entrypoints/offscreen/phonemize.worker.ts` and the coordinator in
+ * `lib/models/worker-engine.ts`. Text arrives here already phonemized and cut
+ * to fit. The reason for the split is overlap rather than blocking — both
+ * halves were already off the offscreen document's main thread, but on one
+ * thread a prefetch's phonemization could not happen while the sentence being
+ * listened to was being synthesized.
  *
  * Three things about where this runs drive everything below.
  *

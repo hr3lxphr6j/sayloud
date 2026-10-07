@@ -1,5 +1,5 @@
 /**
- * ElevenLabs adapter (spec §2.3).
+ * ElevenLabs adapter.
  *
  * `POST /v1/text-to-speech/{voice}/with-timestamps` returns the audio as
  * base64 together with a character-level alignment: three parallel arrays of

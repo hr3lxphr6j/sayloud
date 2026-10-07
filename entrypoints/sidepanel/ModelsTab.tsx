@@ -12,11 +12,11 @@
  *    three states, and nothing else on the panel may claim to know better.
  * 3. **Device and space** — what the machine can do, and how much room the two
  *    model buckets take. Not the audio cache: that is on the Settings tab, and
- *    a user who clears one must not expect the other to shrink (spec §4.5).
+ *    a user who clears one must not expect the other to shrink.
  *
  * The download itself runs in the *panel*, never in the offscreen document:
  * Chrome closes an offscreen document 30 seconds after audio stops, and a
- * 163 MB download would be killed halfway through (spec §3.12.3). It is owned
+ * 163 MB download would be killed halfway through. It is owned
  * by the panel shell rather than by this page, so switching tabs mid-download
  * does not cancel it — closing the panel does, which is exactly what the user
  * closing it means.
@@ -621,7 +621,7 @@ async function setActiveTier(
  *
  * A tier in use falls back to the model's first tier rather than to nothing:
  * the provider then reports `model-missing` if that one is not downloaded
- * either, which is a state the panel already knows how to explain (spec §4.3).
+ * either, which is a state the panel already knows how to explain.
  */
 async function removeTier(
   store: ConfigStore,
@@ -658,7 +658,7 @@ function tierSize(tier: ModelTier): string {
   return formatDecimalBytes(total);
 }
 
-/** An absolute `https://` URL, which is what the spec requires of a mirror. */
+/** A custom mirror must be an absolute `https://` URL. */
 function isHttpsUrl(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed.startsWith('https://')) return false;

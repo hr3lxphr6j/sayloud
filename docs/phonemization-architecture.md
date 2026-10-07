@@ -137,7 +137,7 @@ Kokoro 日语训练时用的那一代 misaki 的读法——并且**可以重新
 |---|---|---|
 | `pinyin-{chars,phrases,special,syllables}.txt` | `scripts/generate/gen-pinyin-pro-data.mjs` | `--check` ✅ |
 | `pinyin-table.json`（**源**） | `scripts/generate/gen-pinyin-table.py` | 有 `--check` |
-| `vocab-v1.txt`、`vocab-v11-zh.txt` | `scripts/generate/gen-kokoro-vocab.mjs`（源 `tests/v0/kokoro-vocabs.json`） | `--check` ✅ |
+| `vocab-v1.txt`、`vocab-v11-zh.txt` | `scripts/generate/gen-kokoro-vocab.mjs`（源 `tests/fixtures/kokoro-vocabs.json`） | `--check` ✅ |
 | `ja-ipa-table.json`（**源**） | 手工维护 | — |
 | `ja_ipa_table.rs` | `scripts/generate/gen-ja-ipa-table.py` | 有 `--check`；`cargo test` 的 `ja_ipa_table_parity.rs` 会读 JSON 回比 |
 

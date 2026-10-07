@@ -239,7 +239,7 @@ boundary as published, and the first with a `cfg` for a fix rather than a swap.
 |---|---|---|
 | `pinyin-chars.txt`, `pinyin-phrases.txt`, `pinyin-special.txt`, `pinyin-syllables.txt` | `pinyin-pro` in `node_modules`, and `pinyin-table.json` | `node scripts/generate/gen-pinyin-pro-data.mjs` (`--check` in CI) |
 | `pinyin-table.json` | pypinyin via misaki's `transcription.py` | `python3 scripts/generate/gen-pinyin-table.py` |
-| `vocab-v1.txt`, `vocab-v11-zh.txt` | the two models' `tokenizer.json`, recorded in `tests/v0/kokoro-vocabs.json` | `node scripts/generate/gen-kokoro-vocab.mjs` (`--check` in CI) |
+| `vocab-v1.txt`, `vocab-v11-zh.txt` | the two models' `tokenizer.json`, recorded in `tests/fixtures/kokoro-vocabs.json` | `node scripts/generate/gen-kokoro-vocab.mjs` (`--check` in CI) |
 | `ja-ipa-table.json` | hand-maintained; the source of truth for the kana table | — |
 | `pinyin-NOTICE.txt` | — | MIT notices for `pinyin-pro` and misaki |
 

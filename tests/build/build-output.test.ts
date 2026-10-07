@@ -171,11 +171,13 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  * measurement and not a comparison against a number from another session.
  * `pnpm build` no longer emits an espeak asset at all.
  *
- * The three numbers that matter today, measured on one build:
+ * The numbers that matter today, measured on one build of this tree:
  *
- *   wasm          6,090,205 B
- *   assets       22,539,282 B  (two dictionaries, six grammars, ORT's 20.6 MB)
- *   total        40,521,530 B  (40.52 MB)
+ *   phonemize wasm   6,091,685 B
+ *   ONNX Runtime     21,596,019 B
+ *   dictionaries     11,076,573 B  (two pronunciation dictionaries and six grammars)
+ *   everything else   1,758,636 B  (the workers' JS, the panel, the CSS)
+ *   total            40,522,913 B  (40.52 MB)
  *
  * **This bound had been exceeded twice before.** It was set to 44-50 MB around a
  * measurement of 46.8 MB and did not move when the IPADic dictionary — 8.1 MB,
@@ -527,7 +529,11 @@ describe('the build output', () => {
     // `pronunciation` field rather than its `reading` one — that last one is a
     // constant, and the map is one `str::replace`. Measured by building both trees
     // in the same session: 6,091,596 → 6,091,677.
-    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_091_677);
+    // **6,091,685 as of the fixture move**, which is **+8 B**. `vocab.rs` embeds
+    // `data/vocab-v1.txt` with `include_str!`, and that file's first line names the
+    // snapshot it was generated from — so the two vocabulary files carry the new
+    // path in the module. Nothing about the gate or the table changed.
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_091_685);
   });
 
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {

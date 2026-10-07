@@ -21,6 +21,7 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "capture:screenshots": "SAYLOUD_CAPTURE=1 playwright test tests/e2e/screenshots.spec.ts",
     "test:performance": "vitest run --config vitest.performance.config.ts",
     "smoke:sidepanel": "node .smoke/sidepanel-smoke.mjs",
     "typecheck": "tsc --noEmit",

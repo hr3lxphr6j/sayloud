@@ -49,7 +49,19 @@ test.describe('playback controls', () => {
     for (let i = 0; i < 6; i++) {
       const next = control(page, 'Next sentence');
       if (await next.isDisabled()) break;
-      await next.click();
+
+      // The check above can read a state the click is about to invalidate: the
+      // click that reaches the last sentence is the one that disables this control,
+      // and the disable arrives with the worker's answer, which a loaded runner can
+      // deliver after the check has run. `click` waits for the control to be
+      // enabled, so that interleaving waited out the whole test instead. Treat a
+      // rejected click as the end — verified as the end, or rethrown.
+      try {
+        await next.click({ timeout: 5_000 });
+      } catch (error) {
+        if (!(await next.isDisabled())) throw error;
+        break;
+      }
     }
 
     await expect(control(page, 'Next sentence')).toBeDisabled();

@@ -42,8 +42,8 @@
  *   script asserts it, so a change of shape is loud here.
  *
  *   It sits in the crate's data directory, not in the JavaScript phonemize
- *   chain it used to live in: phase 8 deleted that chain, and this script is now
- *   the only thing that reads the file.
+ *   chain it used to live in: that chain is gone, and this script is now the only
+ *   thing that reads the file.
  *
  * Regenerate with:
  *

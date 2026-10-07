@@ -17,8 +17,9 @@
  *     node scripts/generate/gen-kokoro-vocab.mjs
  *
  * If the environment variables are not set, the script falls back to a frozen
- * snapshot at `tests/v0/kokoro-vocabs.json` (measured during P4 verification).
- * This allows CI and casual runs to work without needing the full model repos.
+ * snapshot at `tests/v0/kokoro-vocabs.json` (measured from the model
+ * repositories). This allows CI and casual runs to work without needing the full
+ * model repos.
  *
  * `--check` regenerates in memory and compares against the committed files
  * without writing anything, which is what CI or a reviewer wants.
@@ -41,7 +42,7 @@ const MODEL_DIRS = {
  * What each file must contain, checked rather than assumed.
  *
  * The counts are the measured vocabulary sizes, and the characters are the ones
- * the spec's §1.3 diff calls out: v1.1-zh's zhuyin and its tone digits, and the
+ * the two inventories differ on: v1.1-zh's zhuyin and its tone digits, and the
  * four tone arrows plus the five IPA letters that only v1.0 has. A source that
  * lost one of them would otherwise produce a gate that passes everything.
  */

@@ -63,7 +63,7 @@ const ORT_MARKERS = ['onnxruntime', 'InferenceSession', 'wasmPaths', 'ort-wasm']
  * instantiated by the glue itself: a rename would leave the build green and
  * only show up on the first sentence, as "the phonemizer was not initialised".
  *
- * Phase 7 moved this here from jieba, which the same test used to guard. The
+ * This marker used to be jieba's, which the same test used to guard. The
  * JavaScript chain is no longer reachable from any entry point, so nothing in
  * the output mentions jieba at all — asserted by
  * `carries no trace of the JavaScript phonemize chain` rather than by a marker
@@ -74,7 +74,7 @@ const PHONEMIZE_MARKERS = ['phonemize_bg-'] as const;
 /**
  * Strings that only appear in a bundle carrying espeak-ng.
  *
- * Phase 10 dropped espeak from the extension: English is rendered from the Rust
+ * The extension no longer carries espeak: English is rendered from the Rust
  * phonemizer's IPA through `generate_from_ids()` like the other two languages,
  * so `kokoro-js`'s own front end is never called and the 2.5 MB `phonemizer`
  * package is aliased to a throwing stub (`wxt.config.ts`).
@@ -90,7 +90,7 @@ const PHONEMIZE_MARKERS = ['phonemize_bg-'] as const;
  *     forever.
  *
  * `espeak-ng-data` is the directory the package's wasm reads and `eSpeakNG` is
- * the worker class it spawns; both were measured present in the pre-phase-10
+ * the worker class it spawns; both were measured present in the espeak-carrying
  * build and absent now, in the same file (`assets/kokoro.worker-*.js`).
  */
 const ESPEAK_MARKERS = ['espeak-ng-data', 'eSpeakNG'] as const;
@@ -98,7 +98,7 @@ const ESPEAK_MARKERS = ['espeak-ng-data', 'eSpeakNG'] as const;
 /**
  * Strings that only appear in a bundle carrying the JavaScript phonemize chain.
  *
- * Phase 8 deleted that chain, and the deletion is the one thing in this file
+ * The chain itself is gone, and that absence is the one thing in this file
  * that cannot be checked by a marker *being* present: a regression is these
  * strings coming back. Three of them because the chain had three
  * implementations, and one of those — `jieba-wasm` — is a package rather than a
@@ -108,15 +108,16 @@ const ESPEAK_MARKERS = ['espeak-ng-data', 'eSpeakNG'] as const;
 const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
 
 /**
- * Measured 44.4 MB (42.36 MiB) before phase 9A: ONNX Runtime's 20.6 MB wasm, the
- * 8.5 MB IPADic dictionary, the 6.1 MB phonemizer wasm, the 2.8 MB HeadTTS
- * dictionary (phase 9A deleted it), the 2.2 MB kokoro worker chunk, the 1.6 MB
- * Chinese word list, the 0.7 MB English text-normalization grammars, and the
- * rest. Phase 9A left it at 41.62 MB.
+ * Measured 44.4 MB (42.36 MiB) while the HeadTTS dictionary was still in the
+ * tree: ONNX Runtime's 20.6 MB wasm, the 8.5 MB IPADic dictionary, the 6.1 MB
+ * phonemizer wasm, the 2.8 MB HeadTTS dictionary (since deleted), the 2.2 MB
+ * kokoro worker chunk, the 1.6 MB Chinese word list, the 0.7 MB English
+ * text-normalization grammars, and the rest. Deleting that dictionary left it at
+ * 41.62 MB.
  *
- * **Phase 8 deleted the JavaScript chain, and the size fell by exactly the
- * kuromoji dictionary: 57,692,840 → 39,900,884 B.** That drop is the dictionary
- * to the byte, which is the lesson phase 7 wrote down here: a bundler copies
+ * **Deleting the JavaScript chain took the size down by exactly the kuromoji
+ * dictionary: 57,692,840 → 39,900,884 B.** That drop is the dictionary to the
+ * byte, which is the lesson the overruns below keep repeating: a bundler copies
  * everything in `public/` whether or not anything imports it, so removing dead
  * *code* frees nothing and removing a `public/` asset frees all of it. The
  * phonemizer wasm did not shrink either — dropping the duplicated
@@ -127,46 +128,48 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  * the Rust pipeline segments with, and it lives in `public/` for the same reason
  * kuromoji's dictionary did.
  *
- * **Phase 9B: +1,013,905 B of wasm (`rustfst`, for the vendored WeText engine)
- * and +707,782 B of assets (two TN grammars and their NOTICE).** Both were
+ * **The WeText engine: +1,013,905 B of wasm (`rustfst`) and +707,782 B of assets
+ * (two TN grammars and their NOTICE).** Both were
  * predicted in advance and both are the size of the thing rather than of the
  * change: `rustfst` is what the +1 MB *is*, and the grammars are 12 MB of
  * OpenFST binary that stay out of the module by being a fetched dictionary.
  *
- * **Phase 9B.4: −53,768 B of wasm, no asset change.** The fix in that phase put
- * negative-weight handling into the copy's own path extraction and dropped the
+ * **Negative-weight handling in the copy's own path extraction: −53,768 B of
+ * wasm, no asset change.** That fix dropped the
  * call to `rustfst::shortest_path`, which was the only thing in reach of
  * OpenFST's queue-based shortest-distance and its determinize; that half of
  * `rustfst` is no longer in the module at all. Measured by building the same
  * source twice with only the extraction swapped; the per-file assertion below
  * has the pair.
  *
- * **Phase 9A: +17,385 B of wasm, no asset change.** The NRL 7948 letter-to-sound
- * rules HeadTTS uses for a word the CMU dictionary does not have: 309 rules as
- * `&'static [Rule]` of pattern, advance and phonemes, plus the loop around them
+ * **The English letter-to-sound rules: +17,385 B of wasm, no asset change.** The
+ * NRL 7948 rules HeadTTS uses for a word the CMU dictionary does not have: 309
+ * rules as `&'static [Rule]` of pattern, advance and phonemes, plus the loop
+ * around them
  * and the `regex` automata they are matched with. `regex` was already linked
- * (phase 9B's copied normalizer carries it), so this is the data and the loop and
+ * (the copied normalizer carries it), so this is the data and the loop and
  * not a new engine — 0.30% of the module, against 3.75 MB of dictionary compiled
  * in beside it. The rule count is 309: the "7948" is the number of the NRL
  * report, not the size of its rule table.
  *
- * **Phase 9D: +28,853 B of wasm, no asset change** (the Mandarin tone rules).
+ * **The Mandarin tone rules: +28,853 B of wasm, no asset change.**
  *
- * **Phase 9E: +1,459 B of wasm and +223,092 B of assets.** The smallest of the
- * phases by an order of magnitude, and deliberately so: the FST *engine* was
- * paid for in 9B, so what is new here is the wiring — two more `Option<Normalizer>`
- * fields, a shared numeral step, one Unicode digit test — and four grammars as
- * assets (54 + 106 + 30 + 33 KB, plus a NOTICE each). 1,459 B is 0.024% of a
- * 6 MB module, and it is the whole cost of Chinese and Japanese text
+ * **Chinese and Japanese text normalization: +1,459 B of wasm and +223,092 B of
+ * assets.** The smallest of these changes by an order of magnitude, and
+ * deliberately so: the FST *engine* was paid for already, so what is new here is
+ * the wiring — two more `Option<Normalizer>` fields, a shared numeral step, one
+ * Unicode digit test — and four grammars as assets (54 + 106 + 30 + 33 KB, plus
+ * a NOTICE each). 1,459 B is 0.024% of a 6 MB module, and it is the whole cost
+ * of Chinese and Japanese text
  * normalization.
  *
- * **Phase 10: −1,320,513 B of assets, no wasm change.** English stopped being
- * rendered by `kokoro-js`'s own front end, which took the `phonemizer` package —
- * espeak-ng's 2.5 MB wasm — out of the graph; the kokoro worker's chunk alone fell
- * from 2,225,156 B to 904,657 B, and that chunk is what espeak *was*. Measured by
- * building this tree with and without the alias, so it is one measurement and not
- * a comparison against a number from another session. `pnpm build` no longer
- * emits an espeak asset at all.
+ * **espeak-ng dropped: −1,320,513 B of assets, no wasm change.** English stopped
+ * being rendered by `kokoro-js`'s own front end, which took the `phonemizer`
+ * package — espeak-ng's 2.5 MB wasm — out of the graph; the kokoro worker's
+ * chunk alone fell from 2,225,156 B to 904,657 B, and that chunk is what espeak
+ * *was*. Measured by building this tree with and without the alias, so it is one
+ * measurement and not a comparison against a number from another session.
+ * `pnpm build` no longer emits an espeak asset at all.
  *
  * The three numbers that matter today, measured on one build:
  *
@@ -176,17 +179,17 @@ const CHAIN_MARKERS = ['kuromoji', 'kuroshiro', 'jieba-wasm'] as const;
  *
  * **This bound had been exceeded twice before.** It was set to 44-50 MB around a
  * measurement of 46.8 MB and did not move when the IPADic dictionary — 8.1 MB,
- * and absent from the itemisation above until phase 6 — landed; the build was
+ * and absent from the itemisation above — landed; the build was
  * 55.35 MB at the commit before the Chinese word list was added, which is
- * 5.35 MB past the ceiling. It had happened again by the time phase 9B measured:
+ * 5.35 MB past the ceiling. It had happened again by the measurement above:
  * the 2.8 MB HeadTTS dictionary, which `scripts/setup-headtts-dict.sh` had put in
- * `public/`, was not in the itemisation above either, so the tree measured
- * 42.7 MB against a 42 MB ceiling *before* any of phase 9B's bytes. Nothing
+ * `public/`, was not in the itemisation either, so the tree measured
+ * 42.7 MB against a 42 MB ceiling *before* any of the WeText bytes. Nothing
  * noticed, for the same reason as last time: `pnpm test:build` is opt-in and CI
  * does not run it.
  *
- * **Phase 9A deleted that dictionary and its script.** Phase 9A reads the words
- * the CMU dictionary does not have with HeadTTS's *rules*, which are 309 entries
+ * **Deleting that dictionary and its script.** The words the CMU dictionary does
+ * not have are read with HeadTTS's *rules*, which are 309 entries
  * of `const` data compiled into the module, so HeadTTS's own 125,829-word
  * dictionary is a second answer to a question this pipeline already answers — and
  * nothing had read the file since the attempt that fetched it was abandoned. An
@@ -417,9 +420,9 @@ describe('the build output', () => {
 
     // Exactly two: ONNX Runtime's and the phonemizer's. Both are singletons —
     // the jsep build covers the WebGPU and wasm backends, so a second ORT
-    // binary would be 21 MB of dead weight (spec §1.4), and a second phonemizer
+    // binary would be 21 MB of dead weight, and a second phonemizer
     // binary would be 6 MB of the same. jieba's is no longer here at all, which
-    // is the whole of phase 7's effect on this list.
+    // is why the count below is two.
     expect(wasm).toHaveLength(2);
 
     const ort = wasm.filter((path) => /ort-wasm-simd-threaded\.jsep-.*\.wasm$/.test(path));
@@ -428,14 +431,15 @@ describe('the build output', () => {
 
     const phonemize = wasm.filter((path) => /phonemize_bg-.*\.wasm$/.test(path));
     expect(phonemize).toHaveLength(1);
-    // 5,081,554 before phase 9B. The 1,013,905 B it grew by is `rustfst` — the
-    // FST engine the vendored WeText normalizer runs on — and not the copied
-    // normalizer, which is ~50 KB of source. The grammars themselves are two
-    // fetched dictionaries and are not in here at all; that is the whole point of
+    // 5,081,554 before the WeText engine landed. The 1,013,905 B it grew by is
+    // `rustfst` — the FST engine the vendored WeText normalizer runs on — and not
+    // the copied normalizer, which is ~50 KB of source. The grammars themselves
+    // are two fetched dictionaries and are not in here at all; that is the whole
+    // point of
     // shipping them through the dictionary protocol rather than `include_bytes!`ing
     // 12 MB of OpenFST binary.
     //
-    // Phase 9B.4 then took 53,768 B back off, and that is measured rather than
+    // The path-extraction swap then took 53,768 B back off, measured rather than
     // estimated: with the one-best extraction swapped from
     // `rustfst::shortest_path` to the copy's own Bellman-Ford (see
     // `crates/phonemize/src/backends/wetext/NOTICE`, modification 6), the same
@@ -452,7 +456,7 @@ describe('the build output', () => {
     // asserted. 28 B against a hang that would take the worker with no error to
     // report is the right trade; the extraction is otherwise identical.
     //
-    // 6,042,508 as of phase 9B.6, which puts a hand-written scan in front of the
+    // 6,042,508 with the hand-written scan put in front of the
     // engine (`crates/phonemize/src/backends/tn_gate.rs`). **977 B** — the whole
     // cost of the gate, and the reason it is a byte scan rather than a `regex`:
     // `regex` is linked already, so the criterion was never "can we afford the
@@ -461,33 +465,33 @@ describe('the build output', () => {
     // 33 ms of composition per 710 skipped characters; 977 B is 0.016% of the
     // module.
     //
-    // **6,071,361 as of phase 9D, which is +28,853 B for the Mandarin tone rules**
+    // **6,071,361 with the Mandarin tone rules, which is +28,853 B**
     // (`crates/phonemize/src/backends/tone_sandhi/`). Measured by building twice
     // with only the four word lists emptied, 7,661 B of that is the lists
     // themselves — 509 entries, 3,632 B of UTF-8 and one 16-byte fat pointer
     // each — and 21,192 B is code: the rules, the four monomorphized
     // `binary_search` calls over them, `HAN_NUMERALS`, and jieba's
     // `cut_for_search`, which the reference's `_split_word` needs and which
-    // nothing before this phase linked. 0.48% of the module for a rule layer that
-    // changes what the Chinese voices say, against the 1 MB `rustfst` above for
-    // an English numeral reader. Nothing here is a fetched asset.
+    // nothing else in the module linked. 0.48% of the module for a rule layer
+    // that changes what the Chinese voices say, against the 1 MB `rustfst` above
+    // for an English numeral reader. Nothing here is a fetched asset.
     //
-    // **6,088,746 as of phase 9A, which is +17,385 B for the English
-    // letter-to-sound rules** (`crates/phonemize/src/backends/headtts_en/`).
+    // **6,088,746 with the English letter-to-sound rules, +17,385 B**
+    // (`crates/phonemize/src/backends/headtts_en/`).
     // Measured by building this source and then the source with the new module
     // unreferenced, in the same tree: 6,071,361 → 6,088,746. 309 rules at ~36 B of
     // static data each is ~11 KB, and the rest is the scan, the misaki-to-IPA
     // translation, and the `regex` automata the patterns compile to. No asset
     // moved — the rules are `const` data, not a fetched dictionary — which is the
-    // one thing this phase was asked not to do and did not.
+    // one thing this change deliberately avoided.
     //
     // 0.30% of the module for the words the dictionary does not have. The
     // comparison that matters is with the 3.75 MB CMU dictionary above: the
     // fallback for a word it lacks is three orders of magnitude smaller than the
     // table of the words it has.
     //
-    // 6,091,773 as of the 1,NNN bug fix (phase P6 follow-up), which is **+1,568 B**
-    // from phase 9E's 6,090,205. The fix adds `fix_one_thousand_bug()` to handle
+    // 6,091,773 as of the 1,NNN bug fix, which is **+1,568 B** from 6,090,205.
+    // The fix adds `fix_one_thousand_bug()` to handle
     // WeText's 1,000-1,999 bug — about 1.5 KB for the function and string operations.
     //
     // **6,091,829 as of the scripts reorganization**, which is **+56 B** and is the
@@ -529,7 +533,7 @@ describe('the build output', () => {
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {
     // Same structural guarantee as ONNX Runtime, and worth the same test: 5 MB
     // of wasm plus its glue is too much to leave one stray import away from the
-    // side panel. And since phase 7 the engine cannot speak without it — the
+    // side panel. And the engine cannot speak without it — the
     // kokoro worker is handed phonemes and has no way to make any.
     const carrying = FILES.filter(carriesPhonemizer);
 
@@ -573,8 +577,8 @@ describe('the build output', () => {
   });
 
   it('carries no trace of the JavaScript phonemize chain', () => {
-    // Phase 8 deleted the chain, its vendored kuromoji/kuroshiro copies and the
-    // 17 MB dictionary they read. Of those, only the dictionary was ever *in*
+    // The chain is gone, along with its vendored kuromoji/kuroshiro copies and
+    // the 17 MB dictionary they read. Of those, only the dictionary was ever *in*
     // this package — the code was never reachable from an entry point — so both
     // halves are asserted, and they fail for different reasons: the directory is
     // a `public/` asset coming back, the markers are an import coming back.
@@ -591,7 +595,7 @@ describe('the build output', () => {
   });
 
   it('carries no trace of espeak-ng', () => {
-    // Phase 10. English is rendered from the Rust phonemizer's IPA, so
+    // English is rendered from the Rust phonemizer's IPA, so
     // `kokoro-js`'s own front end — the half that called espeak — is never
     // reached, and the alias in `wxt.config.ts` is what keeps its 2.5 MB out of
     // the package. The failure this catches is the alias being dropped or the
@@ -628,7 +632,7 @@ describe('the build output', () => {
     //
     // Both are checked, and checked against the emitted names rather than
     // merely "is a string": a URL pointing at a file that does not exist fails
-    // exactly like no URL at all, and since phase 7 the engine cannot speak
+    // exactly like no URL at all, and the engine cannot speak
     // without the second one.
     const offscreen = entryGraph('offscreen.html');
     const spawning = offscreen.filter((path) =>

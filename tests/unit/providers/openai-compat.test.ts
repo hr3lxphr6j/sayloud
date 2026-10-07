@@ -254,7 +254,7 @@ describe('synthesize (captioned endpoint)', () => {
       config({ captionedSpeech: true })
     );
 
-    // V7: the request is the OpenAI body plus `stream: false`; without it
+    // The request is the OpenAI body plus `stream: false`; without it
     // Kokoro streams audio chunks instead of answering with one JSON body.
     expect(seenBody).toMatchObject({ stream: false, voice: 'af_bella', input: 'Hello world' });
     expect(seenBody).not.toHaveProperty('return_timestamps');

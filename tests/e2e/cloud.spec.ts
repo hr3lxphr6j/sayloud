@@ -85,7 +85,7 @@ test('reads through the cloud provider and highlights words from its timestamps'
   expect(requests[0]).toMatchObject({
     path: '/tts/v1/dev/captioned_speech',
     voice: 'af_stub',
-    // Kokoro only answers with one JSON body when streaming is off (spec V7).
+    // Kokoro only answers with one JSON body when streaming is off.
     stream: false,
   });
   expect(requests[0]?.input).toContain('first sentence');

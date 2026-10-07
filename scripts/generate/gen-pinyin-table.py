@@ -8,8 +8,8 @@ derives a syllable's IPA — the Rust frontend reads the transcribed form
 algorithm rather than hand-written.
 
 It lives in the crate's data directory rather than beside a runtime that reads
-it, because since phase 8 nothing reads it at runtime: the JavaScript phonemize
-chain is gone, and `scripts/generate/gen-pinyin-pro-data.mjs` is the only consumer. It
+it, because nothing reads it at runtime: the JavaScript phonemize chain is gone,
+and `scripts/generate/gen-pinyin-pro-data.mjs` is the only consumer. It
 transcribes this file into `pinyin-syllables.txt`, which is what the wasm
 actually embeds. Hand-writing the
 initial/final split is exactly the mistake this avoids: pypinyin's

@@ -2,7 +2,7 @@
  * The Kokoro tokenizer's vocabulary, as a test fixture.
  *
  * 115 tokens, copied from `onnx-community/Kokoro-82M-v1.0-ONNX`'s
- * `tokenizer.json` (`model.vocab`) during P4's verification. It is here so the
+ * `tokenizer.json` (`model.vocab`). It is here so the
  * syllable table can be checked against the tokenizer **offline** — the real
  * one lives in the model repository, and a unit test must not download 163 MB
  * to find out whether a phoneme survives tokenization.

@@ -1,5 +1,5 @@
 /**
- * P6 V1: harness around the `piper-plus` Rust wasm phonemizer.
+ * A harness around the `piper-plus` Rust wasm phonemizer.
  *
  * The awkward part of testing this thing is that it never returns phonemes.
  * `WasmPhonemizer.phonemize(text, lang)` returns `phonemeIds` -- indices into

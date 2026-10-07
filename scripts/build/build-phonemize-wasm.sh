@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds the P6 phonemize wasm module.
+# Builds the phonemize wasm module.
 #
 # wasm-pack writes the JS glue and the .d.ts next to the .wasm, and that output
 # directory is what `lib/models/phonemize-rust.ts` imports and what `tsc` reads
@@ -18,7 +18,6 @@ cd "$(dirname "$0")/../.."
 
 if ! command -v wasm-pack >/dev/null 2>&1; then
   echo "wasm-pack not found. Install it with: cargo install wasm-pack" >&2
-  echo "See docs/superpowers/plans/P6-FINAL.md" >&2
   exit 1
 fi
 

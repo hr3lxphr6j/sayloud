@@ -45,11 +45,10 @@ const JIEBA_URL = '/dictionaries/jieba-zh-dict.bin.zst';
 /**
  * Every text-normalization grammar the registry can ask for.
  *
- * All three languages read their numerals through the vendored WeText engine:
- * English's pair since phase 9B, Chinese's and Japanese's since 9E. They are
- * fetched on `prepare` like any other dictionary, and — unlike IPADic or
- * jieba's word list — they are parsed by `finish_loading`, so a stand-in frame
- * would fail rather than pass quietly.
+ * All three languages read their numerals through the vendored WeText engine.
+ * They are fetched on `prepare` like any other dictionary, and — unlike IPADic
+ * or jieba's word list — they are parsed by `finish_loading`, so a stand-in
+ * frame would fail rather than pass quietly.
  */
 const WETEXT = [
   'wetext-en-tn-tagger',
@@ -276,7 +275,7 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     await engine.synthesize('hello world', 'af_heart', 'en-US', signal);
 
     // The exact string `en_g2p.rs` pins on the Rust side, so a change on either
-    // side of the seam shows up here. Since phase 10 the model is handed IPA and
+    // side of the seam shows up here. The model is handed IPA and
     // nothing else — see `SynthesizePiece`.
     expect(kokoro.pieces).toEqual([{ ipa: 'həlˈoʊ wˈɜːld' }]);
   });
@@ -303,7 +302,7 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
 
     await engine.synthesize('你好', 'zf_xiaobei', 'zh-CN', signal);
 
-    // `ni↗xau↓`: 你好 is two third tones in a row and phase 9D's tone sandhi makes
+    // `ni↗xau↓`: 你好 is two third tones in a row and tone sandhi makes
     // the first a second — *ní hǎo*. This test is about the seam between the two
     // workers and not about the reading, so all it needs from here is that the
     // string arrived; `tests/tone_sandhi.rs` is what pins it.
@@ -337,7 +336,7 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
 
     // Packed back into one call, because two small pieces cost more to
     // synthesize than one — the cut exists for the paragraph, not the sentence.
-    // Since phase 10 the model is handed IPA and not text, so this is as much as
+    // The model is handed IPA and not text, so this is as much as
     // can be said here about the join: one call, and every piece audible.
     expect(kokoro.pieces).toHaveLength(1);
     for (const piece of kokoro.pieces) expect(piece.ipa.trim()).not.toBe('');

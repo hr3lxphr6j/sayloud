@@ -27,15 +27,15 @@ function config(overrides: Partial<DashscopeConfig> = {}): ProviderConfig {
 }
 
 /**
- * One SSE frame in the framing V4 recorded: `id:` and `event:` lines, a
+ * One SSE frame in the framing the service sends: `id:` and `event:` lines, a
  * `:HTTP_STATUS` comment, the JSON payload, then the blank line that ends the
- * frame (spec §6 V4).
+ * frame.
  */
 function frame(event: string, payload: unknown): string {
   return `id:1\nevent:${event}\n:HTTP_STATUS/200\ndata:${JSON.stringify(payload)}\n\n`;
 }
 
-/** A word entry in the shape V4 recorded (spec §6 V4 ①/③). */
+/** A word entry in the shape the service sends. */
 function word(text: string, ordinal: number, startMs: number, endMs: number): unknown {
   return {
     text,
@@ -102,7 +102,7 @@ describe('capabilities', () => {
 
 describe('supportsTimings', () => {
   it('accepts the v3 family the spec records as reporting timings', () => {
-    // V4 exercised cosyvoice-v3-flash and cosyvoice-v3-plus; §2.2 adds v3.5.
+    // cosyvoice-v3-flash and cosyvoice-v3-plus report timings, and so does v3.5.
     expect(supportsTimings('cosyvoice-v3-flash')).toBe(true);
     expect(supportsTimings('cosyvoice-v3-plus')).toBe(true);
     expect(supportsTimings('cosyvoice-v3')).toBe(true);
@@ -242,7 +242,7 @@ describe('synthesize', () => {
       config({ model: 'cosyvoice-v1' })
     );
 
-    // Without the flag the service never sends the word frame (spec §2.2, V4).
+    // Without the flag the service never sends the word frame.
     expect(bodies[0]?.parameters?.word_timestamp_enabled).toBe(true);
     expect(bodies[1]?.parameters).not.toHaveProperty('word_timestamp_enabled');
   });
@@ -268,7 +268,7 @@ describe('synthesize', () => {
   });
 
   it('aligns words by ordinal, not by reading begin_index as a character offset', async () => {
-    // V4 ①: begin_index is a word ordinal and an English word keeps its leading
+    // begin_index is a word ordinal and an English word keeps its leading
     // space. Treated as offsets these ordinals would produce spans at 0/1/2/3.
     server.use(
       http.post(ENDPOINT, () =>
@@ -305,9 +305,9 @@ describe('synthesize', () => {
   });
 
   it('skips a normalized word and keeps the words around it aligned', async () => {
-    // V4 ②: the service reads "1.27" as "一点二七", so those words do not appear
+    // The service reads "1.27" as "一点二七", so those words do not appear
     // in the sentence. They are skipped, not estimated, and the rest still line
-    // up (spec §2.1, §2.2).
+    // up.
     server.use(
       http.post(ENDPOINT, () =>
         HttpResponse.text(
@@ -345,7 +345,7 @@ describe('synthesize', () => {
   });
 
   it('merges two sentences and drops the word repeated across the frame boundary', async () => {
-    // V4 ③: the service splits sentences itself and repeats words as it
+    // The service splits sentences itself and repeats words as it
     // delivers them incrementally, so the stream is de-duplicated on
     // (sentence.index, begin_index) and the two sentences' words are
     // concatenated in order. Ordinals restart at 0 for the second sentence, so
@@ -389,8 +389,8 @@ describe('synthesize', () => {
   });
 
   it('tolerates the alias V4 named for a word original text', async () => {
-    // V4 records `original_text` as present but not which object carries a
-    // word's own text, so it is accepted as a last alias rather than required.
+    // `original_text` appears in the stream but not on a fixed object, so it is
+    // accepted as a last alias rather than required.
     server.use(
       http.post(ENDPOINT, () =>
         HttpResponse.text(
@@ -501,7 +501,7 @@ describe('synthesize', () => {
   });
 
   it('returns the streamed WAV chunks of qwen3-tts-flash without timings', async () => {
-    // V4: qwen3-tts-flash streams WAV chunks and puts a download url on its
+    // qwen3-tts-flash streams WAV chunks and puts a download url on its
     // last frame, and reports no timings at all. The chunks win over the url,
     // so no second request is made (an unhandled one would fail this test).
     const body =
@@ -667,7 +667,7 @@ describe('validate', () => {
     await provider.validate(config(), signal);
     await provider.validate(config({ model: 'cosyvoice-v1' }), signal);
 
-    // A v1 voice on a v3 model is the mismatch V4 ④ measured as a 400.
+    // A v1 voice on a v3 model is a mismatch, and the service answers 400.
     expect(voices).toEqual(['longanyang', 'longxiaochun']);
   });
 
@@ -686,7 +686,7 @@ describe('listVoices', () => {
   it('offers the v3 catalogue, with timings, for a v3 model', async () => {
     const voices = await provider.listVoices(config({ model: 'cosyvoice-v3-flash' }), signal);
 
-    // V4 exercised exactly this voice against this model.
+    // This is the one voice the v3 catalogue returns for this model.
     expect(voices).toEqual([
       { id: 'longanyang', name: 'longanyang', lang: 'zh-CN', supportsTimings: true },
     ]);
@@ -701,7 +701,7 @@ describe('listVoices', () => {
   });
 
   it('offers no system voice for v3.5, which rejects them', async () => {
-    // V4 ④: cosyvoice-v3.5-flash + a system voice answers 400 (code 418).
+    // cosyvoice-v3.5-flash + a system voice answers 400 (code 418).
     expect(await provider.listVoices(config({ model: 'cosyvoice-v3.5-flash' }), signal)).toEqual(
       []
     );

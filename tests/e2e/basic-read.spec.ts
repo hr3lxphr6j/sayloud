@@ -70,7 +70,7 @@ test.describe('reading a page with the browser voice', () => {
     const viewport = page.viewportSize();
     if (!box || !viewport) throw new Error('the bar was never laid out');
 
-    // The spec fixes the bar at 28px wide, pinned to the right edge in a single
+    // The bar is 28px wide, pinned to the right edge in a single
     // column. A taller-than-wide box is what makes it a bar and not a panel.
     expect(box.width).toBe(28);
     expect(viewport.width - (box.x + box.width)).toBeLessThanOrEqual(16);

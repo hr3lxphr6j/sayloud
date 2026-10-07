@@ -46,7 +46,7 @@ function sentence(words: Array<{ word: string; startTime: number; endTime: numbe
   return { code: 0, message: '', sentence: { text: '', words } };
 }
 
-/** The frame the service ends a stream with (spec §6 V9). */
+/** The frame the service ends a stream with. */
 function end(): unknown {
   return { code: END_CODE, message: '', data: null };
 }
@@ -119,7 +119,7 @@ describe('synthesize', () => {
     expect(seenHeaders?.get('x-api-request-id')).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
     );
-    // The old console's credentials are not a supported auth path (spec §2.2),
+    // The old console's credentials are not a supported auth path,
     // so neither header may be sent.
     expect(seenHeaders?.get('x-api-app-id')).toBeNull();
     expect(seenHeaders?.get('x-api-access-key')).toBeNull();
@@ -127,7 +127,7 @@ describe('synthesize', () => {
 
   it('sends the assumed request body', async () => {
     // assumed: the spike recorded the response but not the request body, so
-    // this test pins the shape Phase 4 has to confirm against a live key.
+    // this test pins the shape to confirm against a live key.
     let seenBody: unknown;
 
     server.use(
@@ -256,7 +256,7 @@ describe('synthesize', () => {
 
   it('skips a normalized word and keeps the timings that do line up', async () => {
     // The provider normalized "5" to "five", so that word cannot be placed.
-    // Spec §2.1 / V9: skip it rather than discarding the sentence — otherwise
+    // Skip it rather than discarding the sentence — otherwise
     // every sentence containing a number would lose word-level highlight.
     server.use(
       http.post(ENDPOINT, () =>

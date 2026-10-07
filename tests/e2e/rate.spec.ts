@@ -3,7 +3,7 @@
  *
  * The rate is the one preference that has to reach two places: the content
  * script reads it for the `load` command that starts a session, and the service
- * worker pushes it into a session that is already running (spec §11 T4).
+ * worker pushes it into a session that is already running.
  * Neither is visible to a unit test — one is built inside a shadow DOM by an
  * entrypoint, the other is a subscription in a service worker — so the
  * assertion is the rate the player's own button shows, which is the number the

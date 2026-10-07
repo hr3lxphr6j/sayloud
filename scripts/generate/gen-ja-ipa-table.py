@@ -2,12 +2,12 @@
 """Generate the Rust half of the Japanese katakana→IPA table.
 
 The table is data, and the Rust side needs it as a `&[(&str, &str)]` with no
-parser at runtime, so it is generated rather than written by hand. It was
-duplicated by hand before phase 8 — once in the JavaScript phonemize chain, once
-in `crates/phonemize/src/g2p/ja/table.rs` — and a 193-entry table is
+parser at runtime, so it is generated rather than written by hand. It used to be
+duplicated by hand — once in the JavaScript phonemize chain, once in
+`crates/phonemize/src/g2p/ja/table.rs` — and a 193-entry table is
 exactly the kind of thing that drifts by one entry when it is copied.
 
-The JavaScript copy is gone (phase 8 deleted that chain), so the source of truth
+The JavaScript copy is gone, so the source of truth
 is now `crates/phonemize/data/ja-ipa-table.json`, which sits with the rest of the
 crate's data. This script reads it and writes the Rust one;
 `crates/phonemize/tests/ja_ipa_table_parity.rs` reads the JSON back and asserts
@@ -17,7 +17,7 @@ It used to carry `KOKORO_V1_VOCABULARY` over from a JavaScript test as well,
 because the constraint that every entry only spells with characters the tokenizer
 keeps is a property of *this* table: a symbol outside the vocabulary is deleted
 by the tokenizer's `Replace` normalizer, which loses part of a mora and reports
-nothing. Phase 5 built the real vocabulary gate (`src/vocab.rs`) from the model's
+nothing. The real vocabulary gate (`src/vocab.rs`) is built from the model's
 own `tokenizer.json`, so that constant was dropped: the check now uses the
 authoritative set, which is a proof rather than the floor the copy was.
 

@@ -219,8 +219,8 @@ describe('synthesize', () => {
 
   it('skips normalized words and keeps the ones that do line up', async () => {
     // ElevenLabs aligns against the text it speaks: "5" is spoken as "five",
-    // so the alignment covers more characters than the sentence has. Spec
-    // §2.1 / V9: skip the words that do not line up, keep the rest.
+    // so the alignment covers more characters than the sentence has. Skip the
+    // words that do not line up, keep the rest.
     server.use(
       http.post(SYNTHESIZE, () =>
         HttpResponse.json({

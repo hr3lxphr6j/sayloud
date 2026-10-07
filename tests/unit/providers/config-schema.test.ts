@@ -79,7 +79,7 @@ describe('PROVIDER_SCHEMAS', () => {
   it('exposes exactly the fields the verified Volcengine contract uses', () => {
     // The old console's appId / access token and a separate model field are
     // deliberately absent: only the new console's X-Api-Key is supported, and
-    // the resource id decides the model version (spec §2.2).
+    // the resource id decides the model version.
     expect(volcengine.fields.map((field) => field.key)).toEqual([
       'apiKey',
       'resourceId',
@@ -103,12 +103,12 @@ describe('PROVIDER_SCHEMAS', () => {
       'seed-tts-1.0',
       'seed-tts-2.0',
     ]);
-    // Only the 1.0 resource reports word timings (spec §6 V9).
+    // Only the 1.0 resource reports word timings.
     expect(text(resourceId?.options?.[0]?.labelKey)).toMatch(/word timings/);
   });
 
   it('offers the spec regions for DashScope, with the Beijing-only caveat', () => {
-    // spec §2.2 line 126: region is cn-beijing / ap-southeast-1, and the
+    // The region is cn-beijing / ap-southeast-1, and the
     // CosyVoice HTTP API is only open in Beijing.
     const region = dashscope.fields.find((field) => field.key === 'region');
 
@@ -121,8 +121,8 @@ describe('PROVIDER_SCHEMAS', () => {
   });
 
   it('names a model V4 exercised and says how word timings are enabled', () => {
-    // V4 measured cosyvoice-v3-flash with word_timestamp_enabled; the flag is
-    // sent by the adapter, not typed by the user (spec §2.2, §6 V4).
+    // cosyvoice-v3-flash was measured with word_timestamp_enabled; the flag is
+    // sent by the adapter, not typed by the user.
     const model = dashscope.fields.find((field) => field.key === 'model');
 
     expect(model?.placeholder).toBe('cosyvoice-v3-flash');

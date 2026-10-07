@@ -184,8 +184,8 @@ describe('the tab list', () => {
   });
 
   it('drives one panel per tab, whatever the list holds', async () => {
-    // The whole list, not the two names: P4 adds a model tab, and neither this
-    // loop nor the render behind it should have to change for that.
+    // The whole list, not the two names: neither this loop nor the render behind
+    // it should have to change when a tab is added.
     renderPanel();
 
     for (const tab of screen.getAllByRole('tab')) {

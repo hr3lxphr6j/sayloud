@@ -5,8 +5,8 @@
 # IPADic ships from lindera's GitHub releases as a zip of nine files, and the
 # extension ships it as one zstd frame holding a tar of those nine. The tar is a
 # transport wrapper and nothing more: the files inside are lindera's own, byte for
-# byte, because lindera's dictionary format is a decision the P6 spec already made
-# (decision #18) and re-packing it would be a second format to keep working.
+# byte, because lindera's dictionary format is fixed by the crate and re-packing
+# it would be a second format to keep working.
 #
 # The frame is zstd rather than the release's deflate for a reason worth writing
 # down: the wasm decompresses it with `ruzstd`, and zstd over the raw

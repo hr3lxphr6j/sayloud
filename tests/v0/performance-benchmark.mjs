@@ -1,5 +1,6 @@
 /**
- * P6 V0: performance benchmark for `@piper-plus/g2p`.
+ * A performance benchmark for `@piper-plus/g2p`, the JavaScript candidate the
+ * phonemizer evaluation measured first.
  *
  * Run with `node tests/v0/performance-benchmark.mjs`. Writes
  * `performance-results.json` next to itself and prints a table.
@@ -22,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 const OUT_DIR = dirname(fileURLToPath(import.meta.url));
 
-/** Targets from the V0 brief. */
+/** Targets set for this candidate before it was measured. */
 const TARGETS = {
   loadMs: 100,
   zhMsPerSentence: 1,

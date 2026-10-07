@@ -269,7 +269,7 @@ describe('downloading a tier', () => {
     const body = controllableBody();
     const routes = routesFor(KOKORO_82M, [fp16, fp32]);
     routes[onnxUrl] = { body: body.body };
-    // The shared files are part of the plan too, and they have to answer.
+    // The shared files have to answer too.
     routes[resolveUrl(canonicalModelUrl(KOKORO_82M.repo, 'config.json'), HUGGINGFACE)] = {
       bytes: bytesOf(4),
     };

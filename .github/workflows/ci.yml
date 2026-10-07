@@ -1,8 +1,14 @@
 name: CI
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 jobs:
   test:
     runs-on: macos-latest
+    # Every run starts from a clean checkout, so the incremental state cargo would
+    # write into `target/` is never read back within a run — it is most of that
+    # directory's size, and rust-cache hashes every `CARGO_*` variable into the
+    # key, which is the other reason this belongs here rather than being left out.
+    env:
+      CARGO_INCREMENTAL: 0
     steps:
       - uses: actions/checkout@v4
       # No `version` input: the action reads `packageManager` from package.json,
@@ -39,6 +45,34 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack
+      # The two cargo steps below compile the same 149 crates twice, once for the
+      # wasm target and once for the host: 224s and 110s, half this job's wall
+      # clock between them. Both write into the repository's one `target/` — the
+      # crate is the only member of a workspace rooted here, and wasm-pack builds
+      # into it too (`target/wasm32-unknown-unknown/`) — so one cache covers both.
+      #
+      # This has to run after `rustc` and `cargo` are on PATH, because the key
+      # starts from their versions, and before the first cargo invocation, because
+      # a cache restored after a build has nothing left to save.
+      #
+      # `save-if` keeps writes to pushes on `main`: a pull request restores the
+      # entry its lockfile descends from and rebuilds the difference, whereas
+      # saving would add an entry per branch, for a lockfile that never lands.
+      # `cache-bin` is off because both tools above are installed by their own
+      # actions.
+      #
+      # No `key` rotating on this file's contents, which is what the reference
+      # setup does: it exists there so a separate warm-cache job can save a fresh
+      # entry after the build changes. Here the job that builds is the one that
+      # saves, and the action stores only dependency artifacts — never the
+      # workspace crate's own — so editing this file costs nothing but the restore.
+      - name: Cache the Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          prefix-key: v1-sayloud
+          shared-key: cargo
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: pnpm build:wasm
       # The Rust half of the phonemizer has its own tests — the dictionary
       # protocol, and later the pipeline's parity corpus. Nothing else runs them,

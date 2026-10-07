@@ -146,11 +146,11 @@ check(
 // --- settings: provider list ------------------------------------------------
 await settings();
 checkEqual(
-  'every provider is listed, in the schema order',
+  'every provider is listed, browser and local ahead of the cloud services',
   await page
     .locator('[data-provider]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-provider'))),
-  ['browser', 'dashscope', 'volcengine', 'openai-compat', 'elevenlabs', 'azure', 'local']
+  ['browser', 'local', 'dashscope', 'volcengine', 'openai-compat', 'elevenlabs', 'azure']
 );
 check(
   'the browser voice is the active row, and opens first',
@@ -584,7 +584,7 @@ checkEqual(
 check(
   'the model card names the licence and what the model speaks',
   (await page.getByRole('link', { name: 'Licence: Apache-2.0' }).count()) === 1 &&
-    (await page.getByText(/36 voices/).count()) === 1
+    (await page.getByText(/41 voices/).count()) === 1
 );
 check(
   'the space the downloaded models occupy is reported',

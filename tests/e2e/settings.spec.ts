@@ -68,10 +68,14 @@ test('clicking the gear asks the worker to open the panel for this tab', async (
 
   await control(page, 'Settings').click();
 
-  const calls = await expect
-    .poll(() => recordedCalls(serviceWorker), { timeout: 10_000 })
-    .not.toBeNull()
-    .then(() => recordedCalls(serviceWorker));
+  // Poll for the call, not for the recorder: the recorder is installed above, so
+  // its array already exists — and is empty — when the click happens, and "the
+  // recorder exists" is therefore true on the first poll. That read the list
+  // before the click had been through the worker, which failed on a runner that
+  // took longer than one poll interval to get there.
+  await expect.poll(() => recordedCalls(serviceWorker), { timeout: 10_000 }).toHaveLength(1);
+
+  const calls = await recordedCalls(serviceWorker);
 
   // The tab id, not the window id: the gear belongs to one tab, and opening the
   // panel per window would replace another tab's settings.

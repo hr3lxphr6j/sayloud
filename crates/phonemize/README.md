@@ -6,8 +6,9 @@ wasm module and run in a dedicated worker.
 This crate is the **whole** of text preprocessing: number reading, punctuation
 normalisation, script segmentation, dictionary lookup, G2P, and the vocabulary
 gate. It replaced a JavaScript chain (kuromoji + kuroshiro + jieba + espeak +
-pinyin-pro) that phase 8 deleted; see
-`docs/phonemization-architecture.md` for where it sits in the extension.
+pinyin-pro) that is gone from the tree: the extension's text preprocessing is
+this crate, reached through `lib/models/phonemize-rust.ts`, which runs it in a
+dedicated worker.
 
 ## How the code is laid out
 
@@ -33,18 +34,17 @@ which reader stands in for it and whether the gate looks first.
 | Japanese (`ja-JP`) | **WeText numerals** (fallback: `numbers_to_kanji`) → lindera IPADic → katakana → IPA table | `lindera-ipadic-ja.bin.zst`, 8.51 MB, plus `wetext-ja-tn-{tagger,verbalizer}.bin.zst`, 63 KB, both fetched on `prepare` |
 | English (`en-US`) | **WeText numerals** (fallback: `numbers_to_english`) → CMU Dict → **NRL 7948 letter-to-sound rules** for a word it lacks → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in, and the rules 17 KB more |
 
-**Since phase 10 English is what production speaks, like the other two.** The
+**All three languages now reach the model the same way.** The
 Kokoro engine used to send English to `kokoro-js`'s own `generate(text)`, which
 phonemized with its internal espeak — a *second* front end running over words this
 crate had already phonemized, and one whose IPA never matched the token count the
 sentence was cut with. All three languages now reach the model as IPA through
-`generate_from_ids()`. The trade that came with it is real and documented
-(en-GB voices have no variant of their own here, and espeak read a few classes
-better): en-GB voices have no variant of their own here, and espeak read a few
-classes better. **The listening test has not been done.**
+`generate_from_ids()`. The trade that came with it is real: en-GB voices have no
+variant of their own here, and espeak read a few classes better. **The listening
+test has not been done.**
 
-Phase 9A gave the words that CMU dictionary does not have a reading instead of a
-spelling. Until it, `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː` — six letters read
+A word the CMU dictionary does not have is read instead of spelled. It used to be
+spelled, and `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː` — six letters read
 as six letters — and a mixed-case proper noun is exactly what a dictionary of
 common English does not have. It now goes through the letter-to-sound rules of NRL
 Report 7948 as HeadTTS adapted them
@@ -55,8 +55,8 @@ three that is a transcription rather than a reading, and because the last layer 
 what used to happen and must keep happening for anything the other two refuse.
 
 Two things the rules are **not** asked to do. An all-capitals run is an initialism
-and is spelled (`HTTP` → `ˈeɪtʃ tˈiː tˈiː pˈiː`), which is the phase 4 capitals
-rule and is not overridden by the engine that offers `ttp` for it. And a run with
+and is spelled (`HTTP` → `ˈeɪtʃ tˈiː tˈiː pˈiː`), which is the initialism rule
+and is not overridden by the engine that offers `ttp` for it. And a run with
 no `A`/`E`/`I`/`O`/`U` in it never reaches the rules at all, because `xyz` → `sɪz`
 and `sql` → `skl` are what a spelling oracle answers when it is handed a word that
 is not one; the letters are more informative there. The rule table is 309 entries —
@@ -66,11 +66,11 @@ quality comparison (including the readings that are wrong and were kept) and the
 list of what was deliberately not ported are in
 `src/g2p/en/headtts/` and its `NOTICE`.
 
-Phase 9B replaced the English *numeral* step with weighted FSTs vendored from
+The English *numeral* step is weighted FSTs vendored from
 WeTextProcessing (`src/tn/wetext/`), which reads dates, times, money,
-percentages, ordinals and abbreviations where the hand-written reader read a
-number and left the rest. It costs 1 MB of wasm and 707 KB of fetched grammars.
-Until phase 9B.4 it was also measurably **worse at a bare integer** — `123` came
+percentages, ordinals and abbreviations where the hand-written reader it replaced
+read a number and left the rest. It costs 1 MB of wasm and 707 KB of fetched
+grammars. It was also measurably **worse at a bare integer** — `123` came
 out `one two three` where `num2words` says `one hundred twenty three` — and that
 was written up as the grammar having several equal-cost readings for one. It was
 not: the grammar's cheapest reading of `123` is `one hundred and twenty three`,
@@ -83,7 +83,7 @@ halves are pinned by tests and written up in that module's `README.md`; the
 hand-written reader is still there as the fallback for a caller that never called
 `prepare`.
 
-Phase 9B.6 put a **gate** in front of that engine
+A **gate** sits in front of that engine
 (`src/tn/gate.rs`), because 92% of its cost is the tagger FST and the
 tagger runs on every English sentence whether or not there is anything in it to
 tag — upstream's English TN is deliberately not gated on digits
@@ -110,8 +110,9 @@ no shape at all, so a proper noun in it that the pipeline would have respelled i
 skipped. The short version is 1,127 missed
 keys, 182 of them audible, and 0 misses over 127 sentences of real prose.
 
-Phase 9D added the last step of the Chinese pipeline: **Mandarin tone sandhi and
-the erhua coda** (`src/g2p/zh/tone_sandhi/`, ported from PaddleSpeech's
+The last step of the Chinese pipeline is
+**Mandarin tone sandhi and the erhua coda** (`src/g2p/zh/tone_sandhi/`, ported
+from PaddleSpeech's
 `ToneSandhi` and `_merge_erhua`). `pinyin-pro` gives one tone per character and
 Mandarin does not pronounce them as written — 你好 is *ní hǎo*, 一个 is *yí ge*,
 and the 儿 of 玩儿 is not a syllable but a coda on the one before it (`wanr2`,
@@ -120,9 +121,10 @@ decide the word boundaries the tokenizer sees, and `Plan::word_lengths` is how
 that reaches the spacing.
 
 Two things about it are worth knowing before touching it. **It is switchable**:
-`pipeline::ToneRules` has an `Off` that is the phase 6 pipeline byte for byte,
+`pipeline::ToneRules` has an `Off` that is the frozen pre-tone-rules pipeline
+byte for byte,
 and the corpus in `tests/fixtures/zh-frontend-parity.json` is pinned through it —
-because P5 §1.5 argues the v1.0 voices were trained *without* these rules and the
+because the v1.0 voices were trained *without* these rules, so the
 only way to keep that decision reversible is to keep the old path runnable and
 tested. `lib.rs` passes `On`; both arguments, and the evidence for each, are in
 `src/g2p/zh/tone_sandhi/mod.rs`.
@@ -133,18 +135,19 @@ sentences that differ because the two engines' dictionaries do (listed in that
 document). The three places this port deliberately answers differently are in its
 §五, each pinned by a test.
 
-Phase 9E wired the same WeText engine up for **Chinese and Japanese numerals**
+The same WeText engine is wired up for **Chinese and Japanese numerals**
 (`src/tn/engine.rs`), so all three languages read a year as a year, a
 clock time as a clock time and a phone number digit by digit rather than through
 three hand-written readers that each only ever matched a digit. It is the
-smallest of the phases — **+1,459 B** of wasm, because the FST engine arrived in
-9B and is shared, against 223 KB of fetched grammars for both languages combined
+smallest of these steps — **+1,459 B** of wasm, because the FST engine is shared
+with English, against 223 KB of fetched grammars for both languages combined
 — and the only one that had to change the vendored copy: `should_normalize`
 tested digits with `is_ascii_digit` where the reference's `\d` is Unicode-wide, and
 `０` is U+FF10, so **every full-width numeral in a Chinese or Japanese sentence
 skipped the normalizer entirely** and came out as the digits it was written with.
 That could not reach English (the branch it guards is `lang != En`), which is why
-it survived from 9B to 9E. Modifying it brought this copy from 45/48 to **47/48**
+it went unnoticed until the two CJK languages were wired up. Modifying it brought
+this copy from 45/48 to **47/48**
 agreement with `pip install wetext==0.1.8` on Chinese probes and from 23/29 to
 **29/29** on Japanese ones.
 
@@ -249,7 +252,8 @@ upstream HeadTTS, and `tests/headtts_en.rs` checks both the 309 rules and the 29
 words against it. It also holds the upstream revision and module SHA-256, which
 `rules.rs` quotes in its own header.
 
-The four word lists of phase 9D are **not** here: they are verbatim upstream data
+The four word lists the tone rules use are **not** here: they are verbatim
+upstream data
 rather than something generated, so they live in
 `src/g2p/zh/tone_sandhi/tables.rs` with that directory's `NOTICE`.
 
@@ -260,7 +264,7 @@ rather than something generated, so they live in
 ## Test corpora
 
 `tests/fixtures/{zh-parity,zh-frontend-parity}.json` are **frozen golden files**:
-the JavaScript pipeline's own output, recorded before phase 8 deleted it. The
+the JavaScript pipeline's own output, recorded before that chain was deleted. The
 generators are gone, so those two can no longer be regenerated.
 
 `tests/fixtures/ja-reference.json` is a *reference* corpus rather than a frozen

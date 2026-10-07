@@ -1,9 +1,8 @@
 # Text normalization (`wetext`)
 
 Weighted-FST text normalization, vendored from `wetext-rs` 0.1.2 and wired up for
-all three languages by `crate::tn::engine` — English in phase 9B,
-Chinese and Japanese in 9E. See `NOTICE` in this directory for the licence and the
-seven modifications; this file is about *using* it.
+all three languages by `crate::tn::engine`. See `NOTICE` in this directory for the
+licence and the seven modifications; this file is about *using* it.
 
 Everything below is written from the English side, because English is where it
 was first wired up and where the interesting behaviour (abbreviations, and a
@@ -141,7 +140,7 @@ column with `minus`, which was the shipped reading's, not the minimum's.
 `1000` reads `ten hundred`. The tagger tags it `date { year: "1000" }`, and the
 grammar offers `ten hundred` and `one thousand` at the **same** cost, `0.000100`;
 the Python reference picks `ten hundred` too. That one is a tie in the grammar,
-and phase 9B.4 deliberately left it alone.
+and it is deliberately left alone.
 
 ### What this section used to say
 
@@ -159,5 +158,5 @@ What it means for this crate: the engine is markedly better than the hand-writte
 reader on *entities* — `3:30pm`, `50%`, `1st`, `1/2`, `2,000`, `10/4/2024`,
 `$20.50` — and it reads a bare integer as its cardinal, `one hundred and twenty
 three` where `num2words` says `one hundred twenty three`. The English pipeline
-prefers the engine (phase 9B's decision), and the tests pin the readings so
+prefers the engine, and the tests pin the readings so
 neither half can change quietly.

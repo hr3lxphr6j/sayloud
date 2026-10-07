@@ -56,7 +56,7 @@ pub enum ZhRun {
 /// ordering hazard, even though `、` becomes `, ` while `，` becomes `. `.
 ///
 /// **The comma becomes a period.** That is not a typo: it was chosen by listening
-/// (P5 spec) because Kokoro's pause behaviour differs between the two, and the
+/// tests because Kokoro's pause behaviour differs between the two, and the
 /// user picked it from a page of seven treatments. `、` (顿号) is left as a comma:
 /// it is a shorter mark, the page never tested it, and turning every separator
 /// into a full stop is a larger change than the one that was chosen.
@@ -154,7 +154,7 @@ pub fn split_runs(text: &str) -> Vec<ZhRun> {
 
 /// The punctuation Kokoro's tokenizer actually has.
 ///
-/// Measured against `tokenizer.json`'s vocabulary during P5 verification — the
+/// Measured against `tokenizer.json`'s vocabulary — the
 /// same measurement `KEPT_PUNCTUATION` in `chinese.ts` came from, and the same
 /// one [`crate::text`]'s `KOKORO_PUNCTUATION` records. Everything else,
 /// including `-`, `/`, `%` and `'`, is not in it and is dropped rather than

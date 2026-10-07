@@ -1,4 +1,4 @@
-//! A cheap filter in front of English text normalization (phase 9B.6).
+//! A cheap filter in front of English text normalization.
 //!
 //! # Why there is a gate at all
 //!

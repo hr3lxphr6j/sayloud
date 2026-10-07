@@ -220,8 +220,8 @@ fn ipa(word: &str) -> String {
 
 #[test]
 fn product_names_that_used_to_be_spelled_letter_by_letter() {
-    // The words this phase exists for. Before it, each of these was six or eight
-    // letters read as six or eight letters.
+    // These are the words the rules exist for: without them each one was six or
+    // eight letters read as six or eight letters.
     assert_eq!(ipa("Kokoro"), "kɑkɔɹoʊ");
     assert_eq!(ipa("OpenAI"), "oʊpɛneɪ");
     assert_eq!(ipa("GitHub"), "ɡɪθəb");
@@ -327,10 +327,10 @@ fn the_rules_handle_ordinary_spellings_too() {
 
 #[test]
 fn readings_that_are_wrong_and_are_kept_anyway() {
-    // A rule table is an approximation and this phase does not pretend otherwise.
+    // A rule table is an approximation and these rules do not pretend otherwise.
     // These are the readings that are wrong, pinned so that they are a known cost
-    // of the fallback rather than a surprise — and so that a future phase that
-    // fixes one has to say so.
+    // of the fallback rather than a surprise — and so that a future fix to one
+    // has to be deliberate.
     //
     // `laugh` loses its `f` to `[AU]=AO` plus a silent `[GH]`, where the CMU
     // dictionary has `L AE1 F` — the dictionary path is why nobody hears this.

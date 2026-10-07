@@ -5,7 +5,7 @@
 //! `Replace` with the empty string, so the phoneme is silently deleted and the
 //! word is heard without it. The gate turns that into a message.
 //!
-//! The Japanese pipeline is where the need was found (`P5 §4.2.1`): the kana
+//! The Japanese pipeline is where the need was found: the kana
 //! table had an ASCII `g` where the vocabulary has `ɡ` (U+0261), and every ガ行
 //! syllable was read as ア行. Nothing noticed, because the output was a string of
 //! valid-looking IPA. So the tests below are mostly about *what gets through*.
@@ -257,9 +257,9 @@ fn the_english_output_through_v11_zh_has_no_rhotic_vowel() {
 
 #[test]
 fn the_chinese_han_run_passes_the_v1_vocabulary() {
-    // Phase 5's Chinese work, validated by phase 5's gate. Not yet reachable
-    // through `phonemize` — the Chinese pipeline (word boundaries, punctuation,
-    // numerals, Latin runs) is phase 6 — so this calls the backend directly.
+    // The Chinese backend, validated by the gate. Not reachable through
+    // `phonemize` without the Chinese dictionary fixture, so this calls the
+    // backend directly.
     let phonemes = ChinesePinyin::new()
         .han_to_ipa("你好世界")
         .expect("the run phonemizes");

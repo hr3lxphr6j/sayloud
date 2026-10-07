@@ -43,7 +43,7 @@ impl Lang {
     /// The hand-written reader this language used before the engine arrived.
     ///
     /// Not a fallback in the "something went wrong" sense: it is what a caller
-    /// that never called `prepare` gets, and it is the phase 6 pipeline that the
+    /// that never called `prepare` gets, and it is the frozen pipeline that the
     /// JavaScript parity corpora are pinned against. A worse reading of a date,
     /// not a missing one.
     fn fallback(self, text: &str) -> String {

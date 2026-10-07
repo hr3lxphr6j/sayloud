@@ -107,7 +107,7 @@ pub struct Phonemizer {
     /// The Chinese text normalizer, built the same way and held for the same
     /// reason.
     ///
-    /// Phase 9E. Its grammars are 160 KB compressed, so the parse is a fraction
+    /// Its grammars are 160 KB compressed, so the parse is a fraction
     /// of English's — but it is still not per sentence.
     chinese_tn: Option<WeTextNormalizer>,
 
@@ -236,7 +236,7 @@ impl Phonemizer {
             }
             // English has no dictionary to wait for *for its phonemes* — the CMU
             // dictionary is compiled in — so this arm needs no `NotPrepared`
-            // check. Its FSTs are still a `prepare`-time dictionary (phase 9B),
+            // check. Its FSTs are still a `prepare`-time dictionary,
             // which is why `english_tn` can be `None` here without being an
             // error: `phonemize_en` falls back to `numbers_en` for it. The
             // backend itself is built lazily on the first call; see the
@@ -254,11 +254,11 @@ impl Phonemizer {
                         .ok_or_else(|| PhonemizeError::NotPrepared {
                             lang: options.lang.clone(),
                         })?;
-                // `ToneRules::On` is phase 9D, and it is a decision rather than a
-                // default: see `pipeline::ToneRules` for the P5 §1.5 argument
-                // against it on the v1.0 voices and the two things that argue for
-                // it anyway. `Off` is the phase 6 pipeline, kept reachable because
-                // the parity corpus is pinned to what that produced.
+                // `ToneRules::On` is a decision rather than a default: see
+                // `pipeline::ToneRules` for the argument against it on the v1.0
+                // voices and what answers it. `Off` is the frozen pre-tone-rules
+                // pipeline the JavaScript parity corpus is pinned to, kept
+                // reachable because that corpus is a test of it.
                 pipeline::phonemize_zh(
                     text,
                     segmenter,

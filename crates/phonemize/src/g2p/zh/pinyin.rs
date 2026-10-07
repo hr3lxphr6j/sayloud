@@ -447,7 +447,7 @@ impl ChinesePinyin {
     /// One space per syllable is what the JavaScript side's `singleSyllableWords`
     /// produces, and it is the shape its own tests pin. The production spacing is
     /// one space per *word* with no separator inside one, and the words come from
-    /// jieba — phase 6.
+    /// jieba.
     ///
     /// Refuses rather than returning nothing when a character has no reading. The
     /// alternative — returning the empty string, as the verification script did —
@@ -497,7 +497,7 @@ impl ChinesePinyin {
     /// A run's syllables to IPA, grouped into words.
     ///
     /// The same spacing as [`ChinesePinyin::han_to_ipa_by_words`], for a caller
-    /// that already has the syllables: the tone rules rewrite them (phase 9D),
+    /// that already has the syllables: the tone rules rewrite them,
     /// and a syllable they produced is one the syllable table can read —
     /// `wanr2` — but not one [`ChinesePinyin::readings`] produced.
     ///

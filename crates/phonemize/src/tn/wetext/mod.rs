@@ -18,8 +18,8 @@
 //! FST turns the reordered entity into words. [`Normalizer`] is the whole of it.
 //!
 //! English is one of the three languages wired up today
-//! ([`crate::tn::engine`]): its pair of grammars arrived in phase 9B and
-//! Chinese's and Japanese's in phase 9E, through the same dictionary protocol.
+//! ([`crate::tn::engine`]): all three pairs of grammars arrive through the same
+//! dictionary protocol.
 //! `full_to_half`, `traditional_to_simple` and the four post-processors the
 //! wheel also ships are still fetched by nobody — no configuration this crate
 //! builds turns those flags on, which is what the Python reference defaults to

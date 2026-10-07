@@ -1,4 +1,4 @@
-//! Mandarin tone sandhi and the erhua coda, ported from PaddleSpeech (phase 9D).
+//! Mandarin tone sandhi and the erhua coda, ported from PaddleSpeech.
 //!
 //! # What this is
 //!
@@ -12,9 +12,9 @@
 //!
 //! The rules are [`ToneSandhi`] from PaddleSpeech's `tone_sandhi.py` plus
 //! [`ZHFrontend::_merge_erhua`] from its `zh_frontend.py` (Apache-2.0; see
-//! `NOTICE` beside this file). They are portable for the reason the P5 spec says
-//! so (§4.3): they are pure string rules over tones, word shapes and jieba's
-//! part-of-speech tags, with no model and no dictionary of their own.
+//! `NOTICE` beside this file). They port cleanly because they are pure string
+//! rules over tones, word shapes and jieba's part-of-speech tags, with no model
+//! and no dictionary of their own.
 //!
 //! [`ToneSandhi`]: https://github.com/PaddlePaddle/PaddleSpeech/blob/develop/paddlespeech/t2s/frontend/tone_sandhi.py
 //! [`ZHFrontend::_merge_erhua`]: https://github.com/PaddlePaddle/PaddleSpeech/blob/develop/paddlespeech/t2s/frontend/zh_frontend.py
@@ -81,10 +81,10 @@
 //!    `a_sandhi_the_g2p_declined_is_still_applied`.
 //! 2. **The erhua coda keeps the final it joins.** PaddleSpeech appends `r` to
 //!    the pypinyin final and keeps everything before it, so 玩儿 is `w` +
-//!    `uanr2` — *wánr*, not `war`. The task that asked for this phase says
-//!    `an + 儿 → ar`, which is the phonological description of the *sound*
-//!    (\[waɻ\], the n lost into the nasalized vowel) and not what the reference
-//!    does; a port that dropped the coda would be inventing a rule. The coda is
+//!    `uanr2` — *wánr*, not `war`. The phonological description of the *sound* is
+//!    `an + 儿 → ar` (\[waɻ\], the n lost into the nasalized vowel), and that is
+//!    not what the reference does; a port that dropped the coda would be
+//!    inventing a rule. The coda is
 //!    also not the whole story for v1.1-zh, whose frontend writes a separate `R`
 //!    phoneme instead (`misaki/zh_frontend.py`); see the note in
 //!    `pinyin.rs::syllable_to_ipa` for what that means for a future port.

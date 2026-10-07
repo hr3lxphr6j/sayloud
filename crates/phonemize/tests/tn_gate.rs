@@ -1,5 +1,5 @@
 //! The two promises [`tn_gate`](phonemize::tn::gate) makes, held against
-//! the shipped grammars (phase 9B.6).
+//! the shipped grammars.
 //!
 //! The gate is a cheap filter in front of English text normalization, and it is
 //! not allowed to be a second opinion about what needs normalizing — the tagger
@@ -404,9 +404,9 @@ fn the_fallback_the_gate_bypasses_is_a_no_op_on_every_skipped_entry() {
 /// question, asserted instead of measured.
 ///
 /// This is the strongest of the three because it is the level the user hears, and
-/// it is the one that would have caught the phase's own measurement mistake: the
-/// first attempt at this number phonemized `key` with the engine on one side and
-/// the gate turned it off on both, and got zero differences by construction.
+/// it is the one that would have caught the mistake in the first measurement of
+/// these numbers: `key` was phonemized with the engine on one side and the gate
+/// turned it off on both, and got zero differences by construction.
 #[test]
 fn skipping_is_the_same_as_the_pipeline_without_the_engine() {
     let Some((_, normalizer)) = engine() else {

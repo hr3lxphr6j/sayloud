@@ -2,10 +2,10 @@
 //! behind.
 //!
 //! The corpus is `tests/fixtures/zh-parity.json`, generated from the JavaScript
-//! side by `tests/unit/models/phonemize/zh-parity.test.ts` before phase 8 deleted
-//! that chain. It is frozen: the generator is gone, so nothing can regenerate it,
-//! and this test is what keeps the Rust output pinned to it. It compares two
-//! things separately, because they fail separately:
+//! side by `tests/unit/models/phonemize/zh-parity.test.ts`. It is frozen: the
+//! generator is gone, so nothing can regenerate it, and this test is what keeps
+//! the Rust output pinned to it. It compares two things separately, because they
+//! fail separately:
 //!
 //! - `jsPinyin` is what `pinyin-pro` reports. A mismatch is the phrase tables, the
 //!   segmentation, or the 一/不/了/々 rules.
@@ -18,9 +18,9 @@
 //!
 //! What this corpus does **not** cover, and where the coverage is instead:
 //!
-//! - word boundaries (jieba) and the spacing they produce — phase 6, and the
-//!   corpus is deliberately one space per syllable;
-//! - the punctuation, numeral and Latin-run rules — phase 6;
+//! - word boundaries (jieba) and the spacing they produce — the frozen pipeline's
+//!   business, and the corpus is deliberately one space per syllable;
+//! - the punctuation, numeral and Latin-run rules — also the frozen pipeline's;
 //! - characters with no reading, and a syllable the table is missing — the error
 //!   paths are in `tests/pinyin.rs`, because a corpus of successes cannot record
 //!   a refusal.

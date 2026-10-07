@@ -1,5 +1,5 @@
 {
-  "note": "The katakana to IPA table: one mora (or palatalized or foreign two-mora pair) per entry, in lookup order, longest match first. This is the source of truth for the Japanese frontend: scripts/gen-ja-ipa-table.py turns it into crates/phonemize/src/frontends/ja_ipa_table.rs, and crates/phonemize/tests/ja_ipa_table_parity.rs reads it back and asserts the two still agree. It was extracted from lib/models/phonemize/japanese.ts when phase 8 deleted the JavaScript phonemize chain.",
+  "note": "The katakana to IPA table: one mora (or palatalized or foreign two-mora pair) per entry, in lookup order, longest match first. This is the source of truth for the Japanese frontend: scripts/generate/gen-ja-ipa-table.py turns it into crates/phonemize/src/g2p/ja/table.rs, and crates/phonemize/tests/ja_ipa_table_parity.rs reads it back and asserts the two still agree. It was extracted from lib/models/phonemize/japanese.ts before that JavaScript chain was deleted.",
   "entries": [
     ["ァ", "a"],
     ["ア", "a"],

@@ -1,4 +1,4 @@
-//! The Mandarin tone rules, one case per rule (P6 phase 9D).
+//! The Mandarin tone rules, one case per rule.
 //!
 //! Every expectation here was checked against PaddleSpeech's own `ToneSandhi`
 //! and `_merge_erhua` driven with `pypinyin` and jieba's `posseg` on the same
@@ -93,7 +93,7 @@ impl Harness {
 #[test]
 fn two_third_tones_make_the_first_a_second() {
     let Some(h) = harness() else { return };
-    // The user's report, and the reason this phase exists.
+    // The user's report, and the reason the tone rules exist.
     assert_eq!(h.plan("你好"), ["ni2", "hao3"]);
     assert_eq!(h.plan("你好世界"), ["ni2", "hao3", "shi4", "jie4"]);
 }
@@ -518,9 +518,9 @@ fn the_erhua_coda_keeps_the_final_it_joins() {
     let Some(h) = harness() else { return };
     // **Deviation 2**, and it is the reference that this keeps: PaddleSpeech
     // appends `r` to the pypinyin final and keeps everything before it, so 玩儿
-    // is `wanr` and not `war`. The task that asked for this phase described the
-    // rule as `an + 儿 → ar`, which is how the sound comes out ([waɻ]) and not
-    // what the reference does. See the module docs.
+    // is `wanr` and not `war`. The rule `an + 儿 → ar` describes how the sound
+    // comes out ([waɻ]), and it is not what the reference does. See the module
+    // docs.
     assert_eq!(h.plan("玩儿"), ["wanr2"]);
     assert_ne!(h.plan("玩儿")[0], "war2");
 }

@@ -83,9 +83,9 @@ pub fn jieba_dictionary_bytes() -> Option<Vec<u8>> {
 ///
 /// Deliberately the production path — `required_dictionaries`, `load_dictionary`,
 /// `finish_loading` — rather than calling the segmenter directly, so these tests
-/// cover the protocol and the pipeline's use of it at the same time. Since phase
-/// 9E that flow includes the two text-normalization grammars, which is also the
-/// only way the shipped numerals are exercised.
+/// cover the protocol and the pipeline's use of it at the same time. That flow
+/// includes the two text-normalization grammars, which is also the only way the
+/// shipped numerals are exercised.
 pub fn japanese_phonemizer() -> Option<Phonemizer> {
     prepared("ja-JP", [(IPADIC_JA, dictionary_bytes()?)], WETEXT_JA_NAMES)
 }
@@ -101,7 +101,7 @@ pub fn chinese_phonemizer() -> Option<Phonemizer> {
 
 /// A phonemizer that has been through the whole `prepare` flow for English.
 ///
-/// Since phase 9B that is not a no-op: English's *phonemes* still need no
+/// That is not a no-op: English's *phonemes* still need no
 /// dictionary, but its numerals go through the WeText grammars, and they arrive
 /// the same way IPADic and jieba's word list do.
 pub fn english_phonemizer() -> Option<Phonemizer> {

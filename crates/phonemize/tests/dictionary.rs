@@ -20,19 +20,19 @@ const JIEBA: &str = "jieba-zh-dict";
 /// The English text-normalization grammars, as `required_dictionaries` spells
 /// them.
 ///
-/// Phase 9B. English's *phonemes* still need no dictionary — the CMU dictionary
+/// English's *phonemes* still need no dictionary — the CMU dictionary
 /// is compiled in — but its numerals come from the vendored WeText engine, whose
 /// grammars are 12 MB of OpenFST binary and therefore an asset.
 const WETEXT_EN: [&str; 2] = ["wetext-en-tn-tagger", "wetext-en-tn-verbalizer"];
 
-/// The Chinese ones (phase 9E).
+/// The Chinese ones.
 ///
 /// Chinese and Japanese now fetch grammars as well as a word list, and that is
 /// the shape every language has: this list is the *numeral* step, not the
 /// phoneme step, so it is additive to whatever the phonemes need.
 const WETEXT_ZH: [&str; 2] = ["wetext-zh-tn-tagger", "wetext-zh-tn-verbalizer"];
 
-/// The Japanese ones (phase 9E).
+/// The Japanese ones.
 const WETEXT_JA: [&str; 2] = ["wetext-ja-tn-tagger", "wetext-ja-tn-verbalizer"];
 
 /// Everything `required_dictionaries("kokoro-v1", "ja-JP")` returns, in order:
@@ -88,8 +88,7 @@ fn japanese_needs_the_ipadic_dictionary_and_two_grammars() {
 #[test]
 fn english_needs_the_two_text_normalization_grammars() {
     // English used to be the case where `prepare` had nothing to fetch — the CMU
-    // dictionary is compiled into the wasm — and it is the assertion
-    // that changed in phase 9B, on purpose: the numeral step is the vendored
+    // dictionary is compiled into the wasm. Its numeral step is the vendored
     // WeText engine, and its two grammars are fetched like every other
     // language's.
     //
@@ -110,8 +109,8 @@ fn chinese_needs_the_jieba_dictionary_and_two_grammars() {
     // `scripts/setup-jieba-dict.sh`).
     //
     // Both frontends, because the choice of Chinese *script* is the frontend's
-    // business and not the dictionary's: v1.0 and v1.1-zh read the same words.
-    // Phase 9E added the two grammars to both.
+    // business and not the dictionary's: v1.0 and v1.1-zh read the same words,
+    // and both fetch the two grammars.
     assert_eq!(declared("kokoro-v1", "zh-CN").required(), ZH_REQUIRED);
     assert_eq!(declared("kokoro-v11-zh", "zh-CN").required(), ZH_REQUIRED);
 }
@@ -134,9 +133,8 @@ fn the_frontend_decides_which_languages_are_speakable() {
 
 #[test]
 fn an_unknown_frontend_is_an_error_rather_than_an_empty_list() {
-    // The plan's version of this function had a `_ => {}` arm, which turns a
-    // typo into "needs nothing, loads nothing, fails later for no visible
-    // reason".
+    // A `_ => {}` arm here would turn a typo into "needs nothing, loads nothing,
+    // fails later for no visible reason".
     let error = DictionaryRegistry::new()
         .declare_required("kokoro-v2", "en-US")
         .expect_err("kokoro-v2 is not a frontend");
@@ -297,8 +295,8 @@ fn switching_language_back_does_not_demand_the_dictionary_again() {
         .unwrap();
     load_fixture(&mut registry, &WETEXT_JA);
 
-    // A voice switch to English is now two more fetches rather than none, and
-    // since phase 9E a switch *from* Japanese is also three. The bytes here are
+    // A voice switch to English is now two more fetches rather than none, and a
+    // switch *from* Japanese is also three. The bytes here are
     // the transport fixture: `finish` checks that everything asked for arrived,
     // and it is `Phonemizer::finish_loading` — not the registry — that parses
     // them, so any zstd frame does for this test.

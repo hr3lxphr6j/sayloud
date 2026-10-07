@@ -1,13 +1,13 @@
 //! English G2P: the Latin runs of a CJK sentence, and the
-//! words the dictionary does not have (phase 9A).
+//! words the dictionary does not have.
 //!
 //! # Why not espeak
 //!
-//! The plan called for espeak-ng compiled into this module. That route does not
-//! exist: `espeak-ng-sys` is not on crates.io, the C sources do not compile for
-//! `wasm32-unknown-unknown` (no libc, and the host `ar` writes Mach-O archives
-//! that `rust-lld` cannot read), espeak needs a filesystem for its own data, and
-//! the pure-Rust port is GPL-3.0.
+//! espeak-ng compiled into this module is the obvious alternative, and it does
+//! not exist as an option: `espeak-ng-sys` is not on crates.io, the C sources do
+//! not compile for `wasm32-unknown-unknown` (no libc, and the host `ar` writes
+//! Mach-O archives that `rust-lld` cannot read), espeak needs a filesystem for
+//! its own data, and the pure-Rust port is GPL-3.0.
 //!
 //! What this module uses instead is [`piper_plus_g2p`]: the CMU Pronouncing
 //! Dictionary (123,455 entries) plus ARPAbet→IPA, MIT-licensed, with the
@@ -28,13 +28,13 @@
 //!
 //! **A word the dictionary does not have is read by rule.** CMU Dict is a
 //! dictionary, not a rule engine: `Kokoro`, `OpenAI`, `GitHub` and `ChatGPT` are
-//! not in it. Until phase 9A they were spelled letter by letter, which is not a
-//! pronunciation — `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː`, six letters read
-//! as six letters — and phase 9A is the fix:
-//! [`headtts_en`](crate::g2p::en::headtts), the letter-to-sound rules of NRL
-//! Report 7948 as HeadTTS adapted them, gives `GitHub` `ɡɪθəb` and `TypeScript`
-//! `tɪpɛskɹɪpt`. The dictionary is still asked first, so the change is confined
-//! to words that used to get nothing.
+//! not in it. A word it does not have used to be spelled letter by letter,
+//! which is not a pronunciation — `GitHub` was
+//! `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː`, six letters read as six letters.
+//! [`headtts_en`](crate::g2p::en::headtts) is the fix: the letter-to-sound rules
+//! of NRL Report 7948 as HeadTTS adapted them, which give `GitHub` `ɡɪθəb` and
+//! `TypeScript` `tɪpɛskɹɪpt`. The dictionary is still asked first, so the rules
+//! only ever answer for a word that would otherwise be spelled.
 //!
 //! **A reading with no vowel letter in the word is not attempted.** `http`,
 //! `xyz` and `sql` are not words, they are initialisms typed in lower case, and
@@ -159,8 +159,8 @@ impl EnglishG2p {
         }
 
         // OOV, and not an initialism: `dictionary_text` is the run itself, and the
-        // dictionary had nothing for it. Phase 9A reads it by rule instead of
-        // spelling it — unless it is not shaped like a word at all.
+        // dictionary had nothing for it. It is read by rule instead of spelled —
+        // unless it is not shaped like a word at all.
         if has_vowel_letter(run) {
             if let Some(ipa) = headtts::phonemize(run) {
                 if !ipa.is_empty() {
@@ -221,8 +221,7 @@ impl EnglishG2p {
 /// the dictionary has stopped having, which is the safer of the two failures.
 ///
 /// Real English words with none of the five letters do exist — `hmm`, `tsk`,
-/// `nth` — and they are spelled out rather than read by rule. That is the same
-/// answer they got before phase 9A, so nothing regressed to get here.
+/// `nth` — and they are spelled out rather than read by rule.
 pub fn has_vowel_letter(run: &str) -> bool {
     run.chars()
         .any(|character| matches!(character.to_ascii_uppercase(), 'A' | 'E' | 'I' | 'O' | 'U'))
@@ -289,9 +288,8 @@ mod tests {
 
     #[test]
     fn reads_an_initialism_letter_by_letter() {
-        // The three samples phase 3 recorded as divergences, which is what this
-        // phase exists to close: `API` is the acronym that used to come through
-        // as the letters `API` verbatim.
+        // `API` is the acronym that used to come through as the letters `API`
+        // verbatim, which is the case the initialism rule exists for.
         assert_eq!(ipa("API"), "ə pˈiː aɪ");
         assert_eq!(ipa("Q"), "kjˈuː");
     }
@@ -337,9 +335,8 @@ mod tests {
 
     #[test]
     fn common_words_come_out_the_way_the_corpus_expects() {
-        // The extended set from the phase 4 plan. These are dictionary words, and
-        // phase 9A moved them nowhere — the point of asserting them here is that
-        // the rule path did not get in front of the dictionary.
+        // These are dictionary words, and the point of asserting them here is
+        // that the rule path does not get in front of the dictionary.
         for (run, expected) in [
             ("Agent", "ˈeɪdʒənt"),
             ("hello", "həlˈoʊ"),
@@ -353,8 +350,8 @@ mod tests {
 
     #[test]
     fn a_word_outside_the_dictionary_is_read_by_rule() {
-        // Phase 9A. Before it, each of these was spelled: `Kokoro` was
-        // `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ` and `GitHub` was
+        // Each of these is read by rule rather than spelled: `Kokoro` was spelled
+        // as `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ` and `GitHub` as
         // `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː`.
         for (run, expected) in [
             ("Kokoro", "kɑkɔɹoʊ"),

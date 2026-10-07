@@ -1,4 +1,4 @@
-# Rust half of the P6 phonemize migration.
+# Rust half of the phonemizer.
 #
 # A virtual workspace: no package of its own. It exists so `cargo` has a single
 # resolution root and a single place for profile settings.
@@ -7,8 +7,8 @@ members = ["crates/phonemize"]
 resolver = "2"
 
 # Cargo only reads profiles from the workspace root — a `[profile.release]`
-# inside a member crate is ignored, with a warning. The P6 plan put these
-# settings in `crates/phonemize/Cargo.toml`, where they would have done nothing.
+# inside a member crate is ignored, with a warning. These settings belong here
+# rather than in `crates/phonemize/Cargo.toml`, where they would do nothing.
 #
 # These are size settings, not speed settings: the wasm ships inside the
 # extension. `opt-level = "z"` because the decoder tables dominate the binary;

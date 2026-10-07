@@ -20,7 +20,7 @@
     "",
     "A sample marked check='skip' has a Latin run, which this crate reads with its",
     "own English backend rather than with the Japanese reference; its value is",
-    "pinned by the phase 9A tests instead."
+    "pinned by the English pipeline's own tests instead."
   ],
   "samples": [
     {

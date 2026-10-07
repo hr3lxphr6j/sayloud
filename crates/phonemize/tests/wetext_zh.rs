@@ -1,4 +1,4 @@
-//! Chinese text normalization (phase 9E).
+//! Chinese text normalization.
 //!
 //! Two halves, the same as `wetext_en.rs`: what the grammars *say*, asserted on
 //! the words rather than on the phonemes those words become, and what the
@@ -13,8 +13,8 @@
 //! known difference rather than treated as a defect. That probe is not committed,
 //! so what is *pinned* is the tables below.
 //!
-//! The full-width cases are the reason this phase needed a change **inside** the
-//! vendored copy rather than only around it: `should_normalize` gated on
+//! The full-width cases are the reason the vendored copy needed a change **inside**
+//! it rather than only around it: `should_normalize` gated on
 //! `is_ascii_digit` where the reference gates on `\d`, and `０` is not an ASCII
 //! digit — so every full-width numeral skipped the normalizer entirely and came
 //! out as the digits it was written with. That is modification 7 in the engine's
@@ -54,7 +54,7 @@ fn assert_reads(table: &[(&str, &str)]) {
 ///
 /// This is what the engine is here for. `numbers_to_han` reads four digit shapes
 /// and nothing else — no date, no clock time, no money, no fraction, no unit — so
-/// each row below is a reading that did not exist before phase 9E. Compare
+/// each row below is a reading the hand-written reader never produced. Compare
 /// `tests/zh_pipeline.rs`'s tables for what each one does to the phonemes.
 #[test]
 fn reads_the_entity_classes_the_hand_written_reader_could_not() {
@@ -118,7 +118,7 @@ fn reads_a_bare_cardinal_the_way_the_hand_written_reader_did() {
 
 // ------------------------------------------------------------ full width
 
-/// **The bug this phase found in the vendored copy.**
+/// **A bug found in the vendored copy: full-width digits.**
 ///
 /// `should_normalize` asked `is_ascii_digit` where the reference asks `\d`, and
 /// over a Python `str` that is every character in Unicode general category `Nd`.
@@ -129,7 +129,7 @@ fn reads_a_bare_cardinal_the_way_the_hand_written_reader_did() {
 ///
 /// English could not see it: `should_normalize` is not consulted for English,
 /// which normalizes whatever it is given (modification 5 in `NOTICE`). That is
-/// why this survived from phase 9B to 9E.
+/// why Chinese and Japanese had it where English never did.
 ///
 /// The fix is modification 7. Both readings below are the reference's.
 #[test]

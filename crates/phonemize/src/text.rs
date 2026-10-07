@@ -4,8 +4,8 @@
 //! and easy to mistake for arbitrary choices:
 //!
 //! - [`normalize_punctuation`] turns a comma into a **period**. That is not a
-//!   typo: it was chosen by listening tests (P5 spec) because Kokoro's pause
-//!   behaviour differs between the two, and Japanese inherits the choice.
+//!   typo: it was chosen by listening tests because Kokoro's pause behaviour
+//!   differs between the two, and Japanese inherits the choice.
 //! - [`segment_text`] splits into script runs before anything else looks at the
 //!   text, because each run takes a different route to phonemes.
 
@@ -222,7 +222,7 @@ fn run_push(run: &mut ScriptRun, ch: char) {
 
 /// The punctuation marks Kokoro's tokenizer recognises.
 ///
-/// Measured against `tokenizer.json`'s vocabulary during P5 verification — the
+/// Measured against `tokenizer.json`'s vocabulary — the
 /// same measurement `KEPT_PUNCTUATION` in `lib/models/phonemize/chinese.ts` came
 /// from, and the same one `tests/unit/models/kokoro-vocab.ts` keeps a copy of.
 /// Anything else is dropped, since Kokoro can do nothing with it anyway.

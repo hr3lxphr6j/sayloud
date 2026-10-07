@@ -30,22 +30,20 @@ pub const IPADIC_JA: &str = "lindera-ipadic-ja";
 /// The Chinese dictionary's name, as the JavaScript side sees it.
 ///
 /// jieba's word-frequency list, uncompressed to text and handed to `jieba-rs`.
-/// A dictionary rather than a compiled-in table for the reason phase 6 measured:
-/// the crate's `default-dict` feature embeds exactly this file, through
-/// `include-flate`, and that path pulls in the C `zstd` crate at runtime, which
-/// cannot link for `wasm32-unknown-unknown` on macOS (see
-/// `scripts/setup-jieba-dict.sh`). Shipping it as an asset also keeps 4.8 MB of
-/// dictionary out of the wasm.
+/// A dictionary rather than a compiled-in table: the crate's `default-dict`
+/// feature embeds exactly this file, through `include-flate`, and that path pulls
+/// in the C `zstd` crate at runtime, which cannot link for
+/// `wasm32-unknown-unknown` on macOS (see `scripts/setup-jieba-dict.sh`).
+/// Shipping it as an asset also keeps 4.8 MB of dictionary out of the wasm.
 ///
 /// 1.6 MB compressed, built by `scripts/setup-jieba-dict.sh`.
 pub const JIEBA_ZH: &str = "jieba-zh-dict";
 
 /// The English TN tagger FST's name, as the JavaScript side sees it.
 ///
-/// Phase 9B for English, phase 9E for the two CJK languages below. English is
-/// the one language whose *phonemes* need no dictionary — the CMU dictionary is
-/// compiled in — but its *numerals* come from the vendored WeText engine
-/// (`crate::tn::wetext`), and that engine's grammars are OpenFST binaries,
+/// English is the one language whose *phonemes* need no dictionary — the CMU
+/// dictionary is compiled in — but its *numerals* come from the vendored WeText
+/// engine (`crate::tn::wetext`), and that engine's grammars are OpenFST binaries,
 /// so they arrive through the registry like everything else rather than being
 /// embedded rather than fetched.
 ///
@@ -53,7 +51,7 @@ pub const JIEBA_ZH: &str = "jieba-zh-dict";
 /// compressed because its cardinal grammar is enormous; Chinese's is 160 KB and
 /// Japanese's 70 KB, so wiring all three adds 223 KB to an extension whose
 /// dictionaries are already 9.8 MB. What is *not* small is the code: `rustfst`
-/// arrived with phase 9B and is shared by all three.
+/// is shared by all three.
 ///
 /// The tagger is the half that recognizes an entity; the verbalizer below is the
 /// half that says it. Both are needed and neither is usable without the other,
@@ -116,10 +114,9 @@ pub fn supported_languages(vocab: &str) -> Option<&'static [&'static str]> {
 /// CMU dictionary and the Chinese pinyin tables are compiled into the wasm
 ///, and only the parts that cannot be are fetched.
 ///
-/// **Every language now fetches the two WeText TN grammars, and that is the
-/// whole of what phase 9E changed here.** They are the *numeral* step rather
-/// than the phoneme step, which is why a non-empty list here does not contradict
-/// the rule that the phoneme data is compiled in.
+/// **Every language now fetches the two WeText TN grammars.** They are the
+/// *numeral* step rather than the phoneme step, which is why a non-empty list
+/// here does not contradict the rule that the phoneme data is compiled in.
 fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
     match language {
         // IPADic: prebuilt trie + connection matrix, ~10 MB compressed and
@@ -131,7 +128,7 @@ fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
         // `jieba-rs` can embed it cannot link for wasm (see [`JIEBA_ZH`]).
         "zh" => Some(&[JIEBA_ZH, WETEXT_ZH_TN_TAGGER, WETEXT_ZH_TN_VERBALIZER]),
         // English's *phonemes* need no dictionary at all — the CMU dictionary is
-        // compiled in — so this list is entirely numerals (phase 9B).
+        // compiled in — so this list is entirely numerals.
         "en" => Some(&[WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER]),
         _ => None,
     }

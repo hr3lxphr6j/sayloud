@@ -57,8 +57,8 @@ const WETEXT_JA = ['wetext-ja-tn-tagger', 'wetext-ja-tn-verbalizer'] as const;
  *
  * `prepare('kokoro-v1', 'zh-CN')` fetches jieba's word list and the two Chinese
  * grammars, so a route table that only serves the word list fails inside
- * `finish_loading` — which is what happened when phase 9E added the second half
- * of that list and this file still spelled it out by hand.
+ * `finish_loading` — which is what happened when the second half of that list
+ * was added and this file still spelled it out by hand.
  */
 function wetextRoutes(names: readonly string[]): Record<string, DictionaryBytes> {
   return Object.fromEntries(
@@ -155,9 +155,9 @@ describe('PhonemizeService', () => {
   });
 
   it.skipIf(!hasWetextEn)('reads English through its text-normalization grammars', async () => {
-    // As of phase 9B a `prepare` for English does fetch something, so this is no
-    // longer a test that it fetches *nothing* (there is one of those further
-    // down, for the vocabulary table). What it pins is the seam: the two grammars
+    // A `prepare` for English does fetch something, so this is no longer a test
+    // that it fetches *nothing* (there is one of those further down, for the
+    // vocabulary table). What it pins is the seam: the two grammars
     // are loaded, the pipeline uses them, and the sentence still comes out.
     const service = serviceWith(wetextEnRoutes());
     await service.init();
@@ -197,13 +197,13 @@ describe('PhonemizeService', () => {
 
     await service.prepare('kokoro-v1', 'zh-CN');
 
-    // `ni↗xau↓` and not `ni↓xau↓`: phase 9D's tone sandhi raises the first of
+    // `ni↗xau↓` and not `ni↓xau↓`: tone sandhi raises the first of
     // two third tones, so this is the shipped reading of 你好. The Rust side pins
     // both readings — the shipped one in `tests/tone_sandhi.rs` and the one the
     // JavaScript frontend produced in `tests/zh_pipeline.rs`.
     expect(service.phonemize('你好', 'kokoro-v1', 'zh-CN').phonemes).toBe('ni↗xau↓');
 
-    // And what phase 9E added: a year read as a year. `2024年` is 二零二四年 —
+    // And the numeral step: a year read as a year. `2024年` is 二零二四年 —
     // èr líng èr sì nián — where `numbers_to_han` read 2024 as a quantity and
     // said 二千零二十四年. Pinned on the Rust side in `tests/wetext_zh.rs` and
     // `tests/zh_pipeline.rs`; this says it survives the seam.

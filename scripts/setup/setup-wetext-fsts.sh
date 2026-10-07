@@ -9,8 +9,8 @@
 # is a copy of SpenserCai's Rust port that reads exactly this file format; its
 # `NOTICE` says why the source is copied rather than depended on.
 #
-# **Why the FSTs are not inside the wasm.** Spec decision #4: a dictionary is
-# fetched on `prepare` and decompressed inside the module. Raw, the six frames
+# **Why the FSTs are not inside the wasm.** A dictionary is fetched on
+# `prepare` and decompressed inside the module. Raw, the six frames
 # are 14.4 MB — five times the size of the rest of the phonemizer wasm if they
 # were `include_bytes!`'d. They arrive through the same registry IPADic and
 # jieba's word list do.

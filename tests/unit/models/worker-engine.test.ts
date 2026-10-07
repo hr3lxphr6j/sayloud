@@ -7,8 +7,8 @@
  * waits forever — which reads as "playback does nothing" rather than as an
  * error, and is exactly how the on-device path failed in manual testing.
  *
- * Phase 7 added a second worker, and with it a failure the single-worker engine
- * could not have: one worker dying while the other is still healthy. A sentence
+ * The second worker brought a failure the single-worker engine could not have:
+ * one worker dying while the other is still healthy. A sentence
  * is only half done at that point — its phonemes exist but nothing will
  * synthesize them — so the engine has to take both down rather than leave a
  * request waiting on a worker that can no longer make progress.

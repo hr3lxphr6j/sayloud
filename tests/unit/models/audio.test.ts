@@ -1,5 +1,5 @@
 /**
- * PCM → WAV and the token-budget split (P4 spec §3.9, §3.10).
+ * PCM → WAV and the token-budget split.
  *
  * The split is measured, never guessed from character counts, so the tests
  * inject the measurement the way the worker will inject the real tokenizer.

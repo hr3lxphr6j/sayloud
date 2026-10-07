@@ -171,12 +171,12 @@ describe('KokoroEngine.load', () => {
 /**
  * What the engine does with pieces that are already phonemized.
  *
- * **One path for all three languages, since phase 10.** Until then an English
- * piece went in as *text* so `kokoro-js` phonemized it the way the model was
- * trained — espeak plus the substitutions applied afterwards — and Chinese and
- * Japanese went in as IPA because `generate()` rejects every voice outside its
- * own 28-voice English list. All three now arrive as IPA from the Rust
- * phonemizer, so `generate()` is gone from this class entirely.
+ * **One path for all three languages.** An English piece used to go in as *text*
+ * so `kokoro-js` phonemized it the way the model was trained — espeak plus the
+ * substitutions applied afterwards — and Chinese and Japanese went in as IPA
+ * because `generate()` rejects every voice outside its own 28-voice English
+ * list. All three now arrive as IPA from the Rust phonemizer, so `generate()` is
+ * gone from this class entirely.
  */
 describe('KokoroEngine.synthesize', () => {
   const PIECES = [{ ipa: 'həlˈoʊ' }, { ipa: ' wˈɜːld' }];
@@ -199,7 +199,7 @@ describe('KokoroEngine.synthesize', () => {
   });
 
   it('speaks English from the IPA the Rust pipeline produced', async () => {
-    // Phase 10. English used to reach `generate()` as text, which meant a second
+    // English used to reach `generate()` as text, which meant a second
     // front end ran over words that had already been phonemized — and the token
     // count in `countTokens()` described the IPA rather than what was spoken.
     // The assertion is the same shape as the one below it now, which is the

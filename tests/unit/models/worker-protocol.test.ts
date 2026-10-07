@@ -1,11 +1,10 @@
 /**
  * The kokoro worker's channel, from the side that has to trust it.
  *
- * Phase 7 changed what `synthesize` carries — pieces of prepared text rather
- * than the sentence itself — and added `count`, so the guard is what keeps a
- * stale worker from being handed a message it would read as something else. A
- * worker from a previous version would see `synthesize` with no `text` and
- * synthesize `undefined`.
+ * `synthesize` carries pieces of prepared text rather than the sentence itself,
+ * plus a `count`, so the guard is what keeps a stale worker from being handed a
+ * message it would read as something else. A worker from a previous version
+ * would see `synthesize` with no `text` and synthesize `undefined`.
  */
 import { describe, expect, it } from 'vitest';
 import { isWorkerReply, isWorkerRequest } from '~/lib/models/worker-protocol';

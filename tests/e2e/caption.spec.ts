@@ -4,9 +4,8 @@
  * Chromium exposes a Document Picture-in-Picture window as an extra page in the
  * browsing context, so this spec can read what the window actually shows —
  * the sentence, the sentence count and the word mark — rather than only
- * checking that a button appeared. (Verified while answering V10 in the P3
- * spec; the window is the `about:blank` page that appears alongside the
- * article.)
+ * checking that a button appeared. (The window is the `about:blank` page that
+ * appears alongside the article.)
  */
 import type { BrowserContext, Page } from '@playwright/test';
 import { control, expect, test } from './fixtures';

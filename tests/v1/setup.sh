@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# P6 V1 verification environment, rebuilt from scratch.
+# Verification environment for the `piper-plus` Rust wasm phonemizer, rebuilt
+# from scratch.
 #
 #   bash tests/v1/setup.sh
 #

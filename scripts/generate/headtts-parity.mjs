@@ -5,8 +5,8 @@
  * tables: a 125 829-word pronouncing dictionary, and — for everything the
  * dictionary does not have — the letter-to-sound rules of NRL Report 7948
  * ("Automatic Translation of English Text to Phonetics by Means of
- * Letter-to-Sound Rules", 1976). Phase 9A ports the second table to Rust, and
- * this script is where the port's expected values come from.
+ * Letter-to-Sound Rules", 1976). The second table is ported to Rust, and this
+ * script is where the port's expected values come from.
  *
  * It runs **upstream JavaScript**, not a copy of it: every `phonemes` string in
  * the output is what `Language#phonemizeWord` returned, so the Rust engine in
@@ -32,8 +32,8 @@
  * different words that cover the same 305 rules. So a regeneration on another
  * machine is a diff in `words` and in nothing else, and a diff anywhere else in
  * the file means upstream moved. Checking the committed fixture against a live
- * checkout is what tells those two apart, and it is what was run when this phase
- * landed: 296 words and 309 rules, no differences.
+ * checkout is what tells those two apart, and it is what was run when the
+ * fixture was committed: 296 words and 309 rules, no differences.
  *
  * # Why the word list is chosen by a covering pass
  *

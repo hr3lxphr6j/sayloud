@@ -49,10 +49,9 @@ const JIEBA_URL = `/dictionaries/${JIEBA}.bin.zst`;
  * The real IPADic asset, or `null` when skipping was asked for.
  *
  * `test-dict.json.zst` is a stand-in for the *transport* — bytes arrive
- * compressed and come out whole — and that is all phase 2 defined. It stopped
- * being enough for `finish_loading` once that started building the segmenter
- * from the bytes (phase 3), because no small payload can satisfy lindera's nine
- * components. So the tests that reach that step use the dictionary itself.
+ * compressed and come out whole. It cannot feed `finish_loading`, which builds
+ * the segmenter from those bytes, because no small payload can satisfy lindera's
+ * nine components. So the tests that reach that step use the dictionary itself.
  *
  * Missing is a failure, not a skip. These tests are the only JavaScript-side
  * check that the boundary works, and a test that passes because its input was
@@ -144,9 +143,8 @@ function chinesePhonemizerWith(bytes: DictionaryBytes) {
 /**
  * Every text-normalization grammar the registry can ask for.
  *
- * All three languages read their numerals through the vendored WeText engine:
- * English's pair since phase 9B, Chinese's and Japanese's since 9E. English's
- * *pronunciation* dictionary is compiled into the wasm — the CMU
+ * All three languages read their numerals through the vendored WeText engine.
+ * English's *pronunciation* dictionary is compiled into the wasm — the CMU
  * dictionary — so for English these two are the whole of what `prepare`
  * fetches, and for the other two they arrive alongside IPADic or jieba's word
  * list.
@@ -154,7 +152,7 @@ function chinesePhonemizerWith(bytes: DictionaryBytes) {
  * Listed together because `phonemizerWith` has to satisfy `/dictionaries/*` for
  * whichever language a test asks about, and because the failure mode this
  * prevents is a route table that only knows about the language it was written
- * for — the phase 9E change broke exactly that in this file.
+ * for — which is exactly what happened in this file.
  */
 const WETEXT = [
   'wetext-en-tn-tagger',
@@ -245,8 +243,8 @@ describe('RustPhonemizer', () => {
    *
    * Chinese is used because reaching the seam needs no `prepare` — it needs a
    * dictionary to phonemize, but the seam is reached before that matters. What
-   * comes back is `dictionary-not-loaded`, because phase 6 gave Chinese a
-   * pipeline and a word list to wait for. That the seam throws a *coded* error
+   * comes back is `dictionary-not-loaded`, because the Chinese pipeline waits
+   * for a word list. That the seam throws a *coded* error
    * rather than returning empty phonemes is the assertion — an empty string
    * would be a sentence that plays as silence.
    */
@@ -269,8 +267,8 @@ describe('RustPhonemizer.prepare', () => {
 
     // The names come from the wasm, not from this side — `required_dictionaries`
     // is the one place that decides what a language costs, which is what keeps a
-    // dictionary swap from being a JavaScript change. Three since
-    // phase 9E: IPADic and the two Japanese TN grammars.
+    // dictionary swap from being a JavaScript change. Three: IPADic and the two
+    // Japanese TN grammars.
     expect(fetch.calls).toEqual([IPADIC_URL, ...WETEXT_JA_URLS]);
     for (const url of fetch.calls) {
       expect(caches.bucket(DICTIONARIES_CACHE).has(url)).toBe(true);
@@ -278,11 +276,10 @@ describe('RustPhonemizer.prepare', () => {
   });
 
   it('fetches the text-normalization grammars English needs', async () => {
-    // English's *pronunciation* dictionary is compiled into the wasm (spec
-    // §2.3) — the CMU dictionary — and this test used to assert that a
-    // `prepare('kokoro-v1', 'en-US')` therefore fetched nothing. Phase 9B made
-    // that false: the numerals go through vendored WeText grammars, and those
-    // are 12 MB of OpenFST binary, so they are fetched on `prepare` the way
+    // The English *pronunciation* dictionary is compiled into the wasm — the CMU
+    // dictionary — so `prepare('kokoro-v1', 'en-US')` has no dictionary to fetch.
+    // It does have to fetch numerals, which go through vendored WeText grammars:
+    // those are 12 MB of OpenFST binary, so they are fetched on `prepare` the way
     // IPADic and jieba's word list are.
     //
     // Both, in the order the wasm asks for them, and parsed — `finish_loading`
@@ -297,7 +294,7 @@ describe('RustPhonemizer.prepare', () => {
   });
 
   it('still phonemizes English with no dictionary at all', async () => {
-    // The property phase 9B's fallback exists to keep. English used to be the
+    // The property the fallback exists to keep. English is the
     // language `prepare` had nothing to do for, so a caller that never called it
     // is not an error: the hand-written numeral reader is still compiled in, and
     // the pipeline falls back to it rather than refusing or losing the digits.
@@ -443,8 +440,8 @@ describe('RustPhonemizer.phonemize', () => {
     const phonemizer = await prepared();
     const options = { vocab: 'kokoro-v1', lang: 'ja-JP' } as const;
 
-    // Phase 3 handed the characters through, which is what these two samples
-    // used to record as a divergence. The corpus says the same thing on the Rust
+    // These two samples used to record a divergence: a Latin run was handed
+    // through rather than phonemized. The corpus says the same thing on the Rust
     // side; this says it survives the boundary.
     //
     // 使う is why the Japanese half is here at all: it used to reach the
@@ -457,9 +454,9 @@ describe('RustPhonemizer.phonemize', () => {
   it.skipIf(!hasDictionary)('reads a word the English dictionary does not have', async () => {
     const phonemizer = await prepared();
 
-    // Phase 9A: OOV words go through the NRL 7948 letter-to-sound rules instead
+    // OOV words go through the NRL 7948 letter-to-sound rules instead
     // of being spelled out letter by letter. CMU Dict has no `Kokoro`, so the
-    // rules read it — `kɑkɔɹoʊ`, one reading, where phase 4's fallback spelled it
+    // rules read it — `kɑkɔɹoʊ`, one reading, where the fallback spelled it
     // `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ` as K-O-K-O-R-O. The same change is asserted in
     // `crates/phonemize/tests/ja_pipeline.rs`; this one says it survives the wasm
     // boundary, which is the half a `cargo test` cannot check.
@@ -504,10 +501,10 @@ describe('RustPhonemizer.phonemize', () => {
 describe('RustPhonemizer and the Chinese dictionary', () => {
   it.skipIf(!hasJieba)('asks the wasm for the jieba word list', async () => {
     // The names are the wasm's to decide, and they changed twice: Chinese used to
-    // fetch nothing, then just the word list (phase 6), and since phase 9E the
-    // word list and its two TN grammars. Asserted here so that a change to the
-    // dictionary table is visible on the wrapper side, which is the side that has
-    // to be able to find the files.
+    // fetch nothing, then just the word list, and now the word list and its two
+    // TN grammars. Asserted here so that a change to the dictionary table is
+    // visible on the wrapper side, which is the side that has to be able to find
+    // the files.
     const { phonemizer, fetch } = chinesePhonemizerWith(REAL_JIEBA ?? new Uint8Array());
     await phonemizer.ready;
     await phonemizer.prepare('kokoro-v1', 'zh-CN');

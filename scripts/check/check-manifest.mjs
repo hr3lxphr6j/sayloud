@@ -14,13 +14,13 @@ import { readFile } from 'node:fs/promises';
 /**
  * What the extension is allowed to ask for.
  *
- * `activeTab`, `scripting`, `storage` and `tts` are P1's set: the reader is
- * injected into the clicked tab under `activeTab`, so no standing host access is
- * needed. `sidePanel` is added by WXT because `entrypoints/sidepanel` exists —
+ * `activeTab`, `scripting`, `storage` and `tts` are the reading set: the reader
+ * is injected into the clicked tab under `activeTab`, so no standing host access
+ * is needed. `sidePanel` is added by WXT because `entrypoints/sidepanel` exists —
  * the manifest's `side_panel.default_path` is inert without it — and it grants
- * nothing beyond showing the panel. `offscreen` is P2's: cloud audio is fetched
- * and played in an offscreen document, because a service worker cannot play
- * audio and a content script would be subject to the page's CSP.
+ * nothing beyond showing the panel. `offscreen` covers cloud audio, which is
+ * fetched and played in an offscreen document, because a service worker cannot
+ * play audio and a content script would be subject to the page's CSP.
  */
 const EXPECTED_PERMISSIONS = [
   'activeTab',

@@ -41,8 +41,8 @@ describe('openSettingsFor', () => {
   it('calls sidePanel.open synchronously', () => {
     // The whole reason this module exists: `sidePanel.open()` consumes the
     // click's transient activation, and Chrome's window for it is about five
-    // seconds (spec §6 V1). An `await` before the call spends it, so the call
-    // has to have happened by the time this function returns.
+    // seconds. An `await` before the call spends it, so the call has to have
+    // happened by the time this function returns.
     const d = deps();
 
     openSettingsFor(7, d);

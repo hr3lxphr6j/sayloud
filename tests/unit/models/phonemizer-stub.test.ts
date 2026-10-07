@@ -1,5 +1,5 @@
 /**
- * The stand-in for `phonemizer` (phase 10).
+ * The stand-in for `phonemizer`.
  *
  * It exists to be aliased in (`wxt.config.ts`) so that `kokoro-js`'s module-level
  * `import { phonemize } from "phonemizer"` does not pull espeak-ng's 2.5 MB wasm

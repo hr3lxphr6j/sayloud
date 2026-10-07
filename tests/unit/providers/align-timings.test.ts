@@ -274,7 +274,7 @@ describe('alignTimings', () => {
 
     it('skips a word the provider normalized instead of rejecting the sentence', () => {
       // Volcengine and CosyVoice read "5" as "five", so its offsets no longer
-      // describe this sentence. Spec §2.1 / V9: skip it, keep the rest —
+      // describe this sentence. Skip it, keep the rest —
       // rejecting the whole set would cost word highlight on every sentence
       // containing a number.
       const timings = alignTimings(
@@ -411,7 +411,7 @@ describe('alignTimings', () => {
     it('skips normalized characters and keeps the words that do line up', () => {
       // ElevenLabs aligns against normalized text: "5" is spoken as "five",
       // so the character clock covers more characters than the sentence has.
-      // The words either side of it still align (spec §2.1 / V9).
+      // The words either side of it still align.
       const timings = alignTimings(
         'It costs 5 dollars.',
         { kind: 'chars', chars: perChar('It costs five dollars.') },

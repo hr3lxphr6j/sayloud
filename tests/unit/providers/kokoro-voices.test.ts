@@ -1,5 +1,5 @@
 /**
- * The Kokoro voice table (P4 spec §3.11.6).
+ * The Kokoro voice table.
  *
  * The table is what the voice picker offers, so a voice in it that the model
  * cannot speak is a bug the user finds by picking it — which is why the

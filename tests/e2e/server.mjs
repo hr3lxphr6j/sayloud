@@ -6,8 +6,8 @@
  * 127.0.0.1 so the injected content script can run without a user gesture.
  *
  * It also stands in for a cloud TTS service under `/tts/v1`, in the shape of
- * Kokoro-FastAPI (spec §6 V7): the standard OpenAI speech endpoint returns
- * audio bytes, and `/dev/captioned_speech` returns base64 audio plus word
+ * Kokoro-FastAPI: the standard OpenAI speech endpoint returns audio bytes, and
+ * `/dev/captioned_speech` returns base64 audio plus word
  * timestamps. The audio is real, decodable silence, so the offscreen document
  * plays it for its full length. Requests are counted so a spec can tell a
  * cache hit from a synthesis, and `/tts/control` lets a spec make the next
@@ -78,7 +78,7 @@ async function readJson(request) {
 
 /** Handle `/tts/...`; returns true when it answered. */
 async function handleTts(pathname, request, response) {
-  // Extension pages fetch cross-origin; the real Kokoro answers `*` too (V7).
+  // Extension pages fetch cross-origin; the real Kokoro answers `*` too.
   const cors = {
     'access-control-allow-origin': '*',
     'access-control-allow-headers': '*',

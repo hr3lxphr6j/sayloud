@@ -26,14 +26,15 @@
  *   instead of being hidden by a warm-up loop.
  * - **Cold start.** `prepare` decompresses the dictionary inside the wasm —
  *   1.6 MB for Chinese, 8.5 MB for Japanese, 0.7 MB of text-normalization
- *   grammars for English — which the plan's risk list names as the first
- *   sentence's cost. This says how big it actually is.
+ *   grammars for English — and that is what the first sentence pays. This says
+ *   how big it actually is.
  *
- * **Phase 9B moved the English per-sentence number by two orders of magnitude**,
- * from 0.037 ms to ~3.5 ms, because English numerals now go through a
- * 12 MB weighted-FST normalizer instead of a table. It is still 0.5% of the
- * synthesis it feeds, and it has a bound of its own below rather than a raised
- * shared one: Chinese and Japanese did not change and must not be given room to.
+ * **The English per-sentence cost is dominated by the vendored WeText grammars**:
+ * 0.037 ms before they were wired in, ~3.5 ms now, because English numerals go
+ * through a 12 MB weighted-FST normalizer instead of a table. It is still 0.5%
+ * of the synthesis it feeds, and it has a bound of its own below rather than a
+ * raised shared one: Chinese and Japanese did not change and must not be given
+ * room to.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -57,8 +58,7 @@ const JIEBA_URL = '/dictionaries/jieba-zh-dict.bin.zst';
  * The text-normalization grammars `prepare` fetches, by the names the wasm asks
  * for. The pronunciation dictionary (English's CMU) and the pinyin tables are
  * compiled in; these are the assets the numeral step needs, and **every**
- * language needs a pair now — English's since phase 9B, Chinese's and
- * Japanese's since 9E. The Chinese and Japanese benchmarks below fail with
+ * language needs a pair now. The Chinese and Japanese benchmarks below fail with
  * "no fake route" if these are not all here.
  */
 const WETEXT = [
@@ -144,7 +144,8 @@ function medianMs(phonemizer: RustPhonemizer, text: string, options: Options): n
 /** Measured 0.050 ms (zh, 32 chars) and 0.039 ms (ja, 35): ~20x. */
 const WARM_BOUND_MS = 1;
 /**
- * Measured 3.541 ms (en, 68 chars), against 0.037 ms before phase 9B: ~3.4x.
+ * Measured 3.541 ms (en, 68 chars), against 0.037 ms before the WeText grammars
+ * landed: ~3.4x.
  *
  * The English pipeline's numerals are matched by a weighted-FST tagger and
  * verbalizer over 12 MB of grammar, where they used to be a table lookup, and
@@ -221,7 +222,7 @@ describe('the cost of starting from nothing', () => {
 
   it('English, including its 0.7 MB of text-normalization grammars', async () => {
     // English used to be the free one — its CMU dictionary is compiled in, so
-    // this was `wasm only` and 1 ms of glue. Phase 9B gave it two fetched
+    // this was `wasm only` and 1 ms of glue. It now has two fetched
     // grammars, and this is what fetching and parsing 12 MB of OpenFST costs:
     // one decompression and one parse, per worker, before the first sentence.
     const start = performance.now();

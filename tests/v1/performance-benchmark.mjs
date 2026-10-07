@@ -1,11 +1,12 @@
 /**
- * P6 V1: performance benchmark for `piper-plus@0.7.0`'s Rust wasm.
+ * A performance benchmark for `piper-plus@0.7.0`'s Rust wasm, the second
+ * candidate the phonemizer evaluation measured.
  *
  *   node tests/v1/performance-benchmark.mjs
  *
  * Writes `performance-results.json` next to itself and prints a table.
  *
- * Targets come from the V1 brief: wasm load < 200 ms, initialisation < 500 ms,
+ * The targets set for this candidate: wasm load < 200 ms, initialisation < 500 ms,
  * Chinese and Japanese 50-character sentences < 2 ms, English < 10 ms, heap
  * < 100 MB.
  *
@@ -14,7 +15,8 @@
  *
  *   - **English** in this wasm build is character-level passthrough (the
  *     `multilingual` Cargo feature does not include `en`). It is fast because it
- *     does nothing, exactly like V0's Chinese. `meaningful: false`.
+ *     does nothing, exactly like the JavaScript candidate's Chinese, which is
+ *     passthrough there too (its Chinese mode is `fallback`). `meaningful: false`.
  *   - **Chinese** is measured twice. As shipped there is no pinyin dictionary,
  *     so it is also passthrough and also meaningless. With the TONE3
  *     dictionaries installed it does real work, and that number is the one that
@@ -32,7 +34,7 @@ import { createHarness } from './wasm-harness.mjs';
 
 const OUT_DIR = dirname(fileURLToPath(import.meta.url));
 
-/** Targets from the V1 brief. */
+/** Targets set for this candidate before it was measured. */
 const TARGETS = {
   wasmLoadMs: 200,
   initMs: 500,

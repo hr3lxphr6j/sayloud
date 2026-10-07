@@ -515,7 +515,15 @@ describe('the build output', () => {
     // and after, measured the same way. It did shave 42 B off the extension
     // (40,522,879 → 40,522,837), because the worker's messages and the calls into
     // the wasm spell the field name in JavaScript.
-    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_091_596);
+    //
+    // **6,091,677 as of the Japanese reading fix**, which is **+81 B**. The pipeline
+    // now hands the dictionary one run of kanji-and-kana at a time instead of one
+    // *script* run at a time (`segment_japanese`, which is what makes 詳しい a word
+    // again), maps `・` to a comma before the dictionary sees it, and reads IPADic's
+    // `pronunciation` field rather than its `reading` one — that last one is a
+    // constant, and the map is one `str::replace`. Measured by building both trees
+    // in the same session: 6,091,596 → 6,091,677.
+    expect(statSync(join(OUTPUT_DIR, phonemize[0] as string)).size).toBe(6_091_677);
   });
 
   it('ships the phonemizer exactly where it is needed: the offscreen worker', () => {

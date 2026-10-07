@@ -131,14 +131,14 @@ IPA / 注音 ──► phonemize worker ──► kokoro worker：tokenizer → 
 
 | 指标 | 值 |
 |---|---|
-| `phonemize_bg.wasm` | **6,091,596 B** |
-| 扩展总计 | **40,522,837 B**（ORT 21,596,019 + IPADic 8.5 MB + wasm 6.1 MB + …） |
+| `phonemize_bg.wasm` | **6,091,677 B** |
+| 扩展总计 | **40,522,918 B**（ORT 21,596,019 + IPADic 8.5 MB + wasm 6.1 MB + …） |
 | kokoro worker chunk | 904,612 B（阶段 10 前 2,225,156 B） |
-| Rust 测试 | **297 passed / 0 failed**（+2 个 ignored doc-test） |
+| Rust 测试 | **299 passed / 0 failed**（+2 个 ignored doc-test） |
 | TS 测试 | **1397 passed**（66 文件） |
 | 构建测试 | 14/14（含 wasm 尺寸、espeak 痕迹、ORT 单例） |
-| 热路径（每句） | 中文 0.081 ms / 32 字；日语 0.035 ms / 35 字；英文 **0.055 ms**（门控跳过的句子；首次调用 30.5 ms 是 CMU 哈希表） |
-| 冷启动 | 中文 88.3 ms；日语 164.9 ms；英文 67.3 ms（含 0.7 MB TN 文法） |
+| 热路径（每句） | 中文 0.082 ms / 32 字；日语 0.031 ms / 35 字；英文 **0.055 ms**（门控跳过的句子；首次调用 29.8 ms 是 CMU 哈希表） |
+| 冷启动 | 中文 91.4 ms；日语 169.1 ms；英文 68.7 ms（含 0.7 MB TN 文法） |
 | `cargo fmt --check` / `clippy -D warnings` / `typecheck` / `biome` | 全绿 |
 
 ---

@@ -22,7 +22,8 @@ use crate::g2p::zh::text as zh_text;
 use crate::g2p::zh::text::ZhRun;
 use crate::g2p::zh::tone_sandhi;
 use crate::text::{
-    collapse_whitespace, keep_punctuation, normalize_punctuation, segment_text, ScriptRun,
+    collapse_whitespace, keep_punctuation, normalize_ja_punctuation, normalize_punctuation,
+    segment_japanese, segment_text, ScriptRun,
 };
 use crate::tn::{self, Normalizer as WeTextNormalizer};
 
@@ -113,12 +114,14 @@ pub struct Phonemized {
 
 /// Japanese text to IPA, for the v1.0 frontend.
 ///
-/// The order of the first four steps is load-bearing:
+/// The order of the steps is load-bearing:
 ///
-/// 1. **Punctuation first**, because it decides where the pauses are and because
-///    the comma-to-period rewrite has to happen before anything reads the text
-///    as words.
-/// 2. **Numerals before segmentation**, not after: a digit belongs to no script
+/// 1. **Punctuation first**, because it decides where the pauses are, because the
+///    comma-to-period rewrite has to happen before anything reads the text as
+///    words, and because `・` has to stop being a character the dictionary and the
+///    tokenizer disagree about
+///    ([`normalize_ja_punctuation`] says what it becomes and why).
+/// 2. **Numerals before the dictionary**, not after: a digit belongs to no script
 ///    the segmenter knows, so it would land in the `other` run and be dropped as
 ///    punctuation — unheard, and silently. Reading them as kanji here also keeps
 ///    a numeral in the same Han run as what it counts, which is what decides how
@@ -130,8 +133,26 @@ pub struct Phonemized {
 ///    the source had `、`. That is not the Python reference's input, and it is
 ///    the one place this pipeline departs from it; the readings are pinned in
 ///    `tests/wetext_ja.rs` and the whole-pipeline effect in `tests/ja_pipeline.rs`.
-/// 3. **Then split into script runs**, because each run takes a different route.
-/// 4. **Then read each run out as katakana** and map that to IPA.
+/// 3. **Then split into runs, with the kanji and kana runs kept together**, because
+///    each run takes a different route from here. This split is a *routing*
+///    decision, not a word boundary: it is deliberately not [`segment_text`]'s,
+///    which separates Han from kana. Japanese passes each of these runs to the
+///    dictionary, so a run has to be a word or a sequence of words — 詳しい is a
+///    Han character followed by a kana run, and read one run at a time it loses
+///    its opening character (no IPADic entry for 詳 on its own, so the surface
+///    form comes through and the vocabulary gate refuses the sentence), while
+///    語る becomes カタリ + ル, a different word. Latin, digits and marks are not
+///    handed to the dictionary at all, which is also what keeps the space after a
+///    comma: lindera swallows whitespace the way MeCab does.
+/// 4. **Then read each run out as katakana** and map that to IPA, a `Latin` run
+///    through the English backend, and anything else through
+///    [`keep_punctuation`].
+///
+/// Steps 1 and 3 are checked against the OpenJTalk chain, which is the one
+/// Kokoro's Japanese voices were trained with — the same sentences through
+/// `pyopenjtalk` read 詳しい as クワシイ and 語る as カタル.
+/// `tests/fixtures/ja-reference.json` records those readings, and
+/// `scripts/check/check-ja-reference.py` recomputes them from the reference.
 ///
 /// # Latin runs go to the English dictionary
 ///
@@ -166,8 +187,9 @@ pub fn phonemize_ja(
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
     let normalized = normalize_punctuation(text);
-    let with_numerals = tn::normalize(&normalized, tn::Lang::Ja, engine);
-    let runs = segment_text(&with_numerals);
+    let punctuated = normalize_ja_punctuation(&normalized);
+    let with_numerals = tn::normalize(&punctuated, tn::Lang::Ja, engine);
+    let runs = segment_japanese(&with_numerals);
 
     let mut parts: Vec<String> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
@@ -179,6 +201,10 @@ pub fn phonemize_ja(
                 // than to each word, because that is where they apply: 三百 is
                 // two words to the dictionary and one sound change to the
                 // language.
+                //
+                // A `Han` run here is a word the dictionary had no pronunciation
+                // for — `segment_japanese` merges the two kinds, so this arm is
+                // only reached by what `segment_text` would have called Han.
                 let katakana = segmenter.read_as_katakana(run_text)?;
                 parts.push(kana_to_ipa(&fix_numeral_sound_changes(&katakana)));
             }

@@ -31,6 +31,9 @@ pub enum ScriptRun {
 /// Each replacement is a single distinct character, so applying them in sequence
 /// is the same operation as the chained `replaceAll` calls it mirrors — no
 /// ordering hazard, even though `、` becomes `, ` while `，` becomes `. `.
+///
+/// This is the map Japanese and English share. The one mark that only Japanese
+/// text has is [`normalize_ja_punctuation`]'s, applied after it.
 pub fn normalize_punctuation(text: &str) -> String {
     let mut out = text.to_string();
     for (from, to) in [
@@ -60,6 +63,28 @@ pub fn normalize_punctuation(text: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+/// The punctuation that only Japanese text has.
+///
+/// Applied after [`normalize_punctuation`]: the shared map is the
+/// full-width-to-ASCII one both languages need, and this one is a Japanese
+/// typographic mark with no full-width equivalent to convert.
+///
+/// **`・` (U+30FB) becomes a comma, and that is a decision rather than a
+/// translation.** It is not a word: OpenJTalk's dictionary gives the symbol the
+/// pronunciation `、` and its full-context labels make it the same pause as a
+/// comma, Style-Bert-VITS2 rewrites it to `,` outright, and misaki drops the
+/// character and leaves a space in its place. Kokoro's v1.0 vocabulary has no
+/// `・` at all, so leaving it where it is is not one of the options; `,` is what a
+/// pause is spelled with in this alphabet, and the tokenizer keeps it.
+///
+/// Nothing else is mapped yet. What misaki's own table also rewrites — the
+/// quotation marks, which it sends as `“ ”` where the shared map above sends
+/// `"` — is left to the shared map, because both are in the vocabulary and the
+/// difference is cosmetic.
+pub fn normalize_ja_punctuation(text: &str) -> String {
+    text.replace('・', ", ")
 }
 
 /// Full-width digits to ASCII.
@@ -93,10 +118,35 @@ pub fn to_half_width(text: &str) -> String {
 /// `classifies_an_astral_kanji_as_other`, which is the test that would fail if
 /// someone added the branch back.
 pub fn segment_text(text: &str) -> Vec<ScriptRun> {
+    segment_by(text, false)
+}
+
+/// The same split, but with the kanji and the kana kept in one run.
+///
+/// [`segment_text`]'s Han/Kana split is a *rendering* distinction and not a word
+/// boundary, so it must not be a boundary for the dictionary either: 詳しい is a
+/// Han character followed by a kana run, and asking the dictionary about 「詳」 on
+/// its own gets no answer at all — it has no entry as a word — while the same
+/// split reads 「語る」 as カタリ + ル, which is a different word. Japanese passes
+/// these runs to `SegmenterJa::read_as_katakana` one at a time, which is what
+/// makes them whole words again; the Latin runs and the marks that separate them
+/// stay out of the dictionary, and that is what keeps the space after a comma in
+/// the phoneme string. (lindera swallows whitespace the way MeCab does.)
+///
+/// The merged run is a [`ScriptRun::Kana`] whatever it started with, because the
+/// two variants take the same route from here on.
+pub fn segment_japanese(text: &str) -> Vec<ScriptRun> {
+    segment_by(text, true)
+}
+
+fn segment_by(text: &str, merge_kanji_into_kana: bool) -> Vec<ScriptRun> {
     let mut runs: Vec<ScriptRun> = Vec::new();
 
     for ch in text.chars() {
-        let kind = classify(ch);
+        let mut kind = classify(ch);
+        if merge_kanji_into_kana && kind == HAN {
+            kind = KANA;
+        }
         match runs.last_mut() {
             Some(run) if same_kind(run, kind) => run_push(run, ch),
             _ => {
@@ -109,6 +159,12 @@ pub fn segment_text(text: &str) -> Vec<ScriptRun> {
 
     runs
 }
+
+/// The four script kinds [`classify`] sorts a character into.
+const HAN: u8 = 0;
+const KANA: u8 = 1;
+const LATIN: u8 = 2;
+const OTHER: u8 = 3;
 
 /// The script a character belongs to, by the same ranges `segmentText` uses.
 ///
@@ -124,11 +180,6 @@ pub fn segment_text(text: &str) -> Vec<ScriptRun> {
 /// keeps it that way, and it is the one that would fail if someone added the
 /// branch back.
 fn classify(ch: char) -> u8 {
-    const HAN: u8 = 0;
-    const KANA: u8 = 1;
-    const LATIN: u8 = 2;
-    const OTHER: u8 = 3;
-
     let code = ch as u32;
     if (0x4e00..=0x9fff).contains(&code) || (0x3400..=0x4dbf).contains(&code) {
         HAN

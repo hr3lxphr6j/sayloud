@@ -446,7 +446,11 @@ describe('RustPhonemizer.phonemize', () => {
     // Phase 3 handed the characters through, which is what these two samples
     // used to record as a divergence. The corpus says the same thing on the Rust
     // side; this says it survives the boundary.
-    expect(phonemizer.phonemize('Chatを使う', options)).toEqual({ phonemes: 'tʃˈætoɕiu' });
+    //
+    // 使う is why the Japanese half is here at all: it used to reach the
+    // dictionary as two runs — kanji and kana — so 使 was read on its own as シ.
+    // Read as the word it is, it is ツカウ.
+    expect(phonemizer.phonemize('Chatを使う', options)).toEqual({ phonemes: 'tʃˈætoʦukau' });
     expect(phonemizer.phonemize('あQい', options)).toEqual({ phonemes: 'akjˈuːi' });
   });
 
@@ -465,7 +469,7 @@ describe('RustPhonemizer.phonemize', () => {
     });
 
     expect(result).toEqual({
-      phonemes: 'kɑkɔɹoʊoɕiu',
+      phonemes: 'kɑkɔɹoʊoʦukau',
     });
   });
 

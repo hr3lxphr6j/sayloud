@@ -52,7 +52,7 @@ describe('formatDecimalBytes', () => {
     expect(formatDecimalBytes(3497)).toBe('3.5 KB');
   });
 
-  it('quotes the measured tier sizes the way the spec does', () => {
+  it('quotes the tier sizes the repository measures', () => {
     expect(formatDecimalBytes(92_363_654)).toBe('92.4 MB');
     expect(formatDecimalBytes(163_233_654)).toBe('163.2 MB');
     expect(formatDecimalBytes(325_533_654)).toBe('325.5 MB');

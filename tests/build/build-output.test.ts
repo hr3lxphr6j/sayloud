@@ -615,7 +615,7 @@ describe('the build output', () => {
     expect(existsSync(packageDir)).toBe(true);
   });
 
-  it('stays the size the spec measured', () => {
+  it('stays inside the size bound', () => {
     const bytes = FILES.reduce((sum, path) => sum + statSync(join(OUTPUT_DIR, path)).size, 0);
 
     expect(bytes).toBeGreaterThanOrEqual(MIN_BYTES);

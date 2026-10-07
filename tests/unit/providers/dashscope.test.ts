@@ -74,7 +74,7 @@ function synthesisBody(): string {
 const signal = new AbortController().signal;
 
 describe('capabilities', () => {
-  it('reports exact timings and the V4 character cap for CosyVoice v3', () => {
+  it('reports exact timings and the 200-character cap for CosyVoice v3', () => {
     expect(provider.capabilities(config({ model: 'cosyvoice-v3-flash' }))).toEqual({
       timings: 'exact',
       maxChars: 200,
@@ -101,7 +101,7 @@ describe('capabilities', () => {
 });
 
 describe('supportsTimings', () => {
-  it('accepts the v3 family the spec records as reporting timings', () => {
+  it('accepts every v3 revision that reports timings', () => {
     // cosyvoice-v3-flash and cosyvoice-v3-plus report timings, and so does v3.5.
     expect(supportsTimings('cosyvoice-v3-flash')).toBe(true);
     expect(supportsTimings('cosyvoice-v3-plus')).toBe(true);
@@ -388,7 +388,7 @@ describe('synthesize', () => {
     ]);
   });
 
-  it('tolerates the alias V4 named for a word original text', async () => {
+  it('tolerates the `original_text` alias for a word', async () => {
     // `original_text` appears in the stream but not on a fixed object, so it is
     // accepted as a last alias rather than required.
     server.use(

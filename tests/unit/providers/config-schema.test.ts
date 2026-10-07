@@ -107,7 +107,7 @@ describe('PROVIDER_SCHEMAS', () => {
     expect(text(resourceId?.options?.[0]?.labelKey)).toMatch(/word timings/);
   });
 
-  it('offers the spec regions for DashScope, with the Beijing-only caveat', () => {
+  it('offers both DashScope regions, with the Beijing-only caveat', () => {
     // The region is cn-beijing / ap-southeast-1, and the
     // CosyVoice HTTP API is only open in Beijing.
     const region = dashscope.fields.find((field) => field.key === 'region');
@@ -120,7 +120,7 @@ describe('PROVIDER_SCHEMAS', () => {
     expect(text(region?.helpKey)).toMatch(/cn-beijing/);
   });
 
-  it('names a model V4 exercised and says how word timings are enabled', () => {
+  it('names a verified model and says how word timings are enabled', () => {
     // cosyvoice-v3-flash was measured with word_timestamp_enabled; the flag is
     // sent by the adapter, not typed by the user.
     const model = dashscope.fields.find((field) => field.key === 'model');

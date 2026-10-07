@@ -25,8 +25,8 @@ __pycache__/
 # than tracked.
 #
 # The kuromoji dictionaries used to live here too, in `public/kuromoji-dict/`,
-# for the JavaScript phonemize chain. Phase 8 deleted that chain and the 17 MB
-# directory with it.
+# for a JavaScript phonemize chain that is gone from the tree; the directory
+# went with it.
 public/dictionaries/
 
 # POC and test scripts
@@ -38,11 +38,3 @@ poc/
 # `pnpm build:wasm` to have run first.
 /target/
 lib/models/phonemize-wasm/
-
-# P6 V1 verification sandbox: the 60 MB piper-plus tarball, the upstream
-# dictionaries fetched by setup.sh, and the TONE3 files derived from them.
-# The deliverables are the JSON reports and the markdown, not the binaries.
-tests/v1/.sandbox/
-# Symlink created by tests/v1/setup.sh so the documented `piper-plus/...`
-# entry point resolves the way a real consumer would import it.
-tests/v1/node_modules

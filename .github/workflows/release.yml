@@ -56,8 +56,13 @@ jobs:
       - name: Publish the release with the zip
         env:
           GH_TOKEN: ${{ github.token }}
+        # `--notes-from-tag` rather than `--generate-notes`: the generated notes are
+        # assembled from pull requests, and there are none here — every commit goes
+        # straight to `main` — so the first release went out with a body of one
+        # "Full Changelog" link. The tag message is where a release is described,
+        # and by this point it is already written.
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
-            --generate-notes \
+            --notes-from-tag \
             .output/*.zip

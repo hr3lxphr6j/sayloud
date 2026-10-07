@@ -21,7 +21,6 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:build": "pnpm build && vitest run --config vitest.build.config.ts",
     "test:performance": "vitest run --config vitest.performance.config.ts",
     "smoke:sidepanel": "node .smoke/sidepanel-smoke.mjs",
     "typecheck": "tsc --noEmit",

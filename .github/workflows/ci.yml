@@ -5,8 +5,14 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      # No `version` input: the action reads `packageManager` from package.json,
+      # so CI, a fresh clone and the machine the lockfile was written on all
+      # resolve the same pnpm. Pinning 9 here instead is what kept this workflow
+      # red from its first run: `pnpm-workspace.yaml` holds settings only (no
+      # `packages:`), which pnpm 9's `store path` rejects with "packages field
+      # missing or empty" — a command setup-node runs for its cache, before any
+      # step of ours, so nothing below had ever executed.
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile

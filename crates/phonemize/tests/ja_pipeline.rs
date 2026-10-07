@@ -4,13 +4,19 @@
 //!
 //! - the segmenter tests say what the dictionary reads a word as, which is where
 //!   a lindera or IPADic change would show up;
-//! - the parity corpus says the whole pipeline still produces the phonemes the
-//!   JavaScript one produced, which is the P6 acceptance criterion.
+//! - the reference corpus says the whole pipeline produces the phonemes the
+//!   reference chain produces, which is the acceptance criterion now that the
+//!   JavaScript chain is gone.
 //!
-//! The corpus is `tests/fixtures/ja-parity.json`, generated from the JavaScript
-//! pipeline by `tests/unit/models/phonemize/ja-parity.test.ts` before phase 8
-//! deleted that chain. It is frozen — the generator is gone — so this test is what
-//! keeps the Rust output pinned to it.
+//! The corpus is `tests/fixtures/ja-reference.json`, and its two halves come from
+//! different places on purpose: `kana` is what pyopenjtalk — the OpenJTalk chain,
+//! which is what Kokoro's Japanese voices were trained with — reads the text as,
+//! and `expected` is those readings put through this crate's own table.
+//! `scripts/check/check-ja-reference.py` recomputes both from the reference, so a
+//! wrong expectation fails there as well as here. Two kinds of sample are the
+//! exceptions, and each says so in the file: the ones with a Latin run this crate
+//! reads with its own English backend (`check: skip`), and the dictionary gaps
+//! (`gap`), where `expected` is what this dictionary can reach today.
 
 mod common;
 
@@ -51,15 +57,24 @@ fn reads_kanji_through_the_dictionary() {
         return;
     };
 
-    // The reading comes from IPADic's `reading` field, looked up through
-    // lindera's schema rather than by array index.
+    // The reading comes from IPADic's `pronunciation` field, looked up through
+    // lindera's schema rather than by array index. `pronunciation` and not
+    // `reading` because that is the field the reference chain uses: it is where
+    // 学校 is ガッコー and the particle は is ワ.
+    // A `pronunciation` field, not a `reading` one: 学校 is ガッコー, 新聞 is
+    // シンブン. The two fields differ exactly where Japanese is not written the way
+    // it is said — see the module comment — and 経営 is the one worth naming: our
+    // IPADic keeps ケイエイ where the reference dictionaries have ケーエー, because
+    // it collapses the ウ-row long vowels and not the エ-row ones. That is a gap in
+    // the dictionary, not in this crate, and it is recorded as one in
+    // `tests/fixtures/ja-reference.json`.
     for (text, expected) in [
         ("経営", "ケイエイ"),
         // 日本 reads ニッポン on its own and ニホン inside 日本語, and both
         // pipelines agree on both — the reading depends on how the sentence
-        // segments, which is why 日本語 is in the parity corpus as well.
+        // segments, which is why 日本語 is in the reference corpus as well.
         ("日本", "ニッポン"),
-        ("学校", "ガッコウ"),
+        ("学校", "ガッコー"),
         ("新聞", "シンブン"),
     ] {
         assert_eq!(
@@ -113,6 +128,22 @@ fn splits_a_sentence_into_words() {
 
 // ------------------------------------------------------------------- parity
 
+/// The reference corpus: `tests/fixtures/ja-reference.json`.
+///
+/// Every sample records where its expectation comes from. `expected` is what this
+/// crate is asserted to produce; `kana` is the reading the reference tool
+/// (pyopenjtalk, the OpenJTalk chain) gives the same text, and `reading` — when
+/// present — is what the punctuation map and the text normalizer hand the
+/// dictionary, which is the input that reading belongs to. Those two columns are
+/// documentation for a failure, and `scripts/check/check-ja-reference.py` is what
+/// checks them against the reference rather than against this crate.
+///
+/// The file replaces `ja-parity.json`, whose values were the JavaScript chain's
+/// output. That chain is gone, and the readings it pinned are ones this crate now
+/// calls wrong (`は` as ハ, `学校` as ガッコウ) — the corpus is anchored to the
+/// reference chain instead, which is the one Kokoro's Japanese voices were
+/// trained with. `the_pipeline_matches_the_reference_g2p` says what that means
+/// for the acceptance criterion.
 #[derive(serde::Deserialize)]
 struct Corpus {
     samples: Vec<Sample>,
@@ -121,13 +152,20 @@ struct Corpus {
 #[derive(serde::Deserialize)]
 struct Sample {
     input: String,
-    js: String,
-    rust: Option<String>,
-    divergence: Option<String>,
+    /// The reading the reference gives, in the reference's own alphabet.
+    #[allow(dead_code)]
+    kana: String,
+    expected: String,
+    /// Where the expectation came from, and what it replaced.
+    #[allow(dead_code)]
+    source: String,
+    /// What the dictionary is handed, when that is not `input` itself.
+    #[allow(dead_code)]
+    reading: Option<String>,
 }
 
 fn corpus() -> Corpus {
-    serde_json::from_str(include_str!("fixtures/ja-parity.json")).expect("the corpus parses")
+    serde_json::from_str(include_str!("fixtures/ja-reference.json")).expect("the corpus parses")
 }
 
 #[test]
@@ -135,6 +173,10 @@ fn phonemizes_a_latin_run_instead_of_passing_it_through() {
     // Phase 3 handed these runs to the frontend as characters; phase 4 gives them
     // to the English dictionary. `Chat` and `Q` are the two that now match the
     // JavaScript exactly, which is what closed their corpus notes.
+    //
+    // The Japanese half is not incidental: 使う used to be two runs — Han and
+    // kana — so its kanji was read on its own as シ, and the sentence said
+    // オシウ. Read as the word it is, it is ツカウ.
     let Some(phonemizer) = japanese_phonemizer() else {
         return;
     };
@@ -142,10 +184,10 @@ fn phonemizes_a_latin_run_instead_of_passing_it_through() {
 
     for (input, expected) in [
         // A word: looked up in CMU Dict.
-        ("Chatを使う", "tʃˈætoɕiu"),
+        ("Chatを使う", "tʃˈætoʦukau"),
         // An initialism: read letter by letter, which is what keeps the acronym
         // audible instead of dropping it as an unknown word.
-        ("APIを使う", "ə pˈiː aɪoɕiu"),
+        ("APIを使う", "ə pˈiː aɪoʦukau"),
         ("あQい", "akjˈuːi"),
     ] {
         let result = phonemizer
@@ -183,7 +225,7 @@ fn reads_a_latin_run_the_dictionary_does_not_have_by_rule() {
         .phonemize_with("Kokoroを使う", &options)
         .expect("phonemizes");
 
-    assert_eq!(result.phonemes, "kɑkɔɹoʊoɕiu");
+    assert_eq!(result.phonemes, "kɑkɔɹoʊoʦukau");
     assert!(result.warnings.is_empty(), "{:?}", result.warnings);
 }
 
@@ -200,7 +242,7 @@ fn does_not_warn_about_text_with_no_latin_in_it() {
         .phonemize_with("東京は日本の首都です。", &options)
         .expect("phonemizes");
 
-    assert_eq!(result.phonemes, "toukjouhaniʔpoɴnoɕutodesu.");
+    assert_eq!(result.phonemes, "toːkjoːwaniʔpoɴnoɕutodesu.");
     assert!(result.warnings.is_empty(), "{:?}", result.warnings);
 }
 
@@ -336,7 +378,15 @@ fn reports_a_japanese_call_that_never_prepared_a_dictionary() {
 }
 
 #[test]
-fn the_pipeline_matches_the_javascript_one() {
+fn the_pipeline_matches_the_reference_g2p() {
+    // The P6 acceptance criterion used to be "byte for byte what the JavaScript
+    // chain produced", and this test used to be
+    // `the_pipeline_matches_the_javascript_one`. The chain is gone (phase 8), and
+    // what it produced was wrong in a way the vocabulary gate cannot see: it read
+    // the dictionary one script run at a time, so `語る` came out カタリル and
+    // `詳しい` lost its first kanji. The replacement is the reference chain — the
+    // one Kokoro's Japanese voices were trained with; see the fixture for where
+    // each expectation comes from.
     let Some(phonemizer) = japanese_phonemizer() else {
         return;
     };
@@ -344,28 +394,27 @@ fn the_pipeline_matches_the_javascript_one() {
     let corpus = corpus();
 
     assert!(
-        corpus.samples.len() >= 10,
+        corpus.samples.len() >= 50,
         "the corpus is meant to be more than a smoke test"
     );
 
     let mut failures: Vec<String> = Vec::new();
     for sample in &corpus.samples {
-        let expected = sample.rust.as_ref().unwrap_or(&sample.js);
         let actual = phonemizer
             .phonemize_with(&sample.input, &options)
             .expect("phonemizes");
 
-        if &actual.phonemes != expected {
+        if actual.phonemes != sample.expected {
             failures.push(format!(
-                "{:?}\n    expected {expected:?}\n    actual   {:?}",
-                sample.input, actual.phonemes
+                "{:?}\n    expected {:?} (the reference reads it {:?})\n    actual   {:?}",
+                sample.input, sample.expected, sample.kana, actual.phonemes
             ));
         }
     }
 
     assert!(
         failures.is_empty(),
-        "{} of {} samples diverged from the corpus:\n  {}",
+        "{} of {} samples diverged from the reference:\n  {}",
         failures.len(),
         corpus.samples.len(),
         failures.join("\n  ")
@@ -373,46 +422,27 @@ fn the_pipeline_matches_the_javascript_one() {
 }
 
 #[test]
-fn every_recorded_divergence_is_still_a_divergence() {
-    // A divergence note that has stopped being true is worse than none: it says
-    // "known and accepted" about something that is now a bug. This is what
-    // caught the two notes phase 4 made stale — `Chatを使う` and `あQい` matched
-    // the JavaScript once the English backend landed, so their notes had to go
-    // rather than stay as a claim about a gap that no longer exists.
+fn a_middle_dot_becomes_a_pause() {
+    // The one expectation in the corpus that is a *decision* rather than a
+    // reference reading: pyopenjtalk keeps `・` in its katakana, so the reference
+    // has nothing to say about it here. Three implementations do: OpenJTalk's
+    // dictionary gives the symbol the pronunciation `、`, and its full-context
+    // labels make it the same pause as a comma; Style-Bert-VITS2 rewrites `・` to
+    // `,`; misaki drops the character and leaves a space behind.
     //
-    // `APIを使う` is the one still here, and it is a different kind of note than
-    // it was: the pass-through is gone, and what is left is piper's
-    // `ə pˈiː aɪ` against espeak's `ɐ pˈiː ˈaɪ`.
+    // Ours is the comma. A space is also in the v1.0 vocabulary, but a space is
+    // the word separator misaki already emits between every two words, and a
+    // pause is what a middle dot is for.
     let Some(phonemizer) = japanese_phonemizer() else {
         return;
     };
     let options = japanese_options();
 
-    let mut stale: Vec<String> = Vec::new();
-    for sample in corpus()
-        .samples
-        .iter()
-        .filter(|sample| sample.rust.is_some())
-    {
-        let actual = phonemizer
-            .phonemize_with(&sample.input, &options)
-            .expect("phonemizes")
-            .phonemes;
+    let result = phonemizer
+        .phonemize_with("春・夏の二季に分けて行われる。", &options)
+        .expect("a middle dot is punctuation, not something to refuse");
 
-        if actual == sample.js {
-            stale.push(format!(
-                "{:?} no longer diverges ({})",
-                sample.input,
-                sample.divergence.as_deref().unwrap_or("no reason recorded")
-            ));
-        }
-    }
-
-    assert!(
-        stale.is_empty(),
-        "stale divergence notes:\n  {}",
-        stale.join("\n  ")
-    );
+    assert_eq!(result.phonemes, "haru, naʦunonikiniwaketeokonawareru.");
 }
 
 #[test]
@@ -430,12 +460,7 @@ fn the_corpus_covers_the_paths_that_break_independently() {
     let by_input: HashMap<&str, &str> = corpus
         .samples
         .iter()
-        .map(|sample| {
-            (
-                sample.input.as_str(),
-                sample.rust.as_deref().unwrap_or(&sample.js),
-            )
-        })
+        .map(|sample| (sample.input.as_str(), sample.expected.as_str()))
         .collect();
 
     // ʔ from ッ, ː from ー, ɴ from ン, a palatalized pair read as one mora, and
@@ -471,9 +496,9 @@ fn the_corpus_covers_the_paths_that_break_independently() {
 
 /// What the phase 9E numeral step buys, at the phoneme level.
 ///
-/// **The corpus has nothing in this table**, which is itself the finding: all 40
-/// Japanese corpus samples come out identically with and without the engine, so
-/// `the_pipeline_matches_the_javascript_one` still holds through the shipped path.
+/// **The corpus has nothing in this table**, which is itself the finding: the
+/// corpus samples come out identically with and without the engine, so
+/// `the_pipeline_matches_the_reference_g2p` holds through the shipped path.
 /// The rows below are what is not in the corpus, with both sides pinned so a
 /// failure says which of the two readers changed.
 ///
@@ -492,7 +517,7 @@ fn the_numeral_step_reads_these_entities() {
 
     let table: &[(&str, &str, &str)] = &[
         // A comma-grouped number: the old reader stopped at the separator.
-        ("1,234", "seɴniçakusaɴʥuujoɴ", "iʨi,niçakusaɴʥuujoɴ"),
+        ("1,234", "seɴniçakusaɴʥuːjoɴ", "iʨi,niçakusaɴʥuːjoɴ"),
         // A fraction, which the old reader read as two cardinals: いちに.
         ("1/2", "nibuɴnoiʨi", "iʨini"),
         // Currency, where the old pipeline lost the 円 and read the digits as two
@@ -507,13 +532,13 @@ fn the_numeral_step_reads_these_entities() {
         // (`tests/wetext_ja.rs`); this is the contextual case.
         (
             "電話は555-1234",
-            "deɴwahaɡoçakuɡoʥuuɡomainasuseɴniçakusaɴʥuujoɴ",
-            "deɴwahaɡoçakuɡoʥuuɡoseɴniçakusaɴʥuujoɴ",
+            "deɴwawaɡoçakuɡoʥuːɡomainasuseɴniçakusaɴʥuːjoɴ",
+            "deɴwawaɡoçakuɡoʥuːɡoseɴniçakusaɴʥuːjoɴ",
         ),
         (
             "電話番号は090-1234-5678です。",
-            "deɴwabaɴɡouhakjuumainasuseɴniçakusaɴʥuujoɴmainasuɡoseɴroʔpjakunanaʥuuhaʨidesu.",
-            "deɴwabaɴɡouhakjuuʥuuseɴniçakusaɴʥuujoɴɡoseɴroʔpjakunanaʥuuhaʨidesu.",
+            "deɴwabaɴɡoːwakjuːmainasuseɴniçakusaɴʥuːjoɴmainasuɡoseɴroʔpjakunanaʥuːhaʨidesu.",
+            "deɴwabaɴɡoːwakjuːʥuːseɴniçakusaɴʥuːjoɴɡoseɴroʔpjakunanaʥuːhaʨidesu.",
         ),
         // **The one genuine loss.** `０` normalizes to `〇` (U+3007), which no
         // script run in this crate claims, so it is dropped and the digit reads

@@ -76,20 +76,29 @@ const METADATA: &str = "metadata.json";
 
 /// The schema field the katakana reading lives in.
 ///
-/// Looked up by name rather than as the index 7 it happens to be in IPADic's
+/// **`pronunciation`, not `reading`.** IPADic carries both, and they differ
+/// exactly where Japanese is written one way and said another: the topic particle
+/// `は` is ハ as a reading and **ワ** as a pronunciation, `学校` is ガッコウ and
+/// **ガッコー**, `調査` is チョウサ and **チョーサ**. Every front end that reads
+/// Japanese for a speech model uses the pronunciation — `pron` in OpenJTalk, which
+/// is what the first-generation misaki used when Kokoro's Japanese voices were
+/// trained, and `pron` in UniDic, which is what the versions after it use.
+///
+/// Looked up by name rather than as the index it happens to be in IPADic's
 /// detail array: the index is lindera's business and follows its schema, and
 /// `Token::get` is the accessor that knows that.
-const READING_FIELD: &str = "reading";
+const PRONUNCIATION_FIELD: &str = "pronunciation";
 
-/// One dictionary word: its text, and how it is read.
+/// One dictionary word: its text, and how it is said.
 ///
-/// `reading` is `None` for a word IPADic has no reading for — an unknown word,
-/// a run of digits, a symbol. The caller decides what that means; kuroshiro
-/// falls back to the surface form, and `read_as_katakana` below does the same.
+/// `pronunciation` is `None` for a word IPADic has no pronunciation for — an
+/// unknown word, a run of digits, a symbol. The caller decides what that means;
+/// kuroshiro falls back to the surface form, and `read_as_katakana` below does
+/// the same.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JaToken {
     pub surface: String,
-    pub reading: Option<String>,
+    pub pronunciation: Option<String>,
 }
 
 /// Why a Japanese dictionary could not be used.
@@ -225,7 +234,7 @@ impl SegmenterJa {
         })
     }
 
-    /// Split `text` into words, with the reading IPADic gives each one.
+    /// Split `text` into words, with the pronunciation IPADic gives each one.
     pub fn tokenize(&self, text: &str) -> Result<Vec<JaToken>, SegmenterError> {
         let mut tokens = self
             .segmenter
@@ -238,8 +247,8 @@ impl SegmenterJa {
             .iter_mut()
             .map(|token| JaToken {
                 surface: token.surface.to_string(),
-                reading: token
-                    .get(READING_FIELD)
+                pronunciation: token
+                    .get(PRONUNCIATION_FIELD)
                     // A field holding the dictionary's placeholder is a field the
                     // dictionary has no value for; see `absent_field`.
                     .filter(|reading| *reading != self.absent_field)
@@ -249,6 +258,16 @@ impl SegmenterJa {
     }
 
     /// The reading of `text` as katakana, which is what the IPA table is keyed in.
+    ///
+    /// **`text` should be a run of Japanese, not a run of one script.** The
+    /// dictionary is what decides where the words are, and a kana run is not a
+    /// word: 「詳しい」 is a Han character followed by a kana run, and reading those
+    /// two separately leaves 「詳」 with no pronunciation of its own — the same split
+    /// reads 「語る」 as カタリ + ル, which is a different word.
+    /// `pipeline::phonemize_ja` therefore hands this one
+    /// [run](crate::text::segment_japanese) at a time: a clause at most, split by
+    /// punctuation and by Latin rather than between the scripts. Latin, digits and
+    /// marks never reach it.
     ///
     /// The interesting part is not the dictionary lookup but what happens when
     /// it has no answer, and that is copied from kuroshiro's `patchTokens`
@@ -278,7 +297,7 @@ fn read_one_token(token: &JaToken) -> String {
         return token.surface.clone();
     }
 
-    let reading = token.reading.as_deref().unwrap_or("");
+    let reading = token.pronunciation.as_deref().unwrap_or("");
     if reading.is_empty() {
         return if token.surface.chars().all(is_kana) {
             to_raw_katakana(&token.surface)

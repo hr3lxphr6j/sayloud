@@ -259,8 +259,15 @@ rather than something generated, so they live in
 
 ## Test corpora
 
-`tests/fixtures/{zh-parity,zh-frontend-parity,ja-parity}.json` are **frozen
-golden files**: the JavaScript pipeline's own output, recorded before phase 8
-deleted it. The generators are gone, so the corpora can no longer be regenerated
-— they pin the Rust pipeline to what the JavaScript one produced, and that is all
-they can do now.
+`tests/fixtures/{zh-parity,zh-frontend-parity}.json` are **frozen golden files**:
+the JavaScript pipeline's own output, recorded before phase 8 deleted it. The
+generators are gone, so those two can no longer be regenerated.
+
+`tests/fixtures/ja-reference.json` is a *reference* corpus rather than a frozen
+one. Its readings come from pyopenjtalk — the OpenJTalk chain, which is what the
+Japanese voices were trained with — and `scripts/check/check-ja-reference.py`
+recomputes and checks them (`pip install pyopenjtalk`). Each sample records the
+reference reading (`kana`) next to the phonemes this crate produces (`expected`),
+so a dictionary that falls behind the reference is visible rather than silently
+frozen in; a sample where the two disagree carries a `gap` note, and there is one
+of those today.

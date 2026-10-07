@@ -117,15 +117,19 @@ OpenAI / DashScope / Volcengine / Azure / ElevenLabs / OpenAI-compat 收原始�
   P5 §1.5 的论证是 v1.0 音色训练时不做这两件事，所以 `Off` 保留为阶段 6 管线的逐字
   复现，冻结语料一直跑 `Off`。两边的证据在 `crates/phonemize/src/g2p/zh/tone_sandhi/mod.rs`。
 
-## 对照语料：三份冻结的黄金文件
+## 对照语料：两份冻结的黄金文件 + 一份参考语料
 
-`crates/phonemize/tests/fixtures/{zh-parity,zh-frontend-parity,ja-parity}.json`。
-**它们过去是"两侧互钉"的**（JS 侧测试断言 JS 产出，Rust 侧测试断言 Rust 产出同一条），
-阶段 8 删掉 JS 侧之后，生成器不存在了，它们变成**冻结的黄金文件**：Rust 被钉在
-JS 当年产出上，谁也不能再改语料。三份测试的注释都改成了这么说。
+`crates/phonemize/tests/fixtures/{zh-parity,zh-frontend-parity}.json`。**它们过去是"两侧互钉"的**
+（JS 侧测试断言 JS 产出，Rust 侧测试断言 Rust 产出同一条），阶段 8 删掉 JS 侧之后，生成器
+不存在了，它们变成**冻结的黄金文件**：Rust 被钉在 JS 当年产出上。
 
-重新生成**已经不可能**（`PHONEMIZE_UPDATE_PARITY=1 …` 那条路径随生成器一起消失）。
-要扩展语料只能手工编辑 JSON，并接受它不再是"JS 的产出"。
+日语的 `ja-reference.json` **不是**这一类。JS 链路当年把词典按脚本 run 分段读，钉在它上面
+等于钉住错误的读法（`語る` → カタリル、助词 `は` → ハ），而且那个错误在词汇闸门出现之前
+是静默的。它现在的锚点是**参考实现**——pyopenjtalk 的発音字段，即 OpenJTalk 那条链，也就是
+Kokoro 日语训练时用的那一代 misaki 的读法——并且**可以重新生成**：
+`scripts/check/check-ja-reference.py --write`（需 `pip install pyopenjtalk`）。每个样本同时记录
+`kana`（参考读法）与 `expected`（本 crate 渲染出的音素）；两者不一致的样本必须带 `gap` 说明，
+目前只有 `経営`（IPADic 的 pronunciation 字段收合ウ段长音、不收合エ段）。
 
 ## 再生成的数据（都在 `crates/phonemize/data/`）
 

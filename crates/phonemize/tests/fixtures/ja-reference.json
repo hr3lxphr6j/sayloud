@@ -1,0 +1,430 @@
+{
+  "_": [
+    "The Japanese pipeline's reference corpus.",
+    "",
+    "`input`    — what a caller passes to phonemize_with.",
+    "`reading`  — what the dictionary is handed, when the punctuation map and the",
+    "             text normalizer changed it; absent means `input` itself.",
+    "`kana`     — the reading pyopenjtalk gives that text (the OpenJTalk chain: the",
+    "             pronunciation field the first-generation misaki used when Kokoro's",
+    "             Japanese voices were trained).",
+    "`expected` — the phonemes: `kana` through this crate's own M2P table and",
+    "             punctuation filter.",
+    "`gap`      — present when the reference and this dictionary disagree: `expected` is\n             then what this crate produces today, `kana` is still the reference's\n             reading, and the note says what the two differ about.\n`source`   — where the expectation comes from, and what changed when the",
+    "             reading moved from `reading` to `pronunciation`.",
+    "",
+    "`scripts/check/check-ja-reference.py` recomputes `kana` and `expected` from",
+    "pyopenjtalk, so a hand-edited wrong value fails there rather than being frozen",
+    "in. The values were generated, not written by hand: run that script with",
+    "--write after changing a sample.",
+    "",
+    "A sample marked check='skip' has a Latin run, which this crate reads with its",
+    "own English backend rather than with the Japanese reference; its value is",
+    "pinned by the phase 9A tests instead."
+  ],
+  "samples": [
+    {
+      "input": "こんにちは",
+      "kana": "コンニチワ",
+      "expected": "koɴniʨiwa",
+      "source": "openjtalk pron コンニチワ；P0 前为 読み コンニチハ"
+    },
+    {
+      "input": "ありがとう",
+      "kana": "アリガトー",
+      "expected": "ariɡatoː",
+      "source": "openjtalk pron アリガトウ（不変）"
+    },
+    {
+      "input": "さようなら",
+      "kana": "サヨーナラ",
+      "expected": "sajoːnara",
+      "source": "openjtalk pron サヨウナラ（不変）"
+    },
+    {
+      "input": "ひらがなとカタカナ",
+      "kana": "ヒラガナトカタカナ",
+      "expected": "hiraɡanatokatakana",
+      "source": "全部假名，pron = 表面形（不変）"
+    },
+    {
+      "input": "経営",
+      "kana": "ケーエー",
+      "expected": "keiei",
+      "source": "openjtalk pron ケーエー（我们只能到 ケイエイ，见 gap）",
+      "gap": "IPADic 的 pronunciation 字段收合ウ段长音（チョウサ → チョーサ）但不收合エ段（ケイエイ 而参考词典是 ケーエー）；先生/学生/英語/平成/経験 同此"
+    },
+    {
+      "input": "学校",
+      "kana": "ガッコー",
+      "expected": "ɡaʔkoː",
+      "source": "openjtalk pron ガッコー；P0 前为 読み ガッコウ"
+    },
+    {
+      "input": "新聞",
+      "kana": "シンブン",
+      "expected": "ɕiɴbuɴ",
+      "source": "openjtalk pron シンブン（不変）"
+    },
+    {
+      "input": "東京",
+      "kana": "トーキョー",
+      "expected": "toːkjoː",
+      "source": "openjtalk pron トーキョー；P0 前为 読み トウキョウ"
+    },
+    {
+      "input": "日本語",
+      "kana": "ニホンゴ",
+      "expected": "nihoɴɡo",
+      "source": "openjtalk pron ニホンゴ（不変）"
+    },
+    {
+      "input": "日本",
+      "kana": "ニッポン",
+      "expected": "niʔpoɴ",
+      "source": "openjtalk pron ニッポン（不変）"
+    },
+    {
+      "input": "がっこう",
+      "kana": "ガッコー",
+      "expected": "ɡaʔkoː",
+      "source": "openjtalk pron ガッコー；P0 前为 ガッコウ"
+    },
+    {
+      "input": "コーヒー",
+      "kana": "コーヒー",
+      "expected": "koːhiː",
+      "source": "openjtalk pron コーヒー（不変）"
+    },
+    {
+      "input": "しんぶん",
+      "kana": "シンブン",
+      "expected": "ɕiɴbuɴ",
+      "source": "openjtalk pron シンブン（不変）"
+    },
+    {
+      "input": "きゃく",
+      "kana": "キャク",
+      "expected": "kjaku",
+      "source": "openjtalk pron キャク（不変）"
+    },
+    {
+      "input": "しゃしん",
+      "kana": "シャシン",
+      "expected": "ɕaɕiɴ",
+      "source": "openjtalk pron シャシン（不変）"
+    },
+    {
+      "input": "インターネット",
+      "kana": "インターネット",
+      "expected": "iɴtaːneʔto",
+      "source": "openjtalk pron インターネット（不変）"
+    },
+    {
+      "input": "キャンプ",
+      "kana": "キャンプ",
+      "expected": "kjaɴpu",
+      "source": "openjtalk pron キャンプ（不変）"
+    },
+    {
+      "input": "2022年",
+      "reading": "二千二十二年",
+      "kana": "ニセンニジューニネン",
+      "expected": "niseɴniʥuːnineɴ",
+      "source": "WeText TN → openjtalk pron ニセンニジュウニネン（不変）"
+    },
+    {
+      "input": "三百",
+      "kana": "サンビャク",
+      "expected": "saɴbjaku",
+      "source": "openjtalk pron サンビャク（不変；IPADic 直接给 発音，不再依赖 fix_numeral_sound_changes）"
+    },
+    {
+      "input": "六百",
+      "kana": "ロッピャク",
+      "expected": "roʔpjaku",
+      "source": "openjtalk pron ロッピャク（不変）"
+    },
+    {
+      "input": "八百",
+      "kana": "ハッピャク",
+      "expected": "haʔpjaku",
+      "source": "openjtalk pron ハッピャク（不変）"
+    },
+    {
+      "input": "三千",
+      "kana": "サンゼン",
+      "expected": "saɴzeɴ",
+      "source": "openjtalk pron サンゼン（不変）"
+    },
+    {
+      "input": "8000",
+      "reading": "八千",
+      "kana": "ハッセン",
+      "expected": "haʔseɴ",
+      "source": "WeText TN → openjtalk pron ハッセン（不変）"
+    },
+    {
+      "input": "10001",
+      "reading": "一万一",
+      "kana": "イチマンイチ",
+      "expected": "iʨimaɴiʨi",
+      "source": "WeText TN → openjtalk pron イチマンイチ（不変）"
+    },
+    {
+      "input": "15.6%",
+      "reading": "十五点六パーセント",
+      "kana": "ジューゴテンロクパーセント",
+      "expected": "ʥuːɡoteɴrokupaːseɴto",
+      "source": "WeText TN → openjtalk pron ジューゴテンロクパーセント（不変）"
+    },
+    {
+      "input": "２０２２年",
+      "reading": "二千二十二年",
+      "kana": "ニセンニジューニネン",
+      "expected": "niseɴniʥuːnineɴ",
+      "source": "全角数字 → TN → openjtalk pron（不変）"
+    },
+    {
+      "input": "こんにちは、せかい。",
+      "kana": "コンニチワ，　セカイ．",
+      "expected": "koɴniʨiwa, sekai.",
+      "source": "openjtalk pron コンニチワ、セカイ。；P0 前为 コンニチハ",
+      "reading": "こんにちは, せかい."
+    },
+    {
+      "input": "「はい」",
+      "kana": "”ハイ”",
+      "expected": "\"hai\"",
+      "source": "openjtalk pron ハイ（不変；引用符は punctuation map 处理）",
+      "reading": "\"はい\""
+    },
+    {
+      "input": "ほんとう？",
+      "kana": "ホントー？",
+      "expected": "hoɴtoː?",
+      "source": "openjtalk pron ホントウ？（不変）",
+      "reading": "ほんとう?"
+    },
+    {
+      "input": "東京は日本の首都です。",
+      "kana": "トーキョーワニッポンノシュトデス．",
+      "expected": "toːkjoːwaniʔpoɴnoɕutodesu.",
+      "source": "openjtalk pron トーキョーワニッポンノシュトデス。；P0 前为 トウキョウハ",
+      "reading": "東京は日本の首都です."
+    },
+    {
+      "input": "こんにちは、世界",
+      "kana": "コンニチワ，　セカイ",
+      "expected": "koɴniʨiwa, sekai",
+      "source": "openjtalk pron コンニチワ、セカイ；P0 前为 コンニチハ",
+      "reading": "こんにちは, 世界"
+    },
+    {
+      "input": "今日は良い天気ですね",
+      "kana": "キョーワヨイテンキデスネ",
+      "expected": "kjoːwajoiteɴkidesune",
+      "source": "openjtalk pron キョーワヨイテンキデスネ；P0 前为 キョウハリョウイ（は 与 良い 都错）"
+    },
+    {
+      "input": "わたしは",
+      "kana": "ワタシワ",
+      "expected": "wataɕiwa",
+      "source": "openjtalk pron ワタシワ；P0 前为 ワタシハ"
+    },
+    {
+      "input": "りんご、バナナ、オレンジ",
+      "kana": "リンゴ，　バナナ，　オレンジ",
+      "expected": "riɴɡo, banana, oreɴʥi",
+      "source": "openjtalk pron リンゴ、バナナ、オレンジ（不変）",
+      "reading": "りんご, バナナ, オレンジ"
+    },
+    {
+      "input": "7",
+      "reading": "七",
+      "kana": "ナナ",
+      "expected": "nana",
+      "source": "WeText TN → openjtalk pron ナナ（不変）"
+    },
+    {
+      "input": "八千",
+      "kana": "ハッセン",
+      "expected": "haʔseɴ",
+      "source": "openjtalk pron ハッセン（不変）"
+    },
+    {
+      "input": "資産３２億ドル、約４２００億円",
+      "reading": "資産三十二億ドル, 約四千二百億円",
+      "kana": "シサンサンジューニオクドル，　ヤクヨンセンニヒャクオクエン",
+      "expected": "ɕisaɴsaɴʥuːniokudoru, jakujoɴseɴniçakuokueɴ",
+      "source": "WeText TN → openjtalk pron シサンサンジューニオクドル、ヤクヨンセンニヒャクオクエン（不変）"
+    },
+    {
+      "input": "APIを使う",
+      "kana": "",
+      "expected": "ə pˈiː aɪoʦukau",
+      "source": "Latin run 走本 crate 的英文后端；日语部分 使う 按 発音 读 ツカウ（P0 前是 使 + う 两段 → シウ）",
+      "check": "skip"
+    },
+    {
+      "input": "Chatを使う",
+      "kana": "",
+      "expected": "tʃˈætoʦukau",
+      "source": "Latin run 走本 crate 的英文后端；日语部分 使う 按 発音 读 ツカウ（P0 前是 使 + う 两段 → シウ）",
+      "check": "skip"
+    },
+    {
+      "input": "あQい",
+      "kana": "",
+      "expected": "akjˈuːi",
+      "source": "同上；单个字母按字母读",
+      "check": "skip"
+    },
+    {
+      "input": "会期は2026年9月25日・10月12日です。",
+      "reading": "会期は二千二十六年九月二十五日, 十月十二日です.",
+      "kana": "カイキワニセンニジューロクネンクガツニジューゴニチ，　ジューガツジューニニチデス．",
+      "expected": "kaikiwaniseɴniʥuːrokuneɴkuɡaʦuniʥuːɡoniʨi, ʥuːɡaʦuʥuːniniʨidesu.",
+      "source": "・→停顿（逗号）→ WeText TN → openjtalk pron；P0 前 vocabulary-mismatch（・ 不在词表）。日期避开 二日（参考走 NFE 读 フツカ，我们读 ニニチ）"
+    },
+    {
+      "input": "春・夏の二季に分けて行われる。",
+      "reading": "春, 夏の二季に分けて行われる.",
+      "kana": "ハル，　ナツノニキニワケテオコナワレル．",
+      "expected": "haru, naʦunonikiniwaketeokonawareru.",
+      "source": "・→停顿；P0 前 vocabulary-mismatch"
+    },
+    {
+      "input": "その被害は予想を超えて広い範囲に及んでいる。",
+      "kana": "ソノヒガイワヨソーヲコエテヒロイハンイニオヨンデイル．",
+      "expected": "sonohiɡaiwajosoːokoetehiroihaɴiniojoɴdeiru.",
+      "source": "整句解析：及ん 是 オヨン；P0 前 vocabulary-mismatch（及 无独立词条，表面形残留）。原样本的 影響 落在エ段长音 gap 上，换成没有该问题的词",
+      "reading": "その被害は予想を超えて広い範囲に及んでいる."
+    },
+    {
+      "input": "彼は機械の仕組みに詳しい。",
+      "kana": "カレワキカイノシクミニクワシイ．",
+      "expected": "karewakikainoɕikuminikuwaɕii.",
+      "source": "整句解析：詳しい 是 クワシイ；P0 前 vocabulary-mismatch（詳 残留）",
+      "reading": "彼は機械の仕組みに詳しい."
+    },
+    {
+      "input": "彼は当時の思い出を語る。",
+      "kana": "カレワトージノオモイデヲカタル．",
+      "expected": "karewatoːʥinoomoideokataru.",
+      "source": "整句解析：語る 是 カタル；P0 前为 カタリル（语る 静默错读）",
+      "reading": "彼は当時の思い出を語る."
+    },
+    {
+      "input": "この店は駅の近くです。",
+      "kana": "コノミセワエキノチカクデス．",
+      "expected": "konomisewaekinoʨikakudesu.",
+      "source": "助词 は 是 ワ；P0 前为 ハ",
+      "reading": "この店は駅の近くです."
+    },
+    {
+      "input": "学校へ行く。",
+      "kana": "ガッコーエイク．",
+      "expected": "ɡaʔkoːeiku.",
+      "source": "助词 へ 是 エ；P0 前为 ヘ",
+      "reading": "学校へ行く."
+    },
+    {
+      "input": "詳しい",
+      "kana": "クワシイ",
+      "expected": "kuwaɕii",
+      "source": "整句解析：openjtalk pron；詳 单独无词条（表面形残留 → vocabulary-mismatch）；P0 前 詳シイ"
+    },
+    {
+      "input": "及ぶ",
+      "kana": "オヨブ",
+      "expected": "ojobu",
+      "source": "整句解析：openjtalk pron；及 单独无词条；P0 前 及ブ"
+    },
+    {
+      "input": "語る",
+      "kana": "カタル",
+      "expected": "kataru",
+      "source": "整句解析：openjtalk pron；P0 前为 語（カタリ）+ る → カタリル"
+    },
+    {
+      "input": "進める",
+      "kana": "ススメル",
+      "expected": "susumeru",
+      "source": "整句解析：openjtalk pron；P0 前为 ススム + メル → ススムメル"
+    },
+    {
+      "input": "起きて",
+      "kana": "オキテ",
+      "expected": "okite",
+      "source": "整句解析：openjtalk pron；P0 前为 オコシ + キテ → オコシキテ"
+    },
+    {
+      "input": "食べる",
+      "kana": "タベル",
+      "expected": "taberu",
+      "source": "整句解析：openjtalk pron；P0 前为 ショク + ベル → ショクベル"
+    },
+    {
+      "input": "読んで",
+      "kana": "ヨンデ",
+      "expected": "joɴde",
+      "source": "整句解析：openjtalk pron；読 单独无词条；P0 前 読ンデ"
+    },
+    {
+      "input": "新しい",
+      "kana": "アタラシイ",
+      "expected": "ataraɕii",
+      "source": "整句解析：openjtalk pron；P0 前为 シン + シイ → シンシイ"
+    },
+    {
+      "input": "美しい",
+      "kana": "ウツクシイ",
+      "expected": "uʦukuɕii",
+      "source": "整句解析：openjtalk pron；P0 前为 ヨシ + シイ → ヨシシイ"
+    },
+    {
+      "input": "薄い",
+      "kana": "ウスイ",
+      "expected": "usui",
+      "source": "整句解析：openjtalk pron；P0 前为 ススキ + イ → ススキイ"
+    },
+    {
+      "input": "買って",
+      "kana": "カッテ",
+      "expected": "kaʔte",
+      "source": "整句解析：openjtalk pron；P0 前为 ガイ + ッテ → ガイッテ"
+    },
+    {
+      "input": "行く",
+      "kana": "イク",
+      "expected": "iku",
+      "source": "整句解析：openjtalk pron；P0 前为 クダリ + ク → クダリク"
+    },
+    {
+      "input": "書きます",
+      "kana": "カキマス",
+      "expected": "kakimasu",
+      "source": "整句解析：openjtalk pron；P0 前为 ショ + キマス → ショキマス"
+    },
+    {
+      "input": "飲み物",
+      "kana": "ノミモノ",
+      "expected": "nomimono",
+      "source": "整句解析：openjtalk pron；P0 前为 イン + ミモノ → インミモノ"
+    },
+    {
+      "input": "開けて",
+      "kana": "アケテ",
+      "expected": "akete",
+      "source": "整句解析：openjtalk pron；P0 前为 ヒラク + ケテ → ヒラクケテ"
+    },
+    {
+      "input": "サーバ・クライアント・ネットワークについて",
+      "kana": "サーバ，　クライアント，　ネットワークニツイテ",
+      "expected": "saːba, kuraiaɴto, neʔtowaːkuniʦuite",
+      "source": "・→停顿（逗号）→ openjtalk pron。片假名词连写是真实文本里最常见的中黑形态（外来语/机构名），与 春・夏、会期…日・月 这一类并列；P0 前 vocabulary-mismatch",
+      "reading": "サーバ, クライアント, ネットワークについて"
+    }
+  ]
+}

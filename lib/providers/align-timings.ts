@@ -1,5 +1,5 @@
 /**
- * Timestamp alignment (spec §2.2).
+ * Timestamp alignment.
  *
  * Every provider reports word timing in its own vocabulary. This module
  * normalizes all of them to `WordTiming[]` in sentence-relative character
@@ -108,10 +108,10 @@ function alignOffsets(
  * Providers commonly normalize the text they speak, so a word that is not a
  * verbatim substring of the sentence is expected rather than exceptional —
  * Volcengine and CosyVoice read "1.27" as "一 点 二 七", Kokoro and ElevenLabs
- * read "5" as "five", and a URL is spoken as two pieces. Spec §2.1 / V9 are
- * explicit about what to do: skip the words that do not line up and keep the
- * rest. Rejecting the whole sentence instead would cost word-level highlight on
- * every sentence containing a number, a unit or a link — which is most of them.
+ * read "5" as "five", and a URL is spoken as two pieces. The rule is to skip
+ * the words that do not line up and keep the rest. Rejecting the whole sentence
+ * instead would cost word-level highlight on every sentence containing a
+ * number, a unit or a link — which is most of them.
  *
  * Skipping can only ever omit a highlight, never place one wrongly: a word is
  * still only ever highlighted where its own text was found, and the search

@@ -1,11 +1,11 @@
 /**
- * DashScope (阿里云百炼) adapter — CosyVoice / Qwen-TTS (spec §2.2, §6 V4).
+ * DashScope (阿里云百炼) adapter — CosyVoice / Qwen-TTS.
  *
  * Transport is HTTP + SSE: the request sets `X-DashScope-SSE: enable` and the
  * service answers with `text/event-stream`, one JSON object per frame, whose
  * `output.audio.data` carries base64 audio chunks.
  *
- * Verified against the live API with real keys on 2026-09-29 (spec §6 V4),
+ * Verified against the live API with real keys on 2026-09-29,
  * using `cosyvoice-v3-flash` + voice `longanyang`, `cosyvoice-v3-plus` and
  * `qwen-audio-3.0-tts-flash`, on both the workspace-scoped and the general
  * host, with the first packet arriving in about 0.35–0.7 s:
@@ -68,13 +68,13 @@ import type {
 import { requireConfig } from './types';
 
 /**
- * The general host for each region the spec offers (spec §2.2).
+ * The general host for each region the service offers.
  *
- * `ap-southeast-1` is the spec's name for the Singapore region, whose host is
- * the international one — §2.2 gives the general Qwen-TTS endpoint as
- * `https://dashscope.aliyuncs.com/...` with the parenthetical "国际站用
- * `dashscope-intl`", so the two names describe one host and the region value
- * follows the spec's own vocabulary.
+ * `ap-southeast-1` is the service's own id for the Singapore region, whose
+ * host is the international one: the general Qwen-TTS endpoint is
+ * `https://dashscope.aliyuncs.com/...` on Beijing and `dashscope-intl` on the
+ * international site, so the two names describe one service and the region
+ * value uses the service's own vocabulary.
  */
 const REGION_BASE_URLS = {
   'cn-beijing': 'https://dashscope.aliyuncs.com',
@@ -91,20 +91,20 @@ export const DEFAULT_REGION = 'cn-beijing';
 export const DEFAULT_BASE_URL: string = REGION_BASE_URLS[DEFAULT_REGION];
 
 /**
- * The workspace-scoped host for CosyVoice and Qwen-Audio-TTS (spec §2.2).
+ * The workspace-scoped host for CosyVoice and Qwen-Audio-TTS.
  *
- * V4 measured the workspace domain and the general domain both working, so
- * either is valid; the workspace host is used when a workspace id is set
- * because it names the workspace explicitly, and the general host stays the
- * default so a workspace-less config is unaffected. The `{region}` segment is
- * the spec's own placeholder, so the international region resolves to
- * `{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com`; V4 exercised the workspace
- * domain on the Beijing region only, so that form is `assumed:`.
+ * The live test measured the workspace domain and the general domain both
+ * working, so either is valid; the workspace host is used when a workspace id
+ * is set because it names the workspace explicitly, and the general host stays
+ * the default so a workspace-less config is unaffected. The `{region}` segment
+ * takes the region id in that host, so the international region resolves to
+ * `{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com`; the workspace domain was
+ * exercised on the Beijing region only, so that form is `assumed:`.
  */
 const WORKSPACE_HOST = (workspaceId: string, region: string): string =>
   `https://${workspaceId}.${region}.maas.aliyuncs.com`;
 
-/** assumed: the SpeechSynthesizer service path (the host above is from §2.2). */
+/** assumed: the SpeechSynthesizer service path (the host above is verified). */
 const SYNTHESIZE_PATH = '/api/v1/services/audio/tts/SpeechSynthesizer';
 
 /** mp3 is the format every CosyVoice revision supports. */
@@ -113,7 +113,7 @@ const AUDIO_MIME = 'audio/mpeg';
 const SAMPLE_RATE = 22050;
 
 /**
- * Default model: the revision V4 actually exercised (spec §6 V4).
+ * Default model: the revision the live test actually exercised.
  *
  * v3 is the oldest family that reports word timings, and word-level highlight
  * is the point of the cloud providers, so the default has to be one that can
@@ -122,8 +122,8 @@ const SAMPLE_RATE = 22050;
 export const DEFAULT_MODEL = 'cosyvoice-v3-flash';
 
 /**
- * The voice V4 exercised against `cosyvoice-v3-flash` and `cosyvoice-v3-plus`
- * (spec §6 V4).
+ * The voice the live test exercised against `cosyvoice-v3-flash` and
+ * `cosyvoice-v3-plus`.
  */
 const V3_DEFAULT_VOICE = 'longanyang';
 
@@ -131,13 +131,13 @@ const V3_DEFAULT_VOICE = 'longanyang';
 const V1_DEFAULT_VOICE = 'longxiaochun';
 
 /**
- * The engine's per-request character cap (spec §2.2, §6 V4).
+ * The engine's per-request character cap.
  *
  * CosyVoice itself allows 600 characters, but the service splits sentences on
- * its own — V4 measured a 310-character request coming back as `sentence.index`
- * 0 and 1 — so 200 keeps one request to one sentence and the alignment simple.
- * The adapter still merges several `sentence.index` values in case one slips
- * through.
+ * its own — the live test measured a 310-character request coming back as
+ * `sentence.index` 0 and 1 — so 200 keeps one request to one sentence and the
+ * alignment simple. The adapter still merges several `sentence.index` values in
+ * case one slips through.
  */
 const MAX_CHARS = 200;
 
@@ -147,14 +147,14 @@ const CONCURRENCY = 2;
 /**
  * The CosyVoice v3 system voices.
  *
- * Only `longanyang` is here: V4 exercised it against `cosyvoice-v3-flash` and
- * `cosyvoice-v3-plus` (spec §6 V4). The rest of the v3 catalogue was not
- * recorded by the spike, and voice ids cannot be derived from anything in the
- * repository, so they are deliberately not guessed at — Phase 4 has to confirm
- * them. The display name is the id for the same reason.
+ * Only `longanyang` is here: the live test exercised it against
+ * `cosyvoice-v3-flash` and `cosyvoice-v3-plus`. The rest of the v3 catalogue is
+ * unverified — no voice id for it was recorded in the live test, and none can
+ * be derived from anything in the repository — so they are deliberately not
+ * guessed at. The display name is the id for the same reason.
  *
- * `cosyvoice-v3.5-flash` takes no system voice at all: V4 measured a 400
- * ("Engine return error code: 418") for exactly that combination, so it is
+ * `cosyvoice-v3.5-flash` takes no system voice at all: the live test measured a
+ * 400 ("Engine return error code: 418") for exactly that combination, so it is
  * offered no catalogue (see `voicesForModel`).
  */
 const V3_VOICES: Voice[] = [{ id: 'longanyang', name: 'longanyang', lang: 'zh-CN' }];
@@ -162,11 +162,11 @@ const V3_VOICES: Voice[] = [{ id: 'longanyang', name: 'longanyang', lang: 'zh-CN
 /**
  * The v1/v2 system voices the adapter has always shipped.
  *
- * V4 re-verified none of these — it exercised the v3 family only — so they are
- * kept for the v1/v2 models this adapter still accepts, and they never report
- * timings. DashScope exposes no voice-listing endpoint for SpeechSynthesizer,
- * so the catalogue is maintained here; a user with access to other voices can
- * still type a voice id in the P3 picker.
+ * The live test re-verified none of these — it exercised the v3 family only —
+ * so they are kept for the v1/v2 models this adapter still accepts, and they
+ * never report timings. DashScope exposes no voice-listing endpoint for
+ * SpeechSynthesizer, so the catalogue is maintained here; a user with access to
+ * other voices can still type a voice id into the voice picker.
  */
 const V1_VOICES: Voice[] = [
   { id: 'longxiaochun', name: '龙小淳', lang: 'zh-CN', gender: 'female' },
@@ -191,9 +191,9 @@ const V1_VOICES: Voice[] = [
  * The catalogue for a model.
  *
  * Voice and model have to match, so the catalogue follows the model rather
- * than being one list for all of them: v3.5 rejects every system voice (V4 ④)
- * and the Qwen models' voice ids were not recorded by the spike, so both get an
- * empty list instead of ids that would only earn a 400.
+ * than being one list for all of them: v3.5 rejects every system voice and the
+ * Qwen models' voice ids were not recorded, so both get an empty list instead
+ * of ids that would only earn a 400.
  */
 function voicesForModel(model: string): Voice[] {
   if (model.startsWith('cosyvoice-v3.5')) return [];
@@ -204,7 +204,7 @@ function voicesForModel(model: string): Voice[] {
 
 /**
  * The voice a request uses when the caller names none, matched to the model so
- * the two cannot disagree — V4 ④ is exactly a voice/model mismatch.
+ * the two cannot disagree, which is exactly the failure a mismatch produces.
  */
 function defaultVoiceFor(model: string): string {
   return model.startsWith('cosyvoice-v3') ? V3_DEFAULT_VOICE : V1_DEFAULT_VOICE;
@@ -232,12 +232,12 @@ const ERROR_CODES: Record<string, ProviderErrorCode> = {
 };
 
 /**
- * True when `model` reports word timings (spec §2.2, §6 V4).
+ * True when `model` reports word timings.
  *
- * The v3 family does: V4 measured `cosyvoice-v3-flash` and `cosyvoice-v3-plus`
- * answering with `words`, and §2.2 records v3.5 reporting them too. Nothing
- * else is claimed — in particular `qwen3-tts-flash` returns no timings at all
- * (V4).
+ * The v3 family does: the live test measured `cosyvoice-v3-flash` and
+ * `cosyvoice-v3-plus` answering with `words`, and v3.5 was observed to report
+ * them too. Nothing else is claimed — in particular `qwen3-tts-flash` returns
+ * no timings at all.
  */
 export function supportsTimings(model: string): boolean {
   return model.startsWith('cosyvoice-v3');
@@ -302,9 +302,9 @@ interface Word {
 /**
  * What the stream accumulates while its frames are read.
  *
- * `sentenceIndex` carries the last `sentence.index` seen, because V4 records the
- * words being delivered incrementally: a frame that repeats only `words` does
- * not have to repeat the index, and reusing it keeps one sentence's words from
+ * `sentenceIndex` carries the last `sentence.index` seen, because the service
+ * delivers the words incrementally: a frame that repeats only `words` does not
+ * have to repeat the index, and reusing it keeps one sentence's words from
  * colliding with the next sentence's ordinals.
  */
 interface WordCollector {
@@ -333,7 +333,7 @@ export class DashscopeProvider implements Provider {
    * DashScope has no credential-only endpoint for this service, and a
    * synthesis is the only check that also proves the model is activated. The
    * probe voice follows the configured model, since a mismatch is rejected
-   * before the key is ever judged (spec §6 V4 ④).
+   * before the key is ever judged.
    */
   async validate(config: ProviderConfig, signal: AbortSignal): Promise<void> {
     const { model = DEFAULT_MODEL } = requireConfig(config, 'dashscope');
@@ -367,10 +367,11 @@ export class DashscopeProvider implements Provider {
         'X-DashScope-SSE': 'enable',
         ...(workspaceId ? { 'X-DashScope-WorkSpace': workspaceId } : {}),
       },
-      // assumed: the body's shape. The spike recorded the response, the framing
-      // and the headers, but not the request it sent, so the field names here —
-      // and `word_timestamp_enabled`'s place inside `parameters` — still need a
-      // live key in Phase 4. The flag's name itself is from §2.2.
+      // assumed: the body's shape. The flag's name comes from the service's own
+      // request schema, and a live key confirmed it on 2026-09-29; the rest of
+      // the field names, and `word_timestamp_enabled`'s place inside
+      // `parameters`, are still unconfirmed — the spike recorded the response,
+      // the framing and the headers, but not the request it sent.
       body: JSON.stringify({
         model,
         input: { text: request.text, voice: request.voiceId || defaultVoiceFor(model) },
@@ -379,8 +380,8 @@ export class DashscopeProvider implements Provider {
           format: AUDIO_FORMAT,
           sample_rate: SAMPLE_RATE,
           // Without this the service never sends the word frame, so word-level
-          // highlight could never work (spec §2.2, §6 V4). Asking a model that
-          // cannot report timings for them would only add an empty frame.
+          // highlight could never work. Asking a model that cannot report
+          // timings for them would only add an empty frame.
           ...(timings ? { word_timestamp_enabled: true } : {}),
         },
       }),
@@ -414,12 +415,12 @@ export class DashscopeProvider implements Provider {
 }
 
 /**
- * Pick the host a request goes to (spec §2.2, §6 V4).
+ * Pick the host a request goes to.
  *
  * `baseUrl` wins when set, so tests and a proxy keep working. Otherwise a
- * configured `workspaceId` selects the workspace-scoped MaaS host, which V4
- * measured working alongside the general one; without one, the region's
- * general host is used.
+ * configured `workspaceId` selects the workspace-scoped MaaS host, which the
+ * live test measured working alongside the general one; without one, the
+ * region's general host is used.
  */
 function resolveBaseUrl(
   baseUrl: string | undefined,
@@ -482,10 +483,10 @@ function parseStream(body: string): StreamResult {
 }
 
 /**
- * Collect word timings from the shapes DashScope uses for them (spec §6 V4).
+ * Collect word timings from the shapes DashScope uses for them.
  *
- * The same word arrives again in a later frame — V4 records `words` being
- * delivered incrementally — so the stream is de-duplicated on
+ * The same word arrives again in a later frame — the service delivers `words`
+ * incrementally — so the stream is de-duplicated on
  * `(sentence.index, begin_index)`, the pair the service itself treats as a
  * word's identity. The times are absolute against the whole audio, so frames
  * only have to be concatenated, not shifted.
@@ -505,24 +506,25 @@ function collectWords(output: Record<string, unknown>, collector: WordCollector)
     for (const entry of container) {
       if (!isRecord(entry)) continue;
 
-      // V4 records the ordinal and time fields by name; which field carries the
-      // word's own text it did not, so `text` / `word` stay first and
-      // `original_text` — a name V4 did record as present — is accepted last.
+      // The live test recorded the ordinal and time fields by name, but not
+      // which field carries the word's own text, so `text` / `word` stay first
+      // and `original_text` — a name it did record as present — is accepted
+      // last.
       const text = readFirstString(entry, ['text', 'word', 'original_text']);
       // assumed: `begin_time` / `end_time` are milliseconds from the start of
-      // the audio. V4 records the field names, not their unit.
+      // the audio. The live test recorded the field names, not their unit.
       const startMs = readFirstNumber(entry, ['begin_time', 'beginTime', 'startMs']);
       const endMs = readFirstNumber(entry, ['end_time', 'endTime', 'endMs']);
       if (text === undefined || startMs === undefined || endMs === undefined) continue;
 
-      // V4 ①: an English word carries its leading space (`' quick'`). Trimming it
+      // An English word carries its leading space (`' quick'`). Trimming it
       // keeps the highlight on the word rather than on the gap before it.
       const word = text.trim();
       if (word === '') continue;
 
-      // V4 ③: the same word is repeated across frames, so the ordinal pair is
-      // used as the identity. Without an ordinal there is nothing to key on, so
-      // the entry is kept as it came.
+      // The same word is repeated across frames, so the ordinal pair is used
+      // as the identity. Without an ordinal there is nothing to key on, so the
+      // entry is kept as it came.
       const ordinal = readFirstNumber(entry, ['begin_index', 'beginIndex']);
       if (ordinal !== undefined) {
         const key = `${collector.sentenceIndex}:${ordinal}`;
@@ -582,10 +584,10 @@ function resolveTimings(sentenceText: string, words: Word[]): WordTiming[] | und
   }
   if (durationMs <= 0) return undefined;
 
-  // V4 ①: `begin_index` is a word ordinal, not a character offset, so the words
-  // are located in the sentence by their text, in order — `sequential-words`
-  // (spec §2.2). A word the service normalized ("1.27" read as "一点二七") does
-  // not appear in the sentence and is skipped rather than estimated (V4 ②).
+  // `begin_index` is a word ordinal, not a character offset, so the words are
+  // located in the sentence by their text, in order — `sequential-words`. A
+  // word the service normalized ("1.27" read as "一点二七") does not appear in
+  // the sentence and is skipped rather than estimated.
   return alignTimings(sentenceText, { kind: 'sequential-words', words }, durationMs);
 }
 

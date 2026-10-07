@@ -76,8 +76,8 @@ export interface SseEvent {
  *
  * Providers emit the whole stream for one sentence and the `Provider`
  * contract returns a complete result, so the body is parsed in one pass
- * rather than consumed incrementally. Phase 2 can switch to a streaming
- * reader if a caller ever needs the first chunk earlier.
+ * rather than consumed incrementally. Handing back the first chunk before the
+ * body ends would need a streaming reader here instead.
  */
 export function parseSse(text: string): SseEvent[] {
   const events: SseEvent[] = [];

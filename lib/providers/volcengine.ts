@@ -1,13 +1,13 @@
 /**
- * Volcengine (火山引擎豆包) adapter (spec §2.2).
+ * Volcengine (火山引擎豆包) adapter.
  *
- * Verified against the live API with a real key on 2026-09-29 (spec §6 V9) and
+ * Verified against the live API with a real key on 2026-09-29 and
  * 2026-10-02 (word timings fix):
  *
  * - `POST {baseUrl}/api/v3/tts/unidirectional`, authenticated with the new
  *   console's `X-Api-Key` plus `X-Api-Resource-Id`. The old console's AppId +
  *   Access Token pair is deliberately not sent: it is a different auth path
- *   this project does not support (spec §2.2).
+ *   this project does not support.
  * - The body is HTTP chunked, one JSON object per line — **not** SSE, so there
  *   is no `data:` prefix to strip. Every frame is `{code, message, data}` with
  *   `data` holding base64 audio, and the stream ends on `code: 20000000`.
@@ -49,13 +49,13 @@ import { requireConfig } from './types';
 /** The public host; also the settings form's default. */
 export const DEFAULT_BASE_URL = 'https://openspeech.bytedance.com';
 
-/** The streaming TTS path (spec §2.2). */
+/** The streaming TTS path. */
 const SYNTHESIZE_PATH = '/api/v3/tts/unidirectional';
 
 /** The character-billed 1.0 resource, and the only one that reports timings. */
 export const DEFAULT_RESOURCE_ID: VolcengineResourceId = 'seed-tts-1.0';
 
-/** The code the service sends on its last frame (spec §6 V9). */
+/** The code the service sends on its last frame. */
 export const END_CODE = 20000000;
 
 const AUDIO_FORMAT = 'mp3';
@@ -71,7 +71,7 @@ const CONCURRENCY = 2;
  * The voice each resource falls back to, and the one `validate()` probes.
  *
  * A voice only works on its own resource: a 1.0 voice on `seed-tts-2.0` is
- * rejected with 55000000 (spec §6 V9, confirmed on a live key). These are the
+ * rejected with 55000000 (confirmed on a live key). These are the
  * first entries of the catalogue in `volcengine-voices.ts`, kept here so
  * synthesis does not have to load it.
  */
@@ -88,10 +88,11 @@ export function defaultVoice(resourceId: VolcengineResourceId): string {
  * Volcengine's error vocabulary.
  *
  * `45000030` ("requested resource not granted") is the "service not activated"
- * case the spec calls out, and `55000000` is the voice/resource mismatch the
- * spec gives its own prompt to (spec §6 V9). The three- and four-digit codes
- * below come from the older endpoint and are kept so a service that still
- * answers with them is not reported as an unknown failure.
+ * case, and `55000000` is the voice/resource mismatch, which maps to the
+ * `voice-mismatch` code so the panel can tell the user to pick a voice that
+ * belongs to the resource. The three- and four-digit codes below come from the
+ * older endpoint and are kept so a service that still answers with them is not
+ * reported as an unknown failure.
  */
 const ERROR_CODES: Record<number, ProviderErrorCode> = {
   3001: 'unknown',
@@ -107,12 +108,12 @@ const ERROR_CODES: Record<number, ProviderErrorCode> = {
 /**
  * Codes that mean "this frame is payload, not a failure".
  *
- * `20000000` is the verified end-of-stream frame (spec §6 V9); the audio frames
+ * `20000000` is the verified end-of-stream frame; the audio frames
  * before it carry `0`.
  */
 const SUCCESS_CODES = new Set([0, END_CODE]);
 
-/** True when this resource reports word timings (spec §6 V9). */
+/** True when this resource reports word timings. */
 export function supportsTimings(resourceId: VolcengineResourceId): boolean {
   return resourceId === 'seed-tts-1.0';
 }
@@ -228,8 +229,9 @@ export class VolcengineProvider implements Provider {
       headers: {
         'Content-Type': 'application/json',
         // The new console's auth, and nothing else: sending the old console's
-        // AppId / Access Token alongside it would be the ambiguity the spec
-        // resolves by ruling that path out (spec §2.2).
+        // AppId / Access Token alongside it would leave the service two
+        // credentials to choose from, and this project supports only the new
+        // console's path.
         'X-Api-Key': apiKey,
         'X-Api-Resource-Id': resourceId,
         'X-Api-Request-Id': crypto.randomUUID(),
@@ -313,7 +315,7 @@ function parseStream(body: string): StreamResult {
     if (base64) chunks.push(decodeBase64(base64));
 
     // Timings ride on their own frame, and the verified shape is a `sentence`
-    // object at the frame's root (spec §6 V9). A `payload` wrapper and a bare
+    // object at the frame's root. A `payload` wrapper and a bare
     // `words` list are kept as tolerances for revisions that nest differently.
     collectWords(frame, words);
     const payload = readRecord(frame, 'payload');
@@ -347,7 +349,7 @@ function collectWords(source: Record<string, unknown>, into: Word[]): void {
 /**
  * Read a time as milliseconds, from a millisecond or a seconds field.
  *
- * The verified fields are `startTime` / `endTime` in **seconds** (spec §6 V9);
+ * The verified fields are `startTime` / `endTime` in **seconds**;
  * the millisecond aliases are kept from the older endpoint so a revision that
  * still reports them is not misread as seconds.
  */
@@ -375,7 +377,7 @@ function resolveTimings(sentenceText: string, words: Word[]): WordTiming[] | und
 
   // The words are normalized on the way back ("1.27" is spoken as "一 点 二 七"),
   // so they are located by text. A word the sentence does not contain is never
-  // placed by estimation — that is a hard constraint, not a heuristic (§2.1).
+  // placed by estimation — that is a hard constraint, not a heuristic.
   return alignTimings(sentenceText, { kind: 'sequential-words', words }, durationMs);
 }
 

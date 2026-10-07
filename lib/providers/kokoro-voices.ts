@@ -5,7 +5,7 @@
  * not need the model either — this is the list of what *could* be synthesized,
  * while "which of them are downloaded" is the model store's question.
  *
- * Only the 41 voices that have G2P support are listed here (spec §3.11.6):
+ * Only the 41 voices that have G2P support are listed here:
  * - 28 English voices (American & British)
  * - 8 Chinese voices
  * - 5 Japanese voices
@@ -289,7 +289,7 @@ export const CHINESE_VOICES: readonly Voice[] = [
  *
  * All of them report `supportsTimings: false`: Kokoro returns audio and
  * nothing else, and SayLoud's rule is to highlight the whole sentence rather
- * than estimate where a word landed (spec §3.12).
+ * than estimate where a word landed.
  */
 /** The 5 Japanese voices: 4 female, 1 male. */
 export const JAPANESE_VOICES: readonly Voice[] = [

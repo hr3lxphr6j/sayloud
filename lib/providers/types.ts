@@ -1,5 +1,5 @@
 /**
- * Provider-neutral TTS types (spec §2.1).
+ * Provider-neutral TTS types.
  *
  * Nothing here mentions a wire format: adapters translate their service's
  * protocol into these shapes, and the playback engine only ever sees these.
@@ -12,7 +12,7 @@ import { ProviderError } from './errors';
 export interface Voice {
   /** Provider-scoped id, passed back as `SynthesizeRequest.voiceId`. */
   id: string;
-  /** Human-readable label for the P3 voice picker. */
+  /** Human-readable label for the voice picker. */
   name: string;
   /** BCP-47 tag, e.g. `zh-CN`, `en-US`. */
   lang?: string;
@@ -57,11 +57,11 @@ export interface DashscopeConfig {
   /** 百炼 workspace (business space) id; required for workspace-scoped keys. */
   workspaceId?: string;
   /**
-   * DashScope region (spec §2.2, line 126: `cn-beijing` / `ap-southeast-1`).
+   * DashScope region: `cn-beijing` / `ap-southeast-1`.
    *
    * Defaults to `cn-beijing`. `ap-southeast-1` is the international site, whose
    * host is `dashscope-intl.aliyuncs.com`; CosyVoice's HTTP API is only open in
-   * Beijing, which the settings panel has to say (spec §2.2).
+   * Beijing, which the settings panel has to say.
    */
   region?: 'cn-beijing' | 'ap-southeast-1';
   /** TTS model, e.g. `cosyvoice-v3-flash`. Word timings require CosyVoice v3+. */
@@ -84,10 +84,10 @@ export type VolcengineResourceId = 'seed-tts-1.0' | 'seed-tts-2.0';
 /**
  * Volcengine (火山引擎豆包) — chunked-JSON HTTP TTS.
  *
- * Only the new console's `X-Api-Key` auth is supported (spec §2.2): the old
- * console's AppId + Access Token pair is deliberately not a config option.
- * The voice is not a config field either — it comes in as `voiceId`, chosen in
- * the shared voice picker like every other provider's.
+ * Only the new console's `X-Api-Key` auth is supported: the old console's
+ * AppId + Access Token pair is deliberately not a config option. The voice is
+ * not a config field either — it comes in as `voiceId`, chosen in the shared
+ * voice picker like every other provider's.
  */
 export interface VolcengineConfig {
   provider: 'volcengine';
@@ -152,7 +152,7 @@ export interface AzureConfig {
   lang?: string;
 }
 
-/** The P1 browser voice, kept in the union so config can select it uniformly. */
+/** The browser voice, kept in the union so config can select it uniformly. */
 export interface BrowserConfig {
   provider: 'browser';
   /** Preferred BCP-47 language; `BrowserSpeaker` resolves the actual voice. */
@@ -178,9 +178,9 @@ export interface LocalConfig {
   /**
    * Which tier of that model.
    *
-   * Optional rather than defaulted here: the right tier depends on the machine
-   * (spec §3.7.2), and only the caller that has measured the device can pick
-   * one. Unset means "ask `preferredTier`".
+   * Optional rather than defaulted here: the right tier depends on the
+   * machine's measured capabilities, and only the caller that has measured the
+   * device can pick one. Unset means "ask `preferredTier`".
    */
   tier?: string;
   /** `auto` uses WebGPU when there is one. */
@@ -221,7 +221,7 @@ export interface ProviderCapabilities {
   timings: 'exact' | 'none';
   /** Maximum characters accepted by one `synthesize()` call. */
   maxChars: number;
-  /** Suggested in-flight request count for the Phase 2 prefetcher. */
+  /** Suggested in-flight request count for the prefetcher. */
   concurrency: number;
 }
 
@@ -241,7 +241,7 @@ export interface Provider {
 
   capabilities(config: ProviderConfig): ProviderCapabilities;
 
-  /** Verifies credentials for the P3 "test connection" button. */
+  /** Verifies credentials for the "test connection" button. */
   validate(config: ProviderConfig, signal: AbortSignal): Promise<void>;
 
   /** Lists the voices this config can use. */

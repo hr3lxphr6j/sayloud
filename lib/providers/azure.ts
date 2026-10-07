@@ -1,5 +1,5 @@
 /**
- * Azure Speech adapter (spec §2.3).
+ * Azure Speech adapter.
  *
  * Azure is the odd one out: it has no HTTP TTS endpoint in this design, only
  * the Speech SDK, which opens a WebSocket and streams `WordBoundary` events
@@ -11,7 +11,7 @@
  * implemented in `azure-sdk.ts`, which is reachable only through a dynamic
  * `import()`. Two reasons:
  *
- * 1. The SDK is ~400KB and must never reach the content script (spec §10), so
+ * 1. The SDK is ~400KB and must never reach the content script, so
  *    it may only be loaded in the offscreen document, at synthesis time.
  * 2. Unit tests inject a fake SDK and never load the real one, which is what
  *    makes this provider testable at all — the alternative was compile-only
@@ -231,8 +231,8 @@ export class AzureProvider implements Provider {
         timings: resolveTimings(request.text, boundaries, durationMs),
       };
     } finally {
-      // Every call opens a WebSocket. Leaking one is the spec's named Azure
-      // risk, so the synthesizer is always released.
+      // Every call opens a WebSocket, and a leaked one is a memory leak, so
+      // the synthesizer is always released.
       synthesizer.close();
     }
   }

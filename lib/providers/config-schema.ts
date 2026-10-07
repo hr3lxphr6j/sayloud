@@ -217,8 +217,8 @@ const SCHEMAS = {
         key: 'region',
         labelKey: 'field.region',
         kind: 'select',
-        // The spec's two regions (spec §2.2, line 126). `ap-southeast-1` is the
-        // international site, whose host is `dashscope-intl.aliyuncs.com`.
+        // The two regions the service offers — Beijing and Singapore
+        // (`ap-southeast-1`), whose host is `dashscope-intl.aliyuncs.com`.
         options: [
           { value: 'cn-beijing', labelKey: 'provider.dashscope.region.option.cn-beijing' },
           {

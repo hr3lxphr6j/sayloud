@@ -1,5 +1,5 @@
 /**
- * The on-device provider (P4 spec §3.2, §3.12, §3.15).
+ * The on-device provider.
  *
  * It is a `Provider` like any other — same `capabilities`, `listVoices`,
  * `validate`, `synthesize` — because everything above it (the audio worker, the
@@ -135,9 +135,8 @@ export class LocalProvider implements Provider {
    *
    * There is no key to test, so what is checked is the thing that would fail
    * first: the tier's files have to be in Cache Storage. An offscreen document
-   * that had to download 163 MB would be killed long before it finished
-   * (spec §3.12.3), so "not downloaded" is a fact worth reporting early and
-   * precisely.
+   * that had to download 163 MB would be killed long before it finished, so
+   * "not downloaded" is a fact worth reporting early and precisely.
    */
   async validate(config: ProviderConfig, _signal: AbortSignal): Promise<void> {
     const local = requireConfig(config, 'local');
@@ -251,7 +250,7 @@ export class LocalProvider implements Provider {
   }
 }
 
-/** The model a config names, falling back to the one P4 ships. */
+/** The model a config names, falling back to the one this extension ships. */
 function modelFor(local: LocalConfig): OnDeviceModel {
   const model = modelById(local.modelId ?? DEFAULT_MODEL_ID);
   if (!model) {

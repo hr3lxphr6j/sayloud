@@ -1,5 +1,5 @@
 /**
- * OpenAI-compatible adapter (spec §2.3).
+ * OpenAI-compatible adapter.
  *
  * Covers every server that speaks the OpenAI speech API — OpenAI itself,
  * LocalAI, LM Studio, Kokoro-FastAPI and friends. Two modes:
@@ -217,7 +217,7 @@ export class OpenAiCompatProvider implements Provider {
       voice: voiceId,
       response_format: AUDIO_FORMAT,
       // Kokoro's captioned endpoint streams audio chunks unless told not to;
-      // with `stream: false` it answers with one JSON body (spec §6 V7).
+      // with `stream: false` it answers with one JSON body.
       ...(resolved.captionedSpeech ? { stream: false } : {}),
     };
 
@@ -266,7 +266,7 @@ export class OpenAiCompatProvider implements Provider {
 
     return {
       audio: decodeBase64(base64),
-      // Kokoro names the format `audio_format` (spec §6 V7).
+      // Kokoro names the format `audio_format`.
       mime: mimeFor(readFirstString(payload, ['audio_format', 'response_format']) ?? AUDIO_FORMAT),
       durationMs: lastEndMs(timings),
       timings,

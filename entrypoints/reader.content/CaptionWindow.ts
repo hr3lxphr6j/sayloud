@@ -223,7 +223,7 @@ body {
  *
  * A constructable sheet is the only route that survives a strict CSP: the PiP
  * document inherits the opener's policy, and on such a page an inline `<style>`
- * element is dropped with a `style-src-elem` violation (V12 in the P3 spec).
+ * element is dropped with a `style-src-elem` violation.
  *
  * The sheet has to be built from the PiP window's own constructor. A stylesheet
  * belongs to the document that created it, and adopting one built in the

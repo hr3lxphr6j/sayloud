@@ -61,17 +61,25 @@ jobs:
       # `cache-bin` is off because both tools above are installed by their own
       # actions.
       #
-      # No `key` rotating on this file's contents, which is what the reference
-      # setup does: it exists there so a separate warm-cache job can save a fresh
-      # entry after the build changes. Here the job that builds is the one that
-      # saves, and the action stores only dependency artifacts — never the
-      # workspace crate's own — so editing this file costs nothing but the restore.
+      # `prefix-key` is bumped by hand when what is cached changes, because a
+      # restored key is never saved again — an added path would otherwise never
+      # reach the entry. The reference setup avoids the manual step by hashing its
+      # setup action into `key`; here that would mean a cold run after every
+      # comment edited in this file, for a case that comes up rarely.
       - name: Cache the Rust build
         uses: Swatinem/rust-cache@v2.9.2
         with:
-          prefix-key: v1-sayloud
+          # v2 adds the wasm-pack directory below.
+          prefix-key: v2-sayloud
           shared-key: cargo
           cache-bin: false
+          # wasm-pack does not ship the `wasm-bindgen` CLI it needs, and installs
+          # it with `cargo install` into this directory — one per version. That is
+          # a host release build of the whole wasm-bindgen tree, and it was 137s of
+          # the 156s the wasm step took with the target directory already warm;
+          # caching the directory is what makes it a cost paid once. The version it
+          # is named for comes from Cargo.lock, which the key above hashes.
+          cache-directories: ~/Library/Caches/.wasm-pack
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: pnpm build:wasm
       # The Rust half of the phonemizer has its own tests — the dictionary

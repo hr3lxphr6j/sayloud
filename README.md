@@ -2,69 +2,71 @@
 
 **English** · [中文](README.zh.md) · [日本語](README.ja.md)
 
-SayLoud reads web pages aloud in Chrome. It highlights the sentence being read,
-and — with a voice that reports word timings — each word as it is spoken.
+SayLoud reads web pages aloud in Chrome. It highlights the current sentence,
+and with voices that support word timings, each word lights up as it's spoken.
 
 ![Reading a page with SayLoud](assets/reading.png)
 
 ## What it does
 
-- **A bar on the page, not a wall of settings.** Click the toolbar icon and a
-  28px bar appears on the right edge: play/pause, previous/next sentence, speed,
-  a progress ring with the time left, the caption window, and a way into
-  settings.
-- **Sentence-level, and word-level where it can be.** The sentence is the
-  baseline for every voice; words light up as they are spoken when the voice
-  reports when each one starts.
-- **Click a sentence to start from there.** Reading begins at the sentence you
-  pick, not at the top of the page.
+- **A slim control bar, not a settings panel.** Click the toolbar icon and a
+  28px bar slides out on the right: play/pause, previous/next sentence, speed,
+  a progress ring showing time remaining, caption window toggle, and quick
+  access to settings.
+- **Sentence-level highlighting for all voices, word-level when available.**
+  Every voice highlights the current sentence. When a voice provides word
+  timings, individual words light up as they're spoken.
+- **Start from any sentence.** Click any sentence on the page and reading begins
+  right there.
 - **Speed 0.5×–3×, volume 0–150%.** Both apply to the sentence playing now.
 - **Keeps reading when you leave the tab.** You can work in another tab while it
   reads.
-- **Auto-scroll that yields.** The page follows the reading position, and stops
-  the moment you scroll yourself; a card offers to jump back to the sentence.
-- **A caption window you can put anywhere** — the sentence and its position, in
-  a small always-on-top window.
-- **Nothing to configure to start.** The browser voice needs no account, no key
-  and no network.
+- **Smart auto-scroll.** The page follows along as it reads, but the moment you
+  scroll manually, auto-scroll pauses and shows a button to jump back to the
+  current sentence.
+- **Floating caption window** — displays the current sentence and progress in a
+  movable, always-on-top window.
+- **Works out of the box.** Browser voices require no account, no API key, and
+  no network connection.
 
 ## Three ways to be read to
 
-| | What it takes | Where your text goes | Word highlighting |
+| | Requirements | Privacy | Word highlighting |
 |---|---|---|---|
-| **Browser voice** | nothing at all | nowhere — it is your system's speech | from the browser's own word events |
-| **On this device** | one model download | nowhere — the model runs in your browser | whole sentences |
-| **A cloud service** | your own API key | to that service, and nowhere else | from the service's timestamps |
+| **Browser voice** | None | Completely local — uses system speech | From browser word events |
+| **On-device model** | One-time download | Completely local — runs in browser | Sentence-level only |
+| **Cloud service** | Your API key | Sent only to your chosen service | From service timestamps |
 
 ### On this device
 
-Kokoro 82M, downloaded once from the Models tab: 41 voices across English
-(en-US, en-GB), Chinese (zh-CN) and Japanese (ja). Three sizes — 92 MB, 163 MB
-and 326 MB — and a choice of WebGPU or CPU; the tab says which one suits your
-machine. Voices are fetched the first time each is used. The text never leaves
-your computer, and no key is involved.
+Download Kokoro 82M once from the Models tab: 41 voices covering English
+(en-US, en-GB), Chinese (zh-CN), and Japanese (ja). Choose from three sizes
+(92 MB, 163 MB, or 326 MB) and WebGPU or CPU — the tab recommends what works
+best for your machine. Individual voices download on first use. Your text never
+leaves your computer, and no API key is needed.
 
 <img src="assets/panel-models.png" width="300" alt="The Models tab: download source, model and sizes">
 
 ### Cloud services
 
-Bring your own key for an OpenAI-compatible server (including a local
+Use your own API key with OpenAI-compatible servers (including local
 Kokoro-FastAPI), ElevenLabs, Azure Speech, DashScope (阿里云百炼) CosyVoice and
-Qwen-TTS, or 火山引擎豆包. Services that report word timings get word-by-word
-highlighting; the rest fall back to whole sentences. Keys are kept in Chrome's
-own storage, and SayLoud asks for access to a site only when you configure a
-service for it.
+Qwen-TTS, or 火山引擎豆包. Services that return word timings enable word-by-word
+highlighting; others highlight full sentences. Keys are stored in Chrome's local
+storage, and SayLoud only requests site access when you configure a service that
+needs it.
 
 <img src="assets/panel-settings.png" width="300" alt="The Settings tab: voice services and their forms">
 
 ## Using it
 
-1. Open an article and click the SayLoud icon in the toolbar. Nothing is
-   injected into a page until you ask for it — the extension has no standing
-   access to the pages you read.
-2. The bar appears on the right edge. Press play, or click any sentence in the
-   page to start from there.
-3. Open the side panel for progress, voice, cache and model settings.
+1. Open a web page and click the SayLoud icon in your toolbar. The extension
+   injects nothing until you activate it — it has no automatic access to pages
+   you visit.
+2. The control bar appears on the right edge. Press play, or click any sentence
+   to start reading from there.
+3. Open the side panel to view progress and adjust voice, cache, and model
+   settings.
 
 <img src="assets/panel-reading.png" width="300" alt="The Reading tab: speed, volume, caption switch and progress">
 
@@ -75,41 +77,44 @@ other windows:
 
 ## Settings
 
-- **Voice** — one voice per service, with a searchable list showing which voices
-  report word timings. A voice can also be typed in by id.
-- **Speed, volume, caption window** — the preferences that matter mid-sentence,
-  on the Reading tab, so they are one click away while it reads.
+- **Voice** — choose from a searchable list for each service, with indicators
+  showing which voices support word-level timing. You can also enter a voice ID
+  directly.
+- **Speed, volume, caption window** — frequently adjusted during playback, so
+  they live on the Reading tab for quick access.
 - **Interface language** — English, 中文, 日本語, or follow the browser.
-- **Cache** — synthesized audio is kept on your machine, so replaying a sentence
-  costs nothing. On by default, with an upper limit of 50, 100, 200 or 500 MB
-  (200 MB out of the box), a readout of what is used, and one button to clear it.
-- **Models** — download source (automatic, Hugging Face, ModelScope or your own
-  mirror), the model size, and the device the model runs on.
+- **Cache** — stores synthesized audio locally so repeated sentences play
+  instantly. Enabled by default with configurable limits (50 / 100 / 200 /
+  500 MB, default 200 MB). Shows current usage and offers one-click clearing.
+- **Models** — configure download source (automatic, Hugging Face, ModelScope,
+  or custom mirror), model size, and execution device (WebGPU or CPU).
 
 ## Privacy
 
-SayLoud has no server of its own and collects nothing. The browser voice and the
-on-device model are entirely local. If you configure a cloud service, the text
-you ask it to speak is sent from your browser straight to that service with your
-key — to nobody else. Access to a site is requested only when a service needs it,
-and can be withdrawn from Chrome's extension settings at any time.
+SayLoud has no backend server and collects no data. Browser voices and on-device
+models run entirely locally. When you configure a cloud service, text is sent
+directly from your browser to that service with your API key — nowhere else.
+Site access permissions are requested only when needed for a specific service
+and can be revoked anytime in Chrome's extension settings.
 
 ## Install
 
-SayLoud is not on the Chrome Web Store yet. It builds from source in two steps:
+SayLoud isn't on the Chrome Web Store yet. Build from source in two steps:
 
 ```bash
 pnpm install
 pnpm build
 ```
 
-Then open `chrome://extensions`, turn on **Developer mode**, choose **Load
-unpacked**, and select `.output/chrome-mv3`. You need Node.js 22 or later and
-pnpm 9 or later; the build compiles a small Rust module to wasm, so it also needs
-a Rust toolchain and `wasm-pack` (`cargo install wasm-pack`).
+Then open `chrome://extensions`, enable **Developer mode**, click **Load
+unpacked**, and select `.output/chrome-mv3`.
 
-Current Chrome works. The caption window needs Chrome 116 or later; without it
-the rest of SayLoud reads aloud as usual and the caption switch says so.
+**Requirements:** Node.js 22+, pnpm 9+, Rust toolchain, and `wasm-pack`
+(`cargo install wasm-pack`). The build compiles a small Rust module to WebAssembly.
+
+Works with current Chrome. The caption window requires Chrome 116+; on older
+versions all other features work normally and the caption toggle explains the
+requirement.
 
 *The Chrome Web Store listing is coming.*
 

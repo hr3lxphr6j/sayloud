@@ -4,7 +4,7 @@
 Run manually, not from CI: each mutation needs its own compile, so a full pass
 takes minutes rather than seconds.
 
-    python3 scripts/mutation-check-ja.py
+    python3 scripts/check/mutation-check-ja.py
 
 Every mutation here is one that would make a real bug invisible — the dictionary
 placeholder read as a value, the numeral rules skipped, the two-character mora
@@ -33,7 +33,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 # (file, description, old, new, which test target must fail)
 MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
-        "crates/phonemize/src/backends/segmenter_ja.rs",
+        "crates/phonemize/src/g2p/ja/segmenter.rs",
         "stop treating the dictionary's `*` placeholder as an absent reading",
         ".filter(|reading| *reading != self.absent_field)",
         "",
@@ -42,8 +42,8 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
     (
         "crates/phonemize/src/pipeline.rs",
         "skip numeral normalization, so digits reach the segmenter and vanish",
-        "let with_numerals = numbers_to_kanji(&normalized);",
-        "let with_numerals = normalized.clone();",
+        "let with_numerals = tn::normalize(&punctuated, tn::Lang::Ja, engine);",
+        "let with_numerals = punctuated;",
         "ja_pipeline",
     ),
     (
@@ -61,7 +61,7 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "ja_pipeline",
     ),
     (
-        "crates/phonemize/src/frontends/ja_ipa.rs",
+        "crates/phonemize/src/g2p/ja/ipa.rs",
         "take the single-character entry before trying the two-character pair",
         "if let Some(ipa) = lookup(katakana[index], Some(katakana[index + 1])) {",
         "if let Some(ipa) = lookup(katakana[index], None).filter(|_| false) {",
@@ -75,14 +75,14 @@ MUTATIONS: list[tuple[str, str, str, str, str]] = [
         "ja_g2p",
     ),
     (
-        "crates/phonemize/src/backends/numbers.rs",
+        "crates/phonemize/src/tn/readers/ja.rs",
         "keep a leading 一 before a place unit, so 1000 reads 一千",
         "if digit == 1 && is_place_unit {",
         "if false {",
         "ja_g2p",
     ),
     (
-        "crates/phonemize/src/backends/numbers.rs",
+        "crates/phonemize/src/tn/readers/ja.rs",
         "write a placeholder for an empty four-digit group",
         "if group == 0 {\n            continue;\n        }",
         "if false {\n            continue;\n        }",
@@ -116,6 +116,23 @@ def run(target: str) -> bool:
     return result.returncode == 0
 
 
+def compiles(target: str) -> bool:
+    """True when the mutated source still builds that test target.
+
+    A mutation that does not compile also makes `cargo test` exit non-zero, so
+    without this the run would report "caught" for a `str.replace` that produced
+    a syntax error — the same false green as a pattern that never matched, one
+    step further down.
+    """
+    result = subprocess.run(
+        ["cargo", "test", "-p", "phonemize", "--test", target, "--no-run"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
 def main() -> int:
     survivors: list[str] = []
 
@@ -130,11 +147,18 @@ def main() -> int:
 
         file.write_text(original.replace(old, new, 1))
         try:
-            passed = run(target)
+            built = compiles(target)
+            passed = built and run(target)
         finally:
             file.write_text(original)
 
-        if passed:
+        if not built:
+            print(
+                f"NO COMPILE {description}\n"
+                f"         the mutation does not build, so {target} cannot have caught it"
+            )
+            survivors.append(f"{description} (did not compile)")
+        elif passed:
             print(f"SURVIVED {description}\n         {target} still passed")
             survivors.append(description)
         else:

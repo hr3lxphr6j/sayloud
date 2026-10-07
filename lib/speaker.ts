@@ -45,7 +45,7 @@ export interface SpeakRequest {
   resumeTimeMs?: number;
 }
 
-/** A sentence to warm in the cache before it is needed (spec §5.3). */
+/** A sentence to warm in the cache before it is needed. */
 export interface PrefetchRequest {
   text: string;
   voice?: string;
@@ -175,7 +175,7 @@ export class BrowserSpeaker implements Speaker {
       case 'word': {
         const span = wordSpan(event, textLength);
         // No usable length means we cannot place the word without guessing,
-        // and the spec forbids estimating timings. Sentence highlight carries on.
+        // and a timing is never estimated. Sentence highlight carries on.
         if (span) this.emit('word', span);
         return;
       }
@@ -222,7 +222,7 @@ function wordSpan(event: TtsEventLike, textLength: number): WordSpan | null {
 /** Primary subtags SayLoud offers for the browser voice. */
 const SUPPORTED_LANGS = ['zh', 'en', 'ja'];
 
-/** True when a voice speaks one of the languages P1 supports. */
+/** True when a voice speaks one of the supported languages. */
 export function isSupportedVoice(voice: TtsVoiceLike): boolean {
   const lang = voice.lang?.toLowerCase() ?? '';
   return SUPPORTED_LANGS.some((prefix) => lang === prefix || lang.startsWith(`${prefix}-`));
@@ -240,11 +240,11 @@ function tagOf(voice: TtsVoiceLike): string {
 /**
  * Choose a voice for `lang`.
  *
- * Only voices for the languages P1 supports are eligible, so a page in an
+ * Only voices for the supported languages are eligible, so a page in an
  * unsupported language still reads with a voice we can drive. Within those,
  * an exact tag match wins, then the same primary subtag, then English as the
  * universal fallback, then any supported voice. Local voices win ties: they
- * start faster, and P1 promises instant playback with zero configuration.
+ * start faster, and instant playback with zero configuration is the promise.
  */
 export function pickVoice(voices: TtsVoiceLike[], lang: string): TtsVoiceLike | null {
   const candidates = voices.filter(isSupportedVoice);
@@ -269,7 +269,7 @@ export function pickVoice(voices: TtsVoiceLike[], lang: string): TtsVoiceLike | 
   return candidates.find((voice) => !voice.remote) ?? candidates[0] ?? null;
 }
 
-/** All voices SayLoud can use, for the voice list in a later phase. */
+/** All voices SayLoud can use, including the ones no page language asks for. */
 export function supportedVoices(voices: TtsVoiceLike[]): TtsVoiceLike[] {
   return voices.filter(isSupportedVoice);
 }

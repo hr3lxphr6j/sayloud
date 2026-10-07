@@ -1,5 +1,5 @@
 /**
- * The reader's "open the settings panel" request (spec §3.4, §6 V1).
+ * The reader's "open the settings panel" request.
  *
  * The gear in the 28px bar cannot open the panel itself. `chrome.sidePanel` is
  * one of the APIs a content script is not given — it sees `runtime`, `i18n`,
@@ -8,7 +8,7 @@
  *
  * Both hops must be synchronous. `sidePanel.open()` consumes the click's
  * transient activation, and Chrome's window for that is roughly five seconds:
- * V1 measured a trusted click working immediately and after 1.5s, and failing
+ * A trusted click was measured working immediately and after 1.5s, and failing
  * after 6s, on page load, or when the worker called the API on its own. So the
  * click handler calls `sendMessage` without awaiting anything, and the listener
  * below calls `sidePanel.open()` before it awaits anything. An `await` on

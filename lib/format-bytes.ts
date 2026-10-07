@@ -32,7 +32,7 @@ export function formatBytes(bytes: number): string {
  * the repository's file listing reports, and the download really is 92,360,000
  * bytes; calling that "88.1 MB" would understate what the user is about to
  * spend by four percent, against a number they can check against the mirror.
- * The spec's own wireframe quotes the same decimal figures.
+ * The settings panel shows the same decimal figures the repository quotes.
  */
 export function formatDecimalBytes(bytes: number): string {
   if (bytes < 1000) return `${Math.max(0, Math.round(bytes))} B`;

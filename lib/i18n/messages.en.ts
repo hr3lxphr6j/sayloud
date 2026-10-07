@@ -358,8 +358,8 @@ export const en = {
 
   'model.storage.title': 'Device and space',
   'model.storage.label': 'Storage used',
-  // Says what is *not* counted, for the same reason the audio cache's note does
-  // (spec §4.5): the two numbers are separate on purpose.
+  // Says what is *not* counted, for the same reason the audio cache's note does:
+  // the two numbers are separate on purpose.
   'model.storage.note': 'Models and voices. The audio cache is counted on the Settings tab.',
   // Voices are fetched one at a time, when a voice is first used; there is no
   // "download them all" control yet, and a line saying so beats a dead button.

@@ -1,5 +1,5 @@
 /**
- * The on-device model registry (P4 spec §3.1): the one place that describes
+ * The on-device model registry: the one place that describes
  * which models exist, what they cost, and which tier a machine should use.
  *
  * It deliberately has **no runtime dependencies**. The side panel and the
@@ -9,7 +9,7 @@
  *
  * The tier sizes are measured constants rather than `Content-Length` probes:
  * the UI has to show "163 MB" *before* the download starts. The numbers come
- * from the ModelScope file-listing API (risk-verification doc §1.2/§1.3) and
+ * from the ModelScope file-listing API and
  * are quoted in MB, so they are the decimal values the repository reports.
  */
 import type { MessageKey } from '../i18n/messages.en';
@@ -46,7 +46,7 @@ export interface ModelTier {
   /** Measured size of the tier's own files. */
   readonly bytes: number;
   /**
-   * Where this tier is the *preferred* one (spec §3.7.2).
+   * Where this tier is the *preferred* one.
    *
    * Absent means "never selected automatically, manual choice only".
    */
@@ -65,7 +65,7 @@ export interface ModelTier {
    * part-way through the sentence, while the _same weights_ on the CPU were
    * perfect and `fp32` on the same GPU was perfect too. It is the combination
    * of this dtype with this backend, and nothing was ever verified about the
-   * audio — V20 measured fp16's *speed* and never its quality.
+   * audio: fp16 was measured for *speed*, never for quality.
    */
   readonly brokenOn?: readonly DeviceClass[];
 }
@@ -73,7 +73,7 @@ export interface ModelTier {
 /**
  * How much GPU a machine has, in the three classes the measurements found.
  *
- * The split is an empirical result, not a guess (spec §3.7.1): `q8` gains
+ * The split is an empirical result, not a guess: `q8` gains
  * nothing from WebGPU (its dequantisation nodes fall back to the CPU), so the
  * tier worth having depends on `shader-f16` rather than on "GPU or not".
  */
@@ -134,7 +134,7 @@ export const SHARED_MODEL_FILES: readonly string[] = [
  *
  * Tiny next to the weights, but the tier's `bytes` is the ONNX alone, so the
  * download's progress total has to add these back or the bar would never reach
- * 100%. Measured from the ModelScope file listing (verification doc §1.3).
+ * 100%. Measured from the ModelScope file listing.
  */
 export const SHARED_FILE_BYTES: Readonly<Record<string, number>> = {
   'config.json': 44,
@@ -143,12 +143,12 @@ export const SHARED_FILE_BYTES: Readonly<Record<string, number>> = {
 };
 
 /**
- * Kokoro 82M, the only model P4 ships.
+ * Kokoro 82M, the only model the extension ships.
  *
  * `languages` lists what can actually be synthesized: the 28 English voices go
  * through `kokoro-js`'s own path, the 8 Chinese ones through the built
  * phonemizer. The repository's other 18 voices need a G2P per language, so
- * they are not counted and not listed (spec §1.1.1).
+ * they are not counted and not listed.
  */
 export const KOKORO_82M: OnDeviceModel = {
   id: 'kokoro-82m',

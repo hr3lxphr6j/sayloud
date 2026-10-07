@@ -2,8 +2,8 @@ import type { MessageKey } from './i18n/messages.en';
 
 /**
  * Rough speaking speed in characters per second, used until the engine has
- * measured a real rate. The spec calls for an estimate first and a correction
- * per voice once real durations are known (P2); P1 only has the estimate.
+ * measured a real rate: an estimate first, corrected per voice once real
+ * durations are known.
  */
 export const BASELINE_CHARS_PER_SEC = 14;
 

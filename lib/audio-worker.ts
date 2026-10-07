@@ -1,5 +1,5 @@
 /**
- * The offscreen document's whole behaviour: turn commands into audio (spec §3.1).
+ * The offscreen document's whole behaviour: turn commands into audio.
  *
  * It holds no session state. The service worker decides which sentence plays
  * next; this decides how to get the bytes and hands them to the timeline

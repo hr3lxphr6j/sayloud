@@ -148,7 +148,7 @@ export function isPhonemizeWorkerReply(value: unknown): value is PhonemizeWorker
  * - everything else is a file the extension shipped failing to load or decode,
  *   which is a reinstall rather than a setting. Reported as a model load
  *   failure because that is the sentence the panel has for "a thing this
- *   extension ships could not be loaded"; phase 8 gives it a code of its own.
+ *   extension ships could not be loaded".
  *
  * Deliberately not `unknown`: that reads as "something went wrong" and throws
  * away the only actionable part of the message.

@@ -1,5 +1,5 @@
 /**
- * The Rust phonemizer (P6).
+ * The Rust phonemizer.
  *
  * Replaces the JavaScript chain — kuromoji + kuroshiro + jieba + espeak +
  * pinyin-pro — with a single wasm module.

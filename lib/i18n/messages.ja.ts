@@ -368,8 +368,8 @@ export const ja: Record<MessageKey, string> = {
 
   'model.storage.title': 'デバイスとストレージ',
   'model.storage.label': 'ストレージ使用量',
-  // Says what is *not* counted, for the same reason the audio cache's note does
-  // (spec §4.5): the two numbers are separate on purpose.
+  // Says what is *not* counted, for the same reason the audio cache's note does:
+  // the two numbers are separate on purpose.
   'model.storage.note': 'モデルと音声。音声キャッシュは設定タブで集計されます。',
   // Voices are fetched one at a time, when a voice is first used; there is no
   // "download them all" control yet, and a line saying so beats a dead button.

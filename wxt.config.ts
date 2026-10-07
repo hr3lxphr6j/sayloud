@@ -26,7 +26,7 @@ export default defineConfig({
          * module scope, so espeak-ng's wasm is in the import graph from the
          * moment the kokoro worker exists — whether or not `generate()` is ever
          * called — and the bundler follows the import graph rather than the
-         * calls. Phase 10 renders every language from IPA through
+         * calls. Every language is now rendered from IPA through
          * `generate_from_ids()`, so `generate()` is not called and the 1.3 MB of
          * espeak data is not reachable at runtime; this alias is what makes it
          * not reachable at build time either.

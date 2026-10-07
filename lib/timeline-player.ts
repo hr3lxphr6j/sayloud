@@ -1,12 +1,12 @@
 /**
- * Plays one synthesized sentence and reports where the playhead is (spec §3.2).
+ * Plays one synthesized sentence and reports where the playhead is.
  *
  * This is the only place in the extension that touches an `<audio>` element, and
  * it is deliberately dumb about everything else: it holds one sentence at a
  * time, and it knows nothing about sessions, queues, or providers. The service
  * worker decides what to play; this decides when each word is spoken.
  *
- * Two things differ from the spec's sketch, both for correctness:
+ * Two deliberate departures from the original design, both for correctness:
  *
  * 1. Word delays divide by `playbackRate` instead of dividing the word's own
  *    start time by it. `word.startMs` is in audio time and `currentTime` is in

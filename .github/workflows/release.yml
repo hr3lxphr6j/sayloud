@@ -1,0 +1,63 @@
+# The tag is the release: `v0.4.0-p4`, and the three before it. Pushing one builds
+# the extension and attaches the zip to a GitHub release.
+#
+# Deliberately not dispatchable by hand. `gh release create` is given
+# `$GITHUB_REF_NAME`, which is a tag here and would be a branch name there; to run
+# a failed release again, re-run it (`gh run rerun`).
+on:
+  push:
+    tags: ['v*']
+
+# Creating the release is the only write this workflow needs. The build cache
+# stays read-only here regardless: `save-if` in the setup action lets only `main`
+# write it.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # The same runner as CI, for two reasons: rust-cache keys on the runner's OS
+    # and architecture, so anything else compiles from scratch, and the artifact
+    # that ships should be built by the toolchain that tested it.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Node, pnpm, the dictionaries, Rust, wasm-pack and the build cache — the
+      # same steps the test job runs, so the zip is the artifact CI tested.
+      - uses: ./.github/actions/setup
+      # Before the two minutes of building, because this is the mistake it catches:
+      # the version lives in `package.json` *and* in `wxt.config.ts`, both by hand,
+      # and nothing else compares either of them to the tag.
+      - name: Check the tag against the version in package.json
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          case "$GITHUB_REF_NAME" in
+            "v$version" | "v$version"-*) echo "tag $GITHUB_REF_NAME is $version, or a pre-release of it" ;;
+            *)
+              echo "::error::tag $GITHUB_REF_NAME does not match version $version — bump package.json and wxt.config.ts, or retag"
+              exit 1
+              ;;
+          esac
+      # `pnpm zip` runs `prezip` first, which builds the wasm module. `wxt zip`
+      # builds the extension itself, but the `prebuild` hook that puts the wasm in
+      # belongs to `build`, not to `zip`.
+      - run: pnpm zip
+      # CI runs this against the build it tests, but a tag can point at a commit
+      # that never went through CI, and the zip is what reaches users.
+      - run: pnpm check:manifest
+      - name: Check that the built manifest carries the version
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          built=$(node -p 'require("./.output/chrome-mv3/manifest.json").version')
+          if [ "$built" != "$version" ]; then
+            echo "::error::the built manifest says $built while package.json says $version"
+            exit 1
+          fi
+      - name: Publish the release with the zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes \
+            .output/*.zip

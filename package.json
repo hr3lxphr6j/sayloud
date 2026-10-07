@@ -8,6 +8,8 @@
     "dev": "wxt",
     "build": "wxt build",
     "prebuild": "pnpm build:wasm",
+    "zip": "wxt zip",
+    "prezip": "pnpm build:wasm",
     "build:wasm": "./scripts/build/build-phonemize-wasm.sh",
     "gen:headtts": "node scripts/generate/gen-headtts-rules.mjs",
     "gen:vocab": "node scripts/generate/gen-kokoro-vocab.mjs",

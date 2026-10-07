@@ -1,5 +1,5 @@
 /**
- * The one place that knows how a model file's URL is spelled (P4 spec §3.5).
+ * The one place that knows how a model file's URL is spelled.
  *
  * Two callers have to agree on this exactly: the downloader (side panel) and
  * the fetch patch (offscreen worker). If they disagree, the cache key the

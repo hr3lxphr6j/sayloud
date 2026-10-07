@@ -1,5 +1,5 @@
 /**
- * The on-device engine seam (P4 spec §3.8).
+ * The on-device engine seam.
  *
  * One family is one adapter. Adding a model family should mean adding an
  * `OnDeviceEngine` and a registry entry — not touching the manager, the
@@ -66,10 +66,9 @@ export interface OnDeviceEngine {
    * `lang` is required rather than optional because it selects the
    * phonemization path, and the paths are not interchangeable: Chinese needs a
    * word list and tone arrows, Japanese a dictionary, and English neither —
-   * its CMU dictionary is compiled into the wasm. Since phase 10
-   * it does *not* select the rendering path: all three languages reach the model
-   * as IPA. Callers derive it from the voice id's prefix when the user has not
-   * set one.
+   * its CMU dictionary is compiled into the wasm. It does *not* select the
+   * rendering path: all three languages reach the model as IPA. Callers derive
+   * it from the voice id's prefix when the user has not set one.
    */
   synthesize(text: string, voiceId: string, lang: string, signal: AbortSignal): Promise<RawPcm>;
 

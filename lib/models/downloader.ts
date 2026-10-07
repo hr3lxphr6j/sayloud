@@ -1,10 +1,10 @@
 /**
- * Fetching model and voice files into Cache Storage (P4 spec §3.6).
+ * Fetching model and voice files into Cache Storage.
  *
  * This runs in the side panel, which is a visible page — deliberately not in
- * the offscreen document, which Chrome recycles 30 seconds after audio stops
- * and would kill a multi-minute download halfway (spec §3.12.3). It therefore
- * must not import anything that drags in ORT: it only moves bytes.
+ * the offscreen document, which Chrome recycles 30 seconds after audio stops and
+ * would kill a multi-minute download halfway. It therefore must not import
+ * anything that drags in ORT: it only moves bytes.
  *
  * The keys it writes are canonical (`urls.ts`), never the URL it fetched, so
  * changing download source keeps what is already cached.
@@ -31,9 +31,9 @@ export const VOICE_FILE_BYTES = 522_240;
 /**
  * How many entries the repository's `voices/` directory holds.
  *
- * All of them, including the languages P4 cannot synthesize: "download all
- * voices" is about the repository's files, and a partial voice list would make
- * the button's size estimate wrong.
+ * All of them, including the languages the on-device engine cannot synthesize:
+ * "download all voices" is about the repository's files, and a partial voice
+ * list would make the button's size estimate wrong.
  */
 export const ALL_VOICE_FILES = 54;
 
@@ -91,7 +91,7 @@ export interface PlannedFile {
 export interface DownloadProgress {
   /** Bytes fetched so far, counting the files already in the cache. */
   readonly bytes: number;
-  /** What the plan promised, from the measured sizes. */
+  /** The sum of the measured sizes. */
   readonly totalBytes: number;
   /** The file being fetched, for a caption. */
   readonly path: string;

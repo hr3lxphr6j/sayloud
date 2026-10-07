@@ -1,5 +1,5 @@
 /**
- * What the machine can actually do (P4 spec §3.3, §3.7.2).
+ * What the machine can actually do.
  *
  * The tier a machine should use is not "GPU or not": the measurements found
  * that a quantised model gains *nothing* from WebGPU, because its
@@ -106,8 +106,8 @@ function describeAdapter(info: AdapterInfoLike | undefined): string | undefined 
 /**
  * The device to run on, given what the user asked for and what the machine has.
  *
- * `auto` means "use the GPU if there is one" (spec §3.3); the tier chosen on
- * top of that is what decides whether the GPU is actually worth using.
+ * `auto` means "use the GPU if there is one"; the tier chosen on top of that is
+ * what decides whether the GPU is actually worth using.
  */
 export function resolveDevice(preference: DevicePreference, caps: DeviceCaps): Device {
   switch (preference) {

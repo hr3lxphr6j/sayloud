@@ -1,14 +1,13 @@
 /**
- * PCM to WAV, and the split that keeps a sentence inside Kokoro's limit
- * (P4 spec §3.9, §3.10).
+ * PCM to WAV, and the split that keeps a sentence inside Kokoro's limit.
  *
  * Kokoro returns raw Float32 samples at 24 kHz. SayLoud's whole playback path —
  * `TimelinePlayer`, the `<audio>` element, the L2 audio cache — already speaks
  * "one `ArrayBuffer` with a mime type", so the cheapest way to fit in is to
  * write a WAV header and hand over a buffer that needs no new code anywhere.
- * Both synthesis paths return the same `RawAudio` shape — and since phase 10
- * there is only one path, `generate_from_ids()`, for all three languages — so
- * this is one implementation for all of them.
+ * Every language now reaches the model through one path,
+ * `generate_from_ids()`, returning the same `RawAudio` shape, so this is one
+ * implementation for all three.
  */
 
 /** Kokoro's output rate. Not configurable — the model decides it. */
@@ -163,7 +162,7 @@ export type Measure = (text: string) => Promise<{ ipa: string; tokens: number }>
  * comes back as exactly one piece, phonemized once, and nothing about it
  * changes. The splitting exists for the pathological paragraph, and it never
  * changes SayLoud's sentence granularity: the caller still gets one buffer for
- * one `segmentSentences` sentence, so highlighting is unaffected (spec §3.10).
+ * one `segmentSentences` sentence, so highlighting is unaffected.
  */
 export async function planPieces(text: string, measure: Measure): Promise<Piece[]> {
   const pieces = await cutToFit(text, measure);

@@ -3,11 +3,11 @@
  *
  * SayLoud ships with no `host_permissions`; `optional_host_permissions` only
  * declares what may be asked for. Most services answer the extension's CORS
- * preflight on their own and need nothing (spec V5: DashScope echoes the
- * `chrome-extension://` origin; V7: Kokoro sends `*`; Azure speaks over a
- * WebSocket, which has no preflight). Volcengine does not: its preflight
- * allows any origin but leaves `X-Api-Key` out of `Access-Control-Allow-Headers`
- * (spec A.4), and only a granted host permission lets the extension skip CORS.
+ * preflight on their own and need nothing: DashScope echoes the
+ * `chrome-extension://` origin, Kokoro sends `*`, and Azure speaks over a
+ * WebSocket, which has no preflight. Volcengine does not: its preflight allows
+ * any origin but leaves `X-Api-Key` out of `Access-Control-Allow-Headers`, and
+ * only a granted host permission lets the extension skip CORS.
  *
  * The request names the exact origin from the configuration, so the prompt
  * shows one host rather than "all sites".

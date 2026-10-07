@@ -12,7 +12,7 @@
  * Nothing here knows about messages. The worker owns the protocol and the
  * ONNX Runtime configuration; this owns the model.
  *
- * Since phase 7 it also owns no phonemization at all. What arrives is text that
+ * It also owns no phonemization at all. What arrives is text that
  * has already been phonemized and already been cut to fit the model's limit,
  * because cutting needs a token count (here) and phonemizing needs a dictionary
  * (in the other worker). That leaves this class with exactly the model, which is
@@ -140,13 +140,13 @@ export class KokoroEngine {
    * Audio for one piece.
    *
    * **All three languages enter the model the same way**, through
-   * `generate_from_ids()`, and phase 10 is when that became true. English used to
-   * go through `generate()`, the library's own supported path, which runs
-   * `kokoro-js`'s front end on the raw text: espeak, then the number,
-   * punctuation and character substitutions it applies afterwards. The reason to
-   * stop is that the words arriving here were already phonemized — by the Rust
-   * module, for all three languages — so `generate()` was a second, invisible
-   * front end that the token count in `countTokens()` did not describe.
+   * `generate_from_ids()`. English used to go through `generate()`, the
+   * library's own supported path, which runs `kokoro-js`'s front end on the raw
+   * text: espeak, then the number, punctuation and character substitutions it
+   * applies afterwards. The reason to stop is that the words arriving here were
+   * already phonemized — by the Rust module, for all three languages — so
+   * `generate()` was a second, invisible front end that the token count in
+   * `countTokens()` did not describe.
    *
    * `truncation: false`, the same as `countTokens()`. A piece the coordinator got
    * wrong would otherwise be silently cut at the model's limit, mid-word, in a

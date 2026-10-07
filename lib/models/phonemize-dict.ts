@@ -9,12 +9,12 @@
  * Dictionaries ship inside the extension (`public/dictionaries/`), so a fetch is
  * a read from local disk rather than a download. The cache below is therefore
  * close to redundant today — it exists because it is the seam a dictionary that
- * *is* downloaded would land in, and because the alternative the P6 plan first
- * proposed, `browser.storage.local`, cannot hold one: the extension does not ask
- * for `unlimitedStorage`, so that area is capped at 10 MB, and the Japanese
- * dictionary is ~10 MB compressed — before the 33% that base64 costs. Cache
- * Storage stores the bytes as a blob with no quota of its own, which is also how
- * the models and voices are already cached (`lib/models/downloader.ts`).
+ * *is* downloaded would land in, and because `browser.storage.local` cannot hold
+ * one: the extension does not ask for `unlimitedStorage`, so that area is capped
+ * at 10 MB, and the Japanese dictionary is ~10 MB compressed — before the 33%
+ * that base64 costs. Cache Storage stores the bytes as a blob with no quota of
+ * its own, which is also how the models and voices are already cached
+ * (`lib/models/downloader.ts`).
  */
 
 /**
@@ -52,7 +52,7 @@ export const DICTIONARY_DIRECTORY = '/dictionaries';
 /** The Cache Storage bucket the compressed dictionaries are kept in. */
 export const DICTIONARIES_CACHE = 'phonemize-dictionaries';
 
-/** The zstd frame magic number (RFC 8878 §3.1.1). */
+/** The zstd frame magic number (RFC 8878 section 3.1.1). */
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd] as const;
 
 /**
@@ -138,9 +138,9 @@ export interface DictionaryDeps {
  * The bytes of one dictionary, compressed.
  *
  * Cache first, then fetch. Every failure along the way is a
- * {@link DictionaryLoadError} with a reason the caller can act on: the spec
- * (§8.1) requires a corrupt file to be told apart from a missing one, because
- * they are not fixed by the same thing.
+ * {@link DictionaryLoadError} with a reason the caller can act on: a corrupt
+ * file is told apart from a missing one, because they are not fixed by the same
+ * thing.
  */
 export async function fetchDictionary(
   name: string,

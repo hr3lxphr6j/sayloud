@@ -5,7 +5,7 @@ export const WORD_HIGHLIGHT = 'sayloud-word';
 const STYLE_MARKER = 'data-sayloud-highlight';
 
 /**
- * P1 uses fixed colours; adaptive dark-page colours are deferred to P4.
+ * The colours are fixed; adaptive dark-page colours are not implemented.
  * The sentence layer is the baseline for every provider, the word layer is the
  * optional overlay that only appears when a provider returns word timings.
  */
@@ -114,8 +114,8 @@ const styledDocuments = new WeakSet<Document>();
 /**
  * Install the `::highlight()` rules.
  *
- * An adopted stylesheet keeps the page DOM untouched, which is the spec's
- * stated constraint; the style element is a fallback for environments without
+ * The rules go in through an adopted stylesheet so the page's own DOM is left
+ * untouched; the style element is a fallback for environments without
  * constructable stylesheets.
  */
 export function installHighlightStyles(doc: Document = document): void {

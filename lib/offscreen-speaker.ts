@@ -1,5 +1,5 @@
 /**
- * The cloud voice, as a `Speaker` (spec §5.1).
+ * The cloud voice, as a `Speaker`.
  *
  * The service worker's engine is a synchronous state machine — `speak()` returns
  * immediately and the speaker reports progress through events, which is what
@@ -7,7 +7,7 @@
  * this adapter hides the whole async pipeline behind that same interface: it
  * fires off synthesize → play, and reports `start`, `word`, `end` and `error`
  * as the offscreen document produces them. The engine needs no changes at all,
- * and the P1 browser path is untouched.
+ * and the existing browser voice path is untouched.
  *
  * Every utterance is tagged with a sequence id. The engine stops and re-speaks
  * freely (a seek, a rate change, a pause), and replies and events from a

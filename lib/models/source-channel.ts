@@ -1,5 +1,5 @@
 /**
- * How the on-device engine learns where to download from (P4 spec §3.4, §3.5).
+ * How the on-device engine learns where to download from.
  *
  * The user's choice lives in `ModelStore` under `sayloud:model-source`, which
  * means `chrome.storage` — and an offscreen document is given `runtime` and

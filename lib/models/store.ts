@@ -1,5 +1,5 @@
 /**
- * The model manager the model tab talks to (P4 spec §3.6).
+ * The model manager the model tab talks to.
  *
  * It owns four things the UI must not have to know about: which download source
  * to use, what is already in Cache Storage, what a tier's removal may and may
@@ -135,9 +135,9 @@ export class ModelStore {
    * The source to actually download from.
    *
    * `auto` uses whatever worked last and only probes when there is no such
-   * record. An explicit choice is returned untouched: if it fails, the failure
-   * belongs to the user rather than being papered over with another source they
-   * did not pick (spec §3.4).
+   * record. An explicit choice is returned untouched: a source the user picked
+   * is never quietly swapped for another, so if it fails the failure belongs to
+   * the user rather than being papered over.
    */
   async resolveSource(model: OnDeviceModel): Promise<ModelSource> {
     const setting = await this.getSource();
@@ -312,7 +312,7 @@ export class ModelStore {
    * "how much space" must not cost a 325 MB read.
    *
    * Only tiers carry a measured size, so a `files`-shaped model (shapes B and
-   * C, none of which P4 ships) would not be counted until it has one.
+   * C, neither of which ships today) would not be counted until it has one.
    */
   async usage(): Promise<ModelUsage> {
     const modelKeys = await this.modelKeys();
@@ -476,7 +476,7 @@ function isModelHostId(value: unknown): value is ModelHostId {
   return typeof value === 'string' && MODEL_HOSTS.some((host) => host === value);
 }
 
-/** An absolute `https://` URL. The spec requires https for a custom mirror. */
+/** An absolute `https://` URL. A custom mirror must be `https`. */
 function isHttpsUrl(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();

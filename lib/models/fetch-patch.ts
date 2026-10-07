@@ -1,5 +1,5 @@
 /**
- * The fetch patch that makes canonical cache keys work (P4 spec §3.5).
+ * The fetch patch that makes canonical cache keys work.
  *
  * The problem it solves: transformers.js caches a downloaded file under the
  * URL it requested. If the request URL is the real source, then switching
@@ -42,7 +42,7 @@ export interface FetchPatchOptions {
    *
    * True only when the source came from `auto`: a source the user picked
    * explicitly must not be quietly swapped for another, or the setting means
-   * nothing (spec §3.4). The caller knows which it was; this module does not.
+   * nothing. The caller knows which it was; this module does not.
    */
   readonly allowFallback?: boolean;
 }
@@ -111,9 +111,9 @@ function rewrite(input: RequestInfo | URL, real: string): RequestInfo | URL {
  * Replace the global fetch.
  *
  * Called at the top of the worker, before the model is first fetched. Voices
- * are loaded lazily by `generate()` rather than at module load (verification
- * V19), so there is no race to lose here — but the model load is not, which is
- * why this is the first thing the worker does.
+ * are loaded lazily by `generate()` rather than at module load, so there is no
+ * race to lose here — but the model load is not, which is why this is the first
+ * thing the worker does.
  */
 export function installFetchPatch(options: FetchPatchOptions): void {
   globalThis.fetch = createFetchPatch(options);

@@ -1,5 +1,5 @@
 /**
- * A saved preference, turned into a command for the engine (spec §11 T4).
+ * A saved preference, turned into a command for the engine.
  *
  * This lives here rather than in `background.ts` because a service worker
  * entrypoint has no unit test in this repo: the rule "a rate change reaches a

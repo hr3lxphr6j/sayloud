@@ -1,13 +1,12 @@
 /**
- * The `OnDeviceEngine` that owns the offscreen document's two workers (P4 spec
- * §3.3, §3.16).
+ * The `OnDeviceEngine` that owns the offscreen document's two workers.
  *
  * Everything here is bookkeeping: give each request an id, keep the promise
  * that is waiting for it, and make sure nothing is left waiting when a worker
  * dies or the caller aborts. The audio itself never passes through this class's
  * logic — a `Float32Array` is handed back and goes straight into a WAV.
  *
- * Since phase 7 that bookkeeping covers two workers instead of one, and this
+ * That bookkeeping covers two workers instead of one, and this
  * class is also where they are *scheduled*: a sentence is phonemized in one
  * worker, then synthesized in the other, and the step in between — cutting the
  * sentence to fit the model's token limit — is here because it is the only
@@ -456,7 +455,7 @@ export class WorkerLocalEngine implements OnDeviceEngine {
    * it costs is decompression from files the
    * extension already ships, and every language needs something now: English's
    * pronunciation dictionary is compiled in, but its numerals come from two
-   * WeText grammars (phase 9B) as Chinese's and Japanese's do (9E).
+   * WeText grammars, as Chinese's and Japanese's do.
    */
   private prepare(vocab: VocabId, lang: string): Promise<void> {
     const key = `${vocab}\u0000${lang}`;

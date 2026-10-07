@@ -1,5 +1,5 @@
 /**
- * Owns the offscreen document's lifetime (spec §6).
+ * Owns the offscreen document's lifetime.
  *
  * The document is created lazily, on the first command that needs it, and never
  * explicitly closed: Chrome reclaims it on its own, and `hasDocument()` is the

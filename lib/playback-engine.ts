@@ -45,7 +45,7 @@ const RATE_SAMPLE_MS = 250;
 /**
  * Base prefetch horizon, in estimated milliseconds of audio.
  *
- * The spec widens it with the rate: a faster rate burns through the queue
+ * The horizon widens with the rate: a faster rate burns through the queue
  * faster, so more audio has to be ready ahead of the cursor.
  */
 const PREFETCH_HORIZON_MS = 12_000;
@@ -61,8 +61,8 @@ const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Scr
  * Player is a pure view over the events it emits. Every command from
  * `EngineCommand` is handled here so the router stays a thin transport.
  *
- * P1 speaks through `chrome.tts`, which has no seekable audio and cannot resume
- * mid-sentence, so resuming a paused sentence replays it from the start.
+ * `chrome.tts` has no seekable audio and cannot resume mid-sentence, so resuming
+ * a browser-voice sentence replays it from the start.
  */
 export class PlaybackEngine {
   private speaker: Speaker;
@@ -434,7 +434,7 @@ export class PlaybackEngine {
   }
 
   /**
-   * Warm the cache for the sentences that will play next (spec §5.3).
+   * Warm the cache for the sentences that will play next.
    *
    * Called when a sentence starts, which is the one moment the ordering is
    * safe: the speaker has already been asked to synthesize the current

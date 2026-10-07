@@ -1,6 +1,5 @@
 /**
- * The wire protocol between the service worker and the offscreen document
- * (spec §1.2).
+ * The wire protocol between the service worker and the offscreen document.
  *
  * The service worker owns every piece of session state; the offscreen document
  * is a stateless executor that plays audio. So the protocol is small on
@@ -55,7 +54,7 @@ export interface SynthesizeReply {
 /**
  * Offscreen document → service worker.
  *
- * `word` carries an `id` that the spec's sketch omits. Without it the worker
+ * `word` carries an `id`. Without it the worker
  * cannot tell a word from the sentence it just cancelled from a word of the one
  * it is now speaking, and a seek would leave a stale highlight behind.
  */

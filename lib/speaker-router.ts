@@ -1,5 +1,5 @@
 /**
- * Decides which voice actually speaks (spec §6).
+ * Decides which voice actually speaks.
  *
  * The engine holds one speaker for its whole life, so the choice between the
  * browser voice and a cloud provider cannot be made by swapping the object the
@@ -28,7 +28,7 @@ export interface ConfigSource {
 }
 
 export interface SpeakerRouterDeps {
-  /** The P1 browser voice, used whenever no cloud provider is ready. */
+  /** The browser voice, used whenever no cloud provider is ready. */
   browser: Speaker;
   config: ConfigSource;
   /** Builds the cloud speaker for a config, or null when this build has none. */

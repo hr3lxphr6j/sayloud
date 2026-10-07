@@ -1,5 +1,5 @@
 /**
- * Two-layer, content-addressed cache for synthesized audio (spec §4).
+ * Two-layer, content-addressed cache for synthesized audio.
  *
  * The key is a hash of everything that changes the bytes a provider returns —
  * the text, the voice, and the handful of config fields that steer synthesis

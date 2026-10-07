@@ -1,5 +1,5 @@
 /**
- * The offscreen document's cache policy, and how it travels (spec §4.2).
+ * The offscreen document's cache policy, and how it travels.
  *
  * The policy has to be applied where the cache lives — the offscreen document —
  * but that document is not given `chrome.storage`: Chrome exposes `runtime` and

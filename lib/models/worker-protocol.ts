@@ -1,13 +1,12 @@
 /**
- * The wire protocol between `WorkerLocalEngine` and the kokoro worker (P6 spec
- * §2.4).
+ * The wire protocol between `WorkerLocalEngine` and the kokoro worker.
  *
  * ONNX inference must not run on the offscreen document's main thread: that
  * thread also drives `TimelinePlayer`'s timers and playback, and a synthesis
  * that blocks it for a second is a stutter in the audio that is playing now.
  * So the model lives in a worker and this is the only way in or out.
  *
- * Since phase 7 that worker is one of two, and this is the half that owns the
+ * That worker is one of two, and this is the half that owns the
  * model and nothing else. What it no longer does is decide what to say: text
  * arrives phonemized and already cut to fit, because cutting it needs a token
  * count (here) and phonemizing it needs a dictionary (in the phonemize worker),
@@ -26,13 +25,13 @@ import { isMessageId, messageTypeOf } from './worker-message';
 /**
  * One synthesis call's worth of prepared text.
  *
- * **Only the IPA travels.** Until phase 10 English was rendered from `text`,
- * because `kokoro-js`'s own `generate()` runs the model's front end internally —
- * espeak, plus the number, punctuation and character substitutions applied
- * afterwards — and re-implementing that here was how the two would drift apart.
- * Phase 10 replaced that front end with the Rust phonemizer for all three
- * languages, so there is one rendering path and one input: `ipa`, which is
- * `generate_from_ids`'s argument and needs no reading of the text at all.
+ * **Only the IPA travels.** English used to be rendered from `text`, because
+ * `kokoro-js`'s own `generate()` runs the model's front end internally — espeak,
+ * plus the number, punctuation and character substitutions applied afterwards —
+ * and re-implementing that here was how the two would drift apart. All three
+ * languages are now phonemized by the Rust crate, so there is one rendering path
+ * and one input: `ipa`, which is `generate_from_ids`'s argument and needs no
+ * reading of the text at all.
  *
  * The text is still what gets *split*, and where it is split is decided by
  * `planPieces` before this struct exists — so what a caller loses by not sending

@@ -1,5 +1,5 @@
 /**
- * The settings panel's half of the cache (spec §4.3).
+ * The settings panel's half of the cache.
  *
  * The panel opens its own connection to the same IndexedDB the offscreen
  * document writes to rather than asking the service worker: showing a number

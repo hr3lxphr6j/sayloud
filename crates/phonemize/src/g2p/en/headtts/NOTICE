@@ -43,7 +43,7 @@ Those three fields were not read out of the JavaScript source by hand. They are
 the output of upstream's own `new RegExp(...)` and ARPAbet-to-IPA conversion, run
 by `scripts/generate/headtts-parity.mjs` against upstream at the revision above and
 committed as `crates/phonemize/tests/fixtures/headtts-en-parity.json`.
-`scripts/gen-headtts-rules.mjs` transcribes that fixture. So the port cannot
+`scripts/generate/gen-headtts-rules.mjs` transcribes that fixture. So the port cannot
 disagree with HeadTTS about which operator means what — only about how a regular
 expression matches, which is what `tests/headtts_en.rs` is for.
 

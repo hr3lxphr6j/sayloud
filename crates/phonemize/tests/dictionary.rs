@@ -106,7 +106,7 @@ fn chinese_needs_the_jieba_dictionary_and_two_grammars() {
     // different answer to the same question: jieba-rs, with its dictionary
     // shipped as an asset rather than compiled in, because the crate's
     // `default-dict` feature cannot link for wasm (see
-    // `scripts/setup-jieba-dict.sh`).
+    // `scripts/setup/setup-jieba-dict.sh`).
     //
     // Both frontends, because the choice of Chinese *script* is the frontend's
     // business and not the dictionary's: v1.0 and v1.1-zh read the same words,

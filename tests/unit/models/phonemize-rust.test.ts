@@ -72,7 +72,7 @@ function realDictionary(): DictionaryBytes | null {
     }
     throw new Error(
       `no dictionary at ${asset} (${String(error)}).\n` +
-        'Run ./scripts/setup-lindera-dict.sh to build it, or set ' +
+        'Run ./scripts/setup/setup-lindera-dict.sh to build it, or set ' +
         'PHONEMIZE_SKIP_DICT_TESTS=1 to skip the Japanese pipeline tests.'
     );
   }
@@ -106,7 +106,7 @@ function realJiebaDictionary(): DictionaryBytes | null {
     }
     throw new Error(
       `no dictionary at ${asset} (${String(error)}).\n` +
-        'Run ./scripts/setup-jieba-dict.sh to build it, or set ' +
+        'Run ./scripts/setup/setup-jieba-dict.sh to build it, or set ' +
         'PHONEMIZE_SKIP_DICT_TESTS=1 to skip the Chinese pipeline tests.'
     );
   }
@@ -196,7 +196,7 @@ function readGrammar(name: string): DictionaryBytes | null {
     }
     throw new Error(
       `no ${name} grammar (${String(error)}).\n` +
-        'Run ./scripts/setup-wetext-fsts.sh to build them, or set ' +
+        'Run ./scripts/setup/setup-wetext-fsts.sh to build them, or set ' +
         'PHONEMIZE_SKIP_DICT_TESTS=1 to skip the text-normalization tests.'
     );
   }

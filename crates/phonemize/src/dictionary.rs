@@ -33,10 +33,10 @@ pub const IPADIC_JA: &str = "lindera-ipadic-ja";
 /// A dictionary rather than a compiled-in table: the crate's `default-dict`
 /// feature embeds exactly this file, through `include-flate`, and that path pulls
 /// in the C `zstd` crate at runtime, which cannot link for
-/// `wasm32-unknown-unknown` on macOS (see `scripts/setup-jieba-dict.sh`).
+/// `wasm32-unknown-unknown` on macOS (see `scripts/setup/setup-jieba-dict.sh`).
 /// Shipping it as an asset also keeps 4.8 MB of dictionary out of the wasm.
 ///
-/// 1.6 MB compressed, built by `scripts/setup-jieba-dict.sh`.
+/// 1.6 MB compressed, built by `scripts/setup/setup-jieba-dict.sh`.
 pub const JIEBA_ZH: &str = "jieba-zh-dict";
 
 /// The English TN tagger FST's name, as the JavaScript side sees it.

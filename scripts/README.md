@@ -1,641 +1,481 @@
 # Scripts Directory
 
-This directory contains build, setup, data generation, and verification scripts for the TTS-NG project.
+Build, setup, data-generation and verification scripts for SayLoud. Three rules
+shape everything here:
+
+1. **Generated files and downloaded dictionaries are handled differently.**
+   Generated data is committed to git and checked in CI; the dictionaries are
+   built by `pnpm install` into `public/dictionaries/` and are *not* committed,
+   because they are 11 MB of someone else's data.
+2. **Every generator has a `--check` mode** that regenerates in memory and
+   compares against the committed file. That is what CI runs — the tests pin the
+   *committed* data, so without a check a stale file stays green forever.
+3. **Setup scripts are idempotent.** An existing asset is left alone;
+   `FORCE=1` rebuilds it.
 
 ## Directory Structure
 
 ```
 scripts/
 ├── build/              # Build automation
-│   └── build-rust-wasm.sh
-├── setup/              # Environment setup & dependency installation
-│   ├── setup-dictionaries.sh
-│   ├── setup-en-g2p.sh
-│   ├── setup-ja-g2p.sh
-│   ├── setup-wetext-tn.sh
-│   └── setup-zh-g2p.sh
-├── generate/           # Data generation from upstream sources
-│   ├── gen-headtts-rules.mjs
-│   ├── gen-ja-ipa-table.py
-│   ├── gen-kokoro-vocab.mjs
+│   └── build-phonemize-wasm.sh
+├── setup/              # Dictionary assets (network; run by `pnpm install`)
+│   ├── setup-dictionaries.sh     # entry point — calls the three below
+│   ├── setup-jieba-dict.sh       # Chinese word list
+│   ├── setup-lindera-dict.sh     # Japanese IPADic
+│   └── setup-wetext-fsts.sh      # six text-normalization grammars
+├── generate/           # Data generation (local inputs; committed output)
 │   ├── gen-pinyin-pro-data.mjs
 │   ├── gen-pinyin-table.py
-│   └── headtts-parity.mjs
-├── check/              # Verification scripts
-│   ├── compare-en-phonemize.mjs
-│   └── compare-zh-pinyin.mjs
-└── misaki/             # Vendored misaki utilities
+│   ├── gen-ja-ipa-table.py
+│   ├── gen-kokoro-vocab.mjs
+│   ├── gen-headtts-rules.mjs
+│   └── headtts-parity.mjs        # not a generator: dumps a fixture from upstream
+├── check/              # Verification
+│   ├── check-manifest.mjs
+│   ├── check-ja-reference.py
+│   └── mutation-check-ja.py
+└── misaki/             # Vendored pinyin→IPA rules + their licence
     ├── transcription.py
-    └── README.md
+    └── LICENSE
 ```
 
 ## Quick Reference
 
-| Script | When to Run | Purpose |
-|--------|-------------|---------|
-| **Build** |
-| `build/build-rust-wasm.sh` | `pnpm build` (auto) | Compile Rust phonemize crate to wasm |
-| **Setup** |
-| `setup/setup-dictionaries.sh` | `pnpm install` (auto) | Download all dictionaries (unified entry point) |
-| `setup/setup-en-g2p.sh` | Called by above | English CMU dictionary (9.0 MB) |
-| `setup/setup-ja-g2p.sh` | Called by above | Japanese dictionary (8.1 MB) |
-| `setup/setup-wetext-tn.sh` | Called by above | Text normalization grammars (909 KB) |
-| `setup/setup-zh-g2p.sh` | Called by above | Chinese segmentation dictionary (1.6 MB) |
-| **Generate** |
-| `generate/gen-pinyin-pro-data.mjs` | Manual | Extract pinyin-pro data → Rust files |
-| `generate/gen-pinyin-table.py` | Manual | Generate pinyin→IPA table from misaki |
-| `generate/gen-ja-ipa-table.py` | Manual | Generate Japanese katakana→IPA table |
-| `generate/gen-kokoro-vocab.mjs` | Manual | Generate Kokoro vocabulary validation files |
-| `generate/gen-headtts-rules.mjs` | Manual (frozen) | Transcribe HeadTTS rules → Rust |
-| `generate/headtts-parity.mjs` | Manual (frozen) | Extract HeadTTS rules and test cases |
-| **Check** |
-| `check/compare-en-phonemize.mjs` | Manual | Compare English phonemization outputs |
-| `check/compare-zh-pinyin.mjs` | Manual | Compare Chinese pinyin outputs |
+Every script below has a `package.json` alias, which is the shortest way to run
+it. The direct invocation is given in each section.
+
+| Alias | Script | When |
+|-------|--------|------|
+| `pnpm build:wasm` | `build/build-phonemize-wasm.sh` | `pnpm build` runs it through `prebuild` |
+| `pnpm gen:headtts` | `generate/gen-headtts-rules.mjs` | when the HeadTTS fixture changes |
+| `pnpm gen:vocab` | `generate/gen-kokoro-vocab.mjs` | when the Kokoro models change |
+| `pnpm gen:pinyin` | `generate/gen-pinyin-pro-data.mjs` | when `pinyin-pro` is bumped |
+| `pnpm gen:ja-ipa` | `generate/gen-ja-ipa-table.py` | when the kana table changes |
+| `pnpm check:headtts` | `gen-headtts-rules.mjs --check` | CI |
+| `pnpm check:vocab` | `gen-kokoro-vocab.mjs --check` | CI |
+| `pnpm check:manifest` | `check/check-manifest.mjs` | CI, after a build |
+| `pnpm check:ja-mutations` | `check/mutation-check-ja.py` | manually, before trusting the Japanese tests |
 
 ---
 
-## Detailed Documentation
+## Build
 
-### Build Scripts
+### `build/build-phonemize-wasm.sh`
 
-#### `build/build-rust-wasm.sh`
+Compiles `crates/phonemize` with `wasm-pack` into `lib/models/phonemize-wasm/`,
+which is what `lib/models/phonemize-rust.ts` imports and what `tsc` reads its
+types from. That directory is a git-ignored build artifact, so anything that
+type-checks or tests the wrapper needs this to have run first.
 
-Compiles the Rust phonemize crate to WebAssembly using wasm-pack.
-
-**Usage:**
 ```bash
-./scripts/build/build-rust-wasm.sh
+pnpm build:wasm                    # or `pnpm build`, which runs it first
 ```
 
-**Output:**
-- `lib/models/phonemize-wasm/phonemize_bg.wasm` (6+ MB)
-- `lib/models/phonemize-wasm/phonemize.js` (JS glue)
-- `lib/models/phonemize-wasm/phonemize.d.ts` (TypeScript types)
-
-**When to run:**
-- Automatically via `pnpm build` (prebuild hook)
-- Manually after modifying Rust code in `crates/phonemize/`
-- CI runs it before `pnpm typecheck`
-
-**Requirements:**
-- Rust toolchain with `wasm32-unknown-unknown` target
-- `wasm-pack` installed
-- `wasm-opt` (from binaryen) for optimization
+Needs `wasm-pack` (`cargo install wasm-pack`). CI installs the Rust toolchain
+with the `wasm32-unknown-unknown` target and runs this explicitly before
+`typecheck` and `test`.
 
 ---
 
-### Setup Scripts
+## Setup
 
-These scripts download external dictionaries and models. All setup scripts are idempotent (safe to run multiple times).
+These scripts fetch third-party data and re-pack it into the zstd frames the
+wasm decompresses with `ruzstd`. They run from the repository root (they `cd`
+there themselves, since `public/dictionaries` is repository-relative) and write
+to **`public/dictionaries/`**, which is git-ignored.
 
-#### `setup/setup-dictionaries.sh`
+| Asset | Source | Size |
+|---|---|---|
+| `jieba-zh-dict.bin.zst` | `jieba-rs` 0.11.0's `dict.txt`, sha256-pinned | 1.6 MB |
+| `lindera-ipadic-ja.bin.zst` | lindera 6.2.0's IPADic release zip, nine files in a tar | 8.5 MB |
+| `wetext-{en,zh,ja}-tn-{tagger,verbalizer}.bin.zst` | `wetext` 0.1.8 wheel, sha256-pinned | 707 / 160 / 63 KB |
 
-**Main entry point** that calls all other setup scripts.
+`NOTICE` files land beside them: these are other people's dictionaries and the
+licence has to travel with the bytes.
 
-**Usage:**
+### `setup/setup-dictionaries.sh`
+
+The entry point. Calls `setup-jieba-dict.sh`, `setup-lindera-dict.sh` and
+`setup-wetext-fsts.sh` in that order and says where everything landed.
+
 ```bash
 ./scripts/setup/setup-dictionaries.sh
+FORCE=1 ./scripts/setup/setup-dictionaries.sh   # rebuild everything
 ```
 
-**What it does:**
-1. Calls `setup-en-g2p.sh` (English CMU dictionary)
-2. Calls `setup-ja-g2p.sh` (Japanese dictionary)
-3. Calls `setup-zh-g2p.sh` (Chinese dictionary)
-4. Calls `setup-wetext-tn.sh` (text normalization grammars)
+`pnpm install` runs it through the `postinstall` hook, where a failure is
+**tolerated** — an offline checkout still installs. That tolerance is safe
+because the absence is not tolerated anywhere else: the pipeline tests that need
+a dictionary fail with the command to fix it rather than skipping (see
+`crates/phonemize/tests/common/mod.rs`).
 
-**When to run:**
-- Automatically via `pnpm install` (postinstall hook)
-- Manually when dictionaries are missing
-- Force re-download: `rm -rf crates/phonemize/data/*.{bin,zst}` then run
+### `setup/setup-jieba-dict.sh`
+
+jieba's word-frequency list, taken from the same tag of the same crate the wasm
+links against (`jieba-rs` 0.11.0). That is a parity requirement, not a
+convenience: the JavaScript side segments with `jieba-wasm`, which is that crate
+compiled to wasm, so the two have to agree on where words end. The `sha256` is
+checked on every build.
+
+It is fetched rather than embedded because `jieba-rs`'s `default-dict` feature
+pulls in the C `zstd` crate, which cannot link for `wasm32-unknown-unknown` on
+macOS. Needs `curl` and `zstd`.
+
+### `setup/setup-lindera-dict.sh`
+
+lindera's IPADic release: a zip of the nine files `load_from_path` reads, packed
+into one zstd frame. The tar is a transport wrapper only — the files inside are
+lindera's own, byte for byte, because re-packing them would be a second format to
+keep working. The file list is explicit and ordered, so the archive is identical
+on every machine; a glob would make it depend on the filesystem. The dictionary
+and the crate that reads it have to be the same generation, so the lindera
+version is pinned here. Needs `curl`, `unzip`, `tar` and `zstd`.
+
+### `setup/setup-wetext-fsts.sh`
+
+The six weighted-FST text-normalization grammars, from the `wetext` wheel (the
+upstream WeTextProcessing project's own build, published inside the wheel rather
+than as a data release). Only `{en,zh,ja}/tn/{tagger,verbalizer}` are taken: the
+crate's normalizer configuration asks for none of the wheel's other grammars, and
+a tagger without its verbalizer can only fail — `crates/phonemize/src/lib.rs`
+refuses to build a language's normalizer unless both halves arrived. The wheel is
+sha256-pinned, which covers the FSTs inside it. Needs `curl`, `unzip` and `zstd`.
 
 ---
 
-#### `setup/setup-en-g2p.sh`
+## Generate
 
-Downloads English CMU pronunciation dictionary.
+These run from local inputs (`node_modules`, a committed source file, or the
+model directories) and their output is committed. All support `--check`.
 
-**Source:** GitHub release from TTS-NG repo  
-**Output:** `crates/phonemize/data/cmudict-ipa.bin.zst` (9.0 MB)  
-**Format:** Custom binary format (word → IPA mappings)
+### `generate/gen-pinyin-pro-data.mjs`
 
-**Usage:**
+Extracts `pinyin-pro` 3.29.4's tables into flat text, which is what the crate
+consumes — it has no JSON parser on the wasm side.
+
+**Input:** `node_modules/pinyin-pro` (the version is asserted, not assumed)
+**Output:** `crates/phonemize/data/pinyin-{chars,phrases,special,syllables}.txt`
+
 ```bash
-./scripts/setup/setup-en-g2p.sh
+node scripts/generate/gen-pinyin-pro-data.mjs --check   # CI
+node scripts/generate/gen-pinyin-pro-data.mjs           # or `pnpm gen:pinyin`
 ```
 
----
+`syllables.txt` is transcribed from `pinyin-table.json` rather than regenerated,
+so `gen-pinyin-table.py` has to run first when the table itself changes.
 
-#### `setup/setup-ja-g2p.sh`
+### `generate/gen-pinyin-table.py`
 
-Downloads Japanese morphological dictionary (lindera).
+Regenerates `crates/phonemize/data/pinyin-table.json` — pinyin syllables with
+their IPA, computed by pypinyin using the rules vendored in `scripts/misaki/`.
+The table is a source file for `gen-pinyin-pro-data.mjs` above.
 
-**Source:** GitHub release from TTS-NG repo  
-**Output:** `crates/phonemize/data/lindera-ipadic.bin.zst` (8.1 MB)  
-**Format:** MeCab/lindera binary format
-
-**Usage:**
 ```bash
-./scripts/setup/setup-ja-g2p.sh
-```
-
----
-
-#### `setup/setup-zh-g2p.sh`
-
-Downloads Chinese segmentation dictionary (jieba).
-
-**Source:** GitHub release from TTS-NG repo  
-**Output:** `crates/phonemize/data/jieba-dict.txt.zst` (1.6 MB)  
-**Format:** Plain text (word frequency list)
-
-**Usage:**
-```bash
-./scripts/setup/setup-zh-g2p.sh
-```
-
----
-
-#### `setup/setup-wetext-tn.sh`
-
-Downloads text normalization finite-state transducers (WeText).
-
-**Source:** GitHub release from TTS-NG repo  
-**Output:**
-- `crates/phonemize/data/wetext-en-tn-tagger.bin.zst` (468 KB)
-- `crates/phonemize/data/wetext-en-tn-verbalizer.bin.zst` (239 KB)
-- `crates/phonemize/data/wetext-zh-tn-tagger.bin.zst` (160 KB)
-- `crates/phonemize/data/wetext-zh-tn-verbalizer.bin.zst` (35 KB)
-- `crates/phonemize/data/wetext-ja-tn-tagger.bin.zst` (63 KB)
-- `crates/phonemize/data/wetext-ja-tn-verbalizer.bin.zst` (6 KB)
-
-**Format:** rustfst binary format (FST → bytes)
-
-**Usage:**
-```bash
-./scripts/setup/setup-wetext-tn.sh
-```
-
----
-
-### Generate Scripts
-
-These scripts generate data files from upstream sources. They are **not run automatically** during build or install. Generated files are **committed to git**.
-
-#### `generate/gen-kokoro-vocab.mjs`
-
-Generates Kokoro vocabulary validation files from model tokenizers.
-
-**Input:**
-- Kokoro model tokenizer.json files (via environment variables or CLI arguments)
-- Environment: `KOKORO_V1_DIR`, `KOKORO_V11_ZH_DIR`
-
-**Output:**
-- `crates/phonemize/data/vocab-v1.txt` (115 characters)
-- `crates/phonemize/data/vocab-v11-zh.txt` (172 characters)
-
-**Usage:**
-```bash
-# Check mode (CI)
-node scripts/generate/gen-kokoro-vocab.mjs --check
-
-# Generate mode (manual)
-export KOKORO_V1_DIR=/path/to/kokoro-v1.0
-export KOKORO_V11_ZH_DIR=/path/to/kokoro-v1.1-zh
-node scripts/generate/gen-kokoro-vocab.mjs
-
-# Or with CLI arguments
-node scripts/generate/gen-kokoro-vocab.mjs \
-  --v1 /path/to/kokoro-v1.0 \
-  --v11-zh /path/to/kokoro-v1.1-zh
-```
-
-**When to run:**
-- When Kokoro models update
-- When adding support for new Kokoro versions
-
-**Check mode:**
-- Used in CI to verify committed files match upstream
-- Exits with error if mismatch detected
-
----
-
-#### `generate/gen-pinyin-pro-data.mjs`
-
-Extracts data from pinyin-pro npm package into Rust-friendly formats.
-
-**Input:** `node_modules/pinyin-pro/dist/esm/data/dict{1,2,3,4,5}.mjs`  
-**Output:**
-- `crates/phonemize/data/pinyin-chars.txt` (20,879 characters)
-- `crates/phonemize/data/pinyin-phrases.txt` (113,407 phrases)
-- `crates/phonemize/data/pinyin-singlepy.txt` (29 syllables)
-- `crates/phonemize/data/pinyin-doublepy.txt` (397 combinations)
-
-**Usage:**
-```bash
-# Check mode (CI)
-pnpm run gen:pinyin-data --check
-
-# Generate mode (manual)
-pnpm run gen:pinyin-data
-```
-
-**When to run:**
-- When upgrading pinyin-pro version
-- Before committing if pinyin-pro was updated
-
-**What it extracts:**
-1. Single characters → pinyin mappings
-2. Multi-character phrases → pinyin sequences
-3. Valid pinyin syllables (with/without tones)
-
-**Data format:**
-```
-# pinyin-chars.txt
-一 yī
-二 èr
-三 sān
-
-# pinyin-phrases.txt
-一般 yībān
-一起 yīqǐ
-```
-
----
-
-#### `generate/gen-pinyin-table.py`
-
-Generates pinyin-to-IPA conversion table from misaki transcription rules.
-
-**Input:** `scripts/misaki/transcription.py` (vendored from misaki project)  
-**Output:** `crates/phonemize/data/pinyin-ipa-table.txt` (1,334 mappings)
-
-**Usage:**
-```bash
-# Check mode
 python3 scripts/generate/gen-pinyin-table.py --check
-
-# Generate mode
 python3 scripts/generate/gen-pinyin-table.py
 ```
 
-**When to run:**
-- When misaki transcription rules update (rare)
-- When adding new pinyin → IPA mappings
+Needs pypinyin and ordered-set; the script's own recipe pins them:
 
-**What it does:**
-1. Imports misaki's `Transcription.PINYIN_TO_IPA`
-2. Expands tone markers (ā, á, ǎ, à, a) → numeric tones (1-5)
-3. Generates all valid combinations (syllable × tone)
-4. Writes to flat text file
-
-**Data format:**
-```
-# pinyin-ipa-table.txt
-a1 a˥
-a2 a˧˥
-a3 a˨˩˦
-a4 a˥˩
-a5 a
-```
-
----
-
-#### `generate/gen-ja-ipa-table.py`
-
-Generates Japanese katakana-to-IPA mapping table.
-
-**Input:** Hard-coded Japanese phonology rules (based on kokoro-js)  
-**Output:** `crates/phonemize/src/g2p/ja/table.rs` (Rust code)
-
-**Usage:**
 ```bash
-# Check mode
+uv run --with pypinyin==0.55.0 --with ordered-set==4.1.0 \
+    python3 scripts/generate/gen-pinyin-table.py
+```
+
+### `generate/gen-ja-ipa-table.py`
+
+Turns the hand-maintained `crates/phonemize/data/ja-ipa-table.json` into
+`crates/phonemize/src/g2p/ja/table.rs`. The JSON is the source of truth and the
+Rust file is a build product: `crates/phonemize/tests/ja_ipa_table_parity.rs`
+reads the JSON back and fails if the two disagree, so the Rust file is never
+edited by hand. The parity test that also checked these entries against the
+model's own tokenizer vocabulary is `crates/phonemize/src/vocab.rs`.
+
+```bash
 python3 scripts/generate/gen-ja-ipa-table.py --check
-
-# Generate mode
-python3 scripts/generate/gen-ja-ipa-table.py
+python3 scripts/generate/gen-ja-ipa-table.py      # or `pnpm gen:ja-ipa`
 ```
 
-**When to run:**
-- When Japanese phonology rules change
-- When adding new katakana characters
+### `generate/gen-kokoro-vocab.mjs`
 
-**What it generates:**
-- `KATAKANA_TO_IPA` HashMap (100+ entries)
-- Handles special cases (ん position-dependent, long vowels)
+Turns the two Kokoro models' tokenizer vocabularies into the character lists the
+vocabulary gate reads.
 
----
+**Input:** each model's `tokenizer.json` (`model.vocab`), via `KOKORO_V10_DIR` and
+`KOKORO_V11_DIR` — **or** the committed snapshot
+`tests/fixtures/kokoro-vocabs.json` when those are unset, which is how CI runs it
+**Output:** `crates/phonemize/data/vocab-v1.txt` (115 characters),
+`crates/phonemize/data/vocab-v11-zh.txt` (172)
 
-#### `generate/gen-headtts-rules.mjs` (frozen)
-
-Transcribes HeadTTS pronunciation rules into Rust code.
-
-**Input:** `tests/fixtures/headtts-parity.json` (extracted by `headtts-parity.mjs`)  
-**Output:** `crates/phonemize/src/g2p/en/headtts/rules.rs` (7,948 rules)
-
-**Status:** ⚠️ **Frozen** — rules already generated and committed. Only re-run if HeadTTS upstream updates.
-
-**Usage:**
 ```bash
-node scripts/generate/gen-headtts-rules.mjs
+node scripts/generate/gen-kokoro-vocab.mjs --check   # CI; uses the snapshot
+KOKORO_V10_DIR=/path/to/kokoro-v1.0 \
+KOKORO_V11_DIR=/path/to/kokoro-v1.1-zh \
+node scripts/generate/gen-kokoro-vocab.mjs           # refresh the snapshot's source
 ```
 
-**When to run:**
-- When HeadTTS upstream updates (rare)
-- After running `headtts-parity.mjs` to extract new rules
+The header it writes into both files names the snapshot, and that header is
+inside the wasm: `vocab.rs` embeds `data/vocab-v1.txt` with `include_str!`.
 
----
+### `generate/gen-headtts-rules.mjs`
 
-#### `generate/headtts-parity.mjs` (frozen)
+Transcribes HeadTTS's NRL Report 7948 letter-to-sound rules into Rust.
 
-Extracts HeadTTS pronunciation rules and test cases from upstream repository.
+**Input:** `crates/phonemize/tests/fixtures/headtts-en-parity.json`
+**Output:** `crates/phonemize/src/g2p/en/headtts/rules.rs`
 
-**Input:** HeadTTS checkout (via `HEADTTS_DIR` environment variable)  
-**Output:** `tests/fixtures/headtts-parity.json` (rules + test cases)
+```bash
+pnpm check:headtts    # or: node scripts/generate/gen-headtts-rules.mjs --check
+pnpm gen:headtts
+```
 
-**Status:** ⚠️ **Frozen** — fixture already extracted. Only re-run if HeadTTS upstream updates.
+309 rules, `const` data — no fetched asset. Both this and
+`headtts-parity.mjs` are frozen: they only run when HeadTTS upstream moves.
 
-**Usage:**
+### `generate/headtts-parity.mjs`
+
+Not a generator but the thing that produces a generator's input: it runs
+**upstream JavaScript** from a HeadTTS checkout and dumps the rules and the words
+they are exercised on.
+
+**Input:** a HeadTTS checkout (`HEADTTS_DIR`, default `/tmp/HeadTTS`) and
+`/usr/share/dict/words`
+**Output:** `crates/phonemize/tests/fixtures/headtts-en-parity.json`
+
 ```bash
 HEADTTS_DIR=/path/to/HeadTTS node scripts/generate/headtts-parity.mjs
 ```
 
-**When to run:**
-- When HeadTTS upstream updates (rare)
-- Before running `gen-headtts-rules.mjs`
+The fixture records the upstream revision and module SHA-256, so a regeneration
+that changes anything but the word list means upstream moved.
 
 ---
 
-### Check Scripts
+## Check
 
-These scripts verify correctness by comparing outputs.
+### `check/check-manifest.mjs`
 
-#### `check/compare-en-phonemize.mjs`
+Guards the extension's permission surface. WXT adds a runtime-registered content
+script's `matches` to `host_permissions`, which would quietly ask for access to
+every site; `wxt.config.ts` strips it, and this is what keeps that strip honest.
+The failure mode is silent and only shows up as a permission prompt nobody reads.
 
-Compares English phonemization between different implementations.
-
-**Usage:**
 ```bash
-node scripts/check/compare-en-phonemize.mjs
+pnpm check:manifest                        # .output/chrome-mv3/manifest.json
+pnpm check:manifest path/to/manifest.json
 ```
 
-**What it compares:**
-- Rust wasm implementation vs. expected outputs
-- Useful for debugging regressions
+Runs against a **built** manifest, which is why CI runs it after `pnpm build`.
 
----
+### `check/check-ja-reference.py`
 
-#### `check/compare-zh-pinyin.mjs`
+Recomputes the Japanese reference corpus and compares it against
+`crates/phonemize/tests/fixtures/ja-reference.json`. The reference is
+`pyopenjtalk` — the OpenJTalk chain Kokoro's Japanese voices were trained with —
+so a reading that drifts shows up here rather than being frozen into a fixture.
 
-Compares Chinese pinyin outputs between implementations.
-
-**Usage:**
 ```bash
-node scripts/check/compare-zh-pinyin.mjs
+python3 scripts/check/check-ja-reference.py           # check
+python3 scripts/check/check-ja-reference.py --write   # regenerate the fixture
 ```
 
-**What it compares:**
-- Rust pinyin implementation vs. pinyin-pro
-- Useful for verifying porting correctness
+Needs `pip install pyopenjtalk`.
+
+### `check/mutation-check-ja.py`
+
+Mutates the Japanese pipeline's guards one at a time — the dictionary placeholder
+read as a value, the numeral step skipped, the two-character mora losing to the
+one-character one — runs the test target that should notice, and restores the
+file. Each mutation has to make a real bug invisible to be worth having, so a
+mutation that *survives* is a test gap and the script exits non-zero.
+
+```bash
+pnpm check:ja-mutations
+```
+
+Manual, not CI: every mutation needs its own compile, so a pass takes minutes. It
+asserts that the pattern matched **and that the mutation compiles** before
+running the target — a `str.replace` that finds nothing, or produces code that
+does not build, would otherwise make "the tests did not catch it" look exactly
+like "there was no bug".
 
 ---
 
-### Misaki Directory
+## Misaki
 
-`scripts/misaki/` contains vendored utilities from the [misaki](https://github.com/Alloyed/misaki) project.
+`scripts/misaki/` holds the pinyin→IPA rules vendored from the
+[misaki](https://github.com/Alloyed/misaki) project, plus its MIT licence.
 
-#### `misaki/transcription.py`
-
-Pinyin-to-IPA conversion rules used by Kokoro model training.
-
-**Why vendored:**
-- misaki is not published as a Python package
-- We only need the `PINYIN_TO_IPA` dictionary
-- Avoids git submodule complexity
-
-**Usage:**
-- Imported by `generate/gen-pinyin-table.py`
-- Read-only; do not modify unless syncing from upstream
-
-**License:** MIT (same as misaki)
-
-See `scripts/misaki/README.md` for more details.
+`transcription.py` is the `PINYIN_TO_IPA` mapping Kokoro's Chinese voices were
+trained with. It is vendored rather than depended on because misaki is not
+published as a Python package, and only that one table is needed. It is imported
+by `generate/gen-pinyin-table.py`; do not edit it unless syncing from upstream.
 
 ---
 
 ## Common Workflows
 
-### Daily Development
+### Normal development
 
 ```bash
-# Normal development (no script interaction)
-pnpm install    # Auto-runs setup-dictionaries.sh
-pnpm build      # Auto-runs build-rust-wasm.sh
+pnpm install    # postinstall builds the dictionaries
+pnpm build      # prebuild builds the wasm, then wxt bundles
 pnpm test
 ```
 
-### After Modifying Rust Code
+### After changing Rust
 
 ```bash
-./scripts/build/build-rust-wasm.sh  # Rebuild wasm
-pnpm test                            # Verify
+pnpm build:wasm    # the wrapper imports this output
+pnpm test
 ```
 
-### After Updating Dependencies
+### After bumping a dependency
 
 ```bash
-# If pinyin-pro updated
-pnpm run gen:pinyin-data --check    # Verify still in sync
-# If mismatch:
-pnpm run gen:pinyin-data            # Regenerate
+# pinyin-pro
+node scripts/generate/gen-pinyin-pro-data.mjs --check   # in sync?
+node scripts/generate/gen-pinyin-pro-data.mjs           # regenerate
 git add crates/phonemize/data/pinyin-*.txt
-git commit -m "chore: update pinyin-pro data to vX.Y.Z"
 ```
 
-### Before Release
+The same shape for every generator: `--check` first, regenerate only if it is
+stale, and commit the data with the version bump.
+
+### Before a release
 
 ```bash
-# Check all generated files are up-to-date
-pnpm run gen:pinyin-data --check
+node scripts/generate/gen-pinyin-pro-data.mjs --check
 node scripts/generate/gen-kokoro-vocab.mjs --check
+pnpm check:headtts
 python3 scripts/generate/gen-pinyin-table.py --check
 python3 scripts/generate/gen-ja-ipa-table.py --check
-
-# Rebuild from clean state
-rm -rf .output lib/models/phonemize-wasm
-pnpm install
-pnpm build
-pnpm test
 ```
 
-### Force Re-download Dictionaries
+### Force a dictionary rebuild
 
 ```bash
-# Remove all dictionaries
-rm -rf crates/phonemize/data/*.bin.zst
-
-# Re-download
+rm -rf public/dictionaries
 ./scripts/setup/setup-dictionaries.sh
 ```
 
 ---
 
-## CI Integration
+## CI
 
-GitHub Actions workflow uses these scripts:
+`.github/workflows/ci.yml` runs, in order:
 
 ```yaml
-# .github/workflows/test.yml
-- name: Setup dictionaries
-  run: ./scripts/setup/setup-dictionaries.sh
-
-- name: Build Rust wasm
-  run: ./scripts/build/build-rust-wasm.sh
-
-- name: Check generated data
-  run: |
-    pnpm run gen:pinyin-data --check
-    node scripts/generate/gen-kokoro-vocab.mjs --check
+- run: pnpm install --frozen-lockfile          # postinstall builds the dictionaries
+- run: node scripts/generate/gen-pinyin-pro-data.mjs --check
+- run: node scripts/generate/gen-kokoro-vocab.mjs --check
+- run: pnpm check:headtts
+- run: pnpm build:wasm                         # Rust toolchain + wasm-pack
+- run: cargo test --workspace
+- run: pnpm typecheck
+- run: pnpm lint
+- run: pnpm test
+- run: pnpm test:e2e
+- run: pnpm build
+- run: pnpm check:manifest
+- run: pnpm smoke:sidepanel
 ```
 
-**Key points:**
-- Setup scripts run before build (dictionaries must exist)
-- Check mode verifies committed files match upstream
-- Build scripts run before tests
+The three generators come before the tests because the tests pin the committed
+data: a `pinyin-pro` bump that changed a reading would leave every test green and
+the data stale.
 
 ---
 
 ## Design Principles
 
-### 1. Generated files are committed to git
+### 1. Generated files are committed; dictionaries are not
 
-**Why:** Build process must work offline (no network dependency).
+Committed (the build and the tests must work offline):
 
-**Which files:**
-- `crates/phonemize/data/*.txt` (pinyin, vocab, IPA tables)
-- `crates/phonemize/src/g2p/ja/table.rs` (generated code)
-- `crates/phonemize/src/g2p/en/headtts/rules.rs` (generated code)
-- `tests/fixtures/headtts-parity.json` (frozen test data)
+- `crates/phonemize/data/*.txt`, `data/pinyin-table.json`, `data/ja-ipa-table.json`
+- `crates/phonemize/src/g2p/ja/table.rs`, `src/g2p/en/headtts/rules.rs`
+- `crates/phonemize/tests/fixtures/*.json`, `tests/fixtures/*.json`
 
-**Not committed:**
-- `crates/phonemize/data/*.bin.zst` (downloaded dictionaries, too large)
-- `lib/models/phonemize-wasm/*.wasm` (build output, reproducible)
+Not committed (regenerated by `pnpm install`, or by `pnpm build:wasm`):
 
-### 2. Check mode for CI
+- `public/dictionaries/*.bin.zst` — 11 MB of third-party data
+- `lib/models/phonemize-wasm/` — wasm-pack's output
 
-All generation scripts support `--check` mode:
-- Regenerate in memory
-- Compare with committed files
-- Exit with error if mismatch
+### 2. `--check` mode is what CI runs
 
-**Why:** Prevents accidental commits of stale data.
+Each generator regenerates in memory and compares against the committed file,
+exiting non-zero on a mismatch. Without it, a stale file and a fresh one are
+indistinguishable to the tests that read it.
 
 ### 3. Setup scripts are idempotent
 
-Running setup scripts multiple times is safe:
-- Check if file exists and has correct size
-- Skip download if already present
-- No side effects (no rm -rf, no overwrites)
+An existing asset is skipped, nothing is deleted, and `FORCE=1` is the only way
+to rebuild. Re-running after a partial download costs nothing.
 
 ### 4. Generated files record their provenance
 
-Every generated file includes a header comment:
+The first line of every generated file names the script, the version it came
+from, and "do not edit" — see the head of
+`crates/phonemize/data/pinyin-chars.txt` for the shape.
 
-```
-# Generated by scripts/generate/gen-pinyin-pro-data.mjs from pinyin-pro 3.29.4 — do not edit.
-```
+### 5. Downstream versions are pinned where they matter
 
-**Why:**
-- Makes it clear the file is generated
-- Records the upstream version
-- Reminds contributors not to edit by hand
-
-### 5. Build process does not fetch over network
-
-**Why:** Reproducible builds, offline support, CI speed.
-
-**How:**
-- Dictionaries downloaded during `pnpm install` (postinstall)
-- Build scripts only compile/transform local files
-- CI caches `crates/phonemize/data/` between runs
+`pinyin-pro` 3.29.4, `jieba-rs` 0.11.0, lindera 6.2.0 and `wetext` 0.1.8 are
+constants in these scripts, and the two network downloads that have no version in
+a lockfile (jieba's word list, the wetext wheel) are additionally pinned by
+sha256. IPADic's release zip is pinned by version only — its contents are checked
+by the crate's own metadata validation at load time.
 
 ---
 
 ## Troubleshooting
 
-### "Dictionary not found" during build
+### A dictionary is missing
 
-**Symptom:** Rust tests fail with "No such file or directory"
+The pipeline tests fail with the command to fix it rather than skipping, so the
+message names the script:
 
-**Solution:**
 ```bash
 ./scripts/setup/setup-dictionaries.sh
 ```
 
-**Why:** Dictionaries are not committed to git (too large). Setup script must run first.
+`pnpm install` runs that for you, but tolerates a failure — an offline checkout
+still installs, and this is what tells you the assets never arrived.
 
----
+### A `--check` run fails in CI
 
-### "pinyin-pro version mismatch" in CI
+The committed data no longer matches its source. Run the same script without
+`--check`, review the diff, and commit it with whatever changed the input (a
+dependency bump, or the model directories).
 
-**Symptom:** `gen:pinyin-data --check` fails
+### TypeScript fails but the Rust tests pass
 
-**Solution:**
+The wasm is stale: `pnpm build:wasm`.
+
+### `headtts-parity.mjs` fails
+
+It needs a HeadTTS checkout and the system word list:
+
 ```bash
-pnpm run gen:pinyin-data              # Regenerate
-git add crates/phonemize/data/*.txt
-git commit -m "chore: update pinyin-pro data"
-```
-
-**Why:** pinyin-pro was updated but data files weren't regenerated.
-
----
-
-### Wasm file is outdated
-
-**Symptom:** TypeScript tests fail but Rust tests pass
-
-**Solution:**
-```bash
-./scripts/build/build-rust-wasm.sh
-```
-
-**Why:** Rust code changed but wasm wasn't rebuilt.
-
----
-
-### "HEADTTS_DIR not set"
-
-**Symptom:** `headtts-parity.mjs` fails
-
-**Solution:**
-```bash
-# Clone HeadTTS first
-git clone https://github.com/YOUR_ORG/HeadTTS /tmp/HeadTTS
+git clone https://github.com/Alloyed/HeadTTS /tmp/HeadTTS
 HEADTTS_DIR=/tmp/HeadTTS node scripts/generate/headtts-parity.mjs
 ```
 
-**Why:** Script needs upstream HeadTTS to extract rules.
+`/usr/share/dict/words` (or an equivalent) has to exist, because the word list
+that exercises the rules is chosen by a covering pass over it.
 
----
+### `check:ja-mutations` reports `BROKEN` or `NO COMPILE`
 
-## Future Improvements
-
-### Potential optimizations
-
-1. **Parallel dictionary downloads** — `setup-dictionaries.sh` currently runs sequentially
-2. **Dictionary checksums** — verify integrity after download
-3. **Incremental wasm builds** — only rebuild if Rust sources changed
-4. **Dictionary versioning** — track dictionary versions in lockfile
-
-### Considered but rejected
-
-1. **Embed dictionaries in wasm** — Would make wasm >20 MB (too large)
-2. **Download dictionaries on first use** — Breaks offline builds
-3. **Use git LFS for dictionaries** — Adds complexity, worse DX than GitHub Releases
+A mutation's anchor no longer matches the code, or its replacement does not
+build — most often because the source moved. Fix the entry's path or pattern;
+see the module's own docstring for why that is not a warning to ignore.
 
 ---
 
 ## See Also
 
-- [Build System Overview](../README.md#build)
+- [`crates/phonemize/README.md`](../crates/phonemize/README.md) — what the
+  phonemizer does with these assets
+- [`AGENT.md`](../AGENT.md) — how the extension is put together

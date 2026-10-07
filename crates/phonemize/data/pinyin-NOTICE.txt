@@ -1,7 +1,7 @@
 The Chinese pinyin data in this directory — `pinyin-chars.txt`,
 `pinyin-phrases.txt`, `pinyin-special.txt` and `pinyin-syllables.txt` — is
 derived from two upstream projects. Neither is vendored: the files are
-generated from them by `scripts/gen-pinyin-pro-data.mjs`, which reads them out
+generated from them by `scripts/generate/gen-pinyin-pro-data.mjs`, which reads them out
 of `node_modules` and out of `pinyin-table.json` beside this notice.
 
 pinyin-pro (https://github.com/zh-lx/pinyin-pro), MIT License,
@@ -17,7 +17,7 @@ Copyright (c) 2022-present zh-lx.
 misaki (https://github.com/hexgrad/misaki), MIT License.
 
   `pinyin-syllables.txt` is a transcription of `pinyin-table.json` in this
-directory, which `scripts/gen-pinyin-table.py` generates from misaki's
+directory, which `scripts/generate/gen-pinyin-table.py` generates from misaki's
 `transcription.py` and pypinyin.
 
 The MIT License (pinyin-pro and misaki both):

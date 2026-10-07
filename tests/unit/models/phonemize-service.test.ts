@@ -85,7 +85,7 @@ function asset(name: string): DictionaryBytes | null {
     }
     throw new Error(
       `no dictionary at ${path} (${String(error)}).\n` +
-        'Run ./scripts/setup-lindera-dict.sh and ./scripts/setup-jieba-dict.sh, or set ' +
+        'Run ./scripts/setup/setup-lindera-dict.sh and ./scripts/setup/setup-jieba-dict.sh, or set ' +
         'PHONEMIZE_SKIP_DICT_TESTS=1 to skip them.'
     );
   }

@@ -13,7 +13,7 @@
 //! The JavaScript side segments with `jieba-wasm`, which is this crate compiled
 //! to wasm, so using the same crate is what makes the two agree by construction
 //! rather than by luck. Three things keep it that way: the dictionary's version
-//! *and* its bytes are pinned (`scripts/setup-jieba-dict.sh` checks a sha256), the
+//! *and* its bytes are pinned (`scripts/setup/setup-jieba-dict.sh` checks a sha256), the
 //! committed pipeline corpus pins the end-to-end output for 46 sentences
 //! (`tests/fixtures/zh-frontend-parity.json`, where a wrong boundary shows up as a
 //! wrong space), and the crate is pinned to the release whose dictionary that is.
@@ -27,7 +27,7 @@
 //!
 //! The dictionary arrives as an asset rather than compiled in, because the only
 //! way `jieba-rs` can embed it cannot link for wasm on macOS — the full
-//! measurement is in `scripts/setup-jieba-dict.sh` and in `Cargo.toml`'s note on
+//! measurement is in `scripts/setup/setup-jieba-dict.sh` and in `Cargo.toml`'s note on
 //! the dependency.
 //!
 //! # HMM is on, and that is load-bearing
@@ -293,7 +293,7 @@ mod tests {
         let compressed = std::fs::read(&path).unwrap_or_else(|error| {
             panic!(
                 "no dictionary at {} ({error}).\n\
-                 Run ./scripts/setup-jieba-dict.sh to build it.",
+                 Run ./scripts/setup/setup-jieba-dict.sh to build it.",
                 path.display()
             )
         });

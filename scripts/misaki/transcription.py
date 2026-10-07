@@ -7,7 +7,7 @@
 # copyright (c) Stefan Taubert. Released under the MIT Licence — see the
 # LICENSE file next to this one.
 #
-# Vendored rather than depended on so `scripts/gen-pinyin-table.py` can
+# Vendored rather than depended on so `scripts/generate/gen-pinyin-table.py` can
 # regenerate the Chinese syllable table with no network access: misaki is a
 # Python package with an audio stack behind it, and the generator needs only
 # this pure lookup table and its two functions. The body below is verbatim; the

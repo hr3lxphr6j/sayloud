@@ -1,7 +1,7 @@
 //! Shared setup for the tests that need the real dictionaries.
 //!
-//! The assets are built by `scripts/setup-lindera-dict.sh`,
-//! `scripts/setup-jieba-dict.sh` and `scripts/setup-wetext-fsts.sh`, which `pnpm
+//! The assets are built by `scripts/setup/setup-lindera-dict.sh`,
+//! `scripts/setup/setup-jieba-dict.sh` and `scripts/setup/setup-wetext-fsts.sh`, which `pnpm
 //! install` runs, and they are not committed: megabytes of regenerable dictionary
 //! in git is not worth it, and the same choice was already made for the kuromoji
 //! dictionaries.
@@ -71,12 +71,12 @@ fn asset(path: &PathBuf, script: &str) -> Option<Vec<u8>> {
 /// Panics when it is missing and skipping was not asked for; returns `None` only
 /// when it was.
 pub fn dictionary_bytes() -> Option<Vec<u8>> {
-    asset(&dictionary_path(), "./scripts/setup-lindera-dict.sh")
+    asset(&dictionary_path(), "./scripts/setup/setup-lindera-dict.sh")
 }
 
 /// The compressed Chinese dictionary, under the same rule.
 pub fn jieba_dictionary_bytes() -> Option<Vec<u8>> {
-    asset(&jieba_dictionary_path(), "./scripts/setup-jieba-dict.sh")
+    asset(&jieba_dictionary_path(), "./scripts/setup/setup-jieba-dict.sh")
 }
 
 /// A phonemizer that has been through the whole `prepare` flow for Japanese.
@@ -165,7 +165,7 @@ pub fn wetext_compressed(names: [&str; 2]) -> Option<Vec<(String, Vec<u8>)>> {
     for name in names {
         out.push((
             name.to_string(),
-            asset(&wetext_path(name), "./scripts/setup-wetext-fsts.sh")?,
+            asset(&wetext_path(name), "./scripts/setup/setup-wetext-fsts.sh")?,
         ));
     }
     Some(out)

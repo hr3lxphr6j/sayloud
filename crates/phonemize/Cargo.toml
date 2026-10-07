@@ -37,7 +37,7 @@ ruzstd = "0.9"
 # well because `lindera::dictionary::Dictionary` is a type *alias* for
 # `lindera_dictionary::dictionary::Dictionary`, and building one from bytes means
 # naming its component types — `lindera` re-exports `Dictionary` and `Metadata`
-# and nothing else. See `src/backends/segmenter_ja.rs` for why that is necessary
+# and nothing else. See `src/g2p/ja/segmenter.rs` for why that is necessary
 # at all: the crate has no `load_from_bytes`.
 # English G2P: CMU Dict + ARPAbet→IPA, which is what the Latin runs of a CJK
 # sentence need. The data is compiled into the wasm, so this language fetches no
@@ -103,14 +103,14 @@ num2words = "1.2.0"
 # fails on every `ZSTD_*` symbol (`undefined symbol: ZSTD_freeDCtx`, reproduced
 # 2026-10-03). This is the same failure the `ruzstd` note above describes, and
 # the same answer: keep the C zstd out of the build. The dictionary arrives
-# through the registry instead, like IPADic — see `scripts/setup-jieba-dict.sh`.
+# through the registry instead, like IPADic — see `scripts/setup/setup-jieba-dict.sh`.
 #
 # The HMM model and the segmentation algorithm are not behind that feature, so
 # disabling it costs nothing but the embedded dictionary.
 jieba-rs = { version = "0.11", default-features = false }
 
 # Weighted-FST text normalization, for the numeral step of the English
-# pipeline. The engine is **not** a dependency: `src/backends/wetext/` is a copy
+# pipeline. The engine is **not** a dependency: `src/tn/wetext/` is a copy
 # of `wetext-rs` 0.1.2 with the five changes `NOTICE` lists, because the
 # published crate can only load FSTs from a directory, has a defect that makes
 # `２０２２年` normalize to nothing, and has a second one that made English TN skip
@@ -139,7 +139,7 @@ rustfst = "1"
 thiserror = "2"
 
 # Contraction expansion and the three JSON tables it embeds
-# (`src/backends/wetext/data/`, ~7 KB). Nothing enables it — English TN leaves
+# (`src/tn/wetext/data/`, ~7 KB). Nothing enables it — English TN leaves
 # `fix_contractions` at upstream's default of off (see `wetext_tn`) — but it is
 # part of what was copied, the tables are small, and `regex` is already linked
 # through `piper-plus-g2p`. Removing it would be a fifth modification to

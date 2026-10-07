@@ -5,7 +5,7 @@
 # These are the weighted-FST *TN* grammars for English, Chinese and Japanese,
 # taken from the `wetext` Python distribution — which is the upstream
 # WeTextProcessing project's own build of them, published as part of a wheel
-# rather than as a separate data release. `crates/phonemize/src/backends/wetext/`
+# rather than as a separate data release. `crates/phonemize/src/tn/wetext/`
 # is a copy of SpenserCai's Rust port that reads exactly this file format; its
 # `NOTICE` says why the source is copied rather than depended on.
 #
@@ -164,7 +164,7 @@ This software includes data files from
 normalization grammars as the \`wetext\` distribution builds them, extracted from
 \`wetext-${WETEXT_VERSION}-py3-none-any.whl\` and redistributed unchanged as zstd
 frames. The Rust code that runs them is in
-\`crates/phonemize/src/backends/wetext/\`, which has its own NOTICE.
+\`crates/phonemize/src/tn/wetext/\`, which has its own NOTICE.
 
 Both projects are distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied.

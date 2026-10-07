@@ -5,7 +5,7 @@ edition = "2021"
 
 # `cdylib` is what wasm-pack turns into `phonemize_bg.wasm`. `rlib` is what makes
 # the crate usable from `tests/` — a `cdylib`-only crate cannot be linked into an
-# integration test, and the P6 parity tests live there (plan task 6.x).
+# integration test, and the pipeline's parity tests live there.
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -71,7 +71,7 @@ lindera-dictionary = { version = "6.2", default-features = false }
 # lindera's own.
 tar = "0.4"
 
-# English numeral reading (phase 5). The CMU dictionary above is a dictionary and
+# English numeral reading. The CMU dictionary above is a dictionary and
 # not a rule engine, so a digit has no pronunciation to find and is skipped
 # (`I have 3 cats` → `aɪ hæv kˈæts`); a numeral has to become words before the
 # text is segmented, exactly as `numbers_to_kanji` does for Japanese.
@@ -87,7 +87,7 @@ tar = "0.4"
 # and that wording is what the English pipeline's tests pin.
 num2words = "1.2.0"
 
-# Chinese word segmentation (phase 6). The JavaScript side uses `jieba-wasm`,
+# Chinese word segmentation. The JavaScript side uses `jieba-wasm`,
 # which is this crate compiled to wasm, so the boundaries match the training
 # target rather than approximating it — see `chinese.ts`'s `jiebaBoundaries`.
 # A one-off cross-check before the port was written found this crate and
@@ -109,7 +109,7 @@ num2words = "1.2.0"
 # disabling it costs nothing but the embedded dictionary.
 jieba-rs = { version = "0.11", default-features = false }
 
-# Weighted-FST text normalization (phase 9B), for the numeral step of the English
+# Weighted-FST text normalization, for the numeral step of the English
 # pipeline. The engine is **not** a dependency: `src/backends/wetext/` is a copy
 # of `wetext-rs` 0.1.2 with the five changes `NOTICE` lists, because the
 # published crate can only load FSTs from a directory, has a defect that makes

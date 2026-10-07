@@ -31,9 +31,9 @@
 //! match anywhere in the string, so the same regular expression is asked a
 //! question about the whole word every time. The port does that too — it rebuilds
 //! the same string with one character lower-cased and searches it — because
-//! anchoring the expression instead would be a different question, and this phase
-//! is a port, not a rewrite. Words are short; the cost is a `Regex::find` per
-//! rule tried, over at most a couple of dozen bytes.
+//! anchoring the expression instead would be a different question, and this
+//! module is a port, not a rewrite. Words are short; the cost is a `Regex::find`
+//! per rule tried, over at most a couple of dozen bytes.
 //!
 //! # The regular expressions are compiled once, at the first word that needs them
 //!
@@ -296,8 +296,8 @@ fn is_punctuation(character: char) -> bool {
 ///
 /// The output is looked up in `vocab-v1.txt` by the frontend's gate, so the
 /// choice matters beyond tidiness: both notations are in the vocabulary, but only
-/// this one is what the English dictionary path was writing before this phase,
-/// which is what makes the change a change to OOV words alone.
+/// this one is the notation the English dictionary path already writes, so the
+/// choice changes OOV words alone.
 ///
 /// **`ɜɹ` is left alone.** Upstream's rules give `ER` as `ɚ`, which misaki writes
 /// `ɜ ɹ`; the dictionary side of this pipeline writes `ɜː` for a stressed `ER1`

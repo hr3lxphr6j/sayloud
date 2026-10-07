@@ -11,10 +11,10 @@
 //! > outside the vocabulary is not reported, it is deleted, and the word is heard
 //! > without it.
 //!
-//! That is why this is a gate and not a warning. It was found the hard way on the
-//! Japanese path (`P5 §4.2.1`): the kana table wrote an ASCII `g` where the
-//! vocabulary has `ɡ` (U+0261), every ガ行 syllable was read as ア行, and nothing
-//! noticed because the output was a string of perfectly valid-looking IPA.
+//! That is why this is a gate and not a warning. It was found the hard way on
+//! the Japanese path: the kana table wrote an ASCII `g` where the vocabulary
+//! has `ɡ` (U+0261), every ガ行 syllable was read as ア行, and nothing noticed
+//! because the output was a string of perfectly valid-looking IPA.
 //!
 //! # Two things are allowed through
 //!
@@ -46,9 +46,9 @@ const VOCABULARY_V11_ZH: &str = include_str!("../data/vocab-v11-zh.txt");
 /// Allowed by name rather than by being in the vocabulary, because they are not
 /// in it and never will be — the normaliser removes them, and the pipeline
 /// produces them (`\u{032F}` from the syllable table, `\u{0329}` from the kana
-/// table). `P5 §4.2.1` states this as a hard requirement, and it is the whole
-/// reason the check is "in the vocabulary, or one of these two" rather than
-/// "in the vocabulary".
+/// table). Every other character of the phoneme string that reaches the
+/// tokenizer has to be in the vocabulary, which is the whole reason the check is
+/// "in the vocabulary, or one of these two" rather than "in the vocabulary".
 const STRIPPED_BY_THE_NORMALIZER: [char; 2] = ['\u{032F}', '\u{0329}'];
 
 /// Which phoneme inventory the output has to belong to.

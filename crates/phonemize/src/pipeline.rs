@@ -7,11 +7,10 @@
 //! those differences are the same on all three sides, and the order they run in is
 //! the same too — see [`phonemize_ja`].
 //!
-//! Since phase 9E all three share one step that used to be three:
-//! [`crate::tn::normalize`] runs the vendored WeText engine when one was built
-//! and the language's hand-written reader when one was not. What is left
-//! language-specific about it is *where* in the sequence it runs — which is the
-//! caller's business and not the step's.
+//! All three share one step: [`crate::tn::normalize`] runs the vendored WeText
+//! engine when one was built and the language's hand-written reader when one was
+//! not. What is left language-specific about it is *where* in the sequence it
+//! runs — which is the caller's business and not the step's.
 
 use crate::g2p::en::{EnglishError, EnglishG2p};
 use crate::g2p::ja::ipa::{fix_numeral_sound_changes, kana_to_ipa};
@@ -98,8 +97,8 @@ impl From<EnglishError> for PipelineError {
 /// word missing still plays — so they travel with the result instead of being
 /// returned as an error, and the JavaScript side decides what to do with them.
 ///
-/// **An English warning is all but unreachable, and that is phase 9A's doing.**
-/// A Latin run now has three chances — the CMU dictionary, the NRL 7948 rules, and
+/// **An English warning is all but unreachable.**
+/// A Latin run has three chances — the CMU dictionary, the NRL 7948 rules, and
 /// the letters, all 26 of which are in the dictionary — so producing nothing takes
 /// a run whose every letter is absent from all three. The channel is kept because
 /// that is the honest answer for one, and because the other two languages drop
@@ -127,7 +126,7 @@ pub struct Phonemized {
 ///    a numeral in the same Han run as what it counts, which is what decides how
 ///    that reads (「年」 alone is とし, 「二十二年」 is ネン).
 ///
-///    Since phase 9E the reading is usually [`crate::tn::japanese`]'s rather than
+///    The reading is usually [`crate::tn::japanese`]'s rather than
 ///    [`crate::tn::numbers_to_kanji`]'s, and it is applied to the punctuation-mapped text —
 ///    the order above is what it has always been, so the grammar sees `,` where
 ///    the source had `、`. That is not the Python reference's input, and it is
@@ -158,18 +157,17 @@ pub struct Phonemized {
 ///
 /// A `Latin` run is one alphabetic word — `segment_text` sends every space and
 /// every apostrophe to an `other` run — and it is phonemized by `english`, which
-/// spells it out when it is all capitals and looks it up otherwise. Phase 3
-/// passed these runs through as characters, which was the right answer only
-/// while there was no English engine to hand them to.
+/// spells it out when it is all capitals and looks it up otherwise.
 ///
 /// **A mixed-case word the English dictionary does not have is read by rule.**
-/// Phase 4 spelled those out (`Kokoro` → K-O-K-O-R-O) and that was the trade then:
-/// espeak would have invented a pronunciation, and inventing one is how it reads
-/// `RAG` as the word "rag". Phase 9A takes the middle road — the letter-to-sound
-/// rules of NRL Report 7948, which HeadTTS uses for the same job
-/// ([`headtts_en`](crate::g2p::en::headtts)) — so the run is neither dropped
-/// nor spelled. An initialism is still spelled and still cannot be dropped: it is
-/// read from single letters, and all 26 of them are in the dictionary.
+/// Spelling it out (`Kokoro` → K-O-K-O-R-O) is not good enough, and handing it
+/// to espeak is worse: espeak invents a pronunciation, and inventing one is how
+/// it reads `RAG` as the word "rag". The letter-to-sound rules of NRL Report
+/// 7948, which HeadTTS uses for the same job
+/// ([`headtts_en`](crate::g2p::en::headtts)), are the middle road — the run is
+/// neither dropped nor spelled. An initialism is still spelled and still cannot
+/// be dropped: it is read from single letters, and all 26 of them are in the
+/// dictionary.
 ///
 /// `english` is `None` when the backend could not be built at all, which is a
 /// broken build rather than a normal state: the dictionary is compiled in. It is
@@ -252,14 +250,14 @@ pub fn phonemize_ja(
 ///
 /// `tn` is the vendored WeText engine, built by `finish_loading` from the two
 /// grammars the dictionary protocol fetched ([`crate::tn`]).
-/// Phase 9B added it because the hand-written reader is not a reader of
+/// The engine is there because the hand-written reader is not a reader of
 /// anything but a number: it produced the letters `T H I R T Y P M` for `3:30pm`,
 /// dropped the `%` of `50%` entirely, and turned `1st` into an "onest". The
 /// engine reads all of those — and dates, money and abbreviations with them — as
 /// the entities they are.
 ///
-/// **It read bare integers wrong until phase 9B.4, and that was this copy's
-/// bug, not the grammar's.** An unqualified `123` came out `one two three`,
+/// **A bare integer used to come out wrong, and that was this copy's bug, not
+/// the grammar's.** An unqualified `123` came out `one two three`,
 /// which was written up as the engine choosing between equal-cost readings. It
 /// was not: the grammar's cheapest reading is `one hundred and twenty three`,
 /// and `rustfst::shortest_path` — which assumes non-negative arc weights and
@@ -276,8 +274,8 @@ pub fn phonemize_ja(
 /// into an error for a caller that never had to care. Three cases reach the
 /// fallback and none of them is a silent wrong answer: no engine was built
 /// (nothing was prepared), the engine could not be built, or it failed on this
-/// sentence. `numbers_to_english` is what this pipeline did before phase 9B —
-/// a worse reading of a date, not a missing one.
+/// sentence. `numbers_to_english` is the fallback — a worse reading of a date,
+/// not a missing one.
 ///
 /// # The gate, and why it is in front of the engine
 ///
@@ -364,16 +362,16 @@ pub fn phonemize_en(
 ///
 /// # Why this is a parameter and not a constant
 ///
-/// The rules are phase 9D and they move the Chinese output away from what the
-/// JavaScript frontend produced, on purpose. That old output is what the P5
-/// listening tests were run against, and the parity corpus in
+/// The rules move the Chinese output away from what the JavaScript frontend
+/// produced, on purpose. That old output is what the listening tests were run
+/// against, and the parity corpus in
 /// `crates/phonemize/tests/fixtures/zh-frontend-parity.json` is the JavaScript
 /// string for 47 sentences — so there has to be a way to produce it again, or
 /// the corpus stops being a test of anything and the change stops being
-/// reversible. [`ToneRules::Off`] is that way, and it is the phase 6 pipeline
-/// exactly.
+/// reversible. [`ToneRules::Off`] is that way, and it reproduces the frozen
+/// JavaScript pipeline exactly.
 ///
-/// **P5 §1.5 argues for `Off` on the v1.0 voices and against it on v1.1-zh**, and
+/// **The argument against `On` is the v1.0 voices' training distribution**, and
 /// the choice is the caller's because only the caller knows which voice is
 /// playing:
 ///
@@ -382,10 +380,14 @@ pub fn phonemize_en(
 /// > 不做儿化。模型学到的映射是「原调音素序列 → 实际变调的音频」。我们加变调/儿化
 /// > 等于偏离训练分布。
 ///
-/// The counter-evidence is in the same spec: §1.6 measured that changing a tone
-/// arrow changes pitch by a few Hz, and §1.2 C left the 一/不 sandhi the G2P
-/// already applies switched on. `lib.rs` passes `On` today — the user asked for
-/// these rules in production — and the A/B is a one-word change there.
+/// What answers that argument is that the model barely reacts to a tone:
+/// changing one tone arrow moves a syllable's median pitch by a few Hz, so the
+/// deviation is close to inaudible. `Off` is not the unmodified tones either —
+/// the dictionary the readings come from is inconsistent about the 一/不 sandhi,
+/// applying it to 166 of its 294 一/不 entries and leaving the other 128 alone —
+/// so no setting of these rules aligns with the legacy output. `lib.rs` passes
+/// `On` today — the user asked for these rules in production — and the A/B is a
+/// one-word change there.
 ///
 /// **No `Default`.** There is no default: `On` for the v1.0 voices is a decision
 /// with an argument against it, and `#[derive(Default)]` is how that argument
@@ -416,7 +418,7 @@ impl ToneRules {
 ///    punctuation — unheard, and silently. The JavaScript applies it in the same
 ///    place, inside the punctuation call: `mapPunctuation(numbersToHan(text))`.
 ///
-///    Since phase 9E the reading is usually [`crate::tn::chinese`]'s instead,
+///    The reading is usually [`crate::tn::chinese`]'s instead,
 ///    applied to the same raw text — so a *year* is read digit by digit
 ///    (`2024年` is 二零二四年, which is how it is said) where `numbers_to_han`
 ///    reads it as a quantity (二千零二十四年). The engine trims, which
@@ -444,7 +446,7 @@ impl ToneRules {
 /// rather than guessed at, because either would move a syllable into the
 /// neighbouring word.
 ///
-/// `tone_rules` is phase 9D, and it is the second decision about a tone: the
+/// `tone_rules` is the second decision about a tone: the
 /// first is one per character from `pinyin-pro`, and the second is
 /// [`tone_sandhi`], which reads the words and the tags jieba gave them and
 /// rewrites the tones that Mandarin does not pronounce as written (`你好` is
@@ -458,12 +460,12 @@ impl ToneRules {
 /// This is the one place the Rust pipeline deliberately does not reproduce the
 /// JavaScript. `chinese.ts` sends a Latin run to espeak, spelled out letter by
 /// letter when it is all capitals; this sends it to [`EnglishG2p`], which is CMU
-/// Dict plus a reading rule, for the reasons phase 4 recorded. The two agree on
-/// initialisms and can disagree on a mixed-case word — which is the trade phase 4
-/// chose on purpose, and phase 9A narrowed rather than removed, because both sides
-/// are now reading a word the dictionary does not have instead of one of them
-/// spelling it. A run that produces nothing at all is warned about, not silently
-/// skipped.
+/// Dict plus a reading rule: espeak invents a pronunciation for a word the
+/// dictionary does not have, and inventing one is how it reads `RAG` as the word
+/// "rag". The two agree on initialisms and can disagree on a mixed-case word —
+/// a deliberate trade, narrowed rather than removed now that both sides read a
+/// word the dictionary does not have instead of one of them spelling it. A run
+/// that produces nothing at all is warned about, not silently skipped.
 ///
 /// # Whitespace
 ///
@@ -477,7 +479,7 @@ impl ToneRules {
 /// broken build rather than a normal state; see [`phonemize_ja`] for why that is a
 /// warning and not a failure. `tn` is the vendored WeText engine
 /// ([`crate::tn::chinese`]), optional for the reason that module gives — and
-/// `None` is what makes this function the phase 6 pipeline, which is what the
+/// `None` is what makes this function the frozen pre-tone-rules pipeline that the
 /// JavaScript parity corpus in `tests/zh_pipeline.rs` is asserted against.
 pub fn phonemize_zh(
     text: &str,
@@ -501,15 +503,15 @@ pub fn phonemize_zh(
                 // is reported as that rather than as the syllable table missing
                 // one — the same order the JavaScript checks them in. The
                 // unreadable characters are the second question and are asked by
-                // `complete_readings`, which is where the phase 6 pipeline asked
-                // it too; the tone rules need the readings in hand, so on that
+                // `complete_readings`, which is where the frozen pipeline asked it
+                // too; the tone rules need the readings in hand, so on that
                 // path it cannot be asked from inside the syllable lookup.
                 //
                 // The two branches ask different segmenter methods, and that is
-                // deliberate rather than incidental: `Off` must be the phase 6
-                // pipeline byte for byte, and that pipeline took its boundaries
-                // from `word_lengths`. `On` needs the tags, and takes them from
-                // the same call. `SegmenterZh` asserts the two agree.
+                // deliberate rather than incidental: `Off` must reproduce the
+                // frozen pipeline byte for byte, and that pipeline took its
+                // boundaries from `word_lengths`. `On` needs the tags, and takes
+                // them from the same call. `SegmenterZh` asserts the two agree.
                 let phonemes = if tone_rules.are_on() {
                     let words = segmenter.tagged_words(run_text)?;
                     let readings = chinese.complete_readings(run_text)?;

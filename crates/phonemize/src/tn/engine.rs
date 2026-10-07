@@ -19,7 +19,7 @@
 //! engine arrived, they are pinned by tests of their own, and the JavaScript
 //! frontends that Kokoro's v1.0 voices were trained against read numerals that
 //! way. Keeping them reachable is what makes this switch reversible and what lets
-//! `tests/zh_pipeline.rs` still assert the phase 6 pipeline's output
+//! `tests/zh_pipeline.rs` still assert the frozen pipeline's output
 //! character-for-character — see [`crate::pipeline::ToneRules`] for the same
 //! argument made about the tone rules.
 //!

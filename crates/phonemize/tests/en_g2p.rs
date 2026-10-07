@@ -4,20 +4,19 @@
 //! the module, so unlike `ja_pipeline.rs` these tests run everywhere and on the
 //! first call.
 //!
-//! The number cases are what phase 5 is for. The CMU dictionary is a dictionary
+//! The number cases are the numeral step's. The CMU dictionary is a dictionary
 //! and not a rule engine, so a digit has no pronunciation to find and
 //! was skipped rather than read — measured before `numbers_to_english` ran,
 //! `I have 3 cats` → `aɪ hæv kˈæts`, the 3 gone. Every sentence here is pinned to
 //! its exact phonemes because that is what makes the absence audible in a diff.
 //!
-//! **Phase 9A changed none of the seven sentences that were here before it**, and
-//! that is worth stating rather than leaving to a diff: every word in them is in
-//! CMU Dict, so every one of them took the dictionary path before and after. What
-//! the phase changes is what happens to a word the dictionary does not have, and
-//! there was no such word in this file to move — the OOV cases below are new
-//! tests, not moved expectations. The one expectation in the tree that did move is
-//! in `ja_pipeline.rs`, where `Kokoro` was pinned to its letter-by-letter
-//! spelling.
+//! **The rule path changes nothing for a word in CMU Dict**, which is worth
+//! stating rather than leaving to a diff: every word in the seven sentences at the
+//! top is in the dictionary, so none of them reaches the rules. A word the
+//! dictionary does not have is where the rules answer, and there was no such word
+//! in this file to move — the OOV cases below are new tests, not moved
+//! expectations. The one expectation in the tree that did move is in
+//! `ja_pipeline.rs`, where `Kokoro` was pinned to its letter-by-letter spelling.
 
 use phonemize::{PhonemizeOptions, Phonemizer};
 
@@ -47,7 +46,7 @@ fn plain_sentence() {
 
 #[test]
 fn sentence_with_number() {
-    // The regression this phase exists to close. A digit is an `other` run, so
+    // The regression the numeral step closes. A digit is an `other` run, so
     // `keep_punctuation` dropped it; it has to become a word before the text is
     // segmented for the dictionary to have anything to look up.
     let ipa = phonemize("I have 3 cats");
@@ -78,7 +77,7 @@ fn sentence_with_large_number() {
     // `keep_punctuation` drops it and the two words run together — which is what
     // the tokenizer has always done with it, since it would have deleted the
     // character itself. Reading it as a word boundary instead would be a change
-    // to what the model hears, and is not this phase's question.
+    // to what the model hears.
 }
 
 #[test]
@@ -117,23 +116,24 @@ fn splits_a_contraction_because_the_segmenter_does() {
     // Invisible in the Latin runs of a Japanese sentence — a run there is one
     // word by construction — so a whole English sentence is what exposes it.
     // The fix belongs in the shared segmenter, which the Japanese side splits on
-    // too, and is not this phase's work.
+    // too.
     //
     // The apostrophe itself is gone from the output, because it is not in the
     // vocabulary and the tokenizer would delete it — see `KOKORO_PUNCTUATION`.
     //
-    // Phase 9A left this alone: `don` and `t` are both in CMU Dict, so neither
-    // half reaches the rules.
+    // Both halves reach the dictionary: `don` and `t` are both in CMU Dict, so
+    // the rules never see this case.
     assert_eq!(phonemize("don't stop"), "dˈɑntˈiː stˈɑp");
 }
 
 // ---------------------------------------------------------------------------
-// Phase 9A: the words the dictionary does not have
+// The words the dictionary does not have
 //
-// Before this phase every test below was the same sentence, spelled letter by
-// letter: `Kokoro speaks` → `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ spˈiːks`. Six letters read
-// as six letters is not a pronunciation, and these are the words a dictionary of
-// common English is least likely to have and a reader is most likely to type.
+// Without the rules every test below would be the same sentence, spelled letter
+// by letter: `Kokoro speaks` → `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ spˈiːks`. Six letters
+// read as six letters is not a pronunciation, and these are the words a
+// dictionary of common English is least likely to have and a reader is most
+// likely to type.
 // ---------------------------------------------------------------------------
 
 #[test]

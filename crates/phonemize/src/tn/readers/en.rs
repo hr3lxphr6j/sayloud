@@ -11,8 +11,9 @@
 //! Pronouncing Dictionary, which is a dictionary and not a rule engine, so a
 //! digit has no pronunciation to find. Reading the numeral here is what lets a
 //! whole English sentence produce the same phonemes as the JavaScript one — and
-//! it is why phase 4 could wire the Latin runs of a Japanese sentence but not a
-//! whole English one (see the comment on the `_` arm in `lib.rs`).
+//! it is why a Latin run inside a Japanese sentence can go to the English engine
+//! while a whole English sentence cannot: only the latter has numerals to lose
+//! (see the comment on the `_` arm in `lib.rs`).
 //!
 //! Reading them as *words* rather than as digits also keeps a numeral in the
 //! same Latin run as the text around it, so it is read as part of the sentence

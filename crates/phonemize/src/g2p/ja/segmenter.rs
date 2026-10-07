@@ -5,9 +5,9 @@
 //! lindera's Rust crate has no way to load a dictionary from memory. Its only
 //! entry point is [`Dictionary::load_from_path`], which takes a directory and
 //! calls `Path::is_dir()` on it — and on `wasm32-unknown-unknown` there is no
-//! filesystem for it to find. The byte-loading API that the P6 verification
-//! exercised (`loadDictionaryFromBytes`) belongs to `lindera-wasm`, the npm
-//! package, not to the crate this builds against.
+//! filesystem for it to find. The byte-loading API (`loadDictionaryFromBytes`)
+//! belongs to `lindera-wasm`, the npm package, not to the crate this builds
+//! against.
 //!
 //! What the crate does offer is enough to do it here: `Dictionary`'s five fields
 //! are public and have no `#[non_exhaustive]`, and every component has a
@@ -39,7 +39,7 @@
 //! Japanese, against the 45.3 MB the dictionary itself needs. It is a known cost,
 //! not an oversight: the fix is either to release the container once the
 //! dictionary is built, or to leak one aligned buffer and hand lindera
-//! `Data::Static` slices of it, and both change the phase 2 registry contract or
+//! `Data::Static` slices of it, and both change the registry contract or
 //! depend on worker recycling behaviour that nothing here has verified yet. The
 //! memory budget has no test on either side of that trade; this is the item such
 //! a test should start from.

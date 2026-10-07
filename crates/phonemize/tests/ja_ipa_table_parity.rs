@@ -10,7 +10,7 @@
 //! It replaces the TypeScript half of the check,
 //! `tests/unit/models/phonemize/ja-table-parity.test.ts`, which compared this
 //! same table against `lib/models/phonemize/japanese.ts` and was deleted with the
-//! JavaScript chain in phase 8. The comparison is the same one in the same
+//! JavaScript chain. The comparison is the same one in the same
 //! direction, against the file that is now the source of truth instead of the
 //! file that used to be.
 //!

@@ -1,5 +1,5 @@
 //! HeadTTS's letter-to-sound rules: the spelling of a word the dictionary does
-//! not have (phase 9A).
+//! not have.
 //!
 //! # Why this is here
 //!

@@ -1,4 +1,4 @@
-//! Japanese text normalization (phase 9E).
+//! Japanese text normalization.
 //!
 //! The same two halves as `wetext_zh.rs`, with one difference worth stating up
 //! front: **Japanese gains far less than Chinese does.** Its hand-written reader,

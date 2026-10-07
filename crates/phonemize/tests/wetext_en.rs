@@ -1,4 +1,4 @@
-//! English text normalization, and the English pipeline that uses it (phase 9B).
+//! English text normalization, and the English pipeline that uses it.
 //!
 //! Two halves, answering different questions:
 //!
@@ -117,7 +117,7 @@ fn fix_one_thousand_bug(text: &str) -> String {
 #[test]
 fn reads_the_entity_classes_the_hand_written_reader_could_not() {
     for (input, expected) in [
-        // Time — the case that motivated the whole phase: the old reader read
+        // Time — the case the engine was vendored for: the old reader read
         // `30pm` as an out-of-vocabulary word and spelled it out.
         ("3:30pm", "three thirty PM"),
         ("3:30 pm", "three thirty PM"),
@@ -144,8 +144,9 @@ fn reads_the_entity_classes_the_hand_written_reader_could_not() {
         // Units, which the old reader read as a bare number followed by letters.
         //
         // `and` is there because the grammar makes it the cheapest reading and
-        // the extraction now finds that; until phase 9B.4 it came out
-        // `two hundred fifty kilometers`. See the sentence table below.
+        // the extraction now finds it; the reading without `and` was the more
+        // expensive path the negative-weight bug produced. See the sentence table
+        // below.
         ("250 km", "two hundred and fifty kilometers"),
     ] {
         assert_eq!(read(input).as_deref(), Some(expected), "reading {input:?}");
@@ -184,7 +185,7 @@ fn reads_abbreviations_that_have_no_digit_in_them() {
 /// path gives, asserted whole because a wrong reading here is a wrong sentence
 /// out loud, not a stray word. The remaining nine were already right, and they
 /// are here so that the fix cannot become a change of behaviour for the entity
-/// classes this phase was vendored for.
+/// classes the engine was vendored for.
 ///
 /// Two rows need a word of explanation:
 ///
@@ -200,7 +201,7 @@ fn reads_abbreviations_that_have_no_digit_in_them() {
 ///   the grammar's own problem, not the extraction's: `1000` is tagged
 ///   `date { year: "1000" }`, where `ten hundred` and `one thousand` are a
 ///   genuine tie at `0.000100`, and the Python reference picks `ten hundred` as
-///   well. Phase 9B.4 deliberately left it alone.
+///   well. That is deliberately left alone.
 #[test]
 fn reads_the_sentences_the_bug_moved_and_leaves_the_rest_where_they_were() {
     for (input, expected) in [
@@ -323,7 +324,7 @@ fn the_pipeline_reads_numerals_through_the_engine() {
 }
 
 /// English still phonemizes with no dictionary at all, which is the property
-/// phase 9B's fallback exists to keep.
+/// the fallback exists to keep.
 ///
 /// The engine is a `prepare`-time dependency, and English is the one language
 /// whose phonemes are not — the CMU dictionary and the hand-written numeral

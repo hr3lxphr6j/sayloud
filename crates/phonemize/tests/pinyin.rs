@@ -16,7 +16,7 @@
 //!
 //! The word boundaries are deliberately not here: `han_to_ipa` puts one space
 //! between syllables, which is what the JavaScript side's `singleSyllableWords`
-//! does, and grouping them into words needs jieba (phase 6).
+//! does, and grouping them into words needs jieba.
 
 use phonemize::g2p::{ChinesePinyin, PinyinError};
 
@@ -260,7 +260,7 @@ fn a_reading_with_no_tone_is_not_given_one() {
 
 #[test]
 fn an_erhua_syllable_is_its_final_plus_the_coda() {
-    // Phase 9D's tone rules write the erhua coda as an `r` before the tone digit
+    // The tone rules write the erhua coda as an `r` before the tone digit
     // — `wanr2` for 玩儿 — because that is where PaddleSpeech puts it: on the
     // final, which for 玩 is `uan`, so the reference has `w` + `uanr2`. The
     // syllable table has no erhua entries and should not grow any: misaki's v1.0

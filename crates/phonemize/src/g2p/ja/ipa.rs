@@ -9,8 +9,8 @@
 //! chain's `japanese.ts`, and it was ported *exactly*: the output is compared
 //! character for character against the corpus that pipeline produced
 //! (`tests/ja_pipeline.rs`), so "close enough" is a failing test. The JavaScript
-//! file itself was deleted in phase 8, so it is cited as the provenance of the
-//! behaviour rather than as something to read.
+//! file itself is gone, so it is cited as the provenance of the behaviour rather
+//! than as something to read.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;

@@ -170,8 +170,8 @@ fn corpus() -> Corpus {
 
 #[test]
 fn phonemizes_a_latin_run_instead_of_passing_it_through() {
-    // Phase 3 handed these runs to the frontend as characters; phase 4 gives them
-    // to the English dictionary. `Chat` and `Q` are the two that now match the
+    // These runs go to the English dictionary rather than through the frontend
+    // as characters. `Chat` and `Q` are the two that now match the
     // JavaScript exactly, which is what closed their corpus notes.
     //
     // The Japanese half is not incidental: 使う used to be two runs — Han and
@@ -206,9 +206,9 @@ fn phonemizes_a_latin_run_instead_of_passing_it_through() {
 fn reads_a_latin_run_the_dictionary_does_not_have_by_rule() {
     // This test used to be `warns_about_a_latin_run_the_dictionary_does_not_have`
     // and asserted the letter-by-letter fallback, `kˈeɪ ˈoʊ kˈeɪ ˈoʊ ˈɑːɹ ˈoʊ` —
-    // "Kokoro" read as K-O-K-O-R-O. Phase 9A reads it by rule instead, which is
-    // the point of the phase: it is one reading rather than six, and it is the
-    // same reading a lone English sentence gets (`tests/en_g2p.rs`).
+    // "Kokoro" read as K-O-K-O-R-O. It is read by rule instead: one reading
+    // rather than six, and the same reading a lone English sentence gets
+    // (`tests/en_g2p.rs`).
     //
     // The warning channel is untouched and the expectation "no warnings" is now
     // structural rather than incidental: a Latin run reaches the letter fallback
@@ -271,14 +271,12 @@ fn an_initialism_is_never_dropped() {
 
 #[test]
 fn phonemizes_a_whole_english_sentence_now_that_numerals_are_read() {
-    // A whole English *sentence* was not phase 4's work: it needs numeral
-    // reading, because the CMU dictionary skips digits rather than reading them,
-    // so `I have 3 cats` would have lost the 3. The Latin runs of a Japanese
-    // sentence never had that problem — a digit is never part of a Latin run —
-    // which is why that path was wired and this one was not. `numbers_en.rs` is
-    // the missing half, so the sentence is now read out. The full coverage of
-    // this path is in `en_g2p.rs`; what this pins is that the dispatch in
-    // `lib.rs` no longer reports it as unimplemented.
+    // A whole English *sentence* needs numeral reading, because the CMU
+    // dictionary skips digits rather than reading them, so `I have 3 cats` would
+    // lose the 3. The Latin runs of a Japanese sentence never have that problem —
+    // a digit is never part of a Latin run — which is why that path works without
+    // this step. The full coverage of this path is in `en_g2p.rs`; what this pins
+    // is that the dispatch in `lib.rs` reaches it.
     let phonemizer = phonemize::Phonemizer::new();
     let options = phonemize::PhonemizeOptions {
         vocab: "kokoro-v1".to_string(),
@@ -295,11 +293,11 @@ fn phonemizes_a_whole_english_sentence_now_that_numerals_are_read() {
 #[test]
 fn every_language_the_frontend_lists_reaches_a_pipeline() {
     // This test used to be `reports_a_language_whose_pipeline_is_not_built_yet`,
-    // asserting that `zh` came back `pipeline-not-implemented`. Phase 6 wired the
-    // last language, so there is no such language left, and what is worth
-    // checking now is the property that replaced it: every language the frontend
-    // table lists reaches a pipeline, and the only thing an unprepared instance
-    // is missing is a dictionary.
+    // asserting that `zh` came back `pipeline-not-implemented`. That error has no
+    // language left to fire for, and what is worth checking now is the property
+    // that replaced it: every language the frontend table lists reaches a
+    // pipeline, and the only thing an unprepared instance is missing is a
+    // dictionary.
     //
     // Written as a loop over the table rather than as three assertions, so that
     // adding a language to `supported_languages` without a pipeline shows up here
@@ -379,14 +377,13 @@ fn reports_a_japanese_call_that_never_prepared_a_dictionary() {
 
 #[test]
 fn the_pipeline_matches_the_reference_g2p() {
-    // The P6 acceptance criterion used to be "byte for byte what the JavaScript
-    // chain produced", and this test used to be
-    // `the_pipeline_matches_the_javascript_one`. The chain is gone (phase 8), and
-    // what it produced was wrong in a way the vocabulary gate cannot see: it read
-    // the dictionary one script run at a time, so `語る` came out カタリル and
-    // `詳しい` lost its first kanji. The replacement is the reference chain — the
-    // one Kokoro's Japanese voices were trained with; see the fixture for where
-    // each expectation comes from.
+    // This test used to be `the_pipeline_matches_the_javascript_one`, comparing
+    // byte for byte against what the JavaScript chain produced. That chain is gone,
+    // and what it produced was wrong in a way the vocabulary gate cannot see: it
+    // read the dictionary one script run at a time, so `語る` came out カタリル and
+    // `詳しい` lost its first kanji. The comparison now is the reference chain —
+    // the one Kokoro's Japanese voices were trained with; see the fixture for
+    // where each expectation comes from.
     let Some(phonemizer) = japanese_phonemizer() else {
         return;
     };
@@ -494,7 +491,7 @@ fn the_corpus_covers_the_paths_that_break_independently() {
     assert_eq!(actual, "saɴbjaku");
 }
 
-/// What the phase 9E numeral step buys, at the phoneme level.
+/// What the WeText numeral step buys, at the phoneme level.
 ///
 /// **The corpus has nothing in this table**, which is itself the finding: the
 /// corpus samples come out identically with and without the engine, so

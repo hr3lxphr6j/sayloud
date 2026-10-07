@@ -3,7 +3,7 @@
 //! Everything here is a pure function, so these run everywhere — including where
 //! the 8.5 MB dictionary asset has not been built. The expectations were copied
 //! from the JavaScript chain's `tests/unit/models/phonemize/japanese.test.ts`
-//! (deleted in phase 8) and live here now: the same inputs had to produce the
+//! (since deleted) and live here now: the same inputs had to produce the
 //! same strings on both sides, and a table or range that drifts shows up here as
 //! a failure naming the mora.
 
@@ -26,8 +26,9 @@ fn every_table_entry_only_spells_with_characters_kokoro_has() {
     // deleted character is not an error. ガ came out `a` for exactly this kind
     // of mistake until it was caught.
     //
-    // The vocabulary is the model's own, from `src/vocab.rs` — phase 5 replaced
-    // the copy this test used to carry, which held the whole ASCII lowercase
+    // The vocabulary is the model's own, from `src/vocab.rs` — that module
+    // replaced the copy this test used to carry, which held the whole ASCII
+    // lowercase
     // alphabet and so could not have caught ガ's ASCII `g`. Checking through the
     // production gate rather than against a set built here makes this a proof
     // rather than the floor that copy was: whitespace and the two combining marks

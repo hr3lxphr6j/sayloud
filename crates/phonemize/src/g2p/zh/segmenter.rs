@@ -2,12 +2,11 @@
 //!
 //! # Why there is a segmenter here at all
 //!
-//! The syllables are not in question — `pinyin-pro`'s tables answer those, and
-//! phase 5 ports them. The *boundaries between words* are, and they are audible:
-//! misaki writes one space between words, and Kokoro was trained on that. Writing
-//! one space between every syllable instead made the model pause inside words
-//! (人设, 曾经), which is the P5 spec's §3.2 and the reason jieba was added to the
-//! JavaScript chain in the first place.
+//! The syllables are not in question — `pinyin-pro`'s tables answer those. The
+//! *boundaries between words* are, and they are audible: misaki writes one space
+//! between words, and Kokoro was trained on that. Writing one space between every
+//! syllable instead made the model pause inside words (人设, 曾经), which is the
+//! reason jieba was added to the JavaScript chain in the first place.
 //!
 //! # Why it is jieba, and why the dictionary is a file
 //!
@@ -20,10 +19,10 @@
 //! wrong space), and the crate is pinned to the release whose dictionary that is.
 //!
 //! Before this module was written, a one-off cross-check compared this crate's
-//! segmentation against `jieba-wasm` 2.4.0 on 98 sentences — the 45 from the phase
-//! 5 corpus plus 53 written for the purpose — and all 98 were identical. That
-//! corpus was a scratch experiment and is not committed; the 46-sentence one is
-//! the continuous check, and it is the reason this comment does not claim the
+//! segmentation against `jieba-wasm` 2.4.0 on 98 sentences — the 45 from the
+//! committed corpus plus 53 written for the purpose — and all 98 were identical.
+//! That corpus was a scratch experiment and is not committed; the 46-sentence one
+//! is the continuous check, and it is the reason this comment does not claim the
 //! 98 is still true today.
 //!
 //! The dictionary arrives as an asset rather than compiled in, because the only
@@ -141,7 +140,7 @@ impl SegmenterZh {
 
     /// The length in characters of each word in `text`, with its part of speech.
     ///
-    /// Phase 9D. The tone rules ask about the tag in about a third of their
+    /// The tone rules ask about the tag in about a third of their
     /// branches: `_neural_sandhi` will not make a suffix neutral on the wrong
     /// kind of word, and `_merge_yi` only glues `V 一 V` together when the first
     /// V is a verb.
@@ -346,8 +345,8 @@ mod tests {
     #[test]
     fn agrees_with_word_lengths() {
         // `word_lengths` segments with `cut` and `tagged_words` with `tag`, and
-        // the tone rules take their boundaries from the second while the
-        // pipeline before phase 9D took them from the first. If they disagreed,
+        // the tone rules take their boundaries from the second while
+        // `ToneRules::Off` takes them from the first. If they disagreed,
         // the spacing of the output would depend on whether the tone rules ran,
         // which is a difference nothing else would catch. They are one walk over
         // one dictionary, and this asserts it on a corpus rather than assuming

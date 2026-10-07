@@ -1,0 +1,86 @@
+# What both workflows need before they can build anything: the Node and pnpm
+# toolchain with the dictionaries `pnpm install` downloads, the Rust toolchain and
+# the wasm-pack CLI the wasm module needs, and the cache those two compile into.
+#
+# A composite action rather than the same steps written twice, because the release
+# has to be the artifact CI tested. The prerequisites are the part that silently
+# diverges — a new dictionary, a new wasm target, a new build flag — and they are
+# also what the cache is keyed on: `shared-key` replaces the job-based part of the
+# key, so the release job reads what the test job wrote. That key carries the
+# runner's OS and architecture too, which is why both workflows run on
+# `macos-latest`: a Linux release job would never share it.
+name: Set up the build
+description: Node, pnpm, the dictionaries, Rust, wasm-pack and the Rust build cache
+
+runs:
+  using: composite
+  steps:
+    # No `version` input: the action reads `packageManager` from package.json, so a
+    # runner, a fresh clone and the machine the lockfile was written on all resolve
+    # the same pnpm. Pinning 9 here instead is what kept CI red from its first run:
+    # `pnpm-workspace.yaml` holds settings only (no `packages:`), which pnpm 9's
+    # `store path` rejects with "packages field missing or empty" — a command
+    # setup-node runs for its cache, before any step of ours, so nothing after it
+    # had ever executed.
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: 22, cache: pnpm }
+
+    # A run starts from a clean checkout, so incremental state would only ever be
+    # written into the cached `target/` and never read back within the run, while
+    # being most of that directory's size. rust-cache hashes every `CARGO_*`
+    # variable into its key, so this line is part of the key as well.
+    - name: Disable incremental compilation
+      shell: bash
+      run: echo 'CARGO_INCREMENTAL=0' >> "$GITHUB_ENV"
+
+    # This is also what builds the dictionaries: the Japanese one is unpacked from
+    # a download and the Chinese one rebuilt, by `postinstall`, because they are
+    # not in the repository.
+    - name: Install dependencies and dictionaries
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: wasm-pack
+
+    # The two cargo steps in the test job compile the same 149 crates twice, once
+    # for the wasm target and once for the host. Both write into the repository's
+    # one `target/` — the crate is the only member of a workspace rooted here, and
+    # wasm-pack builds into it too (`target/wasm32-unknown-unknown/`) — so one
+    # cache covers both.
+    #
+    # This has to run after `rustc` and `cargo` are on PATH, because the key starts
+    # from their versions, and before the first cargo invocation, because a cache
+    # restored after a build has nothing left to save. `cache-bin` is off because
+    # both tools above are installed by their own actions.
+    #
+    # `save-if` keeps writes to pushes on `main`, so the only writer is the branch
+    # everything is tagged from: a pull request restores the entry its lockfile
+    # descends from and rebuilds the difference, and a tag restores without
+    # writing.
+    #
+    # `prefix-key` is bumped by hand when what is cached changes, because a
+    # restored key is never saved again — an added path would otherwise never reach
+    # the entry. The reference setup avoids the manual step by hashing its setup
+    # action into `key`; here that would mean a cold run after every comment edited
+    # in these files, for a case that comes up rarely.
+    - name: Cache the Rust build
+      uses: Swatinem/rust-cache@v2.9.2
+      with:
+        # v2 adds the wasm-pack directory below.
+        prefix-key: v2-sayloud
+        shared-key: cargo
+        cache-bin: false
+        # wasm-pack does not ship the `wasm-bindgen` CLI it needs, and installs it
+        # with `cargo install` into this directory — one per version. That is a host
+        # release build of the whole wasm-bindgen tree, and it was 137s of the 156s
+        # the wasm step took with the target directory already warm; caching the
+        # directory is what makes it a cost paid once. The version it is named for
+        # comes from Cargo.lock, which the key above hashes.
+        cache-directories: ~/Library/Caches/.wasm-pack
+        save-if: ${{ github.ref == 'refs/heads/main' }}

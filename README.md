@@ -1,101 +1,119 @@
 # SayLoud
 
-A Chrome extension that reads web pages aloud with the browser's built-in
-speech, highlighting the sentence being read and, word by word, the word being
-spoken.
+**English** · [中文](README.zh.md) · [日本語](README.ja.md)
 
-## P1: browser voice (current)
+SayLoud reads web pages aloud in Chrome. It highlights the sentence being read,
+and — with a voice that reports word timings — each word as it is spoken.
 
-Reading a page needs no account, no API key and no network: `chrome.tts` speaks
-with a voice the system already has.
+![Reading a page with SayLoud](assets/reading.png)
 
-- Reads the whole page, from a 28px bar pinned to the right edge
-- Sentence-level highlighting as the baseline, plus word-level highlighting
-  from `chrome.tts` word events
-- Play/pause, previous/next sentence, and a speed control from 0.5x to 2x
-- A progress ring for the page, with the remaining time in a bubble card
-- Click a sentence in the page to start reading from there
-- Auto-scroll follows the reading position, and stops following as soon as you
-  scroll yourself
-- Hints and errors arrive in bubble cards, because 28px has no room for text
-- The session survives the service worker being recycled: it restores as paused,
-  in the same place, and the content script reconnects on its own
+## What it does
 
-Not in P1: cloud voices (P2), the settings panel and voice picker (P3), the
-paragraph button, selection button and keyboard shortcuts (P4), and
-dark-page-adaptive highlight colours (P4).
+- **A bar on the page, not a wall of settings.** Click the toolbar icon and a
+  28px bar appears on the right edge: play/pause, previous/next sentence, speed,
+  a progress ring with the time left, the caption window, and a way into
+  settings.
+- **Sentence-level, and word-level where it can be.** The sentence is the
+  baseline for every voice; words light up as they are spoken when the voice
+  reports when each one starts.
+- **Click a sentence to start from there.** Reading begins at the sentence you
+  pick, not at the top of the page.
+- **Speed 0.5×–3×, volume 0–150%.** Both apply to the sentence playing now.
+- **Keeps reading when you leave the tab.** You can work in another tab while it
+  reads.
+- **Auto-scroll that yields.** The page follows the reading position, and stops
+  the moment you scroll yourself; a card offers to jump back to the sentence.
+- **A caption window you can put anywhere** — the sentence and its position, in
+  a small always-on-top window.
+- **Nothing to configure to start.** The browser voice needs no account, no key
+  and no network.
 
-## Development
+## Three ways to be read to
 
-Requires Node.js 22 or later and pnpm 9 or later.
+| | What it takes | Where your text goes | Word highlighting |
+|---|---|---|---|
+| **Browser voice** | nothing at all | nowhere — it is your system's speech | from the browser's own word events |
+| **On this device** | one model download | nowhere — the model runs in your browser | whole sentences |
+| **A cloud service** | your own API key | to that service, and nowhere else | from the service's timestamps |
+
+### On this device
+
+Kokoro 82M, downloaded once from the Models tab: 41 voices across English
+(en-US, en-GB), Chinese (zh-CN) and Japanese (ja). Three sizes — 92 MB, 163 MB
+and 326 MB — and a choice of WebGPU or CPU; the tab says which one suits your
+machine. Voices are fetched the first time each is used. The text never leaves
+your computer, and no key is involved.
+
+<img src="assets/panel-models.png" width="300" alt="The Models tab: download source, model and sizes">
+
+### Cloud services
+
+Bring your own key for an OpenAI-compatible server (including a local
+Kokoro-FastAPI), ElevenLabs, Azure Speech, DashScope (阿里云百炼) CosyVoice and
+Qwen-TTS, or 火山引擎豆包. Services that report word timings get word-by-word
+highlighting; the rest fall back to whole sentences. Keys are kept in Chrome's
+own storage, and SayLoud asks for access to a site only when you configure a
+service for it.
+
+<img src="assets/panel-settings.png" width="300" alt="The Settings tab: voice services and their forms">
+
+## Using it
+
+1. Open an article and click the SayLoud icon in the toolbar. Nothing is
+   injected into a page until you ask for it — the extension has no standing
+   access to the pages you read.
+2. The bar appears on the right edge. Press play, or click any sentence in the
+   page to start from there.
+3. Open the side panel for progress, voice, cache and model settings.
+
+<img src="assets/panel-reading.png" width="300" alt="The Reading tab: speed, volume, caption switch and progress">
+
+The caption window, opened from the bar, keeps the current sentence on top of
+other windows:
+
+<img src="assets/caption.png" width="420" alt="The caption window showing one sentence and its position">
+
+## Settings
+
+- **Voice** — one voice per service, with a searchable list showing which voices
+  report word timings. A voice can also be typed in by id.
+- **Speed, volume, caption window** — the preferences that matter mid-sentence,
+  on the Reading tab, so they are one click away while it reads.
+- **Interface language** — English, 中文, 日本語, or follow the browser.
+- **Cache** — synthesized audio is kept on your machine, so replaying a sentence
+  costs nothing. On by default, with an upper limit of 50, 100, 200 or 500 MB
+  (200 MB out of the box), a readout of what is used, and one button to clear it.
+- **Models** — download source (automatic, Hugging Face, ModelScope or your own
+  mirror), the model size, and the device the model runs on.
+
+## Privacy
+
+SayLoud has no server of its own and collects nothing. The browser voice and the
+on-device model are entirely local. If you configure a cloud service, the text
+you ask it to speak is sent from your browser straight to that service with your
+key — to nobody else. Access to a site is requested only when a service needs it,
+and can be withdrawn from Chrome's extension settings at any time.
+
+## Install
+
+SayLoud is not on the Chrome Web Store yet. It builds from source in two steps:
 
 ```bash
 pnpm install
-pnpm dev        # launches Chrome with the extension, reloading on change
-pnpm test       # unit tests (vitest, happy-dom)
-pnpm test:e2e   # end-to-end tests (Playwright, real Chrome)
-pnpm typecheck  # tsc --noEmit
-pnpm lint       # Biome, formatting and lint
-pnpm build      # production bundle in .output/chrome-mv3
+pnpm build
 ```
 
-To load the built extension by hand: open `chrome://extensions`, turn on
-Developer mode, choose "Load unpacked", and select `.output/chrome-mv3`.
+Then open `chrome://extensions`, turn on **Developer mode**, choose **Load
+unpacked**, and select `.output/chrome-mv3`. You need Node.js 22 or later and
+pnpm 9 or later; the build compiles a small Rust module to wasm, so it also needs
+a Rust toolchain and `wasm-pack` (`cargo install wasm-pack`).
 
-## Architecture
+Current Chrome works. The caption window needs Chrome 116 or later; without it
+the rest of SayLoud reads aloud as usual and the caption switch says so.
 
-Two halves, split so that exactly one of them owns playback state.
-
-**Service worker** (`entrypoints/background.ts`) holds the `PlaybackEngine`, the
-only writer of session state, and speaks through `chrome.tts` via
-`BrowserSpeaker`. `SessionRouter` moves commands and events between the engine
-and the tab that owns the session, and mirrors every change into
-`storage.session`. The content script is registered at runtime and injected when
-the toolbar icon is clicked, so the extension holds no standing access to any
-page; `activeTab` grants access to the clicked tab only.
-
-**Content script** (`entrypoints/reader.content.tsx`) extracts the readable
-blocks with Readability, builds a sentence model that maps back to DOM ranges,
-and renders the bar inside a shadow root. `ReaderController` connects to the
-worker over a port, keeps the two CSS Custom Highlight layers in sync with the
-engine's events, and turns page interactions into commands. The Side Player is a
-pure view over `ReaderState`.
-
-Shared logic lives in `lib/`, where it is testable without a browser:
-extraction, segmentation, the engine state machine, the speaker wrapper, the
-snapshot store, the router, remaining-time formatting and the auto-scroll policy.
-
-A few decisions worth knowing about:
-
-- **One session at a time.** Starting in a new tab stops the old one, and
-  switching tabs pauses the running session.
-- **Reconnects send `sync`, not `load`.** The worker is recycled when idle, so
-  the content script reconnects on port disconnect; `sync` lets the engine
-  re-announce the current state instead of restarting the page.
-- **A restored session is always paused.** The reader is no longer mid-gesture,
-  and `chrome.tts` needs a fresh call anyway.
-- **`chrome.tts` cannot resume mid-sentence**, so resuming a paused sentence
-  replays it from the start.
-- **Auto-scroll announces its own scrolls.** The page fires the same `scroll`
-  event for our smooth scroll and for the reader dragging the page, so only real
-  user scrolls suspend auto-scrolling.
-
-## Testing
-
-Unit tests run in `happy-dom` and need no browser. The end-to-end tests drive a
-real Chrome with the extension loaded, because the interesting parts only exist
-there: `chrome.tts` actually speaking, its word events reaching the content
-script, and the CSS Custom Highlight API actually painting.
-
-`pnpm test:e2e` builds its own bundle first (`.output-e2e/chrome-mv3`), which
-differs from the shipped one in two ways: it exposes a `sayloudActivate()` hook
-on the service worker's scope, and it grants host access to `127.0.0.1` so test
-pages can be served over http. Playwright cannot click an extension's toolbar
-icon, so the hook stands in for that click and takes the same injection path.
-
-The end-to-end tests need speech voices installed. macOS ships with them; on
-Linux install `speech-dispatcher`. They run headless.
+*The Chrome Web Store listing is coming.*
 
 ## License
 
-MIT
+MIT. Development notes — architecture, tests, the data generators — are in
+[CONTRIBUTING.md](CONTRIBUTING.md).

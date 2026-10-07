@@ -7,6 +7,7 @@ playwright-report/
 coverage/
 .wxt/
 node_modules/
+docs/superpowers/
 .idea/
 .DS_Store
 

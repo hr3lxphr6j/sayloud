@@ -7,8 +7,14 @@
 //!
 //! # Which of upstream's switches are on, and why
 //!
-//! Two, and the other six that could be are off with a reason:
+//! Three, and the other five that could be are off with a reason:
 //!
+//! - `fix_contractions` — `We'll` is `we will`. Off upstream (its default) and
+//!   off here until it was reported as a bug: an apostrophe is not a letter, so
+//!   `text::segment_text` split `We'll` into `We` + `'` + `ll`, the apostrophe was
+//!   dropped by `keep_punctuation`, and `ll` — a run with no vowel in it — was
+//!   spelled out of the CMU dictionary one letter at a time: `wiːˈɛl ˈɛl`. Every
+//!   contraction was read that way, not just this one.
 //! - `full_to_half` — `ＡＢＣ` is `ABC` before anything else reads it. Also off
 //!   upstream. `classify` in `text.rs` accepts `A-Za-z` and drops everything else,
 //!   so full-width Latin used to leave the pipeline as silence: `Ｈｅｌｌｏ world`
@@ -21,14 +27,13 @@
 //!   says why Chinese's fold is elsewhere.
 //! - `traditional_to_simple` — Chinese only. See [`chinese`] for the table.
 //!
-//! Left off: `fix_contractions` (English's apostrophes are read one letter at a
-//! time without it — `We'll` is `We` `L` `L` — and it is being fixed separately),
-//! `remove_interjections` and `remove_puncts` (both delete text a listener needs —
-//! `你好啊` becomes `你好`, and `。！？` are what Kokoro pauses on), `tag_oov` (it
-//! marks out-of-vocabulary words for a downstream consumer this project has no use
-//! for), `remove_erhua` (erhua is `g2p/zh/tone_sandhi`'s job and this FST would
-//! delete the 儿 before that stage saw it), and `enable_0_to_9` and the `itn`
-//! grammars (the other direction; nothing here inverts text normalization).
+//! Left off: `remove_interjections` and `remove_puncts` (both delete text a
+//! listener needs — `你好啊` becomes `你好`, and `。！？` are what Kokoro pauses
+//! on), `tag_oov` (it marks out-of-vocabulary words for a downstream consumer this
+//! project has no use for), `remove_erhua` (erhua is `g2p/zh/tone_sandhi`'s job and
+//! this FST would delete the 儿 before that stage saw it), and `enable_0_to_9`
+//! and the `itn` grammars (the other direction; nothing here inverts text
+//! normalization).
 //!
 //! # Why this is optional everywhere
 //!
@@ -90,7 +95,7 @@
 //! that is not a grammar — is 401 KB. Both are dwarfed by the grammars beside
 //! them, and the fold's own work is a character map: one pass, no composition.
 
-use super::wetext::{Language, Normalizer, NormalizerConfig, WeTextError};
+use super::wetext::{warm_contractions, Language, Normalizer, NormalizerConfig, WeTextError};
 
 /// `(language, the relative name its tagger is keyed under, the name its
 /// verbalizer is keyed under)`.
@@ -134,13 +139,26 @@ fn build<'a>(
 
 /// The English normalizer: `3:30pm` → `three thirty PM`, `50%` → `fifty percent`.
 ///
-/// Plus the switch the module comment argues for: `ＡＢＣ` → `ABC`.
+/// Plus the two switches the module comment argues for: `We'll` → `we will`, and
+/// `ＡＢＣ` → `ABC`.
+///
+/// **The contraction tables' automaton is built here**, by `warm_contractions`, and
+/// that is the point of the call: this function runs in `finish_loading`, beside the
+/// 70 ms of FST parsing English already pays, so the 0.73 ms is paid once per worker
+/// before the first sentence rather than by whichever sentence first contains an
+/// apostrophe. Building it lazily and never calling this would work and would put
+/// the cost in the middle of an article — measured at 56 ms and 6.7 MB of heap when
+/// the same tables were 412 compiled regexes, which is what the call replaced.
 pub fn english(
     tagger: &[u8],
     verbalizer: &[u8],
     full_to_half: &[u8],
 ) -> Result<Normalizer, WeTextError> {
-    let config = NormalizerConfig::new().with_full_to_half(true);
+    warm_contractions();
+
+    let config = NormalizerConfig::new()
+        .with_fix_contractions(true)
+        .with_full_to_half(true);
     build(
         EN.0,
         config,

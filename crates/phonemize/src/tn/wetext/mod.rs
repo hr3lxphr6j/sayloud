@@ -21,9 +21,9 @@
 //! and the preprocessors they need arrive through the same dictionary protocol.
 //! Which of upstream's switches are on — and which of the wheel's files are
 //! therefore fetched — is that module's business, and the answer is not upstream's
-//! defaults: `full_to_half` and `traditional_to_simple` are turned on because the
-//! readings they produce are wrong without them. `fix_contractions` and the four
-//! post-processors are off.
+//! defaults: `fix_contractions`, `full_to_half` and `traditional_to_simple` are
+//! turned on because the readings they produce are wrong without them. The four
+//! post-processors are still fetched by nobody.
 //!
 //! # No filesystem, no lazy loading
 //!
@@ -42,6 +42,7 @@ mod text_normalizer;
 mod token_parser;
 
 pub use config::{Language, NormalizerConfig, Operator};
+pub use contractions::warm_up as warm_contractions;
 pub use error::{Result, WeTextError};
 pub use normalizer::Normalizer;
 pub use text_normalizer::FstTextNormalizer;

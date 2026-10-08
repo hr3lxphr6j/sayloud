@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use super::config::{Language, NormalizerConfig, Operator};
-use super::contractions::fix_contractions;
+use super::contractions::{fix_contractions, has_apostrophe};
 use super::error::{Result, WeTextError};
 use super::text_normalizer::FstTextNormalizer;
 use super::token_parser::TokenParser;
@@ -88,7 +88,15 @@ impl Normalizer {
         let mut text = text.to_string();
 
         // 1. Fix English contractions
-        if config.fix_contractions && text.contains('\'') {
+        //
+        // The guard asks `contractions::has_apostrophe` rather than testing for
+        // `'`, which is what upstream's Python guard does and what this copy used
+        // to do. `'` is only one of the two apostrophes the contraction tables
+        // are keyed with — the other is `’` (U+2019), which upstream teaches its
+        // tables at load time and then never lets through, because a curly
+        // apostrophe fails the guard. So the fix is the guard, not the tables:
+        // `We’ll` is `we will`, and used to be read `We` `L` `L`.
+        if config.fix_contractions && has_apostrophe(&text) {
             text = fix_contractions(&text);
         }
 

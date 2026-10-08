@@ -93,6 +93,19 @@ against a synthesis that takes 500-750 ms.
   what it still covers is the `Nd` characters the fold does not touch — measured
   to be passed through unchanged by these grammars, and pinned in
   `tests/wetext_zh.rs` so the branch cannot be deleted as dead code.
+- **`fix_contractions` runs, and its guard knows both apostrophes**
+  (modification 8 in `NOTICE`). The `’` keys upstream builds were unreachable in
+  the reference because its guard tests for `'`, and the pattern order was a
+  `HashMap` walk where two tables overlap — `We'll go` came back `we will go` or
+  `We will go` depending on the seed.
+- **The contraction keys are matched by an `AhoCorasick` automaton**, not by one
+  `Regex` per key (modification 9 in `NOTICE`). An automaton is the same object the
+  Python reference's `TextSearch` builds, and the numbers are why: 412 compiled
+  regexes cost 56 ms and 6.7 MB of heap for the build, where the automaton costs
+  0.73 ms and 89 KB. `contractions.rs` carries the table, the rule the scan applies
+  (leftmost, then longest, among the matches the tables accept), the three wrong
+  shapes, and the diff of the new engine against the old one over every key in
+  eleven carriers — which is a test, not a comment.
 
 ## Path selection, and the bug that used to be here
 

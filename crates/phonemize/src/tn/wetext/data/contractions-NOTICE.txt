@@ -1,0 +1,71 @@
+===========================================================================
+English contraction tables (crates/phonemize/src/tn/wetext/data/)
+===========================================================================
+
+The three JSON files in this directory are the data files of the Python
+`contractions` package, copied **unchanged** from version 0.1.73:
+
+  contractions   (https://pypi.org/project/contractions/) 0.1.73
+                 (https://github.com/backstrokeapp/contractions)
+  MIT License
+  Copyright (c) 2021 Pascal van Kooten
+
+  contractions_dict.json  4934 B
+    8a8ced2e5426360dd740561e3e81e70dcefd6bbe968f7d160e4a8c34e6fc0e47
+  leftovers_dict.json      357 B
+    b7fff12bd48d32c1afe0bf4e6cef3c117d318b2ed928c4416809a1efec82fcf2
+  slang_dict.json         1200 B
+    4fb5131ee396680dc638b5a57484102c3ad2a76455f81fc61f1813f9864734a1
+
+The hashes are the sha256 of each file as it stands here, and they are what
+"unchanged" means: `unzip wetext-0.1.8-py3-none-any.whl` and the same three
+files inside `wetext`'s own dependency, `contractions-0.1.73-py2.py3-none-any.whl`,
+are byte for byte these. A future bump of the package should fail this claim
+loudly rather than silently — so if these are ever re-copied, re-measure.
+
+`../contractions.rs` reads them at compile time (`include_str!`), so the tables
+are inside the wasm this crate builds rather than fetched as an asset. That is
+why this notice is here rather than beside the dictionaries in
+`public/dictionaries/`: those notices travel with the files they cover, and these
+files do not travel separately.
+
+The licence is MIT, and it is the only licence under
+`crates/phonemize/src/tn/wetext/` that is not Apache-2.0. The FST grammars come
+from WeTextProcessing and the `wetext` distribution (see the `NOTICE` two levels
+up); these tables come from a third package that `wetext` declares as a runtime
+dependency of its own — `Requires-Dist: contractions` — and calls before any of
+its grammars run. Upstream's Python `wetext/utils.py` is one line of it:
+
+    if config.fix_contractions and "'" in text:
+        text = contractions.fix(text)
+
+The copy reached this repository through `wetext-rs` 0.1.2 (Apache-2.0,
+https://github.com/SpenserCai/wetext-rs), which embeds the same three files under
+its own Apache-2.0 LICENSE and carries no notice for them — nor does the Python
+package's own documentation page. The chain of attribution, not the licence text,
+is what this file adds.
+
+What *this* repository does to the tables is `contractions.rs`'s business and is
+recorded in the `NOTICE` two levels up (modifications 8, 9 and 10): the files
+themselves are unmodified, and the matching engine, the boundary rules and the
+guard in front of them are ours or the port's.
+
+The MIT License (contractions):
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.

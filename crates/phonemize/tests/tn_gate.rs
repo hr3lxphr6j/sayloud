@@ -386,29 +386,35 @@ fn the_gate_never_skips_text_normalization_would_have_changed() {
     }
 }
 
-/// Skipping is only safe because the fallback is a no-op on the same text.
+/// Skipping is only safe because the step the gate bypasses is a no-op on the
+/// same text.
 ///
-/// [`phonemize_en`] takes an `Option<&Normalizer>` and falls back to
-/// [`numbers_to_english`](phonemize::tn::numbers_to_english)
-/// when there is no engine; the gate replaces the engine with *the text itself*
-/// on a skip, so the two are the same answer only if the fallback would have
-/// changed nothing. It matches a digit and a minus sign followed by a digit and
-/// nothing else, so the claim is not a coincidence — but it is a claim about
-/// another module, and it is asserted here rather than written in a comment.
+/// [`phonemize_en`] takes an `Option<&Normalizer>`, and with no engine the numeral
+/// step hands back a skipped sentence unchanged — English has no hand-written
+/// reader to rewrite it with (`tn::Lang::reader`), so a skip and a missing engine
+/// agree exactly when there is nothing for either of them to do. That is not a
+/// coincidence: the gate is a scan for the shapes the engine rewrites, and it is
+/// asserted here rather than written in a comment.
+///
+/// This is also the test that pins the *shape* of the failure English gained when
+/// the reader was removed: an engine-less step is an error for text with a
+/// character that has no reading of its own, so the `.expect` below is the claim
+/// that every entry the gate skips is text without one.
 #[test]
-fn the_fallback_the_gate_bypasses_is_a_no_op_on_every_skipped_entry() {
-    use phonemize::tn::numbers_to_english;
-
+fn the_step_the_gate_bypasses_is_a_no_op_on_every_skipped_entry() {
     for (text, why) in CORPUS {
         let text = normalize_punctuation(text);
-        if numbers_to_english(&text) != text {
-            // Only interesting for the skipped half, but a corpus entry the gate
-            // fires on is allowed to have digits in it.
-            assert!(
-                needs_normalization(&text),
-                "the gate skipped {text:?} ({why}) but the fallback would have rewritten it"
-            );
+        if needs_normalization(&text) {
+            continue;
         }
+
+        let without_an_engine = tn::normalize(&text, tn::Lang::En, None)
+            .expect("a skipped entry has nothing for the engine, so there is nothing to fail on");
+        assert_eq!(
+            without_an_engine.as_ref(),
+            text.as_str(),
+            "the gate skipped {text:?} ({why}) but the engine-less step rewrote it"
+        );
     }
 
     // And the same statement in the direction that matters, over the whole

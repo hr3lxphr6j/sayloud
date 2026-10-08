@@ -71,21 +71,17 @@ lindera-dictionary = { version = "6.2", default-features = false }
 # lindera's own.
 tar = "0.4"
 
-# English numeral reading. The CMU dictionary above is a dictionary and
-# not a rule engine, so a digit has no pronunciation to find and is skipped
-# (`I have 3 cats` → `aɪ hæv kˈæts`); a numeral has to become words before the
-# text is segmented, exactly as `numbers_to_kanji` does for Japanese.
-#
-# A crate rather than a hand-written table, because the hard part is not 0–19: it
-# is 1001 gaining an "and", 999 losing it, a minus sign, a decimal point, and the
-# magnitude names. MIT OR Apache-2.0, no C sources and no filesystem, ~152 KB in
-# the release wasm. `num2words2-core`, the alternative that also covers Chinese,
-# was measured at 2.7 MB and rejected — the Chinese reading is already in
-# `numbers.rs`.
-#
-# 1.2.0 is the version that was measured; a bump changes the wording of numerals,
-# and that wording is what the English pipeline's tests pin.
-num2words = "1.2.0"
+# No numeral crate. English's numeral reading used to be `num2words` here — 60 KB
+# of the release wasm, measured by building the module with the dependency and
+# without it (6,102,605 B → 6,041,188 B, −61,417 B) — and it was removed rather than
+# kept
+# beside the engine: `src/tn/engine.rs` reads numerals, money, dates and
+# abbreviations with the WeText grammars, and a second reader for the same step
+# was a second answer to the same question. What is left is one rule, in
+# `src/tn/mod.rs`: a numeral is read by the engine or the sentence is declined,
+# never read with the digits missing (`I have 3 cats` → `aɪ hæv kˈæts` was the bug
+# this step closed). The CMU dictionary above is a dictionary and not a rule
+# engine, so a digit still has no pronunciation of its own to find.
 
 # Chinese word segmentation. The JavaScript side uses `jieba-wasm`,
 # which is this crate compiled to wasm, so the boundaries match the training

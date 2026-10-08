@@ -177,6 +177,9 @@ is every row of the tables above, in `crates/phonemize/tests/wetext_en.rs`.
 What it means for this crate: the engine is markedly better than the hand-written
 reader on *entities* — `3:30pm`, `50%`, `1st`, `1/2`, `2,000`, `10/4/2024`,
 `$20.50` — and it reads a bare integer as its cardinal, `one hundred and twenty
-three` where `num2words` says `one hundred twenty three`. The English pipeline
-prefers the engine, and the tests pin the readings so
-neither half can change quietly.
+three` where the reader it replaced says `one hundred twenty three`. The English
+pipeline prefers the engine and the tests pin the readings, so neither half can
+change quietly; **English's reader has since been removed altogether** (it was
+`num2words`, 60 KB of the release wasm — see the crate README, so an English
+sentence with a digit in it is now declined rather than read by something else
+when the engine is absent.

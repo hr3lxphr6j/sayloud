@@ -235,14 +235,23 @@ impl Phonemizer {
                     .map_err(PhonemizeError::Pipeline)?
             }
             // English has no dictionary to wait for *for its phonemes* — the CMU
-            // dictionary is compiled in — so this arm needs no `NotPrepared`
-            // check. Its FSTs are still a `prepare`-time dictionary,
-            // which is why `english_tn` can be `None` here without being an
-            // error: `phonemize_en` falls back to `numbers_en` for it. The
-            // backend itself is built lazily on the first call; see the
-            // `english` field.
+            // dictionary is compiled in — so this arm is not gated on `prepare`
+            // the way the two below are: prose phonemizes with `english_tn` at
+            // `None` and no failure at all. What is not optional is a numeral.
+            // The FSTs are a `prepare`-time dictionary like any other, and
+            // English is the one language with no hand-written reader behind
+            // them (`tn::Lang::reader`), so a sentence whose numerals the engine
+            // did not read comes back as `Numerals` and leaves here as
+            // `NotPrepared`: declining it is the point, and "call `prepare`" is
+            // what fixes it. The backend itself is built lazily on the first
+            // call; see the `english` field.
             "en" => pipeline::phonemize_en(text, self.english(), self.english_tn.as_ref())
-                .map_err(PhonemizeError::Pipeline)?,
+                .map_err(|error| match error {
+                    PipelineError::Numerals(_) => PhonemizeError::NotPrepared {
+                        lang: options.lang.clone(),
+                    },
+                    other => PhonemizeError::Pipeline(other),
+                })?,
             // Chinese needs jieba's word list, so like Japanese it can be asked
             // to phonemize before `prepare` ran — and that is a failure rather
             // than a sentence read without word boundaries, because the
@@ -404,9 +413,11 @@ impl Phonemizer {
 /// a missing file from becoming a *silent* wrong answer: the configuration asks
 /// for each of them by name, and a name that was never supplied is a
 /// [`WeTextError::FstNotFound`] at the first sentence rather than here — which
-/// `tn::normalize` would swallow into the hand-written reader. A caller that went
-/// through `prepare` cannot reach that state, because `dictionary_names` lists
-/// every one of them and `finish` refuses a partial load.
+/// Chinese and Japanese swallow into their hand-written reader, and which English
+/// cannot: it has none, so a sentence with numerals in it fails there instead
+/// ([`pipeline::PipelineError::Numerals`], reported as `NotPrepared`). A caller
+/// that went through `prepare` cannot reach that state, because
+/// `dictionary_names` lists every one of them and `finish` refuses a partial load.
 fn build_tn(
     dictionaries: &DictionaryRegistry,
     asset_names: &[&str],
@@ -433,6 +444,11 @@ pub enum PhonemizeError {
     Dictionary(DictionaryError),
     /// The language's dictionary was never loaded — `prepare` was not called, or
     /// the caller did not check its result.
+    ///
+    /// English reaches this for a sentence that needs the numeral engine with no
+    /// engine loaded, because its numerals are read by the WeText grammars and
+    /// there is no hand-written reader to fall back to — the same situation as any
+    /// other missing dictionary, and the same fix (`pipeline::phonemize_en`).
     NotPrepared { lang: String },
     /// This build has no pipeline for a language the vocabulary can speak.
     ///

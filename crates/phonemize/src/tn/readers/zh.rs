@@ -8,9 +8,10 @@
 //! than by a test.
 //!
 //! Language-specific on purpose: this is the *Chinese* reading of a numeral.
-//! English numbers become words through [`numbers_to_english`] and Japanese ones
-//! through [`numbers_to_kanji`], so a shared text-layer normaliser would break
-//! two languages to fix a third.
+//! Japanese numbers become words through
+//! [`numbers_to_kanji`](crate::tn::numbers_to_kanji), so a shared
+//! text-layer normaliser would break one language to fix another. English has no
+//! reader at all — see `crate::tn::Lang::reader`.
 //!
 //! # Why this is four passes and not one
 //!

@@ -287,7 +287,8 @@ fn the_english_thousand_fix_does_not_reach_japanese() {
     ] {
         let engine = read(&tn, input);
         saw_the_trigger |= engine.contains("thousand");
-        let stepped = phonemize::tn::normalize(input, phonemize::tn::Lang::Ja, Some(&tn));
+        let stepped = phonemize::tn::normalize(input, phonemize::tn::Lang::Ja, Some(&tn))
+            .expect("ja has a hand-written reader");
         assert_eq!(
             stepped.as_ref(),
             engine.as_str(),

@@ -8,9 +8,13 @@
 //! the same too — see [`phonemize_ja`].
 //!
 //! All three share one step: [`crate::tn::normalize`] runs the vendored WeText
-//! engine when one was built and the language's hand-written reader when one was
-//! not. What is left language-specific about it is *where* in the sequence it
-//! runs — which is the caller's business and not the step's.
+//! engine when one was built, the language's hand-written reader when one was not
+//! and it has one, and declines the sentence when it has neither (English, whose
+//! reader was removed — see `crate::tn::Lang::reader`). What is left
+//! language-specific about it is *where* in the sequence it runs — which is the
+//! caller's business and not the step's.
+
+use std::borrow::Cow;
 
 use crate::g2p::en::{EnglishError, EnglishG2p};
 use crate::g2p::ja::ipa::{fix_numeral_sound_changes, kana_to_ipa};
@@ -41,6 +45,21 @@ pub enum PipelineError {
     /// The English backend failed.
     #[error("{0}")]
     English(EnglishError),
+    /// The sentence has numerals and this language has nothing to read them with.
+    ///
+    /// English only, and it is [`tn::NoReader`] that says so: unlike Chinese and
+    /// Japanese, its numeral step has no hand-written reader behind the engine
+    /// (`tn::Lang::reader`), so a sentence the engine was needed for and did not
+    /// read has no second reading to fall back to. Declining it is the point —
+    /// reading it without the numerals is the failure the step exists to prevent
+    /// — and `PhonemizeError` reports it as the `prepare`-time failure it is.
+    ///
+    /// `tn::normalize` is shared by all three languages and cannot see which one it
+    /// was handed, so this type carries the possibility for all three; only English
+    /// ever produces it, and [`read_numerals`] is where the other two say they do
+    /// not.
+    #[error("{0}")]
+    Numerals(tn::NoReader),
 }
 
 impl PipelineError {
@@ -51,6 +70,7 @@ impl PipelineError {
             Self::ZhSegmenter(error) => error.code(),
             Self::Pinyin(error) => error.code(),
             Self::English(error) => error.code(),
+            Self::Numerals(_) => "numerals-unreadable",
         }
     }
 }
@@ -77,6 +97,22 @@ impl From<EnglishError> for PipelineError {
     fn from(error: EnglishError) -> Self {
         Self::English(error)
     }
+}
+
+/// The numeral step, for a language whose hand-written reader makes it total.
+///
+/// `Err` is unreachable for [`tn::Lang::Ja`] and [`tn::Lang::Zh`] — a reader is the
+/// only thing `tn::normalize` can fail for, and both have one — and it is
+/// propagated rather than `expect`ed or dropped: a panic inside the wasm takes the
+/// whole worker with it, and a sentence that went on without its numerals would be
+/// the class of bug this stage exists to prevent. If it ever fires, it is a bug in
+/// `tn::Lang::reader` and it says so.
+fn read_numerals<'a>(
+    text: &'a str,
+    lang: tn::Lang,
+    engine: Option<&WeTextNormalizer>,
+) -> Result<Cow<'a, str>, PipelineError> {
+    tn::normalize(text, lang, engine).map_err(PipelineError::Numerals)
 }
 
 /// Phonemes, and what was left out to get them.
@@ -177,7 +213,7 @@ pub fn phonemize_ja(
 ) -> Result<Phonemized, PipelineError> {
     let normalized = normalize_punctuation(text);
     let punctuated = normalize_ja_punctuation(&normalized);
-    let with_numerals = tn::normalize(&punctuated, tn::Lang::Ja, engine);
+    let with_numerals = read_numerals(&punctuated, tn::Lang::Ja, engine)?;
     let runs = segment_japanese(&with_numerals);
 
     let mut parts: Vec<String> = Vec::new();
@@ -237,15 +273,33 @@ pub fn phonemize_ja(
 /// 4. **Then read each run out.** A `Latin` run goes to `english`, and an `other`
 ///    run keeps only the punctuation Kokoro can use.
 ///
-/// # Numerals: WeText when it is there, `numbers_to_english` when it is not
+/// # Numerals: the engine, or nothing
 ///
 /// `tn` is the vendored WeText engine, built by `finish_loading` from the two
 /// grammars the dictionary protocol fetched ([`crate::tn`]).
-/// The engine is there because the hand-written reader is not a reader of
-/// anything but a number: it produced the letters `T H I R T Y P M` for `3:30pm`,
-/// dropped the `%` of `50%` entirely, and turned `1st` into an "onest". The
-/// engine reads all of those — and dates, money and abbreviations with them — as
-/// the entities they are.
+/// The engine is there because a hand-written reader is not a reader of
+/// anything but a number: the one this copy had produced the letters `T H I R T Y
+/// P M` for `3:30pm`, dropped the `%` of `50%` entirely, and turned `1st` into an
+/// "onest". The engine reads all of those — and dates, money and abbreviations
+/// with them — as the entities they are.
+///
+/// **English has no hand-written reader, and that is what this signature is
+/// about.** The reader it had (`num2words`, 60 KB of the release wasm, measured
+/// by building the module with and without it) read the same cardinals as the
+/// engine and a worse remainder, so it was removed rather than kept beside it —
+/// see `tn::Lang::reader`. What that costs is the one case this function cannot
+/// paper over: a sentence with something in it for the engine that the engine did
+/// not read — because there is no engine, or because it failed on this sentence —
+/// has no second reading to fall back to. Reading it anyway would drop the
+/// numerals out of the IPA (`I have 3 cats` → `aɪ hæv kˈæts`, the bug this stage
+/// exists to close), so the sentence is declined instead
+/// ([`PipelineError::Numerals`]) and `PhonemizeError` reports it as a missing
+/// dictionary, which is what `prepare` is for.
+///
+/// Nothing else about `tn`'s optionality changed: a sentence with no digit, symbol
+/// or abbreviation in it is skipped by the gate and phonemized with no engine at
+/// all, so *English needs no dictionary for its phonemes* is still true of
+/// everything except the entities.
 ///
 /// **A bare integer used to come out wrong, and that was this copy's bug, not
 /// the grammar's.** An unqualified `123` came out `one two three`,
@@ -258,15 +312,6 @@ pub fn phonemize_ja(
 /// it as a year, where `ten hundred` and `one thousand` cost the same and the
 /// Python reference picks `ten hundred` too. `tests/wetext_en.rs` pins the
 /// readings, and `src/tn/wetext/README.md` has the tables.
-///
-/// It is **optional** on purpose. English is the one language whose phonemes
-/// need no dictionary, so `phonemize_with` deliberately does not require
-/// `prepare` for it; making the numeral step fatal without one would turn that
-/// into an error for a caller that never had to care. Three cases reach the
-/// fallback and none of them is a silent wrong answer: no engine was built
-/// (nothing was prepared), the engine could not be built, or it failed on this
-/// sentence. `numbers_to_english` is the fallback — a worse reading of a date,
-/// not a missing one.
 ///
 /// # The gate, and why it is in front of the engine
 ///
@@ -318,7 +363,8 @@ pub fn phonemize_en(
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
     let normalized = normalize_punctuation(text);
-    let with_numerals = tn::normalize(&normalized, tn::Lang::En, engine);
+    let with_numerals = tn::normalize(&normalized, tn::Lang::En, engine)
+        .map_err(PipelineError::Numerals)?;
     let runs = segment_text(&with_numerals);
 
     let mut parts: Vec<String> = Vec::new();
@@ -479,7 +525,7 @@ pub fn phonemize_zh(
     tone_rules: ToneRules,
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
-    let with_numerals = tn::normalize(text, tn::Lang::Zh, engine);
+    let with_numerals = read_numerals(text, tn::Lang::Zh, engine)?;
     // The fold is *here* and not in `full_to_half`, and the order is what decides
     // it: `map_punctuation` turns `，` into `. ` and `。` into `. ` because that is
     // the pause Kokoro should give them, and the wetext fold would turn both into

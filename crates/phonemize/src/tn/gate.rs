@@ -155,6 +155,34 @@ pub fn needs_normalization(text: &str) -> bool {
         || text.chars().any(step_rewrites_a_full_width_form)
 }
 
+/// Whether a character in `text` has no reading at all without the engine.
+///
+/// [`needs_normalization`] answers "is it worth asking the engine?" and is
+/// deliberately eager — a shape it misses costs a reading. This answers a
+/// different question: "does a character here leave the IPA unsaid if the engine
+/// does not read it?" — and it is deliberately narrow, because it is what English
+/// *refuses* a sentence over (`tn::NoReader`, `pipeline::PipelineError::Numerals`).
+///
+/// Three of the gate's seven criteria are about characters with no pronunciation
+/// of their own: a digit (no dictionary has one), a symbol the grammar maps to a
+/// word (`%`, `$`, `°` — dropped rather than read), and a full-width form, which
+/// is not classified as a letter at all and so is dropped whole (`Ｈｅｌｌｏ` was
+/// silence before the fold). The other four are about *readings* of ordinary
+/// letters — a contraction, a capital run, an abbreviation — and English without
+/// the engine has always read those, worse but audibly. That line is the whole
+/// reason this is not spelled `!needs_normalization(...)`.
+///
+/// They disagree in both directions, which is the point:
+/// `Hello world. This is a sentence.` fires the gate (the abbreviation rule is
+/// allowed to guess wrong) and loses nothing with no engine, so it phonemizes
+/// unprepared; `I have 3 cats` fires both, because the 3 would be read by nothing
+/// else.
+pub fn drops_without_engine(text: &str) -> bool {
+    text.bytes().any(|byte| byte.is_ascii_digit())
+        || text.chars().any(is_normalized_symbol)
+        || text.chars().any(step_rewrites_a_full_width_form)
+}
+
 /// An apostrophe the `fix_contractions` step will expand.
 ///
 /// Not a shape to be recognised but a fact about the shipped tables: they are

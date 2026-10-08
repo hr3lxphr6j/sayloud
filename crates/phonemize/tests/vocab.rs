@@ -223,7 +223,11 @@ fn the_english_pipeline_passes_both_vocabularies() {
         for text in [
             "never",
             "hello world",
-            "I have 3 cats",
+            // Spelled out: nothing is prepared in this test, and English without
+            // the engine refuses a sentence with a digit in it rather than reading
+            // it (`pipeline::phonemize_en`). The words are what the engine would
+            // have produced, so the phoneme coverage is the same.
+            "I have three cats",
             "The letter was better",
         ] {
             let result = Phonemizer::new()

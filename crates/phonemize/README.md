@@ -17,7 +17,7 @@ top that belong to no stage:
 
 | | |
 |---|---|
-| `src/tn/` | text normalization: text in, text out. The vendored WeText engine (`wetext/`), the English gate in front of it (`gate.rs`), the wiring that builds one per language (`engine.rs`), and the hand-written readers (`readers/`) that stand in for a caller that never called `prepare`. `mod.rs` is `normalize(text, Lang, engine)`. |
+| `src/tn/` | text normalization: text in, text out. The vendored WeText engine (`wetext/`), the English gate in front of it (`gate.rs`), the wiring that builds one per language (`engine.rs`), and the hand-written readers (`readers/`) that stand in for a caller that never called `prepare` — `zh` and `ja`; **English has none** and declines a sentence it cannot read. `mod.rs` is `normalize(text, Lang, engine) -> Result<_, NoReader>`. |
 | `src/g2p/` | grapheme to phoneme, one directory per language: `ja/` (lindera, the kana table), `zh/` (jieba, readings, the tone rules, the Chinese punctuation rules), `en/` (the CMU dictionary and the NRL 7948 rules). |
 | `src/pipeline.rs` | the orchestration: one function per language, `ToneRules`, and the error and warning types they return. |
 | `src/lib.rs`, `dictionary.rs`, `vocab.rs`, `text.rs`, `kana.rs`, `types.rs` | the wasm boundary, the dictionary protocol, the vocabulary gate, and the shared text and kana primitives. |
@@ -32,7 +32,7 @@ which reader stands in for it and whether the gate looks first.
 |---|---|---|
 | Chinese (`zh-CN`) | **traditional→simplified** → **WeText numerals** (fallback: `numbers_to_han`) → punctuation map → **full-width fold** → jieba word boundaries → pinyin → **tone sandhi and erhua** → IPA (or zhuyin, for v1.1-zh) | `jieba-zh-dict.bin.zst`, 1.63 MB, plus `wetext-zh-tn-{tagger,verbalizer}.bin.zst`, 160 KB, and `wetext-zh-tn-traditional-to-simple.bin.zst`, 25 KB, all fetched on `prepare` |
 | Japanese (`ja-JP`) | punctuation map → **full-width fold** → **WeText numerals** (fallback: `numbers_to_kanji`) → lindera IPADic → katakana → IPA table | `lindera-ipadic-ja.bin.zst`, 8.51 MB, plus `wetext-ja-tn-{tagger,verbalizer}.bin.zst`, 63 KB, and the shared `wetext-tn-full-to-half.bin.zst`, 956 B, all fetched on `prepare` |
-| English (`en-US`) | **contractions** → punctuation map → **full-width fold** → **WeText numerals** (fallback: `numbers_to_english`) → CMU Dict → **NRL 7948 letter-to-sound rules** for a word it lacks → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, plus the shared `wetext-tn-full-to-half.bin.zst`, 956 B, both fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in, and the rules 17 KB more |
+| English (`en-US`) | **contractions** → punctuation map → **full-width fold** → **WeText numerals** (no fallback: a sentence with a digit, a symbol or a full-width form in it is refused without the engine — see below) → CMU Dict → **NRL 7948 letter-to-sound rules** for a word it lacks → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, plus the shared `wetext-tn-full-to-half.bin.zst`, 956 B, both fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in, and the rules 17 KB more |
 
 **All three languages now reach the model the same way.** The
 Kokoro engine used to send English to `kokoro-js`'s own `generate(text)`, which
@@ -82,7 +82,7 @@ up. English's contraction tables are also the one part of this stage that is not
 Apache-2.0 — they are the Python `contractions` package's, MIT — so they carry
 their own notice beside them, `src/tn/wetext/data/contractions-NOTICE.txt`.
 It was also measurably **worse at a bare integer** — `123` came
-out `one two three` where `num2words` says `one hundred twenty three` — and that
+out `one two three` where the reader it replaced says `one hundred twenty three` — and that
 was written up as the grammar having several equal-cost readings for one. It was
 not: the grammar's cheapest reading of `123` is `one hundred and twenty three`,
 and the copy's path extraction, `rustfst::shortest_path`, was returning a path
@@ -90,9 +90,22 @@ and the copy's path extraction, `rustfst::shortest_path`, was returning a path
 weights that it does not handle. The copy now computes the minimum itself (see
 `src/tn/wetext/text_normalizer.rs`). `1000` still reads
 `ten hundred`, which is the grammar's own tie and not the extraction's. Both
-halves are pinned by tests and written up in that module's `README.md`; the
-hand-written reader is still there as the fallback for a caller that never called
-`prepare`.
+halves are pinned by tests and written up in that module's `README.md`.
+
+**English's hand-written reader is gone** (2026-10-08), and that is the one place
+this stage got *smaller*. It was `num2words`, a crate reading the same cardinals
+the engine reads and a worse remainder, and it cost 60 KB of the release wasm —
+measured by building the module with it and without it, 6,102,605 B →
+6,041,188 B. What remains of the fallback story for English is the rule, in
+`src/tn/mod.rs`: a numeral is read by the engine or the sentence is *declined*,
+never read with the digit missing. A caller that never called `prepare` therefore
+gets, for a sentence with something in it that only the engine can read — a digit,
+a symbol the grammar maps to a word, a full-width form — the same
+`dictionary-not-loaded` error Chinese and Japanese give for a missing dictionary.
+The line is narrower than the gate (`src/tn/gate.rs::drops_without_engine`): a
+contraction, a capital run or an abbreviation is read *worse* without the engine,
+not skipped, and English still reads those unprepared, exactly as it did before
+the engine existed.
 
 A **gate** sits in front of that engine
 (`src/tn/gate.rs`), because 92% of its cost is the tagger FST and the
@@ -152,7 +165,7 @@ document). The three places this port deliberately answers differently are in it
 The same WeText engine is wired up for **Chinese and Japanese numerals**
 (`src/tn/engine.rs`), so all three languages read a year as a year, a
 clock time as a clock time and a phone number digit by digit rather than through
-three hand-written readers that each only ever matched a digit. It is the
+the hand-written readers, which only ever matched a digit. It is the
 smallest of these steps — **+1,459 B** of wasm, because the FST engine is shared
 with English, against 223 KB of fetched grammars for both languages combined
 — and the only one that had to change the vendored copy: `should_normalize`
@@ -169,11 +182,13 @@ is the `Nd` characters no fold touches — measured to be passed through unchang
 these grammars, and pinned so that "the digit test is now redundant" cannot quietly
 become "the digit test may be removed".)
 
-The three hand-written readers stayed, as `Option<&Normalizer>`'s `None`: the
+The Chinese and Japanese readers stayed, as `Option<&Normalizer>`'s `None`: the
 same argument as `ToneRules`, and the same reason the JavaScript parity corpus is
-still a test of anything. What the two CJK readers cost and buy is pinned in
+still a test of anything. What the two cost and buy is pinned in
 `src/tn/engine.rs`, `tests/wetext_zh.rs` and `tests/wetext_ja.rs` —
-including the two readings this made *worse* (`０１２３` and a lone `０`).
+including the two readings this made *worse* (`０１２３` and a lone `０`). English's
+did not stay: it was the third reader, it read what the engine reads, and it is
+accounted for above.
 
 ## Two rules the rest of the crate is shaped by
 

@@ -337,7 +337,8 @@ fn the_english_thousand_fix_does_not_reach_chinese() {
     ] {
         let engine = read(&tn, input);
         saw_the_trigger |= engine.contains("thousand");
-        let stepped = phonemize::tn::normalize(input, phonemize::tn::Lang::Zh, Some(&tn));
+        let stepped = phonemize::tn::normalize(input, phonemize::tn::Lang::Zh, Some(&tn))
+            .expect("zh has a hand-written reader");
         assert_eq!(
             stepped.as_ref(),
             engine.as_str(),

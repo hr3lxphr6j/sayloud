@@ -1,18 +1,26 @@
-//! The English pipeline, end to end.
+//! The English pipeline, end to end, with nothing prepared.
 //!
 //! No dictionary fixture and no `prepare`: the CMU dictionary is compiled into
 //! the module, so unlike `ja_pipeline.rs` these tests run everywhere and on the
 //! first call.
 //!
-//! The number cases are the numeral step's. The CMU dictionary is a dictionary
-//! and not a rule engine, so a digit has no pronunciation to find and
-//! was skipped rather than read — measured before `numbers_to_english` ran,
-//! `I have 3 cats` → `aɪ hæv kˈæts`, the 3 gone. Every sentence here is pinned to
-//! its exact phonemes because that is what makes the absence audible in a diff.
+//! **What that costs is the numeral step.** The CMU dictionary is a dictionary
+//! and not a rule engine, so a digit has no pronunciation to find — and English
+//! has no hand-written reader any more (`tn::Lang::reader`; the note where the
+//! crate used to be declared is in `Cargo.toml`). So a sentence with a digit in it
+//! is refused rather than read with the digit missing, which is what
+//! [`the_numeral_step_refuses_what_it_cannot_read`] pins; the readings the engine
+//! gives those sentences are in `wetext_en.rs`, which does prepare.
+//!
+//! Everything else here is text the engine was never needed for: ordinary prose
+//! and the words the dictionary does not have. A sentence the engine *would* have
+//! read differently — a contraction, a capital run, an abbreviation — is read the
+//! older way rather than refused (`tn::gate::drops_without_engine`), and
+//! `splits_a_contraction_because_the_segmenter_does` is that boundary.
 //!
 //! **The rule path changes nothing for a word in CMU Dict**, which is worth
-//! stating rather than leaving to a diff: every word in the seven sentences at the
-//! top is in the dictionary, so none of them reaches the rules. A word the
+//! stating rather than leaving to a diff: every word in the sentences at the top
+//! is in the dictionary, so none of them reaches the rules. A word the
 //! dictionary does not have is where the rules answer, and there was no such word
 //! in this file to move — the OOV cases below are new tests, not moved
 //! expectations. The one expectation in the tree that did move is in
@@ -45,46 +53,51 @@ fn plain_sentence() {
 }
 
 #[test]
-fn sentence_with_number() {
-    // The regression the numeral step closes. A digit is an `other` run, so
-    // `keep_punctuation` dropped it; it has to become a word before the text is
-    // segmented for the dictionary to have anything to look up.
-    let ipa = phonemize("I have 3 cats");
-
-    // "three" is /θɹˈiː/ — the θ is the part that cannot come from anything else
-    // in the sentence, so it is the cheap check that the 3 was read.
-    assert!(
-        ipa.contains('θ'),
-        "3 should phonemize as 'three' (θ): {ipa}"
-    );
-    assert_eq!(ipa, "aɪ hæv θɹˈiː kˈæts");
+fn the_numeral_step_refuses_what_it_cannot_read() {
+    // The boundary the removal of the numeral reader drew, and the reason it is a
+    // refusal rather than a reading: without an engine, `I have 3 cats` used to
+    // come out `aɪ hæv kˈæts` — the 3 gone from the IPA without a word said about
+    // it. Silence about a character is worse than an error about a sentence, so
+    // the step declines instead.
+    //
+    // `prepare` is what fixes it, and it is the *same* failure the other two
+    // languages raise for a missing dictionary: `NotPrepared`, code
+    // `dictionary-not-loaded` (`lib.rs` maps it there).
+    let phonemizer = Phonemizer::new();
+    for text in [
+        // A digit: no dictionary has a pronunciation for it.
+        "I have 3 cats",
+        "The year 2024",
+        "3.14 is pi",
+        // A symbol the grammar maps to a word, with no digit to carry it.
+        "It costs $",
+        // A full-width form: not classified as a letter at all, so the whole run
+        // is dropped — `Ｈｅｌｌｏ world` lost `Ｈｅｌｌｏ`.
+        "Ｈｅｌｌｏ world",
+    ] {
+        let error = phonemizer
+            .phonemize_with(text, &options())
+            .expect_err("the numeral step has no reader to fall back to");
+        let message = error.to_string();
+        assert!(
+            message.contains("dictionary-not-loaded"),
+            "{text:?} should be refused as a missing dictionary, got {message:?}"
+        );
+    }
 }
 
 #[test]
-fn sentence_with_large_number() {
-    // Thousands are where the numeral reader stops being a digit table: the word
-    // "thousand" is not a digit name, and neither is the "and" 2024 gains.
-    assert_eq!(
-        phonemize("There are 1000 ways"),
-        "ðˈɛɹ ɑːɹ wˈʌn θˈaʊzənd wˈeɪz"
-    );
-
-    assert_eq!(
-        phonemize("The year 2024"),
-        "ðə jˈɪɹ tˈuː θˈaʊzənd ənd twˈɛntiːfˈɔːɹ"
-    );
-    // The hyphen in `num2words`' "twenty-four" is not in Kokoro's vocabulary, so
-    // `keep_punctuation` drops it and the two words run together — which is what
-    // the tokenizer has always done with it, since it would have deleted the
-    // character itself. Reading it as a word boundary instead would be a change
-    // to what the model hears.
-}
-
-#[test]
-fn sentence_with_decimal() {
-    // A fraction is read digit by digit — "one four", not "fourteen" — which is
-    // decided by the point and not by the length of the fraction.
-    assert_eq!(phonemize("3.14 is pi"), "θɹˈiː pˈɔɪnt wˈʌn fˈɔːɹ ɪz pˈaɪ");
+fn a_reading_with_no_engine_is_still_a_reading() {
+    // The other side of that boundary: a contraction, a capital run and an
+    // abbreviation all *read* without an engine — worse than the engine reads
+    // them, and that is what an unprepared caller has always had — so they are not
+    // refused with it. `tn::gate::drops_without_engine` is the line, and this is
+    // the behaviour it is drawn for: `We'll` comes out as `We` `L` `L` here
+    // (`wiːˈɛl ˈɛl ɡˈoʊ`) where the engine says `wiː wɪl ɡˈoʊ`, and `HTTP` is
+    // spelled either way.
+    assert_eq!(phonemize("We'll go"), "wiːˈɛl ˈɛl ɡˈoʊ");
+    assert_eq!(phonemize("HTTP"), "ˈeɪtʃ tˈiː tˈiː pˈiː");
+    assert_eq!(phonemize("Mon"), "mˈoʊn");
 }
 
 #[test]

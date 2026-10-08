@@ -312,17 +312,47 @@ describe('RustPhonemizer.prepare', () => {
     expect(fetch.calls).toEqual(WETEXT_EN_URLS);
   });
 
-  it('still phonemizes English with no dictionary at all', async () => {
-    // The property the fallback exists to keep. English is the
-    // language `prepare` had nothing to do for, so a caller that never called it
-    // is not an error: the hand-written numeral reader is still compiled in, and
-    // the pipeline falls back to it rather than refusing or losing the digits.
+  it('refuses an English sentence whose numerals need grammars it never fetched', async () => {
+    // What an unprepared caller gets now. English's phonemes need no dictionary —
+    // the CMU dictionary is compiled in — but its *numerals* come from the
+    // vendored WeText grammars, and there is no hand-written reader behind them
+    // any more (`crates/phonemize/Cargo.toml`). A sentence with a digit in it is
+    // refused rather than read with the digit missing (`I have 3 cats` used to
+    // phonemize as `aɪ hæv kˈæts`), and `prepare` is what fixes it: the same
+    // failure, and the same code, that Chinese and Japanese give for a dictionary
+    // that was never loaded.
+    const phonemizer = new RustPhonemizer({ wasm: WASM });
+    await phonemizer.ready;
+
+    const error = (() => {
+      try {
+        return phonemizer.phonemize('I have 3 cats', {
+          vocab: 'kokoro-v1',
+          lang: 'en-US',
+        });
+      } catch (thrown: unknown) {
+        return thrown;
+      }
+    })() as Error & { code?: string };
+
+    expect(error).toBeInstanceOf(Error);
+    // The code, not the message: the message is free to change and the wrapper
+    // switches on this (`phonemizeErrorCode`).
+    expect(error.code).toBe('dictionary-not-loaded');
+    expect(error.message).toContain('en-US');
+  });
+
+  it('still phonemizes English with no dictionary when the sentence has nothing for the engine', async () => {
+    // The other half of that boundary: prose has no digit, symbol or full-width
+    // form in it, so the numeral step is skipped and there is nothing to refuse.
+    // English stays the one language whose phonemes are readable with nothing on
+    // disk at all, which is why `prepare` is not a precondition for it.
     const phonemizer = new RustPhonemizer({ wasm: WASM });
     await phonemizer.ready;
 
     expect(
-      phonemizer.phonemize('I have 3 cats', { vocab: 'kokoro-v1', lang: 'en-US' }).phonemes
-    ).toBe('aɪ hæv θɹˈiː kˈæts');
+      phonemizer.phonemize('hello world', { vocab: 'kokoro-v1', lang: 'en-US' }).phonemes
+    ).toBe('həlˈoʊ wˈɜːld');
   });
 
   it('rejects a language the vocabulary cannot speak', async () => {

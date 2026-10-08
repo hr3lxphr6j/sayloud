@@ -128,7 +128,7 @@ fn reads_the_entity_classes_the_hand_written_reader_could_not() {
         // Percent — the `%` used to be dropped, which is a silent omission
         // rather than a wrong reading.
         ("50%", "fifty percent"),
-        // Ordinals — `num2words` produced an "onest".
+        // Ordinals — the reader this replaced produced an "onest".
         ("1st", "first"),
         ("2nd", "second"),
         ("3rd", "third"),
@@ -366,7 +366,7 @@ fn the_pipeline_reads_numerals_through_the_engine() {
         ("3:30pm", "θɹˈiː θˈɜːdiː pˈiː ˈɛm"),
         // "fifty percent" — the word the old reader dropped.
         ("50%", "fˈɪftiː pɚsˈɛnt"),
-        // "first" — the old reader's num2words said "onest".
+        // "first" — the removed reader said "onest" here.
         ("1st", "fˈɜːst"),
         // "two thousand"
         ("2,000", "tˈuː θˈaʊzənd"),
@@ -437,42 +437,69 @@ fn the_pipeline_expands_contractions_and_folds_full_width() {
     }
 }
 
-/// English still phonemizes with no dictionary at all, which is the property
-/// the fallback exists to keep.
+/// What an unprepared caller gets now: a reading where there is one, an error
+/// where there is not.
 ///
-/// The engine is a `prepare`-time dependency, and English is the one language
-/// whose phonemes are not — the CMU dictionary and the hand-written numeral
-/// reader are both compiled in. So a caller that never called `prepare` gets the
-/// older reading rather than an error or a sentence with its digits missing.
-/// `README.md` in this crate explains why that is deliberate.
+/// The reader this replaced (`num2words`) is gone — see `Cargo.toml` — so English
+/// without the engine has nothing to read a *character* with, and the two halves of
+/// that are worth pinning together because the boundary between them is the whole
+/// design:
+///
+/// - **A character with no reading of its own is refused.** A digit, a symbol the
+///   grammar maps to a word, a full-width form. Reading the sentence anyway is what
+///   this pipeline used to do — `I have 3 cats` → `aɪ hæv kˈæts`, the 3 gone — and
+///   it is the failure the numeral step exists to prevent. `prepare` is the fix,
+///   so the error is `NotPrepared` and not a pipeline failure.
+/// - **A worse reading of ordinary letters is still a reading.** `We'll` was
+///   `We` `L` `L` and is again: the contraction tables live in the engine, so an
+///   unprepared caller gets the old phonemes rather than an error — the same
+///   trade `ToneRules::Off` makes for Chinese, and the reason the engine can be
+///   removed from a pipeline without changing what that pipeline is.
+///
+/// Everything in the second half is deliberately *not* in the first: see
+/// `tn::gate::drops_without_engine` for where the line is and why it is not just
+/// `needs_normalization`.
 #[test]
-fn an_unprepared_english_pipeline_falls_back_rather_than_failing() {
+fn an_unprepared_english_pipeline_refuses_what_has_no_reading_and_reads_the_rest() {
     let phonemizer = Phonemizer::new();
 
-    // `num2words`, not the engine — and the two agree on the cardinal here, so
-    // what is left to see is the `and`. The engine says `one hundred and twenty
-    // three` (the phrase asserted in
-    // `the_cheapest_reading_of_a_bare_integer_is_the_cardinal_one`) where
-    // `num2words` says `one hundred twenty three`.
+    for text in [
+        // A digit.
+        "I have 3 cats",
+        // The classes the engine exists for, where the old reader dropped the
+        // character rather than mispronouncing it.
+        "50%",
+        "1st",
+        "Ｈｅｌｌｏ world",
+    ] {
+        let error = phonemizer
+            .phonemize_with(text, &english_options())
+            .expect_err("no reader is left to fall back to");
+        assert!(
+            error.to_string().contains("dictionary-not-loaded"),
+            "{text:?} should be refused as a missing dictionary, got {error}"
+        );
+    }
+
     for (text, expected) in [
-        ("I have 3 cats", "aɪ hæv θɹˈiː kˈæts"),
-        ("123", "wˈʌn hˈʌndɹəd twˈɛntiːθɹˈiː"),
-        // And the cases the engine exists for are read the old — wrong — way,
-        // which is the cost of not preparing. `%` is dropped, `1st` is "onest".
-        ("50%", "fˈɪftiː"),
-        ("1st", "ˈɑnəst"),
-        // Contractions and full-width text are the same story, and it is worth
-        // pinning because they do not *fail*: `We'll` comes out as `We` `L` `L`
-        // (the two steps live in the engine, so an unprepared caller gets neither)
-        // and `Ｈｅｌｌｏ world` loses the word it starts with.
+        // "we will go" is what the engine says; without one the apostrophe is not
+        // a letter, so `We'll` splits into `We` + `Ll`-as-letters.
+        ("We'll go", "wiːˈɛl ˈɛl ɡˈoʊ"),
         ("We’ll go", "wiːˈɛl ˈɛl ɡˈoʊ"),
-        ("Ｈｅｌｌｏ world", "wˈɜːld"),
+        // A capital run: the letters are the reading the engine may improve on,
+        // and the unprepared pipeline has always spelled them.
+        ("HTTP", "ˈeɪtʃ tˈiː tˈiː pˈiː"),
+        // A shape-less abbreviation the engine expands (`Mon` → `Monday`).
+        ("Mon", "mˈoʊn"),
+        // And prose with nothing for the engine in it is untouched: the gate skips
+        // it and the numeral step hands it back as it is.
+        ("hello world", "həlˈoʊ wˈɜːld"),
     ] {
         let ipa = phonemizer
             .phonemize_with(text, &english_options())
-            .expect("phonemizes without a dictionary")
+            .expect("nothing here needs the engine to be read")
             .phonemes;
-        assert_eq!(ipa, expected, "phonemizing {text:?}");
+        assert_eq!(ipa, expected, "phonemizing {text:?} unprepared");
     }
 }
 

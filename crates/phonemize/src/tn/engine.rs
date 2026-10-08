@@ -38,12 +38,19 @@
 //! # Why this is optional everywhere
 //!
 //! Every pipeline takes an `Option<&Normalizer>` and falls back to a hand-written
-//! numeral reader when it is `None`: [`numbers_to_english`](crate::tn::numbers_to_english)
-//! for English, [`numbers_to_kanji`](crate::tn::numbers_to_kanji)
-//! for Japanese, [`numbers_to_han`](crate::tn::numbers_to_han)
-//! for Chinese. The FSTs are still declared as required dictionaries, so a caller
-//! that goes through `prepare` gets them or gets an error; the fallback exists for
-//! the caller that did not, and for a build whose assets were not fetched.
+//! numeral reader when it is `None` — [`numbers_to_kanji`](crate::tn::numbers_to_kanji)
+//! for Japanese, [`numbers_to_han`](crate::tn::numbers_to_han) for Chinese. The FSTs
+//! are still declared as required dictionaries, so a caller that goes through
+//! `prepare` gets them or gets an error; the fallback exists for the caller that
+//! did not, and for a build whose assets were not fetched.
+//!
+//! **English is the exception, and it is the one that shows what the fallbacks are
+//! for.** It had a reader of its own — `num2words`, a crate, 60 KB of the release
+//! wasm — and it was removed, because it read the same numerals this engine reads
+//! and a worse remainder. So English has one rule instead of two readers:
+//! a numeral is read by the engine or the sentence is declined
+//! ([`NoReader`](crate::tn::NoReader)), which is a failure rather than a sentence
+//! read with the digits missing.
 //!
 //! That is not a hedge. The three readers are what the pipelines did before this
 //! engine arrived, they are pinned by tests of their own, and the JavaScript
@@ -127,8 +134,10 @@ const TRADITIONAL_TO_SIMPLE: &str = "traditional_to_simple.fst";
 /// which switches are on and why each of the others is off. Every FST a
 /// configuration *will* ask for has to be here, because
 /// [`Normalizer::from_bytes`] reports a missing one only when a sentence reaches
-/// it, and a sentence that reaches it is a sentence whose normalizer falls back
-/// to the hand-written reader: a silent wrong answer rather than a failure.
+/// it — and what happens to that sentence depends on the language. Chinese and
+/// Japanese fall back to their hand-written reader, a silently worse answer rather
+/// than a failure; English has none to fall back to, so it fails
+/// ([`crate::tn::NoReader`]).
 fn build<'a>(
     language: Language,
     config: NormalizerConfig,

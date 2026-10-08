@@ -53,6 +53,19 @@ jobs:
             echo "::error::the built manifest says $built while package.json says $version"
             exit 1
           fi
+      # The tag's own object, because `actions/checkout` does not fetch it.
+      #
+      # With `fetch-tags: false` and a SHA refspec — `+<sha>:refs/tags/$TAG`, which
+      # is what lets `--depth: 1` work — the local `refs/tags/$TAG` points at the
+      # *commit*, so the tag is lightweight here and `gh release create
+      # --notes-from-tag` falls back to the commit message. v0.6.0 is the release
+      # that went out with `chore(release): 0.6.0` as its body for exactly this
+      # reason: the notes are written in the annotation, and the annotation was
+      # never fetched. Reproduced locally against this repository — after
+      # `+<sha>:refs/tags/v0.6.0` alone, `git cat-file -t v0.6.0` says `commit` and
+      # `git tag -l --format='%(contents)'` prints the commit message; after this
+      # line it says `tag` and prints the notes.
+      - run: git fetch --force origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
       - name: Publish the release with the zip
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,7 +73,8 @@ jobs:
         # assembled from pull requests, and there are none here — every commit goes
         # straight to `main` — so the first release went out with a body of one
         # "Full Changelog" link. The tag message is where a release is described,
-        # and by this point it is already written.
+        # and by this point it is already written. It is the step above that makes
+        # the flag mean the annotation and not the commit message.
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \

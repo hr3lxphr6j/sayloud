@@ -55,7 +55,7 @@ fn assert_reads(table: &[(&str, &str)]) {
 
 /// The classes the hand-written reader cannot read, one per class.
 ///
-/// This is what the engine is here for. `numbers_to_han` reads four digit shapes
+/// This is what the engine is here for. The deleted reader read four digit shapes
 /// and nothing else — no date, no clock time, no money, no fraction, no unit — so
 /// each row below is a reading the hand-written reader never produced. Compare
 /// `tests/zh_pipeline.rs`'s tables for what each one does to the phonemes.
@@ -87,7 +87,7 @@ fn reads_the_entity_classes_the_hand_written_reader_could_not() {
 /// A grouped number, which is the one class where the old reader and the new one
 /// are both wrong and the grammar is only differently wrong.
 ///
-/// `numbers_to_han` stops at a thousands separator because a comma is *also* a
+/// The deleted reader stopped at a thousands separator because a comma is *also* a
 /// sentence pause and cannot be removed globally, so a bare `1,234` loses its
 /// leading digit. The tagger fragments it too, for a different reason. What the
 /// grammar adds is the *measure* case: given something to count, it reads the
@@ -146,7 +146,7 @@ fn reads_full_width_text_the_way_the_reference_does() {
         ("１２３", "一百二十三"),
         // The cost of the fix, and of using the reference's grammar at all: the
         // tagger splits a zero-padded number rather than stripping the pad, so
-        // this reads 零一百二十三 where `numbers_to_han` said 一百二十三.
+        // this reads 零一百二十三 where the deleted reader said 一百二十三.
         ("０１２３", "零一百二十三"),
         // A full-width decimal point: the digits on both sides are one number and
         // the mark is what the tagger read, not a full stop — which is exactly why
@@ -257,7 +257,7 @@ fn the_phonemes_of_a_traditional_word_are_the_phonemes_of_its_simplified_form() 
 /// regexes and finds the `2.3%` that the first rule had already walked past,
 /// giving 一点二.百分之三; this copy composes the whole string with the tagger,
 /// which fragments it at the first dot and gives 一.百分之二点三 — which is what
-/// `numbers_to_han` gives for the same input, so wiring the engine did not change
+/// the deleted reader gives for the same input, so wiring the engine did not change
 /// the reading of this input at all. Pinned so a grammar bump surfaces here
 /// rather than in a corpus.
 #[test]

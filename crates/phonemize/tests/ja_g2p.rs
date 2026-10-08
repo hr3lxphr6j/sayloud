@@ -15,7 +15,6 @@ use phonemize::text::{
     collapse_whitespace, keep_punctuation, normalize_punctuation, segment_text, to_half_width,
     ScriptRun,
 };
-use phonemize::tn::{int_to_kanji, numbers_to_kanji};
 use phonemize::vocab::{validate_phonemes, Vocab};
 
 // ---------------------------------------------------------------- the table
@@ -214,70 +213,12 @@ fn kanji_predicate_stops_where_kuroshiro_stops() {
     assert!(is_kanji('\u{3400}'));
 }
 
-// ----------------------------------------------------------------- numerals
-
-#[test]
-fn reads_integers_as_japanese_numerals() {
-    assert_eq!(int_to_kanji("2022"), "二千二十二");
-    assert_eq!(int_to_kanji("7"), "七");
-    assert_eq!(int_to_kanji("300"), "三百");
-    // 十/百/千 drop a leading 一; 万/億/兆 keep theirs.
-    assert_eq!(int_to_kanji("1000"), "千");
-    assert_eq!(int_to_kanji("8000"), "八千");
-    assert_eq!(int_to_kanji("10000"), "一万");
-    // An empty group is skipped rather than written out.
-    assert_eq!(int_to_kanji("10001"), "一万一");
-    assert_eq!(int_to_kanji("0"), "零");
-    assert_eq!(int_to_kanji("000"), "零");
-    assert_eq!(int_to_kanji("007"), "七");
-}
-
-#[test]
-fn skips_an_empty_group_in_the_middle_of_a_number() {
-    // The case 10001 does not reach: there the empty groups are all above the
-    // highest non-empty one. These have a hole *between* two written groups, and
-    // writing the group unit anyway would turn 一億一 into 一億万一 — a wrong
-    // number that still reads as a number.
-    assert_eq!(int_to_kanji("100000001"), "一億一");
-    assert_eq!(int_to_kanji("100000000"), "一億");
-    assert_eq!(int_to_kanji("100010000"), "一億一万");
-    assert_eq!(int_to_kanji("1000000000001"), "一兆一");
-}
-
-#[test]
-fn reads_a_number_too_large_for_the_group_arithmetic_digit_by_digit() {
-    // Past fifteen digits the group arithmetic would lose digits, so both
-    // implementations read them one at a time. Not the natural reading of a huge
-    // numeral, but it is the number that was written.
-    assert_eq!(
-        int_to_kanji("1234567890123456"),
-        "一二三四五六七八九零一二三四五六"
-    );
-}
-
-#[test]
-fn reads_percentages_and_decimals() {
-    assert_eq!(numbers_to_kanji("15%"), "十五パーセント");
-    assert_eq!(numbers_to_kanji("15.6%"), "十五点六パーセント");
-    assert_eq!(numbers_to_kanji("15.6"), "十五点六");
-}
-
-#[test]
-fn leaves_a_point_that_is_not_a_decimal_point_alone() {
-    // `(\d+)\.(\d+)` needs a digit on both sides, so a trailing point stays.
-    assert_eq!(numbers_to_kanji("15."), "十五.");
-}
-
-#[test]
-fn reads_full_width_digits_the_same_as_half_width_ones() {
-    assert_eq!(numbers_to_kanji("２０２２年"), "二千二十二年");
-    assert_eq!(numbers_to_kanji("2022年"), "二千二十二年");
-}
-
 /// **The fold covers Latin too, and stops at the punctuation.**
 ///
-/// [`to_half_width`] is [`numbers_to_kanji`]'s first step, and the letters were
-/// added to it because `text::classify` accepts `A-Za-z` and nothing else: a
+/// [`to_half_width`] is a step of the Chinese pipeline, after its punctuation map
+/// (`pipeline::phonemize_zh`) — it used to be the Japanese numeral reader's first
+/// step as well, and the letters were added to it for that reader's sake:
+/// `text::classify` accepts `A-Za-z` and nothing else, so a
 /// full-width `Ａ` is `other`, `other` keeps punctuation, and the character
 /// disappears. The *punctuation* is out of range on purpose — it belongs to the
 /// punctuation maps, which rewrite `，` into a pause rather than into a comma.
@@ -293,14 +234,6 @@ fn folds_full_width_latin_but_not_punctuation() {
     assert_eq!(to_half_width("，。！｜～（）、"), "，。！｜～（）、");
     // And ASCII is left alone rather than double-folded.
     assert_eq!(to_half_width("abc123，"), "abc123，");
-}
-
-#[test]
-fn reads_the_numbers_out_of_a_sentence() {
-    assert_eq!(
-        numbers_to_kanji("資産３２億ドル、約４２００億円"),
-        "資産三十二億ドル、約四千二百億円"
-    );
 }
 
 // ------------------------------------------------------- numeral sound changes

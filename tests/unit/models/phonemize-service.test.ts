@@ -177,8 +177,8 @@ describe('PhonemizeService', () => {
     await service.prepare('kokoro-v1', 'en-US');
 
     expect(service.phonemize('hello world', 'kokoro-v1', 'en-US').phonemes).toBe('həlˈoʊ wˈɜːld');
-    // "fifty percent" — the word the hand-written reader dropped, and the
-    // reason the grammars are fetched at all.
+    // "fifty percent" — the word the deleted hand-written reader dropped, and
+    // the reason the grammars are fetched at all.
     expect(service.phonemize('50%', 'kokoro-v1', 'en-US').phonemes).toBe('fˈɪftiː pɚsˈɛnt');
   });
 
@@ -196,7 +196,7 @@ describe('PhonemizeService', () => {
     expect(service.phonemize('経営', 'kokoro-v1', 'ja-JP').phonemes).toBe('keiei');
 
     // And the numeral step the grammars are fetched for: `1/2` is 二分の一, which
-    // the hand-written reader read as the two cardinals いちに.
+    // the deleted hand-written reader read as the two cardinals いちに.
     expect(service.phonemize('1/2', 'kokoro-v1', 'ja-JP').phonemes).toBe('nibuɴnoiʨi');
   });
 
@@ -216,8 +216,8 @@ describe('PhonemizeService', () => {
     expect(service.phonemize('你好', 'kokoro-v1', 'zh-CN').phonemes).toBe('ni↗xau↓');
 
     // And the numeral step: a year read as a year. `2024年` is 二零二四年 —
-    // èr líng èr sì nián — where `numbers_to_han` read 2024 as a quantity and
-    // said 二千零二十四年. Pinned on the Rust side in `tests/wetext_zh.rs` and
+    // èr líng èr sì nián — where the deleted hand-written reader read 2024 as a
+    // quantity and said 二千零二十四年. Pinned on the Rust side in `tests/wetext_zh.rs` and
     // `tests/zh_pipeline.rs`; this says it survives the seam.
     expect(service.phonemize('2024年', 'kokoro-v1', 'zh-CN').phonemes).toBe('ɚ↘li↗ŋɚ↘ sɹ̩↘njɛ↗n');
   });

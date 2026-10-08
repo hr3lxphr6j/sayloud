@@ -37,20 +37,20 @@
 //!
 //! # Why this is optional everywhere
 //!
-//! Every pipeline takes an `Option<&Normalizer>` and falls back to a hand-written
-//! numeral reader when it is `None` — [`numbers_to_kanji`](crate::tn::numbers_to_kanji)
-//! for Japanese, [`numbers_to_han`](crate::tn::numbers_to_han) for Chinese. The FSTs
-//! are still declared as required dictionaries, so a caller that goes through
-//! `prepare` gets them or gets an error; the fallback exists for the caller that
-//! did not, and for a build whose assets were not fetched.
+//! Every pipeline takes an `Option<&Normalizer>`, and `None` is a real state: the
+//! caller that never called `prepare`, and the build whose assets did not arrive.
+//! The FSTs are declared as required dictionaries, so a caller that goes through
+//! `prepare` gets them or gets an error.
 //!
-//! **English is the exception, and it is the one that shows what the fallbacks are
-//! for.** It had a reader of its own — `num2words`, a crate, 60 KB of the release
-//! wasm — and it was removed, because it read the same numerals this engine reads
-//! and a worse remainder. So English has one rule instead of two readers:
-//! a numeral is read by the engine or the sentence is declined
-//! ([`NoReader`](crate::tn::NoReader)), which is a failure rather than a sentence
-//! read with the digits missing.
+//! **There is nothing behind the engine, and there used to be three things.** Each
+//! language had a hand-written numeral reader for exactly that state, and all three
+//! were deleted — English's (`num2words`, a crate, 60 KB of the release wasm) on
+//! 2026-10-08, Chinese's and Japanese's on 2026-10-09. A reader read the cardinals
+//! this engine reads and a worse remainder, so each was a second answer to a
+//! question that already had one; what is left is one rule, in
+//! [`crate::tn::normalize`]: a numeral is read by the engine or the sentence is
+//! declined ([`NoReader`](crate::tn::NoReader)), which is a failure rather than a
+//! sentence read with the digits missing.
 //!
 //! That is not a hedge. The three readers are what the pipelines did before this
 //! engine arrived, they are pinned by tests of their own, and the JavaScript
@@ -182,19 +182,18 @@ pub fn english(
 /// The Chinese normalizer: `2024年` → `二零二四年`, `下午3:30` → `下午三点三十分`.
 ///
 /// A *year* is read digit by digit here and a quantity is not, which is the one
-/// place this reading differs most visibly from
-/// [`numbers_to_han`](crate::tn::numbers_to_han): that reader
-/// has no context to tell them apart and reads `2024` as 二千零二十四 either way.
+/// place this reading differs most visibly from the deleted reader: it had no
+/// context to tell them apart and read `2024` as 二千零二十四 either way.
 /// The rest of what it buys is the same list for both languages — money
 /// (`$20.50` → 二十点五零美元, which the old pipeline read as 二十点五零 and
 /// dropped the sign from), fractions (`1/2` → 二分之一), clock times, and
-/// comma-grouped numbers (`1,234个` → 一千二百三十四个 where `numbers_to_han`
-/// stopped at the comma and said 一,二百三十四).
+/// comma-grouped numbers (`1,234个` → 一千二百三十四个 where the reader stopped at
+/// the comma and said 一,二百三十四).
 ///
-/// Measured on 44 probe inputs, 22 move and 5 of those are the corpus's. What it
-/// costs is one class recorded in `tests/wetext_zh.rs`: a zero-padded number is
-/// fragmented rather than stripped, so `０１２３` reads 零一百二十三 where the
-/// hand-written reader said 一百二十三. `tests/zh_pipeline.rs` has the two tables.
+/// Measured on 44 probe inputs, 22 move. What it costs is one class recorded in
+/// `tests/wetext_zh.rs`: a zero-padded number is fragmented rather than stripped,
+/// so `０１２３` reads 零一百二十三 where the reader said 一百二十三.
+/// `tests/zh_pipeline.rs` has the corpus samples it moves and what it moves them to.
 ///
 /// **`traditional_to_simple` is on, and it is the one switch whose absence is
 /// audible in ordinary text rather than at the edges.** pinyin-pro's polyphone
@@ -253,8 +252,8 @@ pub fn chinese(
 
 /// The Japanese normalizer: `1/2` → `二分の一`, `2.5km` → `二点五キロメートル`.
 ///
-/// **Not percentages.** [`numbers_to_kanji`](crate::tn::numbers_to_kanji)
-/// already reads `50%` as 五十パーセント; it is the comma-grouped numbers
+/// **Not percentages.** The deleted Japanese reader
+/// already read `50%` as 五十パーセント; it is the comma-grouped numbers
 /// (`1,234` → 千二百三十四, where the old reader said いち,にひゃくさんじゅうよん) and
 /// the unit-bearing ones (`2.5km` → 二点五キロメートル, where the old reader read the
 /// letters *K M* through the English dictionary) that this engine adds. Which is

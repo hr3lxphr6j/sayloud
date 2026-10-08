@@ -199,7 +199,10 @@ impl Legacy {
 /// corpus is compared against. `the_tone_rules_change_exactly_these_samples` then
 /// moves `1,234` a second time, because 两 is a syllable the tone rules can act on.
 const NUMERAL_READING_CHANGED: &[(&str, &str)] = &[
-    ("第 3 季度营收增长了 15.6%。", "ti↘ sa→nʨi↘tu↘ i↗ŋʂou→ ʦə→ŋꭧa↓ŋ lɤ pai↓fə→nꭧɻ\u{329}→ʂɻ\u{329}↗u↓ tjɛ↓nljou↘."),
+    (
+        "第 3 季度营收增长了 15.6%。",
+        "ti↘ sa→nʨi↘tu↘ i↗ŋʂou→ ʦə→ŋꭧa↓ŋ lɤ pai↓fə→nꭧɻ\u{329}→ʂɻ\u{329}↗u↓ tjɛ↓nljou↘.",
+    ),
     ("1.2.3", "i→.ɚ↘tjɛ↓n sa→n"),
     ("０１２３", "li↗ŋ i→pai↓ɚ↘ʂɻ\u{329}↗ sa→n"),
     ("２０２２年", "ɚ↘li↗ŋɚ↘ ɚ↘njɛ↗n"),

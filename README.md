@@ -99,18 +99,25 @@ and can be revoked anytime in Chrome's extension settings.
 
 ## Install
 
-SayLoud isn't on the Chrome Web Store yet. Build from source in two steps:
+SayLoud isn't on the Chrome Web Store yet. Install the packaged build:
 
-```bash
-pnpm install
-pnpm build
-```
+1. Open `chrome://extensions` and turn on **Developer mode**.
+2. Download `sayloud-<version>-chrome.zip` from the
+   [releases](https://github.com/hr3lxphr6j/sayloud/releases) page — it's under
+   **Assets** — and drag it onto that page. Chrome unpacks it and installs it as
+   an unpacked extension.
 
-Then open `chrome://extensions`, enable **Developer mode**, click **Load
-unpacked**, and select `.output/chrome-mv3`.
+If dragging the zip doesn't work, unzip it into a folder of its own and click
+**Load unpacked**, selecting that folder — the one with `manifest.json` in it. That
+folder has to stay where it is: Chrome loads the extension from it.
 
-**Requirements:** Node.js 22+, pnpm 9+, Rust toolchain, and `wasm-pack`
-(`cargo install wasm-pack`). The build compiles a small Rust module to WebAssembly.
+To update, download the newer zip and drop it again. This channel has no automatic
+updates, and because it is a Developer mode install Chrome keeps showing its
+Developer mode notice.
+
+To build from source instead — Node.js 22+, pnpm 9+, a Rust toolchain and
+`wasm-pack`, which compiles a small Rust module to WebAssembly — see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 Works with current Chrome. The caption window requires Chrome 116+; on older
 versions all other features work normally and the caption toggle explains the

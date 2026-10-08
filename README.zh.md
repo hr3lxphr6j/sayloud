@@ -64,16 +64,16 @@ SayLoud 没有后端服务器,不收集任何数据。浏览器内置语音和�
 
 ## 安装
 
-SayLoud 尚未上架 Chrome 应用商店。目前需要从源码构建,分两步:
+SayLoud 尚未上架 Chrome 应用商店。目前请安装打包好的版本:
 
-```bash
-pnpm install
-pnpm build
-```
+1. 打开 `chrome://extensions`,开启**开发者模式**。
+2. 在 [Releases 页面](https://github.com/hr3lxphr6j/sayloud/releases)的 **Assets** 里下载 `sayloud-<version>-chrome.zip`,把它拖到这个页面上 —— Chrome 会解开它并作为已解压的扩展安装。
 
-然后打开 `chrome://extensions`,开启**开发者模式**,点击**加载已解压的扩展程序**,选择 `.output/chrome-mv3`。
+如果拖放没反应,就把压缩包解压到一个单独的文件夹,点**加载已解压的扩展程序**,选择那个文件夹(里面有 `manifest.json` 的那个)。这个文件夹要留在原地:Chrome 是从它里面加载扩展的。
 
-**环境要求:** Node.js 22+、pnpm 9+、Rust 工具链,以及 `wasm-pack`(`cargo install wasm-pack`)。构建过程会将一小段 Rust 代码编译为 WebAssembly。
+更新时:下载新的 zip,再拖一次即可。这个渠道没有自动更新,而且它是开发者模式安装,所以 Chrome 会一直显示开发者模式的提示。
+
+想从源码构建(Node.js 22+、pnpm 9+、Rust 工具链,以及把一小段 Rust 代码编译为 WebAssembly 的 `wasm-pack`)见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 兼容当前版本的 Chrome。字幕窗口需要 Chrome 116 或更高版本;在旧版本上其他所有功能均正常工作,字幕开关会说明版本要求。
 

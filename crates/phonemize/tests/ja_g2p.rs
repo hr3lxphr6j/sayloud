@@ -12,7 +12,8 @@ use std::collections::HashSet;
 use phonemize::g2p::ja::{fix_numeral_sound_changes, kana_to_ipa, KATAKANA_TO_IPA};
 use phonemize::kana::{is_kanji, is_katakana, to_raw_katakana};
 use phonemize::text::{
-    collapse_whitespace, keep_punctuation, normalize_punctuation, segment_text, ScriptRun,
+    collapse_whitespace, keep_punctuation, normalize_punctuation, segment_text, to_half_width,
+    ScriptRun,
 };
 use phonemize::tn::{int_to_kanji, numbers_to_kanji};
 use phonemize::vocab::{validate_phonemes, Vocab};
@@ -271,6 +272,27 @@ fn leaves_a_point_that_is_not_a_decimal_point_alone() {
 fn reads_full_width_digits_the_same_as_half_width_ones() {
     assert_eq!(numbers_to_kanji("２０２２年"), "二千二十二年");
     assert_eq!(numbers_to_kanji("2022年"), "二千二十二年");
+}
+
+/// **The fold covers Latin too, and stops at the punctuation.**
+///
+/// [`to_half_width`] is [`numbers_to_kanji`]'s first step, and the letters were
+/// added to it because `text::classify` accepts `A-Za-z` and nothing else: a
+/// full-width `Ａ` is `other`, `other` keeps punctuation, and the character
+/// disappears. The *punctuation* is out of range on purpose — it belongs to the
+/// punctuation maps, which rewrite `，` into a pause rather than into a comma.
+/// That is why Chinese's pipeline can put this fold after its map and English's and
+/// Japanese's can leave it to the wetext FST; `crate::tn::engine::chinese` has the
+/// reasoning and `tests/zh_pipeline.rs` the end-to-end pin.
+#[test]
+fn folds_full_width_latin_but_not_punctuation() {
+    assert_eq!(to_half_width("ＡＢＣａｂｃＺ"), "ABCabcZ");
+    assert_eq!(to_half_width("１２３"), "123");
+    assert_eq!(to_half_width("ｈｅｌｌｏ 世界"), "hello 世界");
+    // Out of range: none of these changes, and the first two are the reason.
+    assert_eq!(to_half_width("，。！｜～（）、"), "，。！｜～（）、");
+    // And ASCII is left alone rather than double-folded.
+    assert_eq!(to_half_width("abc123，"), "abc123，");
 }
 
 #[test]

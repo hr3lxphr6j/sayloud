@@ -228,6 +228,24 @@ const CORPUS: &[(&str, &str)] = &[
         "He said OK and left.",
         "`OK`: a capital run with nothing behind it",
     ),
+    // ----------------------------------------------- the step around the tagger
+    //
+    // These are the only entries the *tagger* has nothing to say about. They are
+    // here because the normalizer would still change them — `full_to_half` folds
+    // them — and the gate's promise is about the normalizer. Each one failed the
+    // promise before that switch was turned on and its criterion added.
+    (
+        "ＡＢＣ is easy.",
+        "full-width Latin: `full_to_half` folds it, and `classify` drops it unfolded",
+    ),
+    (
+        "１２３ cats sat.",
+        "full-width digits, the shape that used to reach neither the gate nor the reader",
+    ),
+    (
+        "Ｈｅｌｌｏ world.",
+        "a whole full-width word, which phonemized to `wˈɜːld` alone",
+    ),
 ];
 
 /// The tagger's output, as the class name of each token it produced.
@@ -276,10 +294,11 @@ fn tagger_classes(tagged: &str) -> Vec<&str> {
 /// The parse is 247 ms in a debug native test, so this is per test rather than
 /// shared — and there are only a handful of tests here.
 fn engine() -> Option<(FstTextNormalizer, Normalizer)> {
-    let (tagger, verbalizer) = common::wetext_fsts(common::WETEXT_EN_NAMES)?;
+    let fsts = common::wetext_fsts(common::WETEXT_EN_NAMES)?;
+    let (tagger, verbalizer, full_to_half) = (&fsts[0], &fsts[1], &fsts[2]);
     Some((
-        FstTextNormalizer::from_bytes(&tagger).expect("the tagger parses"),
-        tn::english(&tagger, &verbalizer).expect("both grammars parse"),
+        FstTextNormalizer::from_bytes(tagger).expect("the tagger parses"),
+        tn::english(tagger, verbalizer, full_to_half).expect("the FSTs parse"),
     ))
 }
 

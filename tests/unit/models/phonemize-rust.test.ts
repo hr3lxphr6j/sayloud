@@ -159,8 +159,10 @@ const WETEXT = [
   'wetext-en-tn-verbalizer',
   'wetext-zh-tn-tagger',
   'wetext-zh-tn-verbalizer',
+  'wetext-zh-tn-traditional-to-simple',
   'wetext-ja-tn-tagger',
   'wetext-ja-tn-verbalizer',
+  'wetext-tn-full-to-half',
 ] as const;
 
 /** Where the wrapper looks for one grammar. */
@@ -168,17 +170,34 @@ function dictionaryUrl(name: string): string {
   return `/dictionaries/${name}.bin.zst`;
 }
 
-/** The English pair, in the order the wasm asks for them. */
-const WETEXT_EN = WETEXT.filter((name) => name.includes('-en-'));
+/**
+ * Each language's FSTs, in the order the wasm asks for them.
+ *
+ * Spelled out rather than filtered out of `WETEXT` by language: the shared
+ * full-width preprocessor carries no language in its name, and it is declared by
+ * English and Japanese only — Chinese's fold is the pipeline's, because its
+ * numeral step runs before its punctuation map (see
+ * `crates/phonemize/src/tn/engine.rs`).
+ */
+const WETEXT_EN_URLS = [
+  'wetext-en-tn-tagger',
+  'wetext-en-tn-verbalizer',
+  'wetext-tn-full-to-half',
+].map(dictionaryUrl);
 
-/** Where the wrapper looks for each of the English grammars. */
-const WETEXT_EN_URLS = WETEXT_EN.map(dictionaryUrl);
+/** The Japanese three. */
+const WETEXT_JA_URLS = [
+  'wetext-ja-tn-tagger',
+  'wetext-ja-tn-verbalizer',
+  'wetext-tn-full-to-half',
+].map(dictionaryUrl);
 
-/** The Japanese pair. */
-const WETEXT_JA_URLS = WETEXT.filter((name) => name.includes('-ja-')).map(dictionaryUrl);
-
-/** The Chinese pair. */
-const WETEXT_ZH_URLS = WETEXT.filter((name) => name.includes('-zh-')).map(dictionaryUrl);
+/** The Chinese three, whose third is the script fold rather than the shared one. */
+const WETEXT_ZH_URLS = [
+  'wetext-zh-tn-tagger',
+  'wetext-zh-tn-verbalizer',
+  'wetext-zh-tn-traditional-to-simple',
+].map(dictionaryUrl);
 
 /**
  * One grammar asset, or `null` when skipping was asked for.

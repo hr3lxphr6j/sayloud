@@ -55,8 +55,10 @@ const WETEXT = [
   'wetext-en-tn-verbalizer',
   'wetext-zh-tn-tagger',
   'wetext-zh-tn-verbalizer',
+  'wetext-zh-tn-traditional-to-simple',
   'wetext-ja-tn-tagger',
   'wetext-ja-tn-verbalizer',
+  'wetext-tn-full-to-half',
 ] as const;
 
 /** A shipped dictionary, or null when skipping was asked for. */

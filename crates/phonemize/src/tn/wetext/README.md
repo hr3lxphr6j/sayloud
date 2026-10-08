@@ -75,8 +75,11 @@ against a synthesis that takes 500-750 ms.
   not trim, and the pipeline has to rely on `collapse_whitespace` at the end
   instead. Verified rather than assumed: see `phonemize_zh`.
 - **`full_to_half` moved** (modification 3 in `NOTICE`), so a full-width digit is
-  normalized where upstream would skip the TN entirely. Left **off**, like
-  upstream's default, which is why modification 7 below is the one that matters.
+  normalized where upstream would skip the TN entirely. It is **on** for English
+  and Japanese — the fold a full-width `ＡＢＣ` needs before `text::classify`
+  drops it — and off for Chinese, whose fold is the pipeline's
+  (`text::to_half_width`, after its punctuation map). See
+  `crate::tn::engine::chinese`.
 - **`should_normalize` regained its `lang` parameter** (modification 5 in
   `NOTICE`), so English is normalized whether or not it contains a digit, as the
   Python reference does.
@@ -85,7 +88,11 @@ against a synthesis that takes 500-750 ms.
   reading of nothing: the reference's `\d` is Unicode category `Nd`, and the
   difference only ever reaches the two languages that were added later. Before
   the fix this copy agreed with `pip install wetext==0.1.8` on 45 of 48 Chinese
-  probes and 23 of 29 Japanese ones; after it, 47 and 29.
+  probes and 23 of 29 Japanese ones; after it, 47 and 29. With `full_to_half` on,
+  the full-width digits that motivated it are folded before the test sees them, so
+  what it still covers is the `Nd` characters the fold does not touch — measured
+  to be passed through unchanged by these grammars, and pinned in
+  `tests/wetext_zh.rs` so the branch cannot be deleted as dead code.
 
 ## Path selection, and the bug that used to be here
 

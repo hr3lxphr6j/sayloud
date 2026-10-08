@@ -22,7 +22,7 @@ use crate::g2p::zh::text::ZhRun;
 use crate::g2p::zh::tone_sandhi;
 use crate::text::{
     collapse_whitespace, keep_punctuation, normalize_ja_punctuation, normalize_punctuation,
-    segment_japanese, segment_text, ScriptRun,
+    segment_japanese, segment_text, to_half_width, ScriptRun,
 };
 use crate::tn::{self, Normalizer as WeTextNormalizer};
 
@@ -480,8 +480,15 @@ pub fn phonemize_zh(
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
     let with_numerals = tn::normalize(text, tn::Lang::Zh, engine);
+    // The fold is *here* and not in `full_to_half`, and the order is what decides
+    // it: `map_punctuation` turns `，` into `. ` and `。` into `. ` because that is
+    // the pause Kokoro should give them, and the wetext fold would turn both into
+    // ASCII punctuation first. Chinese's numeral step has to run before the map —
+    // the grammar reads a full-width `．` as a decimal point — so the fold cannot
+    // go in front of it either. See `crate::text::to_half_width`.
     let mapped = zh_text::map_punctuation(&with_numerals);
-    let runs = zh_text::split_runs(&mapped);
+    let folded = to_half_width(&mapped);
+    let runs = zh_text::split_runs(&folded);
 
     let chinese = ChinesePinyin::new();
     let mut parts: Vec<String> = Vec::new();

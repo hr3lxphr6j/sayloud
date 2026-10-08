@@ -15,13 +15,39 @@
 # were `include_bytes!`'d. They arrive through the same registry IPADic and
 # jieba's word list do.
 #
-# Only `{en,zh,ja}/tn/{tagger,verbalizer}` are needed. The wheel also ships
-# `prefix`, `prefix_matcher`, `itn`, `full_to_half`, `traditional_to_simple`,
-# `remove_interjections`, `remove_puncts` and `tag_oov`; the normalizer
-# configuration this crate builds asks for none of them — no prefix matcher, no
-# ITN grammar, and every flag that would pull in a post-processor is left off,
-# which is also what the Python reference defaults to — so shipping them would be
-# files that nothing ever reads.
+# `{en,zh,ja}/tn/{tagger,verbalizer}` are needed, plus two of the wheel's shared
+# preprocessors: `full_to_half` for English and Japanese, and
+# `traditional_to_simple` for Chinese. Both are turned on by the configuration
+# `crates/phonemize/src/tn/engine.rs` builds, which is why they are extracted
+# rather than left in the wheel.
+#
+# `full_to_half` folds `ＡＢＣ`/`１２３`/`！` to their ASCII forms before anything
+# else looks at the text, which is what stands between a full-width run and
+# `text.rs`'s `classify` — that function splits on `A-Za-z` and drops what it does
+# not recognise, so full-width Latin used to leave the pipeline as silence.
+#
+# **Chinese is the language that does not declare it**, and the reason is the order
+# of Chinese's own steps rather than a judgement about the FST: Chinese's numeral
+# step runs before its punctuation map (the grammar reads a full-width `．` as a
+# decimal point, and the map turns that character into a full stop), so a fold in
+# front of it would rewrite `，` and `。` before the map owned them. Chinese's fold
+# is `crates/phonemize/src/text.rs`'s `to_half_width`, widened to full-width Latin
+# and called after the map. See `tn::engine::chinese`.
+#
+# `traditional_to_simple` rewrites 銀行 to 银行 before the Chinese numeral step
+# and before the Chinese phonemes are looked up. pinyin-pro's polyphone
+# disambiguation is a *phrase* table over simplified spellings, so a traditional
+# spelling misses it and 銀行 is read xíng rather than háng.
+#
+# The rest of the wheel is still left alone. `prefix` and `prefix_matcher` are the
+# streaming normalizer's (nothing here streams), the `itn` grammars are the other
+# direction (nothing here inverts text normalization), and
+# `remove_interjections`, `remove_puncts` and `tag_oov` are all off in the
+# configuration — the first two delete words and sentence marks a listener needs,
+# and the third tags out-of-vocabulary words for a downstream consumer this
+# project does not have. `remove_erhua` and its verbalizer are off too: erhua is
+# handled by the Chinese G2P (`g2p/zh/tone_sandhi/`), and this FST would delete
+# the 儿 before that stage ever saw it.
 #
 # **Both halves of a language or neither.** The tagger is the half that
 # recognizes an entity and the verbalizer is the half that says it; one without
@@ -60,6 +86,15 @@ WHEEL_SHA256="b2083e7f38ac38fcbecdf7aec6ac6f0e3d1a11b763facfa4daabc12138215454"
 LANGUAGES="en zh ja"
 KINDS="tagger verbalizer"
 
+# The two preprocessors that are not per language, as `name:wheel path`.
+# `traditional_to_simple` is Chinese's and is only *declared* for Chinese, but it
+# is extracted here beside the other one because the wheel hands both out from
+# the same place and one loop is easier to read than two.
+EXTRAS="
+wetext-tn-full-to-half:full_to_half.fst
+wetext-zh-tn-traditional-to-simple:traditional_to_simple.fst
+"
+
 DICT_DIR="public/dictionaries"
 
 # The registry name one grammar is keyed under. `wetext-en-tn-tagger` and so on
@@ -73,6 +108,9 @@ for lang in $LANGUAGES; do
   for kind in $KINDS; do
     [ -s "${DICT_DIR}/$(asset_name "$lang" "$kind").bin.zst" ] || complete=0
   done
+done
+for extra in $EXTRAS; do
+  [ -s "${DICT_DIR}/${extra%%:*}.bin.zst" ] || complete=0
 done
 if [ "$complete" = 1 ] && [ "${FORCE:-0}" != "1" ]; then
   echo "✓ text-normalization grammars already built (${DICT_DIR}/wetext-*-tn-*.bin.zst)"
@@ -139,6 +177,23 @@ for lang in $LANGUAGES; do
   done
 done
 
+# Same treatment for the two shared preprocessors. They sit at the top of the
+# wheel's `fsts/` rather than under a language, which is what makes them shared.
+for extra in $EXTRAS; do
+  name="${extra%%:*}"
+  relative="${extra#*:}"
+  src="$work/wheel/wetext/fsts/${relative}"
+
+  if [ ! -s "$src" ]; then
+    echo "⚠️  The wheel has no wetext/fsts/${relative} — it is not the layout this script knows" >&2
+    exit 1
+  fi
+
+  zstd -19 -q -f -o "${DICT_DIR}/${name}.bin.zst.tmp" "$src"
+  mv "${DICT_DIR}/${name}.bin.zst.tmp" "${DICT_DIR}/${name}.bin.zst"
+  printf '   %-32s %s\n' "${name}.bin.zst" "$(du -h "${DICT_DIR}/${name}.bin.zst" | cut -f1)"
+done
+
 # The grammar is Apache-2.0, as is the Rust port that runs it. One notice per
 # language, named after that language's assets, because the three are separate
 # grammars built from separate Python files and a reader looking at one of them
@@ -166,13 +221,32 @@ normalization grammars as the \`wetext\` distribution builds them, extracted fro
 frames. The Rust code that runs them is in
 \`crates/phonemize/src/tn/wetext/\`, which has its own NOTICE.
 
+${4}
+
 Both projects are distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied.
 NOTICE_TEXT
 }
 
-notice "${DICT_DIR}/wetext-en-tn-NOTICE.txt" English en
-notice "${DICT_DIR}/wetext-zh-tn-NOTICE.txt" Chinese zh
-notice "${DICT_DIR}/wetext-ja-tn-NOTICE.txt" Japanese ja
+# The shared preprocessors, said once per language rather than once for the
+# repository: a reader looking at one language's assets should not have to work
+# out which other files that language's pipeline reads.
+FULL_TO_HALF_NOTICE="This language also uses \`wetext-tn-full-to-half.bin.zst\`, which is
+\`wetext/fsts/full_to_half.fst\` from the same wheel: it folds a full-width run
+(\`ＡＢＣ\`, \`１２３\`, \`！\`) to its ASCII form before the text reaches the grammar,
+because the pipeline's script split reads \`A-Za-z\` and drops what it does not
+recognise."
+
+TRADITIONAL_TO_SIMPLE_NOTICE="Chinese also uses
+\`wetext-zh-tn-traditional-to-simple.bin.zst\`, which is
+\`wetext/fsts/traditional_to_simple.fst\` from the same wheel: it rewrites
+\`銀行\` to \`银行\` before the numeral step and before the Chinese phonemes are
+looked up, because pinyin-pro's polyphone disambiguation is a phrase table over
+simplified spellings."
+
+notice "${DICT_DIR}/wetext-en-tn-NOTICE.txt" English en "$FULL_TO_HALF_NOTICE"
+notice "${DICT_DIR}/wetext-zh-tn-NOTICE.txt" Chinese zh "$FULL_TO_HALF_NOTICE
+$TRADITIONAL_TO_SIMPLE_NOTICE"
+notice "${DICT_DIR}/wetext-ja-tn-NOTICE.txt" Japanese ja "$FULL_TO_HALF_NOTICE"
 
 echo "✓ text-normalization grammars ready in ${DICT_DIR}/"

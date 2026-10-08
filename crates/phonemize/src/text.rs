@@ -87,20 +87,40 @@ pub fn normalize_ja_punctuation(text: &str) -> String {
     text.replace('・', ", ")
 }
 
-/// Full-width digits to ASCII.
+/// Full-width forms to ASCII: the digits, and the Latin letters.
 ///
 /// Shared by the language front ends because neither is complete without it: a
 /// full-width digit is not a digit to `\d`, so it survives every numeral rule
 /// untouched and then reaches the segmenter, where `other` keeps only
 /// punctuation and the number is dropped without a sound.
+///
+/// **The letters are here for the same reason and cover a wider hole.**
+/// `text::classify` and `zh_text::classify` accept `A-Za-z` and nothing else, so a
+/// full-width `Ａ` is `other` — and `other` keeps punctuation, which a letter is
+/// not. `Ｈｅｌｌｏ world` phonemized to `wˈɜːld` in English and `ＡＢＣ` to
+/// silence in Chinese, with no warning from anywhere.
+///
+/// # Why punctuation is not
+///
+/// It is the punctuation maps' and not this function's, and the two disagree on
+/// purpose: `zh_text::map_punctuation` turns `，` into `" . "` because a comma in
+/// Chinese is a pause Kokoro should give a period to, and `normalize_punctuation`
+/// does the same for the shared front end. A fold of the full width block would
+/// turn `，` into `,` *first*, and every one of those deliberate readings would
+/// silently become the ASCII character instead. English and Japanese do not have the
+/// problem — their punctuation maps run before their numeral step, so the wetext
+/// `full_to_half` FST folds the whole block for them — and Chinese does, which is
+/// why this function exists at all and why `phonemize_zh` calls it *after* the map.
 pub fn to_half_width(text: &str) -> String {
     text.chars()
-        .map(|ch| {
-            if ('\u{ff10}'..='\u{ff19}').contains(&ch) {
+        .map(|ch| match ch {
+            // Full-width digits U+FF10..U+FF19.
+            '\u{ff10}'..='\u{ff19}' => char::from_u32(ch as u32 - 0xfee0).unwrap_or(ch),
+            // Full-width capitals U+FF21..U+FF3A and lower case U+FF41..U+FF5A.
+            '\u{ff21}'..='\u{ff3a}' | '\u{ff41}'..='\u{ff5a}' => {
                 char::from_u32(ch as u32 - 0xfee0).unwrap_or(ch)
-            } else {
-                ch
             }
+            _ => ch,
         })
         .collect()
 }

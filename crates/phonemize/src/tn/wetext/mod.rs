@@ -17,13 +17,13 @@
 //! entity's fields into the order its verbalizer expects, and a *verbalizer*
 //! FST turns the reordered entity into words. [`Normalizer`] is the whole of it.
 //!
-//! English is one of the three languages wired up today
-//! ([`crate::tn::engine`]): all three pairs of grammars arrive through the same
-//! dictionary protocol.
-//! `full_to_half`, `traditional_to_simple` and the four post-processors the
-//! wheel also ships are still fetched by nobody — no configuration this crate
-//! builds turns those flags on, which is what the Python reference defaults to
-//! as well.
+//! All three languages are wired up today ([`crate::tn::engine`]): their grammars
+//! and the preprocessors they need arrive through the same dictionary protocol.
+//! Which of upstream's switches are on — and which of the wheel's files are
+//! therefore fetched — is that module's business, and the answer is not upstream's
+//! defaults: `full_to_half` and `traditional_to_simple` are turned on because the
+//! readings they produce are wrong without them. `fix_contractions` and the four
+//! post-processors are off.
 //!
 //! # No filesystem, no lazy loading
 //!

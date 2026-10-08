@@ -30,9 +30,9 @@ which reader stands in for it and whether the gate looks first.
 
 | Language | How | Dictionary |
 |---|---|---|
-| Chinese (`zh-CN`) | **WeText numerals** (fallback: `numbers_to_han`) → jieba word boundaries → pinyin → **tone sandhi and erhua** → IPA (or zhuyin, for v1.1-zh) | `jieba-zh-dict.bin.zst`, 1.63 MB, plus `wetext-zh-tn-{tagger,verbalizer}.bin.zst`, 160 KB, both fetched on `prepare` |
-| Japanese (`ja-JP`) | **WeText numerals** (fallback: `numbers_to_kanji`) → lindera IPADic → katakana → IPA table | `lindera-ipadic-ja.bin.zst`, 8.51 MB, plus `wetext-ja-tn-{tagger,verbalizer}.bin.zst`, 63 KB, both fetched on `prepare` |
-| English (`en-US`) | **WeText numerals** (fallback: `numbers_to_english`) → CMU Dict → **NRL 7948 letter-to-sound rules** for a word it lacks → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in, and the rules 17 KB more |
+| Chinese (`zh-CN`) | **traditional→simplified** → **WeText numerals** (fallback: `numbers_to_han`) → punctuation map → **full-width fold** → jieba word boundaries → pinyin → **tone sandhi and erhua** → IPA (or zhuyin, for v1.1-zh) | `jieba-zh-dict.bin.zst`, 1.63 MB, plus `wetext-zh-tn-{tagger,verbalizer}.bin.zst`, 160 KB, and `wetext-zh-tn-traditional-to-simple.bin.zst`, 25 KB, all fetched on `prepare` |
+| Japanese (`ja-JP`) | punctuation map → **full-width fold** → **WeText numerals** (fallback: `numbers_to_kanji`) → lindera IPADic → katakana → IPA table | `lindera-ipadic-ja.bin.zst`, 8.51 MB, plus `wetext-ja-tn-{tagger,verbalizer}.bin.zst`, 63 KB, and the shared `wetext-tn-full-to-half.bin.zst`, 956 B, all fetched on `prepare` |
+| English (`en-US`) | punctuation map → **full-width fold** → **WeText numerals** (fallback: `numbers_to_english`) → CMU Dict → **NRL 7948 letter-to-sound rules** for a word it lacks → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, plus the shared `wetext-tn-full-to-half.bin.zst`, 956 B, both fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in, and the rules 17 KB more |
 
 **All three languages now reach the model the same way.** The
 Kokoro engine used to send English to `kokoro-js`'s own `generate(text)`, which
@@ -70,7 +70,14 @@ The English *numeral* step is weighted FSTs vendored from
 WeTextProcessing (`src/tn/wetext/`), which reads dates, times, money,
 percentages, ordinals and abbreviations where the hand-written reader it replaced
 read a number and left the rest. It costs 1 MB of wasm and 707 KB of fetched
-grammars. It was also measurably **worse at a bare integer** — `123` came
+grammars, plus the two preprocessors the configuration turns on — English and
+Japanese fold full-width forms (`ＡＢＣ` is `ABC`), and Chinese rewrites a
+traditional spelling to simplified before pinyin-pro's phrase table sees it (銀行 is
+read `háng`, where the traditional spelling gave it the character's default
+`xíng`). Both switches are upstream's, off by default, and each is on because the
+reading without it is wrong: `src/tn/engine.rs` carries the measurement for both,
+including the two — `15％` and a full-width `．` in Chinese — that the ordering of
+its own pipeline makes it give up. It was also measurably **worse at a bare integer** — `123` came
 out `one two three` where `num2words` says `one hundred twenty three` — and that
 was written up as the grammar having several equal-cost readings for one. It was
 not: the grammar's cheapest reading of `123` is `one hundred and twenty three`,
@@ -90,8 +97,11 @@ tag — upstream's English TN is deliberately not gated on digits
 (`should_normalize` has `lang != "en"` on that branch). The gate is a
 hand-written byte scan for the shapes TN can rewrite: an ASCII digit, a symbol
 from upstream's `whitelist/symbol.tsv`, a capital run, a terminated abbreviation,
-and a short list of dot-less abbreviations whose reading changes (`Mon` →
-`Monday`, `Mr` → `Mister`). It costs **2.8 µs for 950 characters** where the
+a short list of dot-less abbreviations whose reading changes (`Mon` →
+`Monday`, `Mr` → `Mister`), and a full-width character — the last one because the
+configuration folds full-width forms before the composition, so a sentence
+containing one is a sentence the normalizer changes whether or not the tagger has
+anything to add. It costs **2.8 µs for 950 characters** where the
 composition it replaces costs 43 ms, and **+977 B** of wasm, which is why it is a
 scan and not a `regex`.
 
@@ -149,7 +159,11 @@ That could not reach English (the branch it guards is `lang != En`), which is wh
 it went unnoticed until the two CJK languages were wired up. Modifying it brought
 this copy from 45/48 to **47/48**
 agreement with `pip install wetext==0.1.8` on Chinese probes and from 23/29 to
-**29/29** on Japanese ones.
+**29/29** on Japanese ones. (With `full_to_half` on, the full-width digits that
+motivated it are folded before the test sees them, so what the branch still covers
+is the `Nd` characters no fold touches — measured to be passed through unchanged by
+these grammars, and pinned so that "the digit test is now redundant" cannot quietly
+become "the digit test may be removed".)
 
 The three hand-written readers stayed, as `Option<&Normalizer>`'s `None`: the
 same argument as `ToneRules`, and the same reason the JavaScript parity corpus is

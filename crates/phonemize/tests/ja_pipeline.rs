@@ -536,8 +536,14 @@ fn the_numeral_step_reads_these_entities() {
         // A telephone number inside a sentence: the grammar reads the hyphens as
         // a range and inserts マイナス. A bare one reads as a telephone number
         // (`tests/wetext_ja.rs`); this is the contextual case.
-        ("電話は555-1234", "deɴwawaɡoçakuɡoʥuːɡomainasuseɴniçakusaɴʥuːjoɴ"),
-        ("電話番号は090-1234-5678です。", "deɴwabaɴɡoːwakjuːmainasuseɴniçakusaɴʥuːjoɴmainasuɡoseɴroʔpjakunanaʥuːhaʨidesu."),
+        (
+            "電話は555-1234",
+            "deɴwawaɡoçakuɡoʥuːɡomainasuseɴniçakusaɴʥuːjoɴ",
+        ),
+        (
+            "電話番号は090-1234-5678です。",
+            "deɴwabaɴɡoːwakjuːmainasuseɴniçakusaɴʥuːjoɴmainasuɡoseɴroʔpjakunanaʥuːhaʨidesu.",
+        ),
         // **The one genuine loss.** `０` normalizes to `〇` (U+3007), which no
         // script run in this crate claims, so it is dropped and the digit reads
         // as silence where it used to say れい. The reference produces `〇` too.

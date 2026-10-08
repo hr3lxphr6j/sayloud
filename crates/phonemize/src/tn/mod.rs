@@ -1,39 +1,33 @@
 //! Text normalization: text in, text out.
 //!
-//! The first stage of the pipeline, and the only one that is not per language:
-//! the numeral step is the vendored WeText engine ([`wetext`]) for every language
-//! that has one, and for Chinese and Japanese the hand-written readers in
-//! [`readers`] are what a caller that never called `prepare` gets instead.
-//! English has no reader — see `Lang::reader` — so a numeral the engine did not
-//! read is a sentence this stage declines ([`NoReader`]) rather than text with
-//! its digits missing. What differs per language is only *which* reader stands
-//! in, *whether* the engine is asked about a sentence at all, and *what* the
-//! language does to the engine's answer afterwards — so all three are properties
-//! of [`Lang`] rather than parameters a caller supplies.
+//! The first stage of the pipeline, and the only one that is not per language: the
+//! numeral step is the vendored WeText engine ([`wetext`]) for every language.
+//! **It is the only reader there is** — the hand-written readers that used to stand
+//! in for a caller that never called `prepare` are gone, all three of them, so a
+//! numeral the engine did not read is a sentence this stage declines ([`NoReader`])
+//! rather than text with its digits missing. What differs per language is only
+//! *whether* the engine is asked about a sentence at all and *what* the language
+//! does to its answer afterwards — so both are properties of [`Lang`] rather than
+//! parameters a caller supplies.
 //!
 //! Nothing here knows what a phoneme is: the stage after this one is the one that
 //! turns this text into phonemes.
 
 pub mod engine;
 pub mod gate;
-pub mod readers;
 pub mod wetext;
 
 pub use engine::{chinese, english, japanese};
 pub use gate::needs_normalization;
-pub use readers::{
-    ja::{int_to_kanji, numbers_to_kanji},
-    zh::numbers_to_han,
-};
 pub use wetext::{FstTextNormalizer, Normalizer, WeTextError};
 
 use std::borrow::Cow;
 
 /// Which language's numerals are being read.
 ///
-/// The three things that differ per language are methods here rather than
-/// arguments to [`normalize`], because they are correlated and a caller that has
-/// the language in hand has no business choosing them separately.
+/// The two things that differ per language are methods here rather than arguments
+/// to [`normalize`], because they are correlated and a caller that has the language
+/// in hand has no business choosing them separately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lang {
     Ja,
@@ -42,54 +36,6 @@ pub enum Lang {
 }
 
 impl Lang {
-    /// The hand-written reader this language used before the engine arrived, for
-    /// the two languages that still have one.
-    ///
-    /// Not a fallback in the "something went wrong" sense: it is what a caller
-    /// that never called `prepare` gets, and it is the frozen pipeline that the
-    /// JavaScript parity corpora are pinned against. A worse reading of a date,
-    /// not a missing one.
-    ///
-    /// **English's is `None`, and the reason is the whole rule.** It had one —
-    /// `num2words`, a crate — and it was removed: 60 KB of the release wasm for a
-    /// second reader of a step the engine already owns, reading the same cardinals
-    /// and a worse remainder (`1st` was an "onest", `50%` lost its `%`, `3:30pm`
-    /// became `T H I R T Y P M`). Keeping it "just in case" was keeping a second
-    /// answer to a question that has one. So English reads a numeral with the
-    /// engine or not at all, and [`normalize`] makes that [`NoReader`] for a
-    /// sentence with a character that has no reading without the engine
-    /// ([`gate::drops_without_engine`]) rather than handing back text whose digits
-    /// are about to leave the IPA unread. `I have 3 cats` → `aɪ hæv kˈæts` is the
-    /// bug this whole stage exists to prevent.
-    ///
-    /// It is narrower than the gate, and that is the point: a contraction or an
-    /// abbreviation is read *worse* without the engine, not skipped, and English
-    /// has always read those unprepared.
-    fn reader(self) -> Option<fn(&str) -> String> {
-        match self {
-            Self::Ja => Some(numbers_to_kanji),
-            Self::Zh => Some(numbers_to_han),
-            Self::En => None,
-        }
-    }
-
-    /// What this language's numerals are worth when the engine does not write
-    /// them: its reader, or nothing.
-    ///
-    /// `Err` is English on a sentence with a character that has no reading of its
-    /// own ([`gate::drops_without_engine`]) — the one case where something would
-    /// otherwise go unspoken. A sentence without one is read as it is: English
-    /// phonemizes prose with no `prepare` at all, which is what keeps "English
-    /// needs no dictionary for its phonemes" true of everything but the
-    /// characters that are not words.
-    fn without_engine(self, text: &str) -> Result<Cow<'_, str>, NoReader> {
-        match self.reader() {
-            Some(reader) => Ok(Cow::Owned(reader(text))),
-            None if gate::drops_without_engine(text) => Err(NoReader),
-            None => Ok(Cow::Borrowed(text)),
-        }
-    }
-
     /// Whether the engine's own digit test is enough, or a gate has to look first.
     ///
     /// English's `should_normalize` is deliberately **not** gated on digits
@@ -131,44 +77,61 @@ enum Gate {
     EngineDecides,
 }
 
-/// The numeral step had no engine to ask and no reader to fall back to.
+/// The numeral step had no engine to read a numeral with.
 ///
-/// Only [`Lang::En`] can produce it (`Lang::reader`): a sentence with a
-/// character that has no reading of its own — a digit, a symbol the grammar maps
-/// to a word, a full-width form ([`gate::drops_without_engine`]) — and no engine
-/// to read it, either because none was built or because it failed on this
-/// sentence. Returning the text instead would be the failure this step exists to
-/// prevent, so this is an error: the caller is told, and the English pipeline
-/// reports it as the `prepare`-time failure it is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NoReader;
+/// Every language can produce it now — there is no hand-written reader to fall
+/// back to for any of them (see [`normalize`]) — and the two cases are worth
+/// telling apart, because they do not have the same fix:
+///
+/// - [`NoReader::NoEngine`] is `prepare` not having run, or a build whose assets
+///   never arrived. One call away from working, and `PhonemizeError::NotPrepared`
+///   is how a caller hears about it;
+/// - [`NoReader::Failed`] is the engine that *was* built giving up on this
+///   sentence. Nothing a caller can do, and the cause travels with it.
+#[derive(Debug)]
+pub enum NoReader {
+    /// No engine was built: `prepare` was not called, or its assets did not arrive.
+    NoEngine,
+    /// The engine was built and failed on this sentence.
+    Failed(WeTextError),
+}
 
 impl std::fmt::Display for NoReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("no hand-written numeral reader for this language")
+        match self {
+            Self::NoEngine => write!(
+                f,
+                "no WeText engine was built for this language, so its numerals cannot be read"
+            ),
+            Self::Failed(error) => write!(f, "the WeText engine failed on this sentence: {error}"),
+        }
     }
 }
 
-/// The numeral step: WeText when it was built, the language's reader when it was not.
+/// The numeral step: WeText if there is one, and a refusal if there is not.
 ///
 /// `text` is the text as the stage's caller wants the engine to see it — for
 /// Chinese that is the raw sentence, for Japanese the punctuation-mapped one,
 /// because that is the order each pipeline has always run its steps in.
 ///
-/// Four ways the engine is not the one writing the numerals, and only the last is a
-/// failure:
+/// Three ways the engine is not the one writing the numerals, and only the last is
+/// a failure:
 ///
 /// - it was never built (`None`), which is the caller that never called
-///   `prepare` and the build whose assets were not fetched;
+///   `prepare` and the build whose assets were not fetched — a [`NoReader::NoEngine`]
+///   for a sentence that needs it, and the text unchanged for one that does not;
 /// - the gate says there is nothing here for it, which is only reachable for
 ///   English, and the text goes on unchanged;
 /// - it failed on this sentence. The engine can fail — a composition that will
-///   not build, a grammar that cannot produce a path — and the language's reader
-///   is what the pipeline did before the engine arrived;
-/// - and the language has no reader to write them instead. That is English, and
-///   it is [`NoReader`] rather than a reading: see `Lang::reader`. Note that this
-///   is a narrower test than the gate's — a *reading* English can do badly without
-///   an engine is a reading it still does (`gate::drops_without_engine`).
+///   not build, a grammar that cannot produce a path — and with no reader behind
+///   it that is [`NoReader::Failed`] rather than a sentence read without the
+///   numerals.
+///
+/// **The line is [`gate::drops_without_engine`], not the gate.** A sentence with a
+/// digit, a symbol the grammar maps to a word, or a full-width form in it is a
+/// sentence something would leave unspoken; a contraction, a capital run or an
+/// abbreviation is a *worse reading* of ordinary letters, and every language has
+/// always read those with no engine loaded.
 pub fn normalize<'a>(
     text: &'a str,
     lang: Lang,
@@ -178,17 +141,35 @@ pub fn normalize<'a>(
     // Skipping is then the same as running it, because `gate` only returns
     // `false` for text whose digits the tagger would have passed through.
     // `tests/tn_gate.rs` asserts that rather than assuming it — and it is also
-    // why a skip is not a `NoReader` for English: there is nothing to read.
+    // why a skip is not a `NoReader`: there is nothing to read.
     let skipped = lang.gate() == Gate::CheapSkip && !gate::needs_normalization(text);
 
     match engine {
         Some(engine) if !skipped => match engine.normalize(text) {
             Ok(normalized) => Ok(Cow::Owned(lang.postprocess(normalized))),
-            Err(_) => lang.without_engine(text),
+            Err(error) => unread(text, Some(error)),
         },
         Some(_) => Ok(Cow::Borrowed(text)),
-        None => lang.without_engine(text),
+        None => unread(text, None),
     }
+}
+
+/// No engine wrote them: `error` is why, or `None` for "there was no engine at
+/// all".
+///
+/// One predicate for both cases, because the question is the same one — would
+/// something in this text go unspoken without the engine
+/// ([`gate::drops_without_engine`]) — and the answer decides between a refusal and
+/// the text as it is. Only the *reason* travels differently, because only one of
+/// the two is a caller's to fix.
+fn unread(text: &str, error: Option<WeTextError>) -> Result<Cow<'_, str>, NoReader> {
+    if !gate::drops_without_engine(text) {
+        return Ok(Cow::Borrowed(text));
+    }
+    Err(match error {
+        Some(error) => NoReader::Failed(error),
+        None => NoReader::NoEngine,
+    })
 }
 
 /// Fix WeText 0.1.8's bug where 1,000-1,999 lose the leading "one".

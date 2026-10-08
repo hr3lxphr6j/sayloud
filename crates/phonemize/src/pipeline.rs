@@ -45,19 +45,18 @@ pub enum PipelineError {
     /// The English backend failed.
     #[error("{0}")]
     English(EnglishError),
-    /// The sentence has numerals and this language has nothing to read them with.
+    /// The sentence has numerals and the engine did not read them.
     ///
-    /// English only, and it is [`tn::NoReader`] that says so: unlike Chinese and
-    /// Japanese, its numeral step has no hand-written reader behind the engine
-    /// (`tn::Lang::reader`), so a sentence the engine was needed for and did not
-    /// read has no second reading to fall back to. Declining it is the point —
-    /// reading it without the numerals is the failure the step exists to prevent
-    /// — and `PhonemizeError` reports it as the `prepare`-time failure it is.
+    /// [`tn::NoReader`] carries why: no engine was built — a caller that never
+    /// called `prepare`, a build whose assets did not arrive — or the engine itself
+    /// gave up on this sentence. There is no hand-written reader behind it for any
+    /// of the three languages, so a numeral the engine does not read is a numeral
+    /// nobody reads, and declining the sentence is the point: reading it without
+    /// the numerals is the failure this step exists to prevent.
     ///
-    /// `tn::normalize` is shared by all three languages and cannot see which one it
-    /// was handed, so this type carries the possibility for all three; only English
-    /// ever produces it, and [`read_numerals`] is where the other two say they do
-    /// not.
+    /// `PhonemizeError` splits the two cases, because they do not have the same
+    /// fix: a missing engine is one `prepare` away from working and is reported as
+    /// such, and a failed one is nobody's to fix.
     #[error("{0}")]
     Numerals(tn::NoReader),
 }
@@ -99,14 +98,16 @@ impl From<EnglishError> for PipelineError {
     }
 }
 
-/// The numeral step, for a language whose hand-written reader makes it total.
+/// The numeral step, with its one failure lifted into this module's error type.
 ///
-/// `Err` is unreachable for [`tn::Lang::Ja`] and [`tn::Lang::Zh`] — a reader is the
-/// only thing `tn::normalize` can fail for, and both have one — and it is
-/// propagated rather than `expect`ed or dropped: a panic inside the wasm takes the
-/// whole worker with it, and a sentence that went on without its numerals would be
-/// the class of bug this stage exists to prevent. If it ever fires, it is a bug in
-/// `tn::Lang::reader` and it says so.
+/// `tn::normalize` fails for exactly one reason now — the engine did not write the
+/// numerals, either because none was built or because it gave up on this sentence
+/// ([`tn::NoReader`]) — and every pipeline has to say so rather than continue: the
+/// sentence would otherwise be read with the characters the engine was needed for
+/// missing from it, which is the failure this whole stage exists to prevent.
+/// **There is no reader to fall back to for any of the three languages** (the
+/// hand-written ones were deleted, English's and then Chinese's and Japanese's),
+/// so this is a real failure path in all three pipelines and not a formality.
 fn read_numerals<'a>(
     text: &'a str,
     lang: tn::Lang,
@@ -153,12 +154,13 @@ pub struct Phonemized {
 ///    a numeral in the same Han run as what it counts, which is what decides how
 ///    that reads (「年」 alone is とし, 「二十二年」 is ネン).
 ///
-///    The reading is usually [`crate::tn::japanese`]'s rather than
-///    [`crate::tn::numbers_to_kanji`]'s, and it is applied to the punctuation-mapped text —
-///    the order above is what it has always been, so the grammar sees `,` where
-///    the source had `、`. That is not the Python reference's input, and it is
-///    the one place this pipeline departs from it; the readings are pinned in
+///    The reading is [`crate::tn::japanese`]'s, applied to the punctuation-mapped
+///    text — the order above is what it has always been, so the grammar sees `,`
+///    where the source had `、`. That is not the Python reference's input, and it
+///    is the one place this pipeline departs from it; the readings are pinned in
 ///    `tests/wetext_ja.rs` and the whole-pipeline effect in `tests/ja_pipeline.rs`.
+///    It used to be the deleted reader's reading, which the same tests now record
+///    the differences from.
 /// 3. **Then split into runs, with the kanji and kana runs kept together**, because
 ///    each run takes a different route from here. This split is a *routing*
 ///    decision, not a word boundary: it is deliberately not [`segment_text`]'s,
@@ -203,8 +205,11 @@ pub struct Phonemized {
 ///
 /// `tn` is the vendored WeText engine, built by `finish_loading` from the two
 /// grammars the dictionary protocol fetched ([`crate::tn::japanese`]). It is
-/// optional for the reason [`crate::tn`] gives, and its absence
-/// falls back to [`crate::tn::numbers_to_kanji`].
+/// optional for the reason [`crate::tn`] gives: a caller that never called
+/// `prepare` has no engine, and a sentence with nothing in it for the numeral step
+/// goes through unchanged. A sentence that *does* need one is a failure
+/// ([`tn::NoReader`]) — there is no hand-written reader behind this pipeline any
+/// more.
 pub fn phonemize_ja(
     text: &str,
     segmenter: &SegmenterJa,
@@ -363,8 +368,7 @@ pub fn phonemize_en(
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
     let normalized = normalize_punctuation(text);
-    let with_numerals = tn::normalize(&normalized, tn::Lang::En, engine)
-        .map_err(PipelineError::Numerals)?;
+    let with_numerals = read_numerals(&normalized, tn::Lang::En, engine)?;
     let runs = segment_text(&with_numerals);
 
     let mut parts: Vec<String> = Vec::new();
@@ -449,17 +453,19 @@ impl ToneRules {
 /// The same four steps as [`phonemize_ja`], in the same order and for the same
 /// reasons, with one of them doing more work:
 ///
-/// 1. **Numerals first.** [`crate::tn::numbers_to_han`] turns `123` into 一百二十三 before
+/// 1. **Numerals first.** [`crate::tn::chinese`] turns `123` into 一百二十三 before
 ///    anything looks at the text, because a digit belongs to no script the
 ///    segmenter knows: it would land in an `other` run and be dropped as
-///    punctuation — unheard, and silently. The JavaScript applies it in the same
-///    place, inside the punctuation call: `mapPunctuation(numbersToHan(text))`.
+///    punctuation — unheard, and silently. The JavaScript applies its own reader in
+///    the same place, inside the punctuation call:
+///    `mapPunctuation(numbersToHan(text))` — that reader is deleted, and
+///    [`ToneRules`]'s module and `tests/zh_pipeline.rs` have the list of samples
+///    where the engine reads differently.
 ///
-///    The reading is usually [`crate::tn::chinese`]'s instead,
-///    applied to the same raw text — so a *year* is read digit by digit
-///    (`2024年` is 二零二四年, which is how it is said) where `numbers_to_han`
-///    reads it as a quantity (二千零二十四年). The engine trims, which
-///    `numbers_to_han` deliberately does not; that is invisible here, because
+///    The engine reads *context* rather than digits: a year is read digit by digit
+///    (`2024年` is 二零二四年, which is how it is said) where the reader read it as
+///    a quantity (二千零二十四年). The engine also trims, which the reader
+///    deliberately did not; that is invisible here, because
 ///    [`zh_text::keep_punctuation`] keeps whitespace and
 ///    [`collapse_whitespace`] is what removes it, at the end either way.
 /// 2. **Then punctuation**, [`zh_text::map_punctuation`], which is where the

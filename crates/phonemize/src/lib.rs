@@ -232,26 +232,18 @@ impl Phonemizer {
                             lang: options.lang.clone(),
                         })?;
                 pipeline::phonemize_ja(text, segmenter, self.english(), self.japanese_tn.as_ref())
-                    .map_err(PhonemizeError::Pipeline)?
+                    .map_err(|error| numerals_error(error, &options.lang))?
             }
             // English has no dictionary to wait for *for its phonemes* — the CMU
             // dictionary is compiled in — so this arm is not gated on `prepare`
-            // the way the two below are: prose phonemizes with `english_tn` at
-            // `None` and no failure at all. What is not optional is a numeral.
-            // The FSTs are a `prepare`-time dictionary like any other, and
-            // English is the one language with no hand-written reader behind
-            // them (`tn::Lang::reader`), so a sentence whose numerals the engine
-            // did not read comes back as `Numerals` and leaves here as
-            // `NotPrepared`: declining it is the point, and "call `prepare`" is
-            // what fixes it. The backend itself is built lazily on the first
-            // call; see the `english` field.
+            // the way the two around it are: prose phonemizes with `english_tn` at
+            // `None` and no failure at all. What is not optional is a numeral: its
+            // FSTs are a `prepare`-time dictionary like any other, and a sentence
+            // whose numerals the engine did not read comes back as `Numerals` —
+            // declining it is the point. The backend itself is built lazily on the
+            // first call; see the `english` field.
             "en" => pipeline::phonemize_en(text, self.english(), self.english_tn.as_ref())
-                .map_err(|error| match error {
-                    PipelineError::Numerals(_) => PhonemizeError::NotPrepared {
-                        lang: options.lang.clone(),
-                    },
-                    other => PhonemizeError::Pipeline(other),
-                })?,
+                .map_err(|error| numerals_error(error, &options.lang))?,
             // Chinese needs jieba's word list, so like Japanese it can be asked
             // to phonemize before `prepare` ran — and that is a failure rather
             // than a sentence read without word boundaries, because the
@@ -275,7 +267,7 @@ impl Phonemizer {
                     pipeline::ToneRules::On,
                     self.chinese_tn.as_ref(),
                 )
-                .map_err(PhonemizeError::Pipeline)?
+                .map_err(|error| numerals_error(error, &options.lang))?
             }
             // Every language the vocabulary table lists has a pipeline now, so
             // this arm is unreachable through `phonemize_with` — the vocabulary
@@ -401,6 +393,31 @@ impl Phonemizer {
     }
 }
 
+/// What a pipeline's [`PipelineError::Numerals`] means to a caller.
+///
+/// Two cases, and they do not have the same fix, so they do not get the same
+/// error:
+///
+/// - no engine was built. `prepare` is the fix and `NotPrepared` is the error the
+///   JavaScript side already knows how to explain (`dictionary-not-loaded`, the
+///   message the panel has for "a thing this extension ships could not be
+///   loaded"), so a caller does not learn a second vocabulary for the same
+///   situation;
+/// - the engine was built and failed on this sentence. Nothing in a caller's hands
+///   fixes that, and the engine's own error travels inside
+///   [`PhonemizeError::Pipeline`] under the `numerals-unreadable` code, where a
+///   log line can see it.
+///
+/// Everything else is left alone: this only rewrites the one variant it is about.
+fn numerals_error(error: PipelineError, lang: &str) -> PhonemizeError {
+    match error {
+        PipelineError::Numerals(tn::NoReader::NoEngine) => PhonemizeError::NotPrepared {
+            lang: lang.to_string(),
+        },
+        other => PhonemizeError::Pipeline(other),
+    }
+}
+
 /// One language's text normalizer, or `None` when any of its FSTs did not arrive.
 ///
 /// A free function rather than a method because it needs `&self.dictionaries`
@@ -413,9 +430,8 @@ impl Phonemizer {
 /// a missing file from becoming a *silent* wrong answer: the configuration asks
 /// for each of them by name, and a name that was never supplied is a
 /// [`WeTextError::FstNotFound`] at the first sentence rather than here — which
-/// Chinese and Japanese swallow into their hand-written reader, and which English
-/// cannot: it has none, so a sentence with numerals in it fails there instead
-/// ([`pipeline::PipelineError::Numerals`], reported as `NotPrepared`). A caller
+/// is a [`tn::NoReader::Failed`] and therefore a refusal, not a sentence read
+/// some worse way: there is no hand-written reader left to swallow it. A caller
 /// that went through `prepare` cannot reach that state, because
 /// `dictionary_names` lists every one of them and `finish` refuses a partial load.
 fn build_tn(
@@ -445,10 +461,12 @@ pub enum PhonemizeError {
     /// The language's dictionary was never loaded — `prepare` was not called, or
     /// the caller did not check its result.
     ///
-    /// English reaches this for a sentence that needs the numeral engine with no
-    /// engine loaded, because its numerals are read by the WeText grammars and
-    /// there is no hand-written reader to fall back to — the same situation as any
-    /// other missing dictionary, and the same fix (`pipeline::phonemize_en`).
+    /// Reached for two different reasons, and both are the same fix: a dictionary
+    /// the language declares (`dictionary_names`) never arrived, or a *sentence*
+    /// needs a numeral read and no WeText engine was built — the engine is one of
+    /// those declared dictionaries, and every language reads its numerals with it
+    /// (`tn::NoReader::NoEngine`). A sentence the engine was not needed for does not
+    /// get this error, so an unprepared English call still phonemizes prose.
     NotPrepared { lang: String },
     /// This build has no pipeline for a language the vocabulary can speak.
     ///

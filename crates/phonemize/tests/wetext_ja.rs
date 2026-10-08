@@ -2,7 +2,7 @@
 //!
 //! The same two halves as `wetext_zh.rs`, with one difference worth stating up
 //! front: **Japanese gains far less than Chinese does.** Its hand-written reader,
-//! `numbers_to_kanji`, is the best of the three — it is a single left-to-right
+//! the deleted `numbers_to_kanji`, was the best of the three — a single left-to-right
 //! scan with a greedy fraction and percent check, so `50%` was already
 //! 五十パーセント and `15.6%` already 十五点六パーセント, where the Chinese reader
 //! has four chained patterns and needs them in a particular order. What the
@@ -47,7 +47,7 @@ fn assert_reads(table: &[(&str, &str)]) {
 
 /// What the hand-written reader could not read.
 ///
-/// The percentage rows are the control: `numbers_to_kanji` reads those already,
+/// The percentage rows are the control: the deleted reader read those already,
 /// so they pin the grammar rather than the wiring. The rest are the additions —
 /// a grouped number, a currency, a fraction and a unit-bearing measure.
 #[test]

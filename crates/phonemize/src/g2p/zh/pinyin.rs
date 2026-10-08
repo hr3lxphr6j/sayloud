@@ -57,8 +57,10 @@
 //! what its own tests compare against; [`ChinesePinyin::han_to_ipa_by_words`] is
 //! the production spacing and takes the boundaries from jieba as an argument,
 //! because the readings and the boundaries come from different places and this
-//! module only owns the readings. The punctuation, numeral and Latin-run rules
-//! around the Han run are [`super::text`] and [`crate::tn::numbers_to_han`].
+//! module only owns the readings. The punctuation and Latin-run rules around the
+//! Han run are [`super::text`]; the numeral step in front of both is the WeText
+//! engine ([`crate::tn`]), the hand-written reader this comment used to name having
+//! been deleted.
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};

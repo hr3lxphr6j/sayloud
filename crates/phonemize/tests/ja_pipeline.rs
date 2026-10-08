@@ -493,15 +493,24 @@ fn the_corpus_covers_the_paths_that_break_independently() {
 
 /// What the WeText numeral step buys, at the phoneme level.
 ///
-/// **The corpus has nothing in this table**, which is itself the finding: the
-/// corpus samples come out identically with and without the engine, so
-/// `the_pipeline_matches_the_reference_g2p` holds through the shipped path.
-/// The rows below are what is not in the corpus, with both sides pinned so a
-/// failure says which of the two readers changed.
+/// **The corpus has nothing in this table**, and for Japanese that is a stronger
+/// statement than it looks: `ja-reference.json`'s expectations come from
+/// pyopenjtalk rather than from the JavaScript frontend's own reader, and its rows
+/// come out *identically* through the engine — including the eight with digits in
+/// them. So `the_pipeline_matches_the_reference_g2p` holds through the shipped path
+/// with nothing listed, and deleting the hand-written reader (2026-10-09) moved no
+/// corpus expectation at all.
 ///
-/// Three rows read *worse*, and they are here for the same reason the `０` row in
-/// `wetext_ja.rs` is: a table of only the improvements could not fail in the
-/// direction that matters.
+/// The rows below are what is *not* in the corpus, with the value through the
+/// engine pinned; the column that used to hold the deleted reader's reading is
+/// gone with it (a sentence with a digit in it no longer phonemizes at all without
+/// an engine — `tn::NoReader`), so what remains is one pin instead of a comparison.
+/// The comments say which reading the engine replaced, which is the part worth
+/// keeping.
+///
+/// Three rows read *worse* than the reader, and they are here for the same reason
+/// the `０` row in `wetext_ja.rs` is: a table of only the improvements could not
+/// fail in the direction that matters.
 #[test]
 fn the_numeral_step_reads_these_entities() {
     let Some(segmenter) = segmenter() else {
@@ -512,48 +521,35 @@ fn the_numeral_step_reads_these_entities() {
     };
     let english = phonemize::g2p::EnglishG2p::new().ok();
 
-    let table: &[(&str, &str, &str)] = &[
+    let table: &[(&str, &str)] = &[
         // A comma-grouped number: the old reader stopped at the separator.
-        ("1,234", "seɴniçakusaɴʥuːjoɴ", "iʨi,niçakusaɴʥuːjoɴ"),
+        ("1,234", "seɴniçakusaɴʥuːjoɴ"),
         // A fraction, which the old reader read as two cardinals: いちに.
-        ("1/2", "nibuɴnoiʨi", "iʨini"),
+        ("1/2", "nibuɴnoiʨi"),
         // Currency, where the old pipeline lost the 円 and read the digits as two
         // separate quantities.
-        ("¥1,200", "seɴniçakueɴ", "iʨi,niçaku"),
-        ("3,000円", "saɴzeɴeɴ", "saɴ,reieɴ"),
+        ("¥1,200", "seɴniçakueɴ"),
+        ("3,000円", "saɴzeɴeɴ"),
         // A unit, where the old reader handed `km` to the English dictionary and
         // got the letters K and M.
-        ("2.5km", "niteɴɡokiromeːtoru", "niteɴɡokˈeɪ ˈɛm"),
+        ("2.5km", "niteɴɡokiromeːtoru"),
         // A telephone number inside a sentence: the grammar reads the hyphens as
         // a range and inserts マイナス. A bare one reads as a telephone number
         // (`tests/wetext_ja.rs`); this is the contextual case.
-        (
-            "電話は555-1234",
-            "deɴwawaɡoçakuɡoʥuːɡomainasuseɴniçakusaɴʥuːjoɴ",
-            "deɴwawaɡoçakuɡoʥuːɡoseɴniçakusaɴʥuːjoɴ",
-        ),
-        (
-            "電話番号は090-1234-5678です。",
-            "deɴwabaɴɡoːwakjuːmainasuseɴniçakusaɴʥuːjoɴmainasuɡoseɴroʔpjakunanaʥuːhaʨidesu.",
-            "deɴwabaɴɡoːwakjuːʥuːseɴniçakusaɴʥuːjoɴɡoseɴroʔpjakunanaʥuːhaʨidesu.",
-        ),
+        ("電話は555-1234", "deɴwawaɡoçakuɡoʥuːɡomainasuseɴniçakusaɴʥuːjoɴ"),
+        ("電話番号は090-1234-5678です。", "deɴwabaɴɡoːwakjuːmainasuseɴniçakusaɴʥuːjoɴmainasuɡoseɴroʔpjakunanaʥuːhaʨidesu."),
         // **The one genuine loss.** `０` normalizes to `〇` (U+3007), which no
         // script run in this crate claims, so it is dropped and the digit reads
         // as silence where it used to say れい. The reference produces `〇` too.
-        ("０", "", "rei"),
+        ("０", ""),
     ];
 
-    for (input, with, without) in table {
-        let before = phonemize::pipeline::phonemize_ja(input, &segmenter, english.as_ref(), None)
-            .expect("phonemizes")
-            .phonemes;
-        let after =
+    for (input, expected) in table {
+        let actual =
             phonemize::pipeline::phonemize_ja(input, &segmenter, english.as_ref(), Some(&tn))
                 .expect("phonemizes")
                 .phonemes;
 
-        assert_eq!(before, *without, "{input:?} without the numeral step");
-        assert_eq!(after, *with, "{input:?} with WeText");
-        assert_ne!(with, without, "{input:?} is in the table but did not move");
+        assert_eq!(actual, *expected, "{input:?} through the numeral step");
     }
 }

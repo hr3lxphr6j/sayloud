@@ -32,13 +32,13 @@
 //! left the text alone. If the grammar gains a class this list does not cover,
 //! that test goes red instead of the pipeline quietly getting worse.
 //!
-//! **The normalizer, not the tagger, because one of the criteria answers about a
-//! step around it.** English's configuration folds full-width forms before the
-//! composition, so a sentence containing one is a sentence the normalizer changes
-//! whether or not the tagger has anything to add — and the gate has to say so,
-//! because the composition is what it is deciding about. The predicate that answers
-//! for that step names the step it stands for, and `tn::engine`'s configuration is
-//! what makes it true.
+//! **The normalizer, not the tagger, because two of the criteria answer about the
+//! steps around it.** English's configuration expands contractions and folds
+//! full-width forms before and around the composition, so a sentence with an
+//! apostrophe in it is one the normalizer changes whether or not the tagger has
+//! anything to add — and the gate has to say so, because the composition is what
+//! it is deciding about. The two predicates that answer for those steps name the
+//! step they stand for, and `tn::engine`'s configuration is what makes them true.
 //!
 //! # Why a hand-written scan rather than a regex
 //!
@@ -139,18 +139,38 @@ const SHAPE_LESS_ABBREVIATIONS: [&str; 15] = [
 /// Which criteria are in it, and why, is the module documentation; the test that
 /// holds the promise is `tests/tn_gate.rs`.
 ///
-/// The last criterion is not about the *tagger* at all: it is about a step the
-/// configuration runs before it, which upstream's gate has no term for because
-/// upstream leaves that switch off. `step_rewrites_a_full_width_form` names the step
-/// it stands for, so that a switch turned on in `tn::engine` and a criterion added
-/// here are recognisably the same decision.
+/// The last two criteria are not about the *tagger* at all: they are about the two
+/// steps the configuration runs around it, which upstream's gate has no term for
+/// because upstream leaves both switches off. `step_rewrites_an_apostrophe` and
+/// `step_rewrites_a_full_width_form` name the step each one stands for, so that a
+/// switch turned on in `tn::engine` and a criterion added here are recognisably
+/// the same decision.
 pub fn needs_normalization(text: &str) -> bool {
     text.bytes().any(|byte| byte.is_ascii_digit())
         || text.chars().any(is_normalized_symbol)
         || has_capital_run(text)
         || has_terminated_abbreviation(text)
         || contains_shape_less_abbreviation(text)
+        || text.chars().any(step_rewrites_an_apostrophe)
         || text.chars().any(step_rewrites_a_full_width_form)
+}
+
+/// An apostrophe the `fix_contractions` step will expand.
+///
+/// Not a shape to be recognised but a fact about the shipped tables: they are
+/// keyed under both spellings of the apostrophe (`tn::wetext::contractions`), so
+/// either one makes `We'll` / `We’ll` a rewrite — `we will`. It is the same
+/// question the normalizer's own guard asks, and it has to be, or the gate and the
+/// step disagree and the disagreeing direction is a contraction that silently does
+/// not expand.
+///
+/// **Counting apostrophes as a reason to run the tagger is the cost of this
+/// criterion.** English prose uses them constantly, so sentences that used to be
+/// skipped wholesale now pay the composition — the price of the reading being
+/// right, and the reason `We'll go` was `wiːˈɛl ˈɛl ɡˈoʊ` instead of
+/// `wiː wɪl ɡˈoʊ`.
+fn step_rewrites_an_apostrophe(character: char) -> bool {
+    character == '\'' || character == '\u{2019}'
 }
 
 /// A character the `full_to_half` step will fold to its ASCII form.

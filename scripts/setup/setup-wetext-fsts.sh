@@ -223,7 +223,7 @@ frames. The Rust code that runs them is in
 
 ${4}
 
-Both projects are distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+These projects are distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied.
 NOTICE_TEXT
 }
@@ -244,8 +244,25 @@ TRADITIONAL_TO_SIMPLE_NOTICE="Chinese also uses
 looked up, because pinyin-pro's polyphone disambiguation is a phrase table over
 simplified spellings."
 
-notice "${DICT_DIR}/wetext-en-tn-NOTICE.txt" English en "$FULL_TO_HALF_NOTICE"
+# The contraction tables are the one thing in the English step that is not this
+# wheel's and not Apache-2.0: they are embedded in the wasm rather than shipped
+# here, so this is the only notice that travels with the build and can carry them.
+# The file that owns the details is beside the data;
+# `crates/phonemize/src/tn/wetext/data/contractions-NOTICE.txt`.
+CONTRACTIONS_NOTICE="English also uses the contraction tables of the Python \`contractions\` package
+(v0.1.73, MIT License, Copyright (c) 2021 Pascal van Kooten), embedded in the
+phonemizer wasm at \`crates/phonemize/src/tn/wetext/data/\` and read by
+\`tn/wetext/contractions.rs\`. They are data neither WeTextProcessing nor
+\`wetext\` wrote: the \`wetext\` distribution declares \`contractions\` as a runtime
+dependency and calls it before its own grammars. The licence text, the two
+versions and the hashes of the three files are in
+\`crates/phonemize/src/tn/wetext/data/contractions-NOTICE.txt\`."
+
+notice "${DICT_DIR}/wetext-en-tn-NOTICE.txt" English en "$FULL_TO_HALF_NOTICE
+
+$CONTRACTIONS_NOTICE"
 notice "${DICT_DIR}/wetext-zh-tn-NOTICE.txt" Chinese zh "$FULL_TO_HALF_NOTICE
+
 $TRADITIONAL_TO_SIMPLE_NOTICE"
 notice "${DICT_DIR}/wetext-ja-tn-NOTICE.txt" Japanese ja "$FULL_TO_HALF_NOTICE"
 

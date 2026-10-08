@@ -228,12 +228,22 @@ const CORPUS: &[(&str, &str)] = &[
         "He said OK and left.",
         "`OK`: a capital run with nothing behind it",
     ),
-    // ----------------------------------------------- the step around the tagger
+    // ----------------------------------------------- the two steps around the tagger
     //
     // These are the only entries the *tagger* has nothing to say about. They are
-    // here because the normalizer would still change them — `full_to_half` folds
-    // them — and the gate's promise is about the normalizer. Each one failed the
-    // promise before that switch was turned on and its criterion added.
+    // here because the normalizer would still change them — `fix_contractions`
+    // expands the first two and `full_to_half` folds the last three — and the
+    // gate's promise is about the normalizer. Each one failed the promise before
+    // those switches were turned on and their criteria added.
+    (
+        "We'll go tomorrow.",
+        "straight apostrophe: `fix_contractions` rewrites it to `we will`",
+    ),
+    (
+        "We’ll go tomorrow.",
+        "the curly apostrophe, which the tables are keyed with and the old guard missed",
+    ),
+    ("It isn't far.", "one more contraction, mid-sentence"),
     (
         "ＡＢＣ is easy.",
         "full-width Latin: `full_to_half` folds it, and `classify` drops it unfolded",

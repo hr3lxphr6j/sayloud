@@ -27,9 +27,12 @@ Modifications made for tts-ng
 
 The copy is upstream's `src/` at version 0.1.2 with the following changes.
 The first five came out of the evaluation that decided on a copy rather than a
-dependency; the sixth is a correctness fix found after the copy landed, and the
-seventh is what wiring Chinese and Japanese up needed. Nothing else about the
-normalization logic was touched.
+dependency; the sixth is a correctness fix found after the copy landed, the
+seventh is what wiring Chinese and Japanese up needed, the eighth is a defect of
+upstream's own that turning `fix_contractions` on exposed, and the ninth replaces
+the contraction matcher with the engine upstream's own dependency uses. The tenth
+is a notice and not a change. Nothing else about the normalization logic was
+touched.
 
 1. `text_normalizer.rs`: added `FstTextNormalizer::from_bytes`, and removed
    `from_file`. `rustfst`'s `SerializableFst::load` takes the whole OpenFST
@@ -100,10 +103,6 @@ Additionally, `error.rs` no longer has upstream's
 constructors that modification 1 and 2 removed, and an unused `From<io::Error>`
 is a way for an I/O error to arrive in a module that has no I/O.
 
-The port had one pre-existing flaw that was *not* fixed, because nothing in
-this crate reaches it: upstream's `fix_contractions` is off by default, and
-the configuration this crate builds for English leaves it off.
-
 7. `normalizer.rs`: `should_normalize` tests digits with
    [`char::is_numeric`](char::is_numeric) rather than `is_ascii_digit`. Upstream's
    line was a port of the Python reference's `re.search(r"\d", text)`, which over
@@ -137,3 +136,118 @@ The port has one more limitation that is **not** ours, recorded in `README.md`:
 are a genuine tie at `0.000100`. Modification 6 changed which non-minimal path
 was returned; it did not change this, because here both readings *are* the
 minimum.
+
+8. `normalizer.rs` and `contractions.rs`: `fix_contractions` now runs, and the
+   guard in front of it tests for the apostrophes the tables are keyed with.
+
+   This one is upstream's own defect, fixed here rather than inherited, and it is
+   worth separating the two halves:
+
+   - *The guard was one apostrophe short.* Upstream's Python is
+     `if config.fix_contractions and "'" in text`, and `contractions.fix` is only
+     reached by a straight apostrophe — while the tables the same package builds
+     are keyed under both spellings (`contractions_dict.update({k.replace("'",
+     "’"): v …})`). So every `’` key is unreachable in the reference, and was
+     unreachable here too. The guard is now `contractions::has_apostrophe`, which
+     is the question the tables answer; `We’ll` is `we will` and used to be read
+     as `We` `L` `L`.
+   - *The pattern order was a coin toss.* `PATTERNS` was built by walking a
+     `HashMap`, and the tables overlap: `leftovers_dict`'s `'ll` → `" will"` sits
+     beside `contractions_dict`'s `we'll` → `"we will"`, and both match the same
+     span. Whichever ran first won, and `HashMap`'s iteration order is seeded per
+     instance — measured over six runs of the test binary, `We'll go` came back
+     `we will go` three times and `We will go` three times. Upstream does not have
+     this: `contractions.fix` goes through `TextSearch`, which takes the longest
+     key. The copy now sorts the patterns longest-key-first, which restores that
+     and makes the reading deterministic.
+
+   - *The convention keys were case-blind, and ate prose.* Seven of the slang
+     table's forty-eight entries are writing conventions rather than words (`b4`,
+     `bc`, `kk`, `r `, `rn`, `u`, `ur`), and matching them case-insensitively —
+     which is what the whole table gets — turns `It's 500 BC` into `it is five
+     hundred because`, `U.S.` into `you.S.` and `RN` into `right now`. Upstream
+     does the same (`contractions.fix("It's 500 BC")` is `It's 500 BECAUSE`), so
+     the copy now matches those seven exactly and everything else
+     case-insensitively: the conventions are only ever written in lower case and
+     what they collide with is only ever written in upper case. The predicate is
+     `contractions::is_a_convention_rather_than_a_word` — "two characters or fewer,
+     or containing a digit" — so that a table bump adding `gr8` or `2day` is
+     covered without anyone remembering to.
+
+   None of the three is a change to the tables, and none is reachable while
+   `fix_contractions` is off — which is upstream's default, and was this crate's
+   until the reading was reported as a bug. `crate::tn::engine` turns it on for
+   English only, and all three are tested in `contractions.rs` and in
+   `tests/wetext_en.rs`.
+
+9. `contractions.rs`: the 412 `Regex` objects became one `AhoCorasick` automaton.
+
+   `fix_contractions` was one `(?i)\b…\b` regex per key, applied in a loop over the
+   mutating string. The keys are literals and the loop exists to emulate
+   `TextSearch`, which is what the Python `contractions` package (and therefore the
+   Python `wetext`) matches them with — so the port was emulating a multi-string
+   automaton with regexes, one per key. It now uses `aho-corasick`, which is that
+   automaton, and which `regex` already linked.
+
+   **The build is what forced it, not the scan.** Measured over the shipped 412
+   keys: 412 patterns compiled on the first apostrophe-bearing sentence is 56 ms and
+   6.7 MB of resident heap, against 0.73 ms and 89 KB for the automaton — and the
+   first call is the first sentence of an article, not a moment anybody chose. The
+   per-sentence scan barely moves (30 µs → 2.2 µs for a sentence, 80 µs → 14 µs for
+   a paragraph, against 500–750 ms of synthesis).
+
+   The automaton is a `MatchKind::Standard` one, and it is *not* what picks the key:
+   it reports every match and the scan filters, because the boundaries and the case
+   rule are not in the literals. Two measurements decide the shape, both of them
+   taken rather than assumed: `Standard` resolves two keys matching at the same
+   position by taking the one that ends *first* (`o'` over `o'clock`), so the scan
+   applies leftmost-then-longest itself; and a match the tables reject hides the
+   shorter ones inside or at the start of it — `ayou’d` is `you’d` over `’d`, and
+   `o'clocks` is `o'clock` over `o'` — so the scan enumerates every match instead of
+   filtering a leftmost-longest answer. Enumerating all of them to the end of the
+   text costs 174 µs on a paragraph, which is more than the 412-regex loop this
+   replaces (80 µs); the early exit in `Tables::expand` — sound because the iterator
+   yields matches in end-offset order and no key is longer than `max_key_len` — is
+   what makes one automaton sufficient, at 1.6 µs a sentence and 16 µs a paragraph
+   against 0.92 µs and 8.6 µs for the two-automaton shape that preceded it. An
+   earlier revision of this modification had that second automaton; the early exit
+   removed it.
+
+   The wrong shapes and the hidden matches were found by diffing the new engine
+   against the old one over every key in eleven carriers plus prose
+   (`the_engine_swap_changes_nothing_over_these_inputs`), not by reading.
+
+   Two consequences worth naming. The boundaries and the case rule are now this
+   module's own predicates rather than the regex engine's, so `is_word` asks
+   `char::is_alphanumeric()` where `\b` asked Unicode's `\w` — the same for every
+   ASCII character, and different for combining marks and join controls on one side
+   and `No`/`Nl` (`①`, `Ⅷ`, `²³¹¼½¾`) on the other; the test
+   `is_word_agrees_with_the_regex_word_class_over_these_code_points` pins both
+   directions and the counts. And ASCII case folding replaces Unicode's, so `ſhe's` no longer
+   expands — which is what upstream does, making that the one input class where the
+   two engines disagree and the new one is closer to the reference.
+
+   `warm_up` is the entry point `crate::tn::engine::english` calls, so the build
+   happens in `finish_loading` beside the FST parses rather than in a sentence.
+
+10. `data/contractions-NOTICE.txt`: added, for the three JSON tables beside it.
+
+    Upstream `wetext-rs` embeds `contractions` 0.1.73's `contractions_dict.json`,
+    `leftovers_dict.json` and `slang_dict.json` under its own Apache-2.0 LICENSE
+    and attributes none of them, so this copy did not either. They are MIT —
+    Copyright (c) 2021 Pascal van Kooten — and the tables are not a detail of
+    `wetext-rs`'s own licence: the Python `wetext` distribution declares
+    `contractions` as a runtime dependency, and its `normalize` calls
+    `contractions.fix(text)` before any grammar of its own runs.
+
+    So the notice is added rather than the files being changed: nothing about the
+    normalizer's behaviour depends on it, and the table bytes are still the MIT
+    package's, unmodified. `data/contractions-NOTICE.txt` carries the licence text,
+    the hashes that make "unmodified" checkable, and the provenance — including the
+    note that the missing attribution came from upstream rather than from a decision
+    here.
+
+    **It is the only non-Apache licence in this directory**, which is why it is a
+    file of its own rather than a paragraph in this one: `wetext-rs` and
+    WeTextProcessing are Apache-2.0 and cover the FSTs and the ported code, and this
+    covers data neither of them wrote.

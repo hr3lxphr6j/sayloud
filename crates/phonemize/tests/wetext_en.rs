@@ -179,6 +179,45 @@ fn reads_abbreviations_that_have_no_digit_in_them() {
     );
 }
 
+// ------------------------------------------------------ what the engine adds
+
+/// A contraction is expanded, `’` and `'` alike.
+///
+/// This is upstream's `fix_contractions`, which upstream leaves off and this
+/// configuration now turns on — see `../src/tn/engine.rs` for why it is worth the
+/// tagger composition every apostrophe now costs. The bug that turned it on:
+/// an apostrophe is not a letter, so `text::segment_text` split `We'll` into
+/// `We` + `'` + `ll`, `keep_punctuation` dropped the apostrophe, and `ll` — a run
+/// with no vowel in it — was spelled out of the CMU dictionary one letter at a
+/// time. `We'll go` phonemized to `wiːˈɛl ˈɛl ɡˈoʊ`.
+///
+/// **The curly apostrophe was the half that was broken twice.** The tables hold
+/// every apostrophe-bearing key under both spellings — upstream builds the `’`
+/// keys at load time — and upstream's own guard, `"'" in text`, tests for one of
+/// them, so a `’` never reached them: those keys were dead code in the Python
+/// reference and in this copy alike. The guard is now
+/// `contractions::has_apostrophe`, the same question the tables answer.
+#[test]
+fn expands_contractions_in_both_apostrophes() {
+    for (input, expected) in [
+        ("We'll go", "we will go"),
+        ("We’ll go", "we will go"),
+        ("don't", "do not"),
+        ("don’t", "do not"),
+        ("It's fine", "it is fine"),
+        ("It’s fine", "it is fine"),
+        ("I'm here", "I am here"),
+        // The general key, where no specific one overlaps it: `leftovers_dict`'s
+        // `'ll` → `" will"`, which is the same reading with the name it is
+        // attached to kept.
+        ("John'll come", "John will come"),
+        // And text with no apostrophe is untouched, which is the control.
+        ("hello world", "hello world"),
+    ] {
+        assert_eq!(read(input).as_deref(), Some(expected), "reading {input:?}");
+    }
+}
+
 /// **A full-width run is folded before anything reads it.**
 ///
 /// `full_to_half`, also off upstream and also now on. What it fixes:
@@ -354,22 +393,31 @@ fn the_pipeline_reads_numerals_through_the_engine() {
     }
 }
 
-/// The step before the tagger reaches the phonemes.
+/// The two steps around the tagger reach the phonemes.
 ///
 /// Separate from the numeral test above because these are not numerals and because
 /// the failure mode is different: a wrong number is a wrong word, whereas these
-/// were *silence*.
+/// were *silence* (full-width runs) and *spelling* (`We'll` as `We` `L` `L`).
 ///
 /// Each row is the reading the full-width form and its half-width twin both
 /// produce, and that is the property rather than the strings: `ＡＢＣ` and `ABC`
 /// used to differ by everything.
 #[test]
-fn the_pipeline_folds_full_width_forms() {
+fn the_pipeline_expands_contractions_and_folds_full_width() {
     let Some(phonemizer) = english_phonemizer() else {
         return;
     };
 
     for (text, expected) in [
+        // "we will go" — the report that started this. The old reading was
+        // `wiːˈɛl ˈɛl ɡˈoʊ`: `We`, then `L`, `L`.
+        ("We'll go", "wiː wɪl ɡˈoʊ"),
+        ("We’ll go", "wiː wɪl ɡˈoʊ"),
+        ("we will go", "wiː wɪl ɡˈoʊ"),
+        // "do not"/"it is" — `'` and `’` again, mid-sentence.
+        ("don't", "duː nɑt"),
+        ("It’s fine", "ɪt ɪz fˈaɪn"),
+        ("it is fine", "ɪt ɪz fˈaɪn"),
         // "ABC" — three letters, from a spelling `classify` used to drop whole.
         ("ＡＢＣ", "ə bˈiː sˈiː"),
         ("ABC", "ə bˈiː sˈiː"),
@@ -413,10 +461,11 @@ fn an_unprepared_english_pipeline_falls_back_rather_than_failing() {
         // which is the cost of not preparing. `%` is dropped, `1st` is "onest".
         ("50%", "fˈɪftiː"),
         ("1st", "ˈɑnəst"),
-        // Full-width text is the same story, and it is worth pinning because it
-        // does not *fail*: the fold lives in the engine, so an unprepared caller
-        // gets neither it nor the reading, and `Ｈｅｌｌｏ world` loses the word it
-        // starts with.
+        // Contractions and full-width text are the same story, and it is worth
+        // pinning because they do not *fail*: `We'll` comes out as `We` `L` `L`
+        // (the two steps live in the engine, so an unprepared caller gets neither)
+        // and `Ｈｅｌｌｏ world` loses the word it starts with.
+        ("We’ll go", "wiːˈɛl ˈɛl ɡˈoʊ"),
         ("Ｈｅｌｌｏ world", "wˈɜːld"),
     ] {
         let ipa = phonemizer

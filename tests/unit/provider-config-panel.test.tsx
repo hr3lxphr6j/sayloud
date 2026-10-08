@@ -153,6 +153,36 @@ function leave(element: HTMLElement): void {
 }
 
 describe('ProviderConfigPanel', () => {
+  it('finishes autosaves in edit order while the first write is pending', async () => {
+    const store = new ConfigStore(memoryArea());
+    const saveConfig = store.saveConfig.bind(store);
+    let releaseFirst!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const writes: string[] = [];
+    vi.spyOn(store, 'saveConfig').mockImplementation(async (config) => {
+      if (config.provider !== 'dashscope') return saveConfig(config);
+      writes.push(config.apiKey);
+      if (writes.length === 1) await pending;
+      await saveConfig(config);
+    });
+    await renderPanel(store);
+    open('dashscope');
+    fireEvent.input(apiKeyField(), { target: { value: 'first-key' } });
+    leave(apiKeyField());
+    await waitFor(() => expect(writes).toEqual(['first-key']));
+    fireEvent.input(apiKeyField(), { target: { value: 'second-key' } });
+    leave(apiKeyField());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(writes).toEqual(['first-key']);
+    releaseFirst();
+    await waitFor(async () =>
+      expect((await store.getSavedConfigs()).dashscope).toMatchObject({ apiKey: 'second-key' })
+    );
+    expect(writes).toEqual(['first-key', 'second-key']);
+  });
+
   it('shows a key saved in this panel after switching away and back', async () => {
     const store = new ConfigStore(memoryArea());
     await renderPanel(store);

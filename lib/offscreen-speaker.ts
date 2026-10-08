@@ -115,6 +115,8 @@ export class OffscreenSpeaker implements Speaker {
    * The offscreen document will emit a 'paused' event with the current time.
    */
   pause(): void {
+    // A synthesis that is still preparing must never start after this pause.
+    this.generation++;
     void this.manager.sendCommand({ type: 'pause' }, { create: false }).catch((error: unknown) => {
       console.warn('[SayLoud] could not pause the cloud voice', error);
     });
@@ -193,8 +195,7 @@ export class OffscreenSpeaker implements Speaker {
       if (this.stale(generation)) return;
 
       // A missing reply means the offscreen worker already reported the failure
-      // as an `error` event; saying so again would make the engine fall back
-      // twice.
+      // as an `error` event; reporting it again would duplicate the failure.
       if (!reply) return;
 
       // The rate is set before playback starts, so the word timeline is
@@ -219,9 +220,9 @@ export class OffscreenSpeaker implements Speaker {
   }
 
   private readonly onMessage = (message: unknown): void => {
-    // Handle 'paused' events without checking activeId, as they report the
-    // playback position regardless of which sentence is active.
-    if (isOffscreenEvent(message) && message.type === 'paused') {
+    // Handle paused events only for the active sentence; a delayed pause from
+    // an earlier utterance must not overwrite the current resume position.
+    if (isOffscreenEvent(message) && message.type === 'paused' && message.id === this.activeId) {
       this.lastPausedTimeMs = message.currentTimeMs;
       // Emit to PlaybackEngine so it can update resumeTimeMs
       this.emit('paused', message.currentTimeMs);
@@ -230,7 +231,7 @@ export class OffscreenSpeaker implements Speaker {
 
     // Two filters, for two different mistakes: a message that is not an audio
     // event at all, and an event from a sentence the engine has moved on from.
-    // Type assertion is safe here because we've already filtered out 'paused' events.
+    // Type assertion is safe here because we've already filtered out paused events.
     if (!isOffscreenEvent(message)) return;
     if (message.type === 'paused') return; // Already handled above
     if (message.id !== this.activeId) return;

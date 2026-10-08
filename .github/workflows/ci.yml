@@ -27,15 +27,13 @@ jobs:
       # `.d.ts` and load the generated `.wasm`.
       - run: pnpm build:wasm
       # The Rust half of the phonemizer has its own tests — the dictionary
-      # protocol, and later the pipeline's parity corpus. Nothing else runs them,
-      # and the side panel smoke test rotted once already while nothing ran it.
+      # protocol and the pipeline's parity corpus.
       - run: cargo test --workspace
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
       - run: npx playwright install --with-deps chromium
       - run: pnpm test:e2e
-      - run: pnpm build
       - run: pnpm check:manifest
-      # Drives the production build's side panel; it rotted once while nothing ran it.
-      - run: pnpm smoke:sidepanel

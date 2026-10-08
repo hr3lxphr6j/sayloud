@@ -14,6 +14,7 @@ export interface SessionStorageArea {
 export interface LocalStorageArea {
   get(key: string): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
+  remove(key: string): Promise<void>;
 }
 
 /**
@@ -25,20 +26,23 @@ export interface LocalStorageArea {
  * Backup storage: `chrome.storage.local` - persistent, on-disk, survives browser
  * restart and service worker termination.
  *
- * When loading, the session storage is checked first (fast path). If empty
- * (service worker was terminated and session cleared), falls back to local
- * storage and restores the session automatically.
- *
- * This solves the "long pause breaks playback" issue where Chrome terminates
- * the service worker and clears session storage after 30 seconds of inactivity.
+ * Session storage survives service worker recycling. The local backup is used
+ * when session storage has no usable snapshot, including after a browser restart.
  */
 export class SnapshotStore {
+  private pendingWrite: Promise<void> = Promise.resolve();
   constructor(
     private readonly session: SessionStorageArea,
     private readonly local: LocalStorageArea
   ) {}
 
   async save(snapshot: SessionSnapshot | null): Promise<void> {
+    const write = this.pendingWrite.catch(() => {}).then(() => this.write(snapshot));
+    this.pendingWrite = write;
+    await write;
+  }
+
+  private async write(snapshot: SessionSnapshot | null): Promise<void> {
     if (snapshot) {
       // Dual-write: session for speed, local for durability
       await Promise.all([
@@ -47,14 +51,8 @@ export class SnapshotStore {
       ]);
       return;
     }
-    // Clear both storages when session ends
-    // Note: session.remove is available, but local storage uses set with undefined
-    // to maintain compatibility with LocalStorageArea from config-store
-    await Promise.all([
-      this.session.remove(SNAPSHOT_KEY),
-      // Chrome storage API: setting undefined removes the key
-      this.local.set({ [SNAPSHOT_BACKUP_KEY]: undefined }),
-    ]);
+    // Clear both storages when session ends.
+    await Promise.all([this.session.remove(SNAPSHOT_KEY), this.local.remove(SNAPSHOT_BACKUP_KEY)]);
   }
 
   async load(): Promise<SessionSnapshot | null> {

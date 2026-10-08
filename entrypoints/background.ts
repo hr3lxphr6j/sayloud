@@ -81,9 +81,12 @@ export default defineBackground(() => {
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
     if (!(CONFIG_KEY in changes) && !(SELECTED_VOICES_KEY in changes)) return;
-    void app.speakers.refresh().catch((error: unknown) => {
-      console.error('[SayLoud] cannot apply the saved provider configuration', error);
-    });
+    void app.speakers
+      .refresh()
+      .then(() => app.engine.clearConfigurationError())
+      .catch((error: unknown) => {
+        console.error('[SayLoud] cannot apply the saved provider configuration', error);
+      });
   });
 
   // Restores a session left behind by a recycled service worker. The router

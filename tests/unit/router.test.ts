@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PlaybackEngine } from '~/lib/playback-engine';
-import type { EngineCommand, EngineEvent, SessionSnapshot } from '~/lib/protocol';
+import type { EngineEvent, SessionSnapshot } from '~/lib/protocol';
 import { type RouterPort, SessionRouter } from '~/lib/router';
 import { type SessionStorageArea, SNAPSHOT_KEY, SnapshotStore } from '~/lib/snapshot-store';
 import type { Speaker, TtsApi, TtsVoiceLike } from '~/lib/speaker';
@@ -69,7 +69,7 @@ function fakePort(tabId: number) {
     },
     onDisconnect: () => {},
   };
-  return { port, sent, send: (message: EngineCommand): void => onMessage?.(message) };
+  return { port, sent, send: (message: unknown): void => onMessage?.(message) };
 }
 
 /** Commands reach the engine in a microtask; the tests wait for that turn. */
@@ -114,7 +114,7 @@ describe('SessionRouter.start', () => {
     const status = engine.getStatus();
     expect(status.phase).toBe('paused');
     expect(status.total).toBe(0); // No sentences loaded yet (will be reloaded via sync)
-    expect(status.index).toBe(0); // Clamped to 0 because no sentences yet
+    expect(status.index).toBe(1); // Retained until the sentences are reloaded
     expect(status.charsTotal).toBe(SNAPSHOT.charsTotal); // Kept for the panel
   });
 
@@ -206,6 +206,100 @@ describe('SessionRouter recovery after a recycled worker', () => {
     // where the session was, and the next recycle has nothing left to restore.
     expect(engine.getStatus().phase).toBe('paused');
     expect(await snapshots.load()).not.toBeNull();
+  });
+});
+
+describe('SessionRouter command isolation', () => {
+  it('ignores control and sync commands from a different tab', async () => {
+    const { engine, router } = build();
+    await router.start();
+    const owner = fakePort(1);
+    const other = fakePort(2);
+    router.handlePort(owner.port);
+    router.handlePort(other.port);
+    owner.send({ type: 'sync', docId: 'first' });
+    owner.send({
+      type: 'load',
+      sentences: [{ text: 'First.', lang: 'en' }],
+      startIndex: 0,
+      rate: 1,
+    });
+    await tick();
+    for (const command of [
+      { type: 'sync', docId: 'second' },
+      { type: 'pause' },
+      { type: 'stop' },
+    ]) {
+      other.send(command);
+    }
+    await tick();
+    expect(engine.getStatus()).toMatchObject({ total: 1, phase: 'loading' });
+    expect(other.sent).toEqual([]);
+  });
+
+  it('does not overwrite a document loaded while the snapshot read is pending', async () => {
+    const { engine, router, snapshots } = build();
+    let resolveRead!: (snapshot: SessionSnapshot) => void;
+    vi.spyOn(snapshots, 'load').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRead = resolve;
+        })
+    );
+    const starting = router.start();
+    await tick();
+    const owner = fakePort(1);
+    router.handlePort(owner.port);
+    owner.send({ type: 'load', sentences: [{ text: 'New.', lang: 'en' }], startIndex: 0, rate: 1 });
+    resolveRead(SNAPSHOT);
+    await starting;
+    expect(engine.getStatus()).toMatchObject({ total: 1, phase: 'loading' });
+  });
+
+  it('rejects malformed command payloads before dispatch', async () => {
+    const { engine, router } = build();
+    await router.start();
+    const owner = fakePort(1);
+    router.handlePort(owner.port);
+    const dispatch = vi.spyOn(engine, 'dispatch');
+    for (const command of [
+      { type: 'load' },
+      { type: 'load', sentences: [null], startIndex: 0, rate: 1 },
+      { type: 'seek', index: NaN },
+      { type: 'setRate', rate: 'fast' },
+      { type: 'sync', docId: 1 },
+    ])
+      owner.send(command);
+    await tick();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('drops an older load that returns after a newer load', async () => {
+    const { engine, router, voices } = build();
+    let releaseFirst!: () => void;
+    vi.spyOn(voices, 'refresh')
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseFirst = resolve;
+          })
+      )
+      .mockResolvedValueOnce(undefined);
+    const first = fakePort(1);
+    const second = fakePort(2);
+    router.handlePort(first.port);
+    router.handlePort(second.port);
+    first.send({ type: 'load', sentences: [{ text: 'Old.', lang: 'en' }], startIndex: 0, rate: 1 });
+    second.send({
+      type: 'load',
+      sentences: [{ text: 'New.', lang: 'en' }],
+      startIndex: 0,
+      rate: 1,
+    });
+    await tick();
+    releaseFirst();
+    await tick();
+    expect(engine.getSnapshot()).toMatchObject({ tabId: 2, charsTotal: 4 });
   });
 });
 

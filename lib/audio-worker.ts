@@ -94,10 +94,19 @@ const LOCAL_SYNTHESIZE_TIMEOUT_MS = 180_000;
  */
 const MAX_PREFETCH_QUEUE = 8;
 
-/** A cloud provider takes two prefetches at a time. */
-const CLOUD_PREFETCH_CONCURRENCY = 2;
-/** A local server gets one: it is a single process on the user's machine. */
-const LOCAL_PREFETCH_CONCURRENCY = 1;
+/** Legacy helper retained for callers that do not have a provider instance. */
+export function prefetchConcurrency(config: ProviderConfig): number {
+  if (config.provider === 'openai-compat') {
+    try {
+      const host = new URL(config.baseUrl).hostname.toLowerCase();
+      if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]')
+        return 1;
+    } catch {
+      // Invalid URLs are handled by the provider.
+    }
+  }
+  return 2;
+}
 
 /** One sentence waiting to be warmed in the cache. */
 interface PrefetchItem {
@@ -112,22 +121,6 @@ interface PrefetchItem {
  * loopback is one local process, and saturating it would slow down the sentence
  * that is actually being played.
  */
-export function prefetchConcurrency(config: ProviderConfig): number {
-  if (config.provider === 'openai-compat' && isLoopback(config.baseUrl)) {
-    return LOCAL_PREFETCH_CONCURRENCY;
-  }
-  return CLOUD_PREFETCH_CONCURRENCY;
-}
-
-function isLoopback(baseUrl: string): boolean {
-  try {
-    const host = new URL(baseUrl).hostname.toLowerCase();
-    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
-  } catch {
-    return false;
-  }
-}
-
 export class AudioWorker {
   private readonly providers: ReadonlyMap<ProviderId, Provider>;
   private readonly cache: AudioCache;
@@ -160,6 +153,7 @@ export class AudioWorker {
    * request still counts until its promise settles.
    */
   private readonly prefetchInFlight = new Set<AbortController>();
+  private currentId: string | null = null;
 
   constructor(deps: AudioWorkerDeps) {
     this.providers = deps.providers;
@@ -192,7 +186,7 @@ export class AudioWorker {
         // Report the current playback position so the engine can resume from
         // the exact position later.
         const currentTimeMs = this.player.getCurrentTimeMs() ?? 0;
-        this.emit({ type: 'paused', currentTimeMs });
+        if (this.currentId) this.emit({ type: 'paused', id: this.currentId, currentTimeMs });
         return undefined;
       }
       case 'setRate':
@@ -217,6 +211,7 @@ export class AudioWorker {
     this.inFlight?.abort();
     this.inFlight = null;
     this.player.stop();
+    this.currentId = null;
     this.cancelPrefetches();
   }
 
@@ -293,8 +288,7 @@ export class AudioWorker {
    *
    * Fire and forget: there is no reply, no `ready`, and — most importantly — no
    * `error` event. The service worker reads a speaker error as "this sentence
-   * failed" and degrades to the browser voice, so a background prefetch that
-   * fails is only logged.
+   * failed", so a background prefetch failure is only logged.
    */
   private prefetch(command: Extract<OffscreenCommand, { type: 'prefetch' }>): void {
     this.cancelPrefetches();
@@ -327,7 +321,8 @@ export class AudioWorker {
     const config = this.prefetchConfig;
     if (!config) return;
 
-    const concurrency = prefetchConcurrency(config);
+    const declared = this.providerFor(config.provider).capabilities(config).concurrency;
+    const concurrency = Math.max(1, Math.floor(Math.min(declared, prefetchConcurrency(config))));
     while (this.prefetchInFlight.size < concurrency) {
       const item = this.prefetchQueue.shift();
       if (!item) return;
@@ -443,7 +438,9 @@ export class AudioWorker {
   /** Decode the audio, reporting a decode failure as an audio error. */
   private async load(id: string, result: SynthesisResult): Promise<LoadedAudioInfo | null> {
     try {
-      return await this.player.load(id, result);
+      const info = await this.player.load(id, result);
+      this.currentId = id;
+      return info;
     } catch (error) {
       this.emitError(id, 'audio-error', errorMessage(error));
       return null;

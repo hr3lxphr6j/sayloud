@@ -202,6 +202,15 @@ describe('PlaybackEngine', () => {
       expect(status().error).toBeUndefined();
     });
 
+    it('loads after the selected voice becomes ready', () => {
+      engine.reportError('no-voice-selected:dashscope');
+      engine.clearConfigurationError();
+      engine.load(SENTENCES);
+      expect(status().error).toBeUndefined();
+      expect(status().phase).toBe('loading');
+      expect(fake.requests).toHaveLength(1);
+    });
+
     it('replaces a session that is already playing', () => {
       engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
       engine.dispatch({
@@ -623,6 +632,28 @@ describe('PlaybackEngine', () => {
   });
 
   describe('snapshot and restore', () => {
+    it('resumes the saved sentence at its saved audio time after reloading', () => {
+      engine.restore({
+        tabId: 7,
+        docId: 'doc-1',
+        sentenceCount: 3,
+        charsTotal: TOTAL_CHARS,
+        index: 1,
+        resumeOffset: 7,
+        voice: 'Samantha',
+        rate: 2,
+        charsRead: 19,
+        resumeTimeMs: 850,
+      });
+      engine.load(SENTENCES, 0, 2, true);
+      expect(status().index).toBe(1);
+      expect(engine.getSnapshot()?.resumeTimeMs).toBe(850);
+      expect(engine.getSnapshot()?.resumeOffset).toBe(7);
+      expect(fake.requests).toHaveLength(0);
+      engine.play();
+      expect(fake.requests[0]).toMatchObject({ text: SENTENCES[1]?.text, resumeTimeMs: 850 });
+    });
+
     it('captures the session so the service worker can persist it', () => {
       engine.setTabId(7);
       engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 1, rate: 1.5 });
@@ -659,7 +690,7 @@ describe('PlaybackEngine', () => {
 
       const restored = other.getStatus();
       expect(restored.phase).toBe('paused');
-      expect(restored.index).toBe(0); // Clamped to 0 because sentences are empty
+      expect(restored.index).toBe(1); // Retained until the sentences are reloaded
       expect(restored.rate).toBe(2);
       expect(restored.total).toBe(0); // No sentences loaded yet
       expect(restored.charsTotal).toBe(TOTAL_CHARS); // Preserved from snapshot

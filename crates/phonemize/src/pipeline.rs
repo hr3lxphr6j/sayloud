@@ -27,15 +27,19 @@ use crate::text::{
 use crate::tn::{self, Normalizer as WeTextNormalizer};
 
 /// Why text could not be turned into phonemes.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
     /// The Japanese segmenter failed.
+    #[error("{0}")]
     Segmenter(SegmenterError),
     /// The Chinese segmenter failed.
+    #[error("{0}")]
     ZhSegmenter(SegmenterZhError),
     /// The Chinese readings or the word grouping failed.
+    #[error("{0}")]
     Pinyin(PinyinError),
     /// The English backend failed.
+    #[error("{0}")]
     English(EnglishError),
 }
 
@@ -50,19 +54,6 @@ impl PipelineError {
         }
     }
 }
-
-impl std::fmt::Display for PipelineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Segmenter(error) => write!(f, "{error}"),
-            Self::ZhSegmenter(error) => write!(f, "{error}"),
-            Self::Pinyin(error) => write!(f, "{error}"),
-            Self::English(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl std::error::Error for PipelineError {}
 
 impl From<SegmenterError> for PipelineError {
     fn from(error: SegmenterError) -> Self {

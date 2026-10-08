@@ -18,6 +18,7 @@ pnpm install        # also builds the dictionaries (scripts/setup/)
 pnpm dev            # launches Chrome with the extension, reloading on change
 pnpm test           # unit tests (vitest, happy-dom)
 pnpm test:e2e       # end-to-end tests (Playwright, real Chrome)
+pnpm test:e2e:production # production side panel acceptance tests
 pnpm typecheck      # tsc --noEmit
 pnpm lint           # Biome, formatting and lint
 pnpm build          # production bundle in .output/chrome-mv3
@@ -31,7 +32,6 @@ Two more commands that do not run in CI:
 ```bash
 pnpm capture:screenshots   # rewrites the images in assets/ from a real build
 pnpm check:ja-mutations    # mutates the Japanese pipeline's guards; minutes
-pnpm smoke:sidepanel       # drives the built side panel against a fake model
 ```
 
 `scripts/README.md` documents the rest: the dictionary scripts, the data
@@ -91,7 +91,13 @@ real Chrome with the extension loaded, because the interesting parts only exist
 there: `chrome.tts` actually speaking, its word events reaching the content
 script, and the CSS Custom Highlight API actually painting.
 
-`pnpm test:e2e` builds its own bundle first (`.output-e2e/chrome-mv3`), which
+`pnpm test:e2e` runs both the `chromium` and `production` projects. Each project
+builds its bundle before running so it cannot test stale artifacts. The
+`production` project exercises the shipped side panel in `.output/chrome-mv3`,
+including provider forms, persistence, voice selection and narrow layouts.
+`pnpm test:e2e:production` runs only that project.
+
+The `chromium` project uses `.output-e2e/chrome-mv3`, which
 differs from the shipped one in two ways: it exposes a `sayloudActivate()` hook
 on the service worker's scope, and it grants host access to `127.0.0.1` so test
 pages can be served over http. Playwright cannot click an extension's toolbar

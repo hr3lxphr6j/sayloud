@@ -8,7 +8,7 @@ import {
   type Worker,
 } from '@playwright/test';
 
-/** Built by `global-setup.ts` from `wxt.config.ts`'s e2e mode. */
+/** Built by the `build-e2e` project from `wxt.config.ts`'s e2e mode. */
 export const EXTENSION_PATH = path.resolve(process.cwd(), '.output-e2e/chrome-mv3');
 
 /** Must match `tests/e2e/server.mjs` and the manifest's host permission. */
@@ -18,6 +18,7 @@ export const BASE_URL = `http://127.0.0.1:${process.env.SAYLOUD_E2E_PORT ?? 8787
 export const HOST_ID = 'sayloud-host';
 
 interface Fixtures {
+  extensionPath: string;
   context: BrowserContext;
   serviceWorker: Worker;
   extensionId: string;
@@ -33,8 +34,8 @@ interface Fixtures {
 }
 
 export const test = base.extend<Fixtures>({
-  // biome-ignore lint/correctness/noEmptyPattern: Playwright requires a destructuring pattern for a fixture's first argument, and this fixture needs nothing from it.
-  context: async ({}, use) => {
+  extensionPath: [EXTENSION_PATH, { option: true }],
+  context: async ({ extensionPath }, use) => {
     const context = await chromium.launchPersistentContext('', {
       channel: 'chromium',
       // The UI follows the browser's language when the setting is `auto`, and
@@ -42,8 +43,8 @@ export const test = base.extend<Fixtures>({
       // in does not depend on the machine it runs on.
       locale: 'en-US',
       args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`,
-        `--load-extension=${EXTENSION_PATH}`,
+        `--disable-extensions-except=${extensionPath}`,
+        `--load-extension=${extensionPath}`,
         '--mute-audio',
       ],
     });

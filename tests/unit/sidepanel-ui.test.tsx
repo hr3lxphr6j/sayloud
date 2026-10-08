@@ -3,7 +3,7 @@
  *
  * What is worth asserting here is the accessibility contract and the slider's
  * two-event split, not the class names: the styling is checked in the browser
- * by the smoke script.
+ * by the production side panel tests.
  */
 import { fireEvent, render, screen } from '@testing-library/preact';
 import { describe, expect, it, vi } from 'vitest';

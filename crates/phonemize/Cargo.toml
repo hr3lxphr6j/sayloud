@@ -162,18 +162,3 @@ serde_json = "1"
 # has to be said about which backend to use, and a direct dependency there would
 # only pin a version this crate does not otherwise care about.
 getrandom = { version = "0.3", features = ["wasm_js"] }
-
-[dev-dependencies]
-# The parity corpus is JSON, and so is the option object that crosses the wasm
-# boundary. Already in the dependency graph through lindera, so this costs no
-# extra build.
-#
-# Also a normal dependency, for the copied `wetext` engine's contraction tables.
-# Both entries are needed: a test target can see a `[dev-dependencies]` entry and
-# not a `[dependencies]` one.
-serde_json = "1"
-# The English TN tests decompress the two FST assets themselves — the registry's
-# decompression is inside the wasm, and a test that read the frames in order to
-# hand them to `load_dictionary` would be testing the transport it is trying to
-# get past. Already a normal dependency, so this adds no build.
-ruzstd = "0.9"

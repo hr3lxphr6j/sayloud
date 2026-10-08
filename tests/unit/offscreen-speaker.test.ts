@@ -91,6 +91,41 @@ describe('OffscreenSpeaker', () => {
   });
 
   describe('speak', () => {
+    it('does not play when paused while synthesis is pending', async () => {
+      let finishSynthesis: (reply: SynthesizeReply) => void = () => {};
+      vi.mocked(channel.channel.sendCommand).mockImplementation((command) => {
+        channel.commands.push(command);
+        return command.type === 'synthesize'
+          ? new Promise((resolve) => {
+              finishSynthesis = resolve;
+            })
+          : Promise.resolve(undefined);
+      });
+      speaker.speak({ text: 'hello', voice: 'v1', rate: 1, lang: 'en' });
+      speaker.pause();
+      finishSynthesis({ durationMs: 1000, hasTimings: false });
+      await tick();
+      expect(channel.commands.some((command) => command.type === 'play')).toBe(false);
+      expect(started).toBe(0);
+    });
+
+    it('ignores a delayed pause event from the previous utterance', async () => {
+      const paused: number[] = [];
+      speaker.on('paused', (time) => paused.push(time));
+      speaker.speak({ text: 'first', voice: 'v1', rate: 1, lang: 'en' });
+      const oldId = utteranceId(channel.commands);
+      await tick();
+      speaker.speak({ text: 'second', voice: 'v1', rate: 1, lang: 'en' });
+      const current = channel.commands.findLast((command) => command.type === 'synthesize');
+      events.deliver({ type: 'paused', id: oldId, currentTimeMs: 900 });
+      expect(paused).toEqual([]);
+      expect(speaker.getCurrentTimeMs()).toBe(0);
+      events.deliver({ type: 'paused', id: current?.id, currentTimeMs: 200 });
+      expect(paused).toEqual([200]);
+      expect(speaker.getCurrentTimeMs()).toBe(200);
+      await tick();
+    });
+
     it('synthesizes, sets the rate, plays, and reports the start', async () => {
       speaker.speak({ text: 'hello', voice: 'v1', rate: 1.5, lang: 'en-US' });
       await tick();

@@ -24,7 +24,7 @@ Content Script (reader)  ←→  Service Worker (background)  ←→  Side Panel
 #### Content Script (`entrypoints/reader.content/`)
 - **ReaderController.ts**: 提取页面句子、发送 `load` 命令、处理 `sync`
 - **CaptionWindow.ts**: 浮动字幕窗口（P4 功能）
-- 通过 `chrome.runtime.sendMessage` 与 background 通信
+- 通过 `chrome.runtime.Port` 与 background 通信
 
 #### Service Worker (`entrypoints/background.ts`)
 - **PlaybackEngine** (`lib/playback-engine.ts`): 核心播放引擎
@@ -83,10 +83,9 @@ Content Script (reader)  ←→  Service Worker (background)  ←→  Side Panel
 - 支持 `pause`/`resume`，保存 `lastPausedTimeMs`
 - **重要修复 (2026-10-02)**: 使用事件驱动架构获取播放位置，避免竞态
 
-#### CloudSpeaker (未来)
-- 调用云端 API（OpenAI、Azure 等）
-- 返回音频 + 时间戳对齐数据
-- 交给 TimelinePlayer 播放
+#### Cloud providers
+- 云端 provider 在 offscreen document 中合成音频，并由 `AudioWorker` 缓存和播放
+- provider 的配置、鉴权和能力声明位于 `lib/providers/`
 
 #### SpeakerRouter (`lib/speaker-router.ts`)
 - 根据 voice ID 路由到不同 speaker
@@ -175,18 +174,18 @@ tests/
 
 ### 代码规范
 - **TypeScript**: 严格模式，所有类型必须显式声明
-- **Linter**: Biome（`npm run lint`）
-- **格式化**: Biome（`npm run format`）
-- **测试**: Vitest + Playwright（`npm test` / `npm run test:e2e`）
+- **Linter**: Biome（`pnpm lint`）
+- **格式化**: Biome（`pnpm format`）
+- **测试**: Vitest + Playwright（`pnpm test` / `pnpm test:e2e`）
 
 ### 事件驱动架构
 - **禁止同步轮询**: 使用事件监听器（`EventEmitter`）
 - **例子**: `OffscreenSpeaker` 的 `paused` 事件而非轮询 `getCurrentTimeMs()`
 
 ### 错误处理
-- **Service worker 随时可能被回收**: 所有状态必须可持久化
+- **Service worker 随时可能被回收**: 所有可恢复状态必须可持久化
 - **Content script 可能断线**: 使用 `sync` 命令重连
-- **Offscreen document 30 秒后回收**: 播放前创建，结束后销毁
+- **Offscreen document**: 按需创建并由扩展生命周期管理；不要把内存状态当作持久化状态
 
 ### 测试要求
 - **单元测试**: 覆盖所有核心逻辑（`lib/`）
@@ -251,7 +250,7 @@ chore: 构建/工具
 ### 架构限制
 - **Service Worker 内存限制**: 不能缓存大量音频数据
 - **Offscreen 生命周期**: 30 秒静音后自动回收
-- **Content Script 沙箱**: 不能访问扩展的 storage API
+- **Content script**: 可访问扩展 storage API；通过 runtime port 请求播放会话状态
 
 ## 最近的重要修复（2026-10-02）
 
@@ -261,7 +260,7 @@ chore: 构建/工具
 **修复**:
 1. `SpeakerRouter` 添加 `pause()` 和 `getCurrentTimeMs()` 转发
 2. 改用事件驱动架构（`paused` 事件）避免竞态
-3. `isOffscreenEvent()` 特殊处理 `paused` 事件（不需要 `id`）
+3. `paused` 事件携带当前 utterance `id`，忽略过期句子的暂停位置
 4. `EVENT_TYPES` 集合添加 `'paused'`
 
 **提交**: `063d056`, `c0a3c35`
@@ -298,15 +297,15 @@ chore: 构建/工具
 
 ### 本地运行
 ```bash
-npm install
-npm run dev        # 开发模式（热重载）
-npm run build      # 生产构建
-npm test           # 单元测试
-npm run test:e2e   # E2E 测试（需要安装语音包）
+pnpm install
+pnpm dev        # 开发模式（热重载）
+pnpm build      # 生产构建
+pnpm test       # 单元测试
+pnpm test:e2e   # E2E 测试（需要安装语音包）
 ```
 
 ### 加载到 Chrome
-1. 构建: `npm run build`
+1. 构建: `pnpm build`
 2. 打开 `chrome://extensions`
 3. 开启 "开发者模式"
 4. 点击 "加载已解压的扩展程序"

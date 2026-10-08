@@ -62,7 +62,7 @@ export type OffscreenEvent =
   | { type: 'ready'; id: string; durationMs: number; hasTimings: boolean }
   | { type: 'word'; id: string; charStart: number; charEnd: number }
   | { type: 'sentence-end'; id: string }
-  | { type: 'paused'; currentTimeMs: number }
+  | { type: 'paused'; id: string; currentTimeMs: number }
   | { type: 'error'; id: string; code: OffscreenErrorCode; message: string };
 
 /**
@@ -256,12 +256,10 @@ export function isOffscreenEvent(value: unknown): value is OffscreenEvent {
   if (type === null || !EVENT_TYPES.has(type)) return false;
   const message = value as Record<string, unknown>;
 
-  // 'paused' event has no id field, as it reports global playback state
-  if (type === 'paused') {
-    return isFiniteNumber(message.currentTimeMs);
-  }
+  if (type === 'paused')
+    return isNonEmptyString(message.id) && isFiniteNumber(message.currentTimeMs);
 
-  // All other events require an id to correlate with a specific sentence
+  // Every event is correlated with a specific sentence.
   if (!isNonEmptyString(message.id)) return false;
 
   switch (type) {

@@ -67,6 +67,24 @@ describe('SnapshotStore', () => {
     expect(await store.load()).toEqual(SNAPSHOT);
   });
 
+  it('queues clearing behind an unfinished save', async () => {
+    const set = fakeSession.area.set.bind(fakeSession.area);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(fakeSession.area, 'set').mockImplementation(async (items) => {
+      await gate;
+      await set(items);
+    });
+    const saving = store.save(SNAPSHOT);
+    const clearing = store.save(null);
+    release();
+    await Promise.all([saving, clearing]);
+    expect(fakeSession.data.has(SNAPSHOT_KEY)).toBe(false);
+    expect(fakeLocal.data.has(SNAPSHOT_BACKUP_KEY)).toBe(false);
+  });
+
   it('returns null when nothing was saved', async () => {
     expect(await store.load()).toBeNull();
   });

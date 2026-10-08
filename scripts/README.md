@@ -373,18 +373,22 @@ rm -rf public/dictionaries
 - run: pnpm check:headtts
 - run: pnpm build:wasm                         # Rust toolchain + wasm-pack
 - run: cargo test --workspace
+- run: cargo fmt --all -- --check
+- run: cargo clippy --workspace --all-targets -- -D warnings
 - run: pnpm typecheck
 - run: pnpm lint
 - run: pnpm test
 - run: pnpm test:e2e
-- run: pnpm build
 - run: pnpm check:manifest
-- run: pnpm smoke:sidepanel
 ```
 
 The three generators come before the tests because the tests pin the committed
 data: a `pinyin-pro` bump that changed a reading would leave every test green and
 the data stale.
+
+`pnpm test:e2e` builds both the E2E and production bundles before running their
+Playwright projects. The production project covers the shipped side panel;
+`pnpm test:e2e:production` builds and runs that project alone.
 
 ---
 

@@ -323,6 +323,7 @@ function ProviderForm({
    * values that are no longer on screen.
    */
   const revision = useRef(0);
+  const writeQueue = useRef(Promise.resolve());
   /** The saved config as form values, which is what an edit is measured against. */
   const savedValues = configToFormValues(schema, saved);
 
@@ -382,42 +383,49 @@ function ProviderForm({
    */
   const write = async (config: ProviderConfig, access: Promise<boolean>) => {
     const started = revision.current;
-    setSave({ kind: 'running' });
-    setGrantNeeded(false);
-    try {
-      // A config the extension cannot reach would only fail later, mid-read.
-      if (!(await access.catch(() => false))) {
+    const granted = access.catch(() => false);
+    const operation = async (): Promise<void> => {
+      setSave({ kind: 'running' });
+      setGrantNeeded(false);
+      try {
+        // A config the extension cannot reach would only fail later, mid-read.
+        if (!(await granted)) {
+          if (revision.current === started) {
+            setGrantNeeded(true);
+            setSave({
+              kind: 'error',
+              message: t('provider.not-saved', { detail: t('provider.access-needed') }),
+            });
+          }
+          return;
+        }
+        await store.saveConfig(config);
+        // Saving is not switching, and this row was already the one in use — so
+        // re-point the active config at what was just saved. Leaving the old
+        // values there would mean the panel shows one key while the engine reads
+        // with another until the user thinks to press the circle again.
+        if (active && (await store.getConfig())?.provider === schema.id) {
+          await store.setActiveConfig(schema.id);
+        }
         if (revision.current === started) {
-          setGrantNeeded(true);
           setSave({
-            kind: 'error',
-            message: t('provider.not-saved', { detail: t('provider.access-needed') }),
+            kind: 'ok',
+            message: t(active ? 'provider.saved' : 'provider.saved-not-active'),
           });
         }
-        return;
+        // The write happened either way, so the owner still has to re-read.
+        onChanged();
+      } catch (error) {
+        if (revision.current === started) {
+          setSave({
+            kind: 'error',
+            message: t('provider.not-saved', { detail: errorMessage(error) }),
+          });
+        }
       }
-      await store.saveConfig(config);
-      // Saving is not switching, and this row was already the one in use — so
-      // re-point the active config at what was just saved. Leaving the old
-      // values there would mean the panel shows one key while the engine reads
-      // with another until the user thinks to press the circle again.
-      if (active) await store.setActiveConfig(schema.id);
-      if (revision.current === started) {
-        setSave({
-          kind: 'ok',
-          message: t(active ? 'provider.saved' : 'provider.saved-not-active'),
-        });
-      }
-      // The write happened either way, so the owner still has to re-read.
-      onChanged();
-    } catch (error) {
-      if (revision.current === started) {
-        setSave({
-          kind: 'error',
-          message: t('provider.not-saved', { detail: errorMessage(error) }),
-        });
-      }
-    }
+    };
+    writeQueue.current = writeQueue.current.catch(() => {}).then(operation);
+    await writeQueue.current;
   };
 
   /**
@@ -445,9 +453,7 @@ function ProviderForm({
     // `permissions.request` without one never comes back — the line would sit
     // at "Saving…" forever. The grant is only checked, and the Grant access
     // button takes on the asking.
-    void hasProviderAccess(draft, permissions).then((granted) =>
-      write(draft, Promise.resolve(granted))
-    );
+    void write(draft, hasProviderAccess(draft, permissions));
   };
 
   /**

@@ -76,7 +76,10 @@ pub fn dictionary_bytes() -> Option<Vec<u8>> {
 
 /// The compressed Chinese dictionary, under the same rule.
 pub fn jieba_dictionary_bytes() -> Option<Vec<u8>> {
-    asset(&jieba_dictionary_path(), "./scripts/setup/setup-jieba-dict.sh")
+    asset(
+        &jieba_dictionary_path(),
+        "./scripts/setup/setup-jieba-dict.sh",
+    )
 }
 
 /// A phonemizer that has been through the whole `prepare` flow for Japanese.

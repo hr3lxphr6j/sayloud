@@ -55,6 +55,7 @@ export class SpeakerRouter implements Speaker {
   private unbind: (() => void) | null = null;
   /** True between the active speaker's `start` and its `end`. */
   private speaking = false;
+  private refreshing: Promise<void> = Promise.resolve();
 
   constructor(deps: SpeakerRouterDeps) {
     this.browser = deps.browser;
@@ -83,7 +84,13 @@ export class SpeakerRouter implements Speaker {
    * message prompting the user to fix the issue. No automatic fallback to
    * browser voice on cloud provider errors: the errors travel to the caller.
    */
-  async refresh(): Promise<void> {
+  refresh(): Promise<void> {
+    const next = this.refreshing.catch(() => {}).then(() => this.refreshSelection());
+    this.refreshing = next;
+    return next;
+  }
+
+  private async refreshSelection(): Promise<void> {
     const config = await this.config.getConfig();
     const provider = config?.provider ?? 'browser';
 
@@ -138,9 +145,8 @@ export class SpeakerRouter implements Speaker {
    * Apply the volume to the speaker that is active, and to the browser voice
    * too.
    *
-   * The browser delegate is set even when a cloud provider is speaking: a
-   * cloud failure degrades to the browser voice, and that speaker has to be at
-   * the right loudness by the time it takes over.
+   * The browser delegate is set even when a cloud provider is speaking:
+   * switching the configuration back to the browser must preserve loudness.
    */
   setVolume(volume: number): void {
     this.active.setVolume?.(volume);

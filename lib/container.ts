@@ -34,7 +34,7 @@ export interface AppDeps {
   tts: TtsApi;
   storage: {
     session: SessionStorageArea;
-    local: LocalStorageArea;
+    local: LocalStorageArea & { remove(key: string): Promise<void> };
     /** Where the settings store hears about changes; absent in tests. */
     onChanged?: StorageChangeApi;
   };
@@ -73,18 +73,18 @@ export function createApp(deps: AppDeps): AppContainer {
   const settings = new SettingsStore(deps.storage.local, deps.storage.onChanged);
 
   const browserSpeaker = new BrowserSpeaker(deps.tts);
+  const offscreenManager = deps.offscreen
+    ? new OffscreenManager({ offscreen: deps.offscreen.offscreen, runtime: deps.offscreen.runtime })
+    : null;
 
   const speakers = new SpeakerRouter({
     browser: browserSpeaker,
     config,
     resolveBrowserVoice: (lang) => voices.resolve(lang),
     createCloud: (providerConfig) => {
-      if (!deps.offscreen) return null;
+      if (!deps.offscreen || !offscreenManager) return null;
       return new OffscreenSpeaker({
-        manager: new OffscreenManager({
-          offscreen: deps.offscreen.offscreen,
-          runtime: deps.offscreen.runtime,
-        }),
+        manager: offscreenManager,
         config: providerConfig,
         events: deps.offscreen.events,
       });
@@ -105,11 +105,14 @@ export function createApp(deps: AppDeps): AppContainer {
     settings.load().catch((error: unknown) => {
       console.error('[SayLoud] cannot read the saved settings', error);
     }),
-    speakers.refresh().catch((error: unknown) => {
-      // If the provider has no voice selected, fail the engine immediately.
-      console.error('[SayLoud] speaker refresh failed:', error);
-      engine.reportError(error instanceof Error ? error.message : String(error));
-    }),
+    speakers
+      .refresh()
+      .then(() => engine.clearConfigurationError())
+      .catch((error: unknown) => {
+        // If the provider has no voice selected, fail the engine immediately.
+        console.error('[SayLoud] speaker refresh failed:', error);
+        engine.reportError(error instanceof Error ? error.message : String(error));
+      }),
   ]).then(() => undefined);
 
   return { router, voices, engine, snapshots, speakers, settings, ready };

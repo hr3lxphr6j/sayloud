@@ -136,7 +136,7 @@ impl Legacy {
     }
 
     /// The frozen pipeline, exactly: no tone rules and no WeText.
-    fn preToneRules(&self, text: &str) -> String {
+    fn pre_tone_rules(&self, text: &str) -> String {
         self.phonemes(text, ToneRules::Off, None)
     }
 }
@@ -150,7 +150,7 @@ fn matches_the_javascript_pipeline_on_the_corpus() {
     let mut failures = Vec::new();
     let samples = corpus().samples;
     for sample in &samples {
-        let rust = legacy.preToneRules(&sample.input);
+        let rust = legacy.pre_tone_rules(&sample.input);
         if rust != sample.js {
             failures.push(format!(
                 "{}\n  javascript {:?}\n  rust       {:?}",
@@ -193,7 +193,7 @@ fn matches_the_javascript_suite_sample_for_sample() {
     // reason the corpus does — these are the JavaScript suite's own expectations,
     // and the tone rules move one of them (你好世界。 gains a second tone on 你).
     assert_eq!(
-        legacy.preToneRules("第 3 季度营收增长了 15.6%。"),
+        legacy.pre_tone_rules("第 3 季度营收增长了 15.6%。"),
         "ti↘ sa→n ʨi↘tu↘ i↗ŋʂou→ ʦə→ŋꭧa↓ŋ lɤ pai↓fə→nꭧɻ̩→ʂɻ̩↗u↓ tjɛ↓nljou↘."
     );
 
@@ -201,17 +201,17 @@ fn matches_the_javascript_suite_sample_for_sample() {
     // and the runs are concatenated with nothing inserted between them. Never in
     // front of the mark: the JavaScript chain emitted `ʨje↘.` where an earlier
     // copy of this pipeline produced `ʨje↘ .`.
-    assert_eq!(legacy.preToneRules("你好世界。"), "ni↓xau↓ ʂɻ̩↘ʨje↘.");
+    assert_eq!(legacy.pre_tone_rules("你好世界。"), "ni↓xau↓ ʂɻ̩↘ʨje↘.");
 
-    assert_eq!(legacy.preToneRules("你好   世界"), "ni↓xau↓ ʂɻ̩↘ʨje↘");
-    assert_eq!(legacy.preToneRules("妈麻马骂。"), "ma→ma↗ma↓ ma↘.");
+    assert_eq!(legacy.pre_tone_rules("你好   世界"), "ni↓xau↓ ʂɻ̩↘ʨje↘");
+    assert_eq!(legacy.pre_tone_rules("妈麻马骂。"), "ma→ma↗ma↓ ma↘.");
 
     // `-` is not in Kokoro's vocabulary, and `%` is already spoken by the
     // numeral conversion. Emitting either would be pointless at best.
-    assert_eq!(legacy.preToneRules("好-坏"), "xau↓xwai↘");
+    assert_eq!(legacy.pre_tone_rules("好-坏"), "xau↓xwai↘");
 
     // Nothing to say is not an error.
-    assert_eq!(legacy.preToneRules("   "), "");
+    assert_eq!(legacy.pre_tone_rules("   "), "");
 
     // And the shipped pipeline on the same sentences, so that both pipelines are
     // pinned for one input rather than one being pinned and the other assumed.
@@ -337,7 +337,7 @@ fn the_tone_rules_change_exactly_these_samples() {
     let mut seen = 0;
     for sample in &samples {
         let shipped = legacy.phonemes(&sample.input, ToneRules::On, None);
-        let before = legacy.preToneRules(&sample.input);
+        let before = legacy.pre_tone_rules(&sample.input);
         assert_eq!(
             before, sample.js,
             "{:?}: the pipeline without the tone rules is what the corpus recorded",

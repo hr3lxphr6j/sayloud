@@ -93,6 +93,8 @@ export class PlaybackEngine {
    * providers; browser voice always restarts from the beginning.
    */
   private resumeTimeMs = 0;
+  private restoredIndex: number | null = null;
+  private restoredWordOffset = 0;
 
   private spokenMs = 0;
   private runStartedAt: number | null = null;
@@ -123,6 +125,14 @@ export class PlaybackEngine {
    */
   reportError(message: string): void {
     if (isVoiceSelectionError(message)) this.fail(message);
+  }
+
+  /** Clear a configuration error after the selected voice/provider is ready. */
+  clearConfigurationError(): void {
+    if (this.error?.startsWith('no-voice-selected:')) {
+      this.clearError();
+      this.setPhase(this.sentences.length > 0 ? 'paused' : 'idle');
+    }
   }
 
   dispatch(command: EngineCommand): void {
@@ -227,7 +237,8 @@ export class PlaybackEngine {
     // Sentences are intentionally not restored; they will be reloaded via sync.
     this.sentences = [];
     this.charsTotal = snapshot.charsTotal;
-    this.index = clampIndex(snapshot.index, 0); // Will be clamped again when sentences arrive
+    this.index = clampIndex(snapshot.index, snapshot.sentenceCount);
+    this.restoredIndex = snapshot.index;
     this.rate = clampRate(snapshot.rate);
     this.voice = snapshot.voice;
     this.charsRead = snapshot.charsRead;
@@ -235,12 +246,13 @@ export class PlaybackEngine {
     this.docId = snapshot.docId;
     this.clearError();
     this.resetTiming();
-    // `chrome.tts` cannot resume mid-sentence, so the word offset is dropped.
+    // Keep the offset until sentences arrive so progress can be reconstructed.
     this.wordOffset = 0;
+    this.restoredWordOffset = snapshot.resumeOffset;
     // Restore the audio playback position for cloud/local providers.
     // Browser voice will ignore this and always restart from the beginning.
     this.resumeTimeMs = snapshot.resumeTimeMs ?? 0;
-    this.setPhase('paused'); // Will be idle after sync if no sentences
+    this.setPhase('paused');
   }
 
   dispose(): void {
@@ -250,23 +262,24 @@ export class PlaybackEngine {
   }
 
   load(sentences: EngineSentence[], startIndex = 0, rate = 1, resume = false): void {
-    // If the engine is in an error state due to configuration issues
-    // (e.g., no voice selected), don't allow loading new content.
-    // The user must fix the configuration first.
-    if (this.error?.startsWith('no-voice-selected:')) {
-      console.warn('[SayLoud] cannot load: engine is in error state:', this.error);
-      return;
-    }
-
+    if (this.error?.startsWith('no-voice-selected:')) return;
     this.speaker.stop();
     this.resetTiming();
     this.sentences = [...sentences];
     this.charsTotal = this.sentences.reduce((sum, s) => sum + s.text.length, 0);
     this.rate = clampRate(rate);
-    this.index = clampIndex(startIndex, this.sentences.length);
+    this.index = clampIndex(
+      resume ? (this.restoredIndex ?? startIndex) : startIndex,
+      this.sentences.length
+    );
     this.charsRead = charsBefore(this.sentences, this.index);
-    this.wordOffset = 0;
-    this.resumeTimeMs = 0;
+    this.wordOffset = resume
+      ? Math.min(this.restoredWordOffset, this.sentences[this.index]?.text.length ?? 0)
+      : 0;
+    if (!resume) this.resumeTimeMs = 0;
+    this.restoredIndex = null;
+    this.restoredWordOffset = 0;
+    this.charsRead += this.wordOffset;
     this.clearError();
 
     if (this.sentences.length === 0) {
@@ -407,6 +420,9 @@ export class PlaybackEngine {
     this.charsRead = 0;
     this.wordOffset = 0;
     this.docId = '';
+    this.resumeTimeMs = 0;
+    this.restoredIndex = null;
+    this.restoredWordOffset = 0;
     this.resetTiming();
     this.setPhase('idle');
   }
@@ -580,6 +596,7 @@ export class PlaybackEngine {
       this.speaker.on('error', (message) => this.fail('tts-error', message)),
       this.speaker.on('paused', (currentTimeMs) => {
         this.resumeTimeMs = currentTimeMs;
+        this.emitStatus();
       })
     );
   }

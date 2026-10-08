@@ -12,7 +12,7 @@
 import type { Worker } from '@playwright/test';
 import { control, expect, test } from './fixtures';
 
-/** Must match `SETTINGS_KEY`; storage keys are plain strings, as in the smoke. */
+/** Must match `SETTINGS_KEY`; storage keys cross the browser boundary as strings. */
 const SETTINGS_KEY = 'sayloud:settings';
 
 /** The bits of `chrome` this spec touches, from inside the worker. */

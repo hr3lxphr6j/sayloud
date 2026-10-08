@@ -36,7 +36,9 @@ function fakeSession(): SessionStorageArea {
   };
 }
 
-function fakeLocal(initial: Record<string, unknown> = {}): LocalStorageArea {
+function fakeLocal(
+  initial: Record<string, unknown> = {}
+): LocalStorageArea & { remove(key: string): Promise<void> } {
   const data = new Map<string, unknown>(Object.entries(initial));
   return {
     async get(key) {
@@ -47,6 +49,9 @@ function fakeLocal(initial: Record<string, unknown> = {}): LocalStorageArea {
     },
     async set(items) {
       for (const [key, value] of Object.entries(items)) data.set(key, value);
+    },
+    async remove(key) {
+      data.delete(key);
     },
   };
 }
@@ -114,7 +119,7 @@ describe('createApp', () => {
     const { tts } = fakeTts();
     const local = fakeLocal();
     const gate: { release: (() => void) | undefined } = { release: undefined };
-    const slow: LocalStorageArea = {
+    const slow: LocalStorageArea & { remove(key: string): Promise<void> } = {
       async get(key) {
         const names = Array.isArray(key) ? key : [key];
         if (names.includes(SETTINGS_KEY)) {
@@ -125,6 +130,7 @@ describe('createApp', () => {
         return local.get(key);
       },
       set: (items) => local.set(items),
+      remove: (key) => local.remove(key),
     };
     const app = createApp({ tts, storage: { session: fakeSession(), local: slow } });
 

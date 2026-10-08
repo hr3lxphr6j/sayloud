@@ -399,7 +399,18 @@ describe('AudioWorker', () => {
       const { worker, player, events } = harness();
       await worker.handleCommand({ type: 'pause' });
       expect(player.pause).toHaveBeenCalled();
-      expect(events).toContainEqual({ type: 'paused', currentTimeMs: 0 });
+      expect(events).toEqual([]);
+    });
+
+    it('reports the loaded utterance id and its paused audio position', async () => {
+      const { worker, events } = harness({ player: { getCurrentTimeMs: () => 850 } });
+      await worker.handleCommand(synthesize('current'));
+      await worker.handleCommand({ type: 'pause' });
+      expect(events).toContainEqual({ type: 'paused', id: 'current', currentTimeMs: 850 });
+      worker.stop();
+      events.length = 0;
+      await worker.handleCommand({ type: 'pause' });
+      expect(events).toEqual([]);
     });
 
     it('changes the rate', async () => {
@@ -583,6 +594,27 @@ describe('AudioWorker', () => {
       await tick();
       expect(pending).toHaveLength(1);
 
+      pending[0]?.resolve(result());
+      await until(() => pending.length === 2);
+      pending[1]?.resolve(result());
+      await tick();
+    });
+
+    it('honors the on-device provider concurrency capability', async () => {
+      const { provider, pending } = deferredProvider();
+      provider.capabilities = () => ({ timings: 'none', maxChars: 200, concurrency: 1 });
+      const { worker } = harness({ providers: new Map([['local', provider]]) });
+      await worker.handleCommand(
+        prefetch(
+          [
+            { text: 'a', voiceId: 'v1' },
+            { text: 'b', voiceId: 'v1' },
+          ],
+          { provider: 'local' }
+        )
+      );
+      await tick();
+      expect(pending).toHaveLength(1);
       pending[0]?.resolve(result());
       await until(() => pending.length === 2);
       pending[1]?.resolve(result());

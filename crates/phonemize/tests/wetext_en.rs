@@ -18,7 +18,9 @@
 
 mod common;
 
-use phonemize::dictionary::{DictionaryRegistry, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER};
+use phonemize::dictionary::{
+    DictionaryRegistry, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF,
+};
 use phonemize::tn;
 use phonemize::tn::wetext::Normalizer;
 use phonemize::Phonemizer;
@@ -34,8 +36,9 @@ use common::{
 /// order-dependent in a way that a `Normalizer` held across cases has no reason
 /// to be.
 fn engine() -> Option<Normalizer> {
-    let (tagger, verbalizer) = wetext_fsts(WETEXT_EN_NAMES)?;
-    Some(tn::english(&tagger, &verbalizer).expect("the grammars parse"))
+    let fsts = wetext_fsts(WETEXT_EN_NAMES)?;
+    let borrowed: Vec<&[u8]> = fsts.iter().map(|bytes| bytes.as_slice()).collect();
+    Some(tn::english(borrowed[0], borrowed[1], borrowed[2]).expect("the FSTs parse"))
 }
 
 /// One reading, as the words the verbalizer produced, with the 1,000-1,999 fix.
@@ -174,6 +177,34 @@ fn reads_abbreviations_that_have_no_digit_in_them() {
         read("no digits here at all").as_deref(),
         Some("no digits here at all")
     );
+}
+
+/// **A full-width run is folded before anything reads it.**
+///
+/// `full_to_half`, also off upstream and also now on. What it fixes:
+/// `text::segment_text`'s `classify` accepts `A-Za-z` and drops everything else,
+/// so full-width Latin left the pipeline as *silence* — `Ｈｅｌｌｏ world`
+/// phonemized to `wˈɜːld` and `Ｉ ａｍ here` to `hˈiːɹ`, and in Japanese
+/// `ｈｅｌｌｏ` to nothing at all. A full-width digit was a second, quieter case:
+/// the tagger reads those itself, so `１２３` was already correct, but `１５．６`
+/// kept its full-width full stop and read 十五．六 rather than 十五点六.
+///
+/// The last row is the gap: the shipped FST folds 91 of the 239 characters in the
+/// width block and `＃` is one of the three it does not, so a `＃` reaches
+/// `classify` unfolded and is dropped there instead.
+#[test]
+fn folds_full_width_forms_before_the_grammar_reads_them() {
+    for (input, expected) in [
+        ("ＡＢＣ", "ABC"),
+        ("Ｈｅｌｌｏ world", "Hello world"),
+        ("Ｉ ａｍ here", "I am here"),
+        ("１２３", "one hundred and twenty three"),
+        ("１２３ cats", "one hundred and twenty three cats"),
+        ("３Ｄ printer", "three D printer"),
+        ("＃tag", "＃tag"),
+    ] {
+        assert_eq!(read(input).as_deref(), Some(expected), "reading {input:?}");
+    }
 }
 
 /// The sentences the negative-weight extraction bug moved, and the ones it did
@@ -323,6 +354,41 @@ fn the_pipeline_reads_numerals_through_the_engine() {
     }
 }
 
+/// The step before the tagger reaches the phonemes.
+///
+/// Separate from the numeral test above because these are not numerals and because
+/// the failure mode is different: a wrong number is a wrong word, whereas these
+/// were *silence*.
+///
+/// Each row is the reading the full-width form and its half-width twin both
+/// produce, and that is the property rather than the strings: `ＡＢＣ` and `ABC`
+/// used to differ by everything.
+#[test]
+fn the_pipeline_folds_full_width_forms() {
+    let Some(phonemizer) = english_phonemizer() else {
+        return;
+    };
+
+    for (text, expected) in [
+        // "ABC" — three letters, from a spelling `classify` used to drop whole.
+        ("ＡＢＣ", "ə bˈiː sˈiː"),
+        ("ABC", "ə bˈiː sˈiː"),
+        // "Hello world" — the `Ｈ` used to be the only silent letter, and then
+        // the rest of the word.
+        ("Ｈｅｌｌｏ world", "həlˈoʊ wˈɜːld"),
+        ("Hello world", "həlˈoʊ wˈɜːld"),
+        // A full-width digit run, through the folding rather than the tagger's
+        // own full-width reading of it.
+        ("１２３ cats", "wˈʌn hˈʌndɹəd ənd twˈɛntiː θɹˈiː kˈæts"),
+    ] {
+        let ipa = phonemizer
+            .phonemize_with(text, &english_options())
+            .expect("phonemizes")
+            .phonemes;
+        assert_eq!(ipa, expected, "phonemizing {text:?}");
+    }
+}
+
 /// English still phonemizes with no dictionary at all, which is the property
 /// the fallback exists to keep.
 ///
@@ -347,6 +413,11 @@ fn an_unprepared_english_pipeline_falls_back_rather_than_failing() {
         // which is the cost of not preparing. `%` is dropped, `1st` is "onest".
         ("50%", "fˈɪftiː"),
         ("1st", "ˈɑnəst"),
+        // Full-width text is the same story, and it is worth pinning because it
+        // does not *fail*: the fold lives in the engine, so an unprepared caller
+        // gets neither it nor the reading, and `Ｈｅｌｌｏ world` loses the word it
+        // starts with.
+        ("Ｈｅｌｌｏ world", "wˈɜːld"),
     ] {
         let ipa = phonemizer
             .phonemize_with(text, &english_options())
@@ -358,13 +429,20 @@ fn an_unprepared_english_pipeline_falls_back_rather_than_failing() {
 
 // ------------------------------------------------------ the protocol edge
 
-/// Both grammars or neither: the registry's `finish` will not pass with one.
+/// Every FST a language declares has to arrive, and the registry is where that is
+/// decided.
 ///
 /// Tested on the registry rather than through `Phonemizer`, because the wasm
 /// boundary returns `Result<_, JsValue>` and building a `JsValue` panics off
 /// wasm — the same split `tests/dictionary.rs` makes.
+///
+/// It used to be "both grammars or neither", and the third name is the point of
+/// the rewrite: the preprocessor is required by the configuration, so a load that
+/// stopped at the tagger and the verbalizer would leave a normalizer that fails at
+/// the first sentence — and fails into the hand-written fallback, which is a
+/// silently wrong answer rather than an error.
 #[test]
-fn one_grammar_without_the_other_is_not_enough_to_finish() {
+fn the_grammars_and_the_preprocessor_all_have_to_arrive() {
     let Some(assets) = wetext_compressed(WETEXT_EN_NAMES) else {
         return;
     };
@@ -375,17 +453,33 @@ fn one_grammar_without_the_other_is_not_enough_to_finish() {
     registry.declare_required("kokoro-v1", "en-US").unwrap();
     registry.load(WETEXT_EN_TN_TAGGER, bytes).unwrap();
 
-    let error = registry.finish().expect_err("the verbalizer never arrived");
+    let error = registry
+        .finish()
+        .expect_err("two of the three never arrived");
     assert_eq!(error.code(), "missing-dictionaries");
-    assert!(
-        error.to_string().contains(WETEXT_EN_TN_VERBALIZER),
-        "the message names the half that is missing: {error}"
-    );
+    for missing in [WETEXT_EN_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF] {
+        assert!(
+            error.to_string().contains(missing),
+            "the message names {missing}, which is still missing: {error}"
+        );
+    }
 
-    // And the other half completes it.
+    // Two of three is still not enough, which is the half a "both grammars"
+    // check would have missed.
     registry
         .load(WETEXT_EN_TN_VERBALIZER, &assets[1].1)
         .unwrap();
+    let error = registry
+        .finish()
+        .expect_err("the preprocessor never arrived");
+    assert_eq!(error.code(), "missing-dictionaries");
+    assert!(
+        error.to_string().contains(WETEXT_TN_FULL_TO_HALF),
+        "the message names the preprocessor: {error}"
+    );
+
+    // And the third completes it.
+    registry.load(WETEXT_TN_FULL_TO_HALF, &assets[2].1).unwrap();
     registry.finish().unwrap();
 }
 

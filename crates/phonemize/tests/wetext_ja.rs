@@ -17,10 +17,15 @@
 
 mod common;
 
-use phonemize::dictionary::{DictionaryRegistry, IPADIC_JA};
+use phonemize::dictionary::{
+    DictionaryRegistry, IPADIC_JA, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER,
+    WETEXT_TN_FULL_TO_HALF,
+};
 use phonemize::tn::wetext::Normalizer;
 
-use common::{japanese_tn, wetext_compressed, WETEXT_JA_NAMES};
+use common::{
+    japanese_options, japanese_phonemizer, japanese_tn, wetext_compressed, WETEXT_JA_NAMES,
+};
 
 /// One reading, from an engine the caller already built.
 fn read(tn: &Normalizer, text: &str) -> String {
@@ -136,22 +141,33 @@ fn reads_a_lone_full_width_zero_as_nothing() {
 
 // ------------------------------------------------------------ full width
 
-/// Full-width numerals, which is what modification 7 in the engine's `NOTICE` is
-/// about.
+/// **Full-width text, through both of the steps that read it.**
 ///
-/// `should_normalize` asked `is_ascii_digit` where the reference asks `\d`;
-/// `０` is U+FF10 and not ASCII, so a Japanese sentence written with full-width
-/// numerals — which is most Japanese text — skipped the normalizer entirely and
-/// came out as the digits it was written with. Japanese is where the port's own
-/// comment on that line was already known to be wrong ("not a difference that
-/// reaches English" was true; the sentence stopped there as though English were
-/// the only language).
+/// Two bugs met here and the readings below are the result of both fixes:
+///
+/// - `should_normalize` asked `is_ascii_digit` where the reference asks `\d`;
+///   `０` is U+FF10 and not ASCII, so a Japanese sentence written with full-width
+///   numerals — which is most Japanese text — skipped the normalizer entirely and
+///   came out as the digits it was written with. Japanese is where the port's own
+///   comment on that line was already known to be wrong ("not a difference that
+///   reaches English" was true; the sentence stopped there as though English were
+///   the only language). That is modification 7 in the engine's `NOTICE`.
+/// - `full_to_half` is now on, which folds a full-width run to its ASCII form in
+///   `preprocess` — *before* that digit test. So the readings below are produced by
+///   the fold and the tagger together, and the full-width/half-width pairs are
+///   equal by construction rather than by agreement.
+///
+/// The row that moved is `１５．６％`: the tagger reads full-width *numerals* itself
+/// but not a full-width full stop or a full-width percent sign, so those arrived as
+/// `．` and `％` — the first of which the punctuation filter drops and the second of
+/// which is silence — and the reading was 十五．六. See `wetext_zh.rs` for what is
+/// left of the digit test after the fold.
 #[test]
 fn reads_full_width_text_the_way_the_reference_does() {
     assert_reads(&[
         ("２０２２年", "二千二十二年"),
         ("１２３", "百二十三"),
-        ("１５．６％", "十五．六％"),
+        ("１５．６％", "十五点六パーセント"),
         // And the one that has to be compared rather than written down: the
         // measure rule fuses the digits and the unit into one entity, which is
         // why a *full-width* one reads the same as its half-width equivalent
@@ -160,6 +176,12 @@ fn reads_full_width_text_the_way_the_reference_does() {
             "資産３２億ドル、約４２００億円",
             "資産三十二億ドル、約四千二百億円",
         ),
+        // The class the fold is really for: the tagger reads full-width digits
+        // but not full-width Latin, and `text::segment_text` drops what it does
+        // not recognise as a letter. `ｈｅｌｌｏ` phonemized to silence and
+        // `ＡＢＣの話` to `nohanaɕi`.
+        ("ｈｅｌｌｏ", "hello"),
+        ("ＡＢＣの話", "ABCの話"),
     ]);
 
     let Some(tn) = japanese_tn() else {
@@ -169,6 +191,7 @@ fn reads_full_width_text_the_way_the_reference_does() {
         ("２０２２年", "2022年"),
         ("１２３", "123"),
         ("１２３４円", "1234円"),
+        ("ＡＢＣの話", "ABCの話"),
     ] {
         assert_eq!(
             read(&tn, full),
@@ -180,17 +203,24 @@ fn reads_full_width_text_the_way_the_reference_does() {
 
 // ------------------------------------------------------ the protocol edge
 
-/// Both grammars or neither, for Japanese.
+/// Every FST Japanese declares has to arrive.
 ///
-/// IPADic first, then the two grammars: the order `required_dictionaries` lists
-/// them in, which the JavaScript wrapper fetches them in.
+/// IPADic first, then the FSTs: the order `required_dictionaries` lists them in,
+/// which the JavaScript wrapper fetches them in. The third FST is the shared
+/// full-width preprocessor; Japanese has no fourth, which is the half of this that
+/// says `traditional_to_simple` did not leak out of Chinese's list.
 #[test]
-fn both_grammars_are_declared_for_japanese() {
+fn every_fst_japanese_declares_has_to_arrive() {
     let mut registry = DictionaryRegistry::new();
     let declared = registry.declare_required("kokoro-v1", "ja-JP").unwrap();
     assert_eq!(
         declared,
-        vec![IPADIC_JA, WETEXT_JA_NAMES[0], WETEXT_JA_NAMES[1]]
+        vec![
+            IPADIC_JA,
+            WETEXT_JA_TN_TAGGER,
+            WETEXT_JA_TN_VERBALIZER,
+            WETEXT_TN_FULL_TO_HALF,
+        ]
     );
 
     let Some(assets) = wetext_compressed(WETEXT_JA_NAMES) else {
@@ -202,11 +232,36 @@ fn both_grammars_are_declared_for_japanese() {
         .finish()
         .expect_err("neither of the other two arrived");
     assert_eq!(error.code(), "missing-dictionaries");
-    for name in [IPADIC_JA, WETEXT_JA_NAMES[1]] {
+    for name in [IPADIC_JA, WETEXT_JA_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF] {
         assert!(
             error.to_string().contains(name),
             "the message names {name}, which is still missing: {error}"
         );
+    }
+}
+
+/// The fold reaches the phonemes.
+///
+/// A Japanese sentence writes Latin in full width often enough that the silence
+/// was a real report: `ＡＢＣの話` phonemized to `nohanaɕi`, with the ABC simply
+/// gone, and `ｈｅｌｌｏ` to nothing at all.
+#[test]
+fn the_phonemes_of_full_width_latin_are_the_phonemes_of_its_ascii_form() {
+    let Some(phonemizer) = japanese_phonemizer() else {
+        return;
+    };
+
+    for (full, half, phonemes) in [
+        ("ＡＢＣの話", "ABCの話", "ə bˈiː sˈiːnohanaɕi"),
+        ("ｈｅｌｌｏ", "hello", "həlˈoʊ"),
+    ] {
+        for text in [full, half] {
+            let ipa = phonemizer
+                .phonemize_with(text, &japanese_options())
+                .unwrap_or_else(|error| panic!("{text:?}: {error}"))
+                .phonemes;
+            assert_eq!(ipa, phonemes, "phonemizing {text:?}");
+        }
     }
 }
 

@@ -22,7 +22,8 @@ use std::path::PathBuf;
 
 use phonemize::dictionary::{
     IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER,
-    WETEXT_JA_TN_VERBALIZER, WETEXT_ZH_TN_TAGGER, WETEXT_ZH_TN_VERBALIZER,
+    WETEXT_JA_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF, WETEXT_ZH_TN_TAGGER,
+    WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE, WETEXT_ZH_TN_VERBALIZER,
 };
 use phonemize::tn;
 use phonemize::tn::wetext::{Normalizer, WeTextError};
@@ -114,13 +115,14 @@ pub fn english_phonemizer() -> Option<Phonemizer> {
 /// The `prepare` flow: declare, load everything declared, finish.
 ///
 /// `language_assets` are the language's own dictionaries — IPADic, jieba's word
-/// list — and `tn_names` are the two text-normalization grammars it shares a
-/// shape with the other two languages. All of them, because
-/// `required_dictionaries` lists all of them and `finish` refuses a partial load.
+/// list — and `tn_names` are the FSTs that language declares, tagger first. All of
+/// them, because `required_dictionaries` lists all of them and `finish` refuses a
+/// partial load — which is what makes this helper the one place the declaration
+/// and the load cannot disagree.
 fn prepared<const N: usize>(
     lang: &str,
     language_assets: [(&str, Vec<u8>); N],
-    tn_names: [&'static str; 2],
+    tn_names: &[&str],
 ) -> Option<Phonemizer> {
     let mut phonemizer = Phonemizer::new();
     phonemizer
@@ -144,14 +146,33 @@ fn prepared<const N: usize>(
     Some(phonemizer)
 }
 
-/// The two English text-normalization grammars, by the registry's names.
-pub const WETEXT_EN_NAMES: [&str; 2] = [WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER];
+/// The English text-normalization assets, by the registry's names.
+///
+/// The FSTs one language declares, in the order its builder takes them:
+/// `[tagger, verbalizer, …preprocessors]`. The lists are per language rather than
+/// one list because `required_dictionaries` is per language — `full_to_half` is
+/// the shared one, so it appears in all three, and Chinese's
+/// `traditional_to_simple` appears only in Chinese's.
+pub const WETEXT_EN_NAMES: &[&str] = &[
+    WETEXT_EN_TN_TAGGER,
+    WETEXT_EN_TN_VERBALIZER,
+    WETEXT_TN_FULL_TO_HALF,
+];
 
-/// The two Chinese ones.
-pub const WETEXT_ZH_NAMES: [&str; 2] = [WETEXT_ZH_TN_TAGGER, WETEXT_ZH_TN_VERBALIZER];
+/// The Chinese ones — the two grammars and the traditional-to-simplified
+/// preprocessor, and no `full_to_half`: Chinese's fold is the pipeline's.
+pub const WETEXT_ZH_NAMES: &[&str] = &[
+    WETEXT_ZH_TN_TAGGER,
+    WETEXT_ZH_TN_VERBALIZER,
+    WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE,
+];
 
-/// The two Japanese ones.
-pub const WETEXT_JA_NAMES: [&str; 2] = [WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER];
+/// The Japanese ones.
+pub const WETEXT_JA_NAMES: &[&str] = &[
+    WETEXT_JA_TN_TAGGER,
+    WETEXT_JA_TN_VERBALIZER,
+    WETEXT_TN_FULL_TO_HALF,
+];
 
 /// Where one grammar lives.
 pub fn wetext_path(name: &str) -> PathBuf {
@@ -159,11 +180,12 @@ pub fn wetext_path(name: &str) -> PathBuf {
         .join(format!("../../public/dictionaries/{name}.bin.zst"))
 }
 
-/// The compressed bytes of one language's two grammars, tagger first.
+/// The compressed bytes of one language's assets, in the order the list gives.
 ///
-/// Both or neither: a tagger with no verbalizer can only fail, so a missing half
-/// is the same failure as a missing whole.
-pub fn wetext_compressed(names: [&str; 2]) -> Option<Vec<(String, Vec<u8>)>> {
+/// All of them or none: a tagger with no verbalizer can only fail, and so can a
+/// configuration whose preprocessor was never supplied — so a missing file is the
+/// same failure as a missing whole.
+pub fn wetext_compressed(names: &[&str]) -> Option<Vec<(String, Vec<u8>)>> {
     let mut out = Vec::new();
     for name in names {
         out.push((
@@ -174,7 +196,8 @@ pub fn wetext_compressed(names: [&str; 2]) -> Option<Vec<(String, Vec<u8>)>> {
     Some(out)
 }
 
-/// One language's two grammars, **decompressed**: tagger, then verbalizer.
+/// One language's assets, **decompressed**: tagger, verbalizer, then the
+/// preprocessors, in the order the list gives.
 ///
 /// The registry unpacks inside the wasm, and the wrapper that hands it the bytes
 /// only ever passes them along. These tests want the FSTs themselves — to feed
@@ -184,7 +207,7 @@ pub fn wetext_compressed(names: [&str; 2]) -> Option<Vec<(String, Vec<u8>)>> {
 /// `ruzstd` rather than a call into the crate: the decompressor is private, and
 /// a test that reached it would be testing the transport it is trying to get
 /// past.
-pub fn wetext_fsts(names: [&str; 2]) -> Option<(Vec<u8>, Vec<u8>)> {
+pub fn wetext_fsts(names: &[&str]) -> Option<Vec<Vec<u8>>> {
     let decompress = |compressed: &[u8]| -> Vec<u8> {
         let mut decoder =
             ruzstd::decoding::StreamingDecoder::new(compressed).expect("the asset is a zstd frame");
@@ -195,35 +218,40 @@ pub fn wetext_fsts(names: [&str; 2]) -> Option<(Vec<u8>, Vec<u8>)> {
         raw
     };
 
-    let mut fsts = wetext_compressed(names)?
-        .into_iter()
-        .map(|(_, bytes)| decompress(&bytes));
-    let tagger = fsts.next().expect("both grammars are in the list");
-    let verbalizer = fsts.next().expect("both grammars are in the list");
-    Some((tagger, verbalizer))
+    Some(
+        wetext_compressed(names)?
+            .into_iter()
+            .map(|(_, bytes)| decompress(&bytes))
+            .collect(),
+    )
 }
 
-/// The text normalizer one language's shipped grammars build.
+/// The text normalizer one language's shipped FSTs build.
 ///
 /// What the pipelines get from `finish_loading`, for the tests that want to drive
 /// a pipeline directly rather than through [`Phonemizer`] — `zh_pipeline.rs` and
 /// `ja_pipeline.rs` both do, to compare against the JavaScript corpora.
 fn normalizer(
-    names: [&str; 2],
-    build: fn(&[u8], &[u8]) -> Result<Normalizer, WeTextError>,
+    names: &[&str],
+    build: fn(&[&[u8]]) -> Result<Normalizer, WeTextError>,
 ) -> Option<Normalizer> {
-    let (tagger, verbalizer) = wetext_fsts(names)?;
-    Some(build(&tagger, &verbalizer).expect("the grammars parse"))
+    let fsts = wetext_fsts(names)?;
+    let borrowed: Vec<&[u8]> = fsts.iter().map(|bytes| bytes.as_slice()).collect();
+    Some(build(&borrowed).expect("the FSTs parse"))
 }
 
 /// The Chinese text normalizer.
 pub fn chinese_tn() -> Option<Normalizer> {
-    normalizer(WETEXT_ZH_NAMES, tn::chinese)
+    normalizer(WETEXT_ZH_NAMES, |fsts| {
+        tn::chinese(fsts[0], fsts[1], fsts[2])
+    })
 }
 
 /// The Japanese text normalizer.
 pub fn japanese_tn() -> Option<Normalizer> {
-    normalizer(WETEXT_JA_NAMES, tn::japanese)
+    normalizer(WETEXT_JA_NAMES, |fsts| {
+        tn::japanese(fsts[0], fsts[1], fsts[2])
+    })
 }
 
 /// Options for the v1.0 Japanese frontend.

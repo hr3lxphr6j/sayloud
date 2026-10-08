@@ -391,6 +391,14 @@ fn the_tone_rules_change_exactly_these_samples() {
 /// come out the same either way, because for a bare cardinal the two readers
 /// agree. What moves is what has *context* to read.
 ///
+/// **`15％` is the sample to keep an eye on.** It is the only one whose percent
+/// sign is written full width, and it does *not* move — the tagger reads full-width
+/// numerals but not a full-width `％`, so both readers say 十五 and both lose the
+/// sign to the punctuation filter. English and Japanese fold `％` to `%` before the
+/// numeral step and read パーセント / percent; Chinese cannot, because its fold has to
+/// sit after its punctuation map. Pinned here so the gap is a recorded reading
+/// rather than a surprise.
+///
 /// Per entry, in order:
 ///
 /// - **`第 3 季度…` — a space.** `第 3 季度` is one entity to the grammar and two
@@ -469,6 +477,50 @@ fn the_text_normalizer_changes_exactly_these_samples() {
         seen,
         TEXT_NORMALIZER_CHANGES.len(),
         "every entry in the table is a corpus sample"
+    );
+}
+
+/// **The full-width fold, which for Chinese is a pipeline step.**
+///
+/// `full_to_half` is the wetext preprocessor English and Japanese run inside their
+/// numeral step. Chinese cannot run it there: its numeral step comes *before* its
+/// punctuation map, and the fold would rewrite `，` and `。` before the map owned
+/// them (`mapPunctuation` turns both into `" . "`, which is the pause the listening
+/// test chose). So Chinese's fold is `text::to_half_width`, called right after the
+/// map — full-width letters and digits, and punctuation left to the map.
+///
+/// What it fixes is silence. `classify` accepts `A-Za-z` and nothing else, so a
+/// full-width `Ａ` was `other`, `other` keeps punctuation only, and the character
+/// disappeared: `ＡＢＣ` phonemized to the empty string.
+#[test]
+fn folds_full_width_latin_after_the_punctuation_map() {
+    let Some(phonemizer) = chinese_phonemizer() else {
+        return;
+    };
+
+    for (full, half, phonemes) in [
+        ("ＡＢＣ", "ABC", "ə bˈiː sˈiː"),
+        ("ｈｅｌｌｏ 世界", "hello 世界", "həlˈoʊ ʂɻ̩↘ʨje↘"),
+        ("１２３", "123", "i↘pai↓ɚ↘ʂɻ̩↗ sa→n"),
+    ] {
+        for text in [full, half] {
+            assert_eq!(
+                phonemize(&phonemizer, text).phonemes,
+                phonemes,
+                "phonemizing {text:?}"
+            );
+        }
+    }
+
+    // And the map still owns the punctuation, which is the whole reason the fold is
+    // second: a full-width comma is a period-length pause and not an ASCII comma.
+    assert_eq!(
+        phonemize(&phonemizer, "你好，世界。").phonemes,
+        "ni↗xau↓. ʂɻ̩↘ʨje↘."
+    );
+    assert_eq!(
+        phonemize(&phonemizer, "ＡＢＣ，你好。").phonemes,
+        "ə bˈiː sˈiː. ni↗xau↓."
     );
 }
 

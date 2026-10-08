@@ -47,9 +47,21 @@ const JIEBA_URL = `/dictionaries/${JIEBA}.bin.zst`;
  * vendored WeText engine, and those grammars are OpenFST binaries. They arrive
  * the same way IPADic and jieba's word list do.
  */
-const WETEXT_EN = ['wetext-en-tn-tagger', 'wetext-en-tn-verbalizer'] as const;
-const WETEXT_ZH = ['wetext-zh-tn-tagger', 'wetext-zh-tn-verbalizer'] as const;
-const WETEXT_JA = ['wetext-ja-tn-tagger', 'wetext-ja-tn-verbalizer'] as const;
+const WETEXT_EN = [
+  'wetext-en-tn-tagger',
+  'wetext-en-tn-verbalizer',
+  'wetext-tn-full-to-half',
+] as const;
+const WETEXT_ZH = [
+  'wetext-zh-tn-tagger',
+  'wetext-zh-tn-verbalizer',
+  'wetext-zh-tn-traditional-to-simple',
+] as const;
+const WETEXT_JA = [
+  'wetext-ja-tn-tagger',
+  'wetext-ja-tn-verbalizer',
+  'wetext-tn-full-to-half',
+] as const;
 
 /**
  * The English ones *and* the language's own, for a `prepare` that asks for all

@@ -46,8 +46,8 @@ pub mod vocab;
 
 use dictionary::{
     DictionaryError, DictionaryRegistry, IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER,
-    WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER, WETEXT_ZH_TN_TAGGER,
-    WETEXT_ZH_TN_VERBALIZER,
+    WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF,
+    WETEXT_ZH_TN_TAGGER, WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE, WETEXT_ZH_TN_VERBALIZER,
 };
 use g2p::en::EnglishG2p;
 use g2p::ja::{SegmenterError, SegmenterJa};
@@ -327,15 +327,16 @@ impl Phonemizer {
     /// **This is where a dictionary stops being bytes**, and it is the seam that
     /// turns a partial load into an error rather than into a pipeline running
     /// with half its dictionary. Both segmenters parse their whole word list, and
-    /// a text normalizer parses two FSTs, so a corrupt file fails here — when the
-    /// voice is picked — rather than in the middle of a sentence.
+    /// a text normalizer parses a handful of FSTs, so a corrupt file fails here —
+    /// when the voice is picked — rather than in the middle of a sentence.
     ///
     /// The text normalizers are the one exception to "additive": for each of the
-    /// three languages, a missing half is `None` rather than an error, because the
+    /// three languages, a missing FST is `None` rather than an error, because the
     /// numeral reader it replaces is still the fallback. A caller that went
-    /// through `prepare` cannot reach that state — `dictionary_names` lists both
-    /// halves and `finish` refuses a partial load — so reaching it means a caller
-    /// that never asked, which is exactly the caller the fallback is for.
+    /// through `prepare` cannot reach that state — `dictionaries_for` lists every
+    /// FST each language needs and `finish` refuses a partial load — so reaching it
+    /// means a caller that never asked, which is exactly the caller the fallback
+    /// is for.
     fn build_backends(&mut self) -> Result<(), BackendError> {
         if self.japanese.is_none() {
             if let Some(bytes) = self.dictionaries.get(IPADIC_JA) {
@@ -347,61 +348,80 @@ impl Phonemizer {
                 self.chinese = Some(SegmenterZh::from_dictionary(bytes)?);
             }
         }
-        // Both FSTs or neither, per language: a tagger with no verbalizer can
-        // only fail, and failing here names the missing half instead of reporting
-        // it from inside a sentence mid-TN.
+        // Every FST the language's configuration will ask for, or none of them:
+        // a tagger with no verbalizer can only fail, and so can a configuration
+        // whose preprocessor was never supplied. See `build_tn` for why the
+        // failure here is `None` and not an error.
         if self.english_tn.is_none() {
             self.english_tn = build_tn(
                 &self.dictionaries,
-                WETEXT_EN_TN_TAGGER,
-                WETEXT_EN_TN_VERBALIZER,
+                &[
+                    WETEXT_EN_TN_TAGGER,
+                    WETEXT_EN_TN_VERBALIZER,
+                    WETEXT_TN_FULL_TO_HALF,
+                ],
                 "English",
-                tn::english,
+                |fsts| tn::english(fsts[0], fsts[1], fsts[2]),
             )?;
         }
         if self.chinese_tn.is_none() {
             self.chinese_tn = build_tn(
                 &self.dictionaries,
-                WETEXT_ZH_TN_TAGGER,
-                WETEXT_ZH_TN_VERBALIZER,
+                &[
+                    WETEXT_ZH_TN_TAGGER,
+                    WETEXT_ZH_TN_VERBALIZER,
+                    WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE,
+                ],
                 "Chinese",
-                tn::chinese,
+                |fsts| tn::chinese(fsts[0], fsts[1], fsts[2]),
             )?;
         }
         if self.japanese_tn.is_none() {
             self.japanese_tn = build_tn(
                 &self.dictionaries,
-                WETEXT_JA_TN_TAGGER,
-                WETEXT_JA_TN_VERBALIZER,
+                &[
+                    WETEXT_JA_TN_TAGGER,
+                    WETEXT_JA_TN_VERBALIZER,
+                    WETEXT_TN_FULL_TO_HALF,
+                ],
                 "Japanese",
-                tn::japanese,
+                |fsts| tn::japanese(fsts[0], fsts[1], fsts[2]),
             )?;
         }
         Ok(())
     }
 }
 
-/// One language's text normalizer, or `None` when neither half arrived.
+/// One language's text normalizer, or `None` when any of its FSTs did not arrive.
 ///
 /// A free function rather than a method because it needs `&self.dictionaries`
 /// while its caller writes `self.english_tn`: disjoint fields do not borrow-check
 /// through a method call on `self`, and threading the registry through as an
 /// argument is cheaper than a bespoke split-borrow helper.
+///
+/// All of `asset_names` or nothing, and the list is every FST the configuration
+/// will ask for in the order its builder takes them. All-or-nothing is what keeps
+/// a missing file from becoming a *silent* wrong answer: the configuration asks
+/// for each of them by name, and a name that was never supplied is a
+/// [`WeTextError::FstNotFound`] at the first sentence rather than here — which
+/// `tn::normalize` would swallow into the hand-written reader. A caller that went
+/// through `prepare` cannot reach that state, because `dictionary_names` lists
+/// every one of them and `finish` refuses a partial load.
 fn build_tn(
     dictionaries: &DictionaryRegistry,
-    tagger_name: &str,
-    verbalizer_name: &str,
+    asset_names: &[&str],
     lang: &'static str,
-    build: fn(&[u8], &[u8]) -> Result<WeTextNormalizer, WeTextError>,
+    build: fn(&[&[u8]]) -> Result<WeTextNormalizer, WeTextError>,
 ) -> Result<Option<WeTextNormalizer>, BackendError> {
-    let (Some(tagger), Some(verbalizer)) = (
-        dictionaries.get(tagger_name),
-        dictionaries.get(verbalizer_name),
-    ) else {
-        return Ok(None);
-    };
+    let mut fsts = Vec::with_capacity(asset_names.len());
+    for name in asset_names {
+        let Some(bytes) = dictionaries.get(name) else {
+            return Ok(None);
+        };
+        fsts.push(bytes);
+    }
 
-    build(tagger, verbalizer)
+    build(&fsts)
         .map(Some)
         .map_err(|source| BackendError::TextNormalization { lang, source })
 }

@@ -68,10 +68,11 @@ pub const WETEXT_EN_TN_VERBALIZER: &str = "wetext-en-tn-verbalizer";
 
 /// The Chinese TN tagger FST's name, as the JavaScript side sees it.
 ///
-/// 56 KB compressed, built by the same script from the same wheel. Chinese TN
-/// needs no `full_to_half` grammar beside it: its tagger reads full-width
-/// numerals and full-width punctuation itself, which the probes in
-/// `crates/phonemize/tests/wetext_zh.rs` pin.
+/// 56 KB compressed, built by the same script from the same wheel. The tagger
+/// reads full-width numerals and full-width punctuation itself, which the probes
+/// in `crates/phonemize/tests/wetext_zh.rs` pin — but it does not read
+/// full-width *Latin*, and [`WETEXT_TN_FULL_TO_HALF`] now runs ahead of it
+/// anyway, so those probes exercise the half-width path.
 pub const WETEXT_ZH_TN_TAGGER: &str = "wetext-zh-tn-tagger";
 
 /// The Chinese TN verbalizer FST's name, as the JavaScript side sees it.
@@ -82,14 +83,40 @@ pub const WETEXT_ZH_TN_VERBALIZER: &str = "wetext-zh-tn-verbalizer";
 /// The Japanese TN tagger FST's name, as the JavaScript side sees it.
 ///
 /// 32 KB compressed — the smallest of the three, because Japanese entities are
-/// the most regular. See [`WETEXT_ZH_TN_TAGGER`] for why Chinese and Japanese
-/// need no separate full-width grammar.
+/// the most regular. Like Chinese's, it reads full-width numerals itself and
+/// still has [`WETEXT_TN_FULL_TO_HALF`] in front of it.
 pub const WETEXT_JA_TN_TAGGER: &str = "wetext-ja-tn-tagger";
 
 /// The Japanese TN verbalizer FST's name, as the JavaScript side sees it.
 ///
 /// 36 KB compressed. See [`WETEXT_JA_TN_TAGGER`].
 pub const WETEXT_JA_TN_VERBALIZER: &str = "wetext-ja-tn-verbalizer";
+
+/// The full-width-to-half-width preprocessor's name, as the JavaScript side sees
+/// it.
+///
+/// **English and Japanese**, not all three: Chinese's fold is
+/// [`crate::text::to_half_width`], called by the pipeline after its punctuation map
+/// — see `crate::tn::engine::chinese` for why the order forces the two to differ.
+///
+/// `full_to_half.fst` from the same wheel, 956 bytes compressed — small because it
+/// is a character map and not a grammar, which is exactly why it is worth having:
+/// it folds `ＡＢＣ`, `１２３` and `！` to their ASCII forms, and without it a
+/// full-width run reaches [`crate::text::segment_text`], whose `classify` accepts
+/// `A-Za-z` and nothing else — so full-width Latin used to be dropped and the
+/// sentence came out short. See `crate::tn::engine::english` for the measurement.
+pub const WETEXT_TN_FULL_TO_HALF: &str = "wetext-tn-full-to-half";
+
+/// Chinese's traditional-to-simplified preprocessor, as the JavaScript side sees
+/// it.
+///
+/// 25 KB compressed, and Chinese only. pinyin-pro's polyphone disambiguation is a
+/// phrase table over *simplified* spellings, so a traditional spelling misses it
+/// and the reading is the default one for the character: 銀行 is `xíng` rather
+/// than `háng`, 音樂 is `lè` rather than `yuè`, 會計 is `huì` rather than `kuài`.
+/// Rewriting the text first is what puts those phrases back in front of the table
+/// — see `crate::tn::engine::chinese` for the measured table.
+pub const WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE: &str = "wetext-zh-tn-traditional-to-simple";
 
 /// What each vocabulary can speak.
 ///
@@ -114,22 +141,39 @@ pub fn supported_languages(vocab: &str) -> Option<&'static [&'static str]> {
 /// CMU dictionary and the Chinese pinyin tables are compiled into the wasm
 ///, and only the parts that cannot be are fetched.
 ///
-/// **Every language now fetches the two WeText TN grammars.** They are the
-/// *numeral* step rather than the phoneme step, which is why a non-empty list
-/// here does not contradict the rule that the phoneme data is compiled in.
+/// **Every language now fetches the WeText grammars, and two of them fetch a
+/// preprocessor besides.** These are the *numeral*, *script* and *script-folding*
+/// steps rather than the phoneme step, which is why a non-empty list here does not
+/// contradict the rule that the phoneme data is compiled in. Chinese is the
+/// language whose fold is *not* an asset — see [`dictionaries_for`]'s own entry and
+/// [`crate::tn::engine::chinese`].
 fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
     match language {
         // IPADic: prebuilt trie + connection matrix, ~10 MB compressed and
         // 45.3 MB in memory.
-        "ja" => Some(&[IPADIC_JA, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER]),
+        "ja" => Some(&[
+            IPADIC_JA,
+            WETEXT_JA_TN_TAGGER,
+            WETEXT_JA_TN_VERBALIZER,
+            WETEXT_TN_FULL_TO_HALF,
+        ]),
         // jieba's word list: plain text, 1.6 MB compressed and 4.8 MB in memory,
         // read by `jieba-rs` rather than by a dictionary builder. It is the one
         // part of Chinese that is not compiled in, because the only way
         // `jieba-rs` can embed it cannot link for wasm (see [`JIEBA_ZH`]).
-        "zh" => Some(&[JIEBA_ZH, WETEXT_ZH_TN_TAGGER, WETEXT_ZH_TN_VERBALIZER]),
+        "zh" => Some(&[
+            JIEBA_ZH,
+            WETEXT_ZH_TN_TAGGER,
+            WETEXT_ZH_TN_VERBALIZER,
+            WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE,
+        ]),
         // English's *phonemes* need no dictionary at all — the CMU dictionary is
-        // compiled in — so this list is entirely numerals.
-        "en" => Some(&[WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER]),
+        // compiled in — so this list is entirely numerals and script folding.
+        "en" => Some(&[
+            WETEXT_EN_TN_TAGGER,
+            WETEXT_EN_TN_VERBALIZER,
+            WETEXT_TN_FULL_TO_HALF,
+        ]),
         _ => None,
     }
 }

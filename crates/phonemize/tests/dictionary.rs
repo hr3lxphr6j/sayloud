@@ -17,30 +17,48 @@ const IPADIC: &str = "lindera-ipadic-ja";
 /// The Chinese dictionary's name, as `required_dictionaries` spells it.
 const JIEBA: &str = "jieba-zh-dict";
 
-/// The English text-normalization grammars, as `required_dictionaries` spells
-/// them.
+/// The English text-normalization assets, as `required_dictionaries` spells them.
 ///
 /// English's *phonemes* still need no dictionary — the CMU dictionary
 /// is compiled in — but its numerals come from the vendored WeText engine, whose
-/// grammars are 12 MB of OpenFST binary and therefore an asset.
-const WETEXT_EN: [&str; 2] = ["wetext-en-tn-tagger", "wetext-en-tn-verbalizer"];
+/// grammars are 12 MB of OpenFST binary and therefore an asset, and the shared
+/// full-width preprocessor is a third.
+const WETEXT_EN: [&str; 3] = [
+    "wetext-en-tn-tagger",
+    "wetext-en-tn-verbalizer",
+    "wetext-tn-full-to-half",
+];
 
-/// The Chinese ones.
+/// The Chinese ones, which are the same two plus one Chinese-only preprocessor.
 ///
-/// Chinese and Japanese now fetch grammars as well as a word list, and that is
-/// the shape every language has: this list is the *numeral* step, not the
-/// phoneme step, so it is additive to whatever the phonemes need.
-const WETEXT_ZH: [&str; 2] = ["wetext-zh-tn-tagger", "wetext-zh-tn-verbalizer"];
+/// Chinese and Japanese fetch FSTs as well as a word list, and that is the shape
+/// every language has: these lists are the *numeral*, *script* and
+/// *script-folding* steps, not the phoneme step, so they are additive to whatever
+/// the phonemes need.
+///
+/// **`wetext-tn-full-to-half` is deliberately absent** — Chinese's full-width fold
+/// is the pipeline's (`text::to_half_width`, after the punctuation map), because its
+/// numeral step runs before that map. See `tn::engine::chinese`.
+const WETEXT_ZH: [&str; 3] = [
+    "wetext-zh-tn-tagger",
+    "wetext-zh-tn-verbalizer",
+    "wetext-zh-tn-traditional-to-simple",
+];
 
-/// The Japanese ones.
-const WETEXT_JA: [&str; 2] = ["wetext-ja-tn-tagger", "wetext-ja-tn-verbalizer"];
+/// The Japanese ones: the two grammars and the shared preprocessor, and no
+/// fourth — `traditional_to_simple` is Chinese's alone.
+const WETEXT_JA: [&str; 3] = [
+    "wetext-ja-tn-tagger",
+    "wetext-ja-tn-verbalizer",
+    "wetext-tn-full-to-half",
+];
 
 /// Everything `required_dictionaries("kokoro-v1", "ja-JP")` returns, in order:
-/// the language's own dictionary first, then its two grammars.
-const JA_REQUIRED: [&str; 3] = [IPADIC, WETEXT_JA[0], WETEXT_JA[1]];
+/// the language's own dictionary first, then its FSTs.
+const JA_REQUIRED: [&str; 4] = [IPADIC, WETEXT_JA[0], WETEXT_JA[1], WETEXT_JA[2]];
 
 /// Everything `required_dictionaries("kokoro-v1", "zh-CN")` returns.
-const ZH_REQUIRED: [&str; 3] = [JIEBA, WETEXT_ZH[0], WETEXT_ZH[1]];
+const ZH_REQUIRED: [&str; 4] = [JIEBA, WETEXT_ZH[0], WETEXT_ZH[1], WETEXT_ZH[2]];
 
 /// A path inside the repo, resolved from this crate rather than the cwd — `cargo
 /// test` runs with the package directory as the working directory.
@@ -79,26 +97,27 @@ fn load_fixture(registry: &mut DictionaryRegistry, names: &[&str]) {
 }
 
 #[test]
-fn japanese_needs_the_ipadic_dictionary_and_two_grammars() {
+fn japanese_needs_the_ipadic_dictionary_and_three_grammars() {
     let registry = declared("kokoro-v1", "ja-JP");
 
     assert_eq!(registry.required(), JA_REQUIRED);
 }
 
 #[test]
-fn english_needs_the_two_text_normalization_grammars() {
+fn english_needs_three_text_normalization_grammars() {
     // English used to be the case where `prepare` had nothing to fetch — the CMU
     // dictionary is compiled into the wasm. Its numeral step is the vendored
-    // WeText engine, and its two grammars are fetched like every other
-    // language's.
+    // WeText engine, and its grammars are fetched like every other language's.
     //
-    // Two names rather than one archive: the registry's unit is a single zstd
-    // frame, and the tagger without the verbalizer can only fail.
+    // Separate names rather than one archive: the registry's unit is a single zstd
+    // frame, and the tagger without the verbalizer can only fail. The third is the
+    // full-width preprocessor, which every language declares because every
+    // pipeline's script split reads `A-Za-z` and drops what it does not know.
     assert_eq!(declared("kokoro-v1", "en-US").required(), WETEXT_EN);
 }
 
 #[test]
-fn chinese_needs_the_jieba_dictionary_and_two_grammars() {
+fn chinese_needs_the_jieba_dictionary_and_three_grammars() {
     // The pinyin tables are compiled in, but the word list is not. This test was
     // written as a tripwire for exactly this decision — its comment said "if the
     // Chinese segmenter turns out to be lindera-cc-cedict rather than jieba-rs,
@@ -109,8 +128,11 @@ fn chinese_needs_the_jieba_dictionary_and_two_grammars() {
     // `scripts/setup/setup-jieba-dict.sh`).
     //
     // Both frontends, because the choice of Chinese *script* is the frontend's
-    // business and not the dictionary's: v1.0 and v1.1-zh read the same words,
-    // and both fetch the two grammars.
+    // business and not the dictionary's: v1.0 and v1.1-zh read the same words, and
+    // both fetch the same FSTs — including `traditional_to_simple`, which is the one
+    // that *writes* Chinese script. It is a preprocessor for the phonemes rather than
+    // a choice about which script this frontend speaks, which is why both frontends
+    // declare it.
     assert_eq!(declared("kokoro-v1", "zh-CN").required(), ZH_REQUIRED);
     assert_eq!(declared("kokoro-v11-zh", "zh-CN").required(), ZH_REQUIRED);
 }

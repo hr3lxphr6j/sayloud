@@ -25,12 +25,20 @@
 //!
 //! # It is not a second definition of what needs normalizing
 //!
-//! It cannot be, because it is not the authority — the tagger is. What keeps the
-//! two from drifting is a test rather than a promise:
+//! It cannot be, because it is not the authority — the normalizer is. What keeps
+//! the two from drifting is a test rather than a promise:
 //! `tests/tn_gate.rs` asserts, over a corpus, that a `false` from here implies
 //! the tagger found nothing but `w` and `p` **and** that the whole normalizer
 //! left the text alone. If the grammar gains a class this list does not cover,
 //! that test goes red instead of the pipeline quietly getting worse.
+//!
+//! **The normalizer, not the tagger, because one of the criteria answers about a
+//! step around it.** English's configuration folds full-width forms before the
+//! composition, so a sentence containing one is a sentence the normalizer changes
+//! whether or not the tagger has anything to add — and the gate has to say so,
+//! because the composition is what it is deciding about. The predicate that answers
+//! for that step names the step it stands for, and `tn::engine`'s configuration is
+//! what makes it true.
 //!
 //! # Why a hand-written scan rather than a regex
 //!
@@ -130,12 +138,37 @@ const SHAPE_LESS_ABBREVIATIONS: [&str; 15] = [
 /// unchanged; a `true` costs one composition that may still find nothing to do.
 /// Which criteria are in it, and why, is the module documentation; the test that
 /// holds the promise is `tests/tn_gate.rs`.
+///
+/// The last criterion is not about the *tagger* at all: it is about a step the
+/// configuration runs before it, which upstream's gate has no term for because
+/// upstream leaves that switch off. `step_rewrites_a_full_width_form` names the step
+/// it stands for, so that a switch turned on in `tn::engine` and a criterion added
+/// here are recognisably the same decision.
 pub fn needs_normalization(text: &str) -> bool {
     text.bytes().any(|byte| byte.is_ascii_digit())
         || text.chars().any(is_normalized_symbol)
         || has_capital_run(text)
         || has_terminated_abbreviation(text)
         || contains_shape_less_abbreviation(text)
+        || text.chars().any(step_rewrites_a_full_width_form)
+}
+
+/// A character the `full_to_half` step will fold to its ASCII form.
+///
+/// The foldable range is U+FF01–U+FF5E, measured against the shipped FST: 91 of
+/// the 239 characters in the whole width block move, and the ones that do not are
+/// the half-width katakana and hangul and the currency signs, which this step
+/// leaves alone and `text.rs` drops anyway. The criterion is deliberately the
+/// *wider* block, so that a `＃` — one of the three the FST does not fold — costs
+/// a composition instead of being missed, and the two curly double quotes, which
+/// the FST does fold to `"`.
+///
+/// It has to be *here* rather than only in the FST: the preprocessor runs inside
+/// `tn::normalize`, which is a call this gate can prevent. `ＡＢＣ` returned
+/// `false` before this criterion existed, and the sentence it was in lost its
+/// Latin — `Ｈｅｌｌｏ world` phonemized to `wˈɜːld`.
+fn step_rewrites_a_full_width_form(character: char) -> bool {
+    matches!(character, '\u{ff01}'..='\u{ff5e}' | '\u{201c}' | '\u{201d}')
 }
 
 /// Two ASCII capitals in a row: `TV`, `USA`, `II`, and the initials of a name.

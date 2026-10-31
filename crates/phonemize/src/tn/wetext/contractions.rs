@@ -1,87 +1,56 @@
-//! English contractions expansion
+//! English contraction expansion: `We'll` → `we will`.
 //!
-//! This module provides English contractions expansion functionality,
-//! equivalent to Python's `contractions` package.
+//! The English pipeline runs this before the WeText tagger, from
+//! `Normalizer::normalize_with_config`, and only on sentences that contain an
+//! apostrophe (see [`has_apostrophe`]). It is the equivalent of Python's
+//! `contractions.fix()`.
 //!
-//! The contraction rules are embedded at compile time from JSON files
-//! copied from the Python `contractions` package. Those files are MIT and the rest
-//! of this directory is Apache-2.0, so the licence, the version they were copied
-//! from and the hashes that make "copied unchanged" checkable live in
-//! `data/contractions-NOTICE.txt` beside them.
+//! # Data
 //!
-//! # The engine: one automaton over the keys, not one regex per key
+//! Three JSON tables copied unchanged from the Python `contractions` package
+//! 0.1.73, plus 11 month abbreviations. Every key that contains `'` also gets a
+//! copy spelled with `’`. That makes 412 keys, all lower case, the longest
+//! 16 bytes. The tables are MIT while the rest of this directory is Apache-2.0;
+//! the licence and the file hashes are in `data/contractions-NOTICE.txt`.
 //!
-//! Upstream's Python delegates this step to the `contractions` package, which
-//! matches the keys with `textsearch` — a literal multi-string engine that takes
-//! the longest key at each position. This module used to emulate that with one
-//! `(?i)\b…\b` [`Regex`](regex::Regex) per key, applied in a loop; it now matches
-//! with one [`AhoCorasick`] automaton over the same keys, which is the same object
-//! `TextSearch` builds (and the same one an FST compiled from these literals would
-//! have, minus the weight arithmetic and the OpenFST file format).
+//! # Matching
 //!
-//! The swap was made for the *build*, not for the scan. Measured in a release
-//! build over the shipped 412 keys:
+//! One [`AhoCorasick`] automaton finds every occurrence of every key. It only
+//! matches literal strings, so two more checks run on each occurrence, in
+//! [`Rule::accepts`]:
 //!
-//! | | 412 `Regex`, built lazily | one automaton, built in `prepare` |
-//! |---|---|---|
-//! | build | 56 ms, on the first call | 0.73 ms |
-//! | resident heap | 6.7 MB | 89 KB |
-//! | `fix_contractions`, an 86-character sentence | 30 µs | 2.2 µs |
-//! | `fix_contractions`, an 860-character paragraph | 80 µs | 14 µs |
-//! | wasm | — | +3.7 KB, and the crate was already linked through `regex` |
+//! - **Word boundaries.** A key must not start or end in the middle of a word,
+//!   like the regex `\b…\b`. Month keys (`jan.`) have no trailing boundary.
+//! - **Case.** Matching ignores ASCII case, except for seven text-speak keys
+//!   (`bc`, `u`, …) that only match in lower case. See [`convention_keys`].
 //!
-//! The per-sentence scan was never the problem — synthesis is 500–750 ms a sentence,
-//! so 30 µs is nothing and 2.2 µs is less of nothing. The build was: it is lazy, and
-//! the first call is the first sentence containing an apostrophe, which is usually the
-//! first sentence of an article. 6.7 MB of compiled patterns in a worker already
-//! carrying ~30 MB of dictionaries was the other half.
+//! Among the occurrences that pass, the scan takes the leftmost one, and of
+//! those that start at the same place, the longest. See [`Tables::expand`].
 //!
-//! [`warm_up`] is what moves the build to `prepare`, where [`crate::tn::engine`]
-//! calls it beside the FST parses it already pays for.
+//! [`warm_up`] builds the automaton during `prepare`: 0.73 ms and 89 KB of heap.
+//! The same rules as 412 separate regexes would cost 56 ms and 6.7 MB.
 //!
-//! **One automaton, not two — and the second one existed until the early exit in
-//! [`Tables::expand`] made it unnecessary.** That is where the shape of the scan, the
-//! three wrong ways to write it, and the measurement behind each of them live; this
-//! comment and that one are deliberately the same argument, because the numbers are
-//! what chose the shape.
+//! # Differences from the Python package
 //!
-//! # What the automaton cannot know, and this module therefore says
-//!
-//! A multi-string automaton matches literals; it has no notion of the word
-//! boundaries or the case rules that the patterns used to carry. Those are three
-//! fields on [`Rule`], and they are the whole of what makes this a reimplementation
-//! rather than a swap:
-//!
-//! - `trailing_boundary` — whether the key has to end on a word boundary. Only the
-//!   month abbreviations do not, which is upstream's own definition of those keys
-//!   (`jan.` is expected to be followed by a space).
-//! - `exact_case` — the seven text-speak keys, which are matched exactly. See the
-//!   note on the table below.
-//! - the first and last character of the key, for the boundary test itself.
-//!
-//! Which key wins where two overlap is **not** the automaton's answer either, even
-//! though it is the obvious place to look for it: see [`Tables`] for the measurement
-//! that rules out letting it decide.
+//! The test `differences_from_the_python_package` lists them with examples.
+//! In short: text-speak keys are case-sensitive (`BC` stays `BC`), the
+//! replacement is always the table's lower-case text, and keys that start or end
+//! with an apostrophe treat word boundaries differently.
 
 use std::collections::{HashMap, HashSet};
 
 use aho_corasick::{AhoCorasick, Input, Match, MatchKind};
 use once_cell::sync::Lazy;
 
-/// Contractions data embedded at compile time
-///
-/// These JSON files are copied from Python `contractions` package:
-/// - contractions_dict.json: Standard contractions (~180 rules)
-/// - leftovers_dict.json: Leftover suffixes (~17 rules)
-/// - slang_dict.json: Slang contractions (~50 rules)
-// The paths are module-relative rather than the crate-relative ones upstream
-// uses: this file sits inside `tn/wetext/`, so its data directory is a
-// sibling rather than a crate-root `../data`.
+/// The tables, embedded at compile time from the Python `contractions` package:
+/// - `contractions_dict.json`: standard contractions (~180 entries)
+/// - `leftovers_dict.json`: suffixes such as `'ll` and `'d` (~17 entries)
+/// - `slang_dict.json`: slang and text-speak (~50 entries)
 const CONTRACTIONS_JSON: &str = include_str!("data/contractions_dict.json");
 const LEFTOVERS_JSON: &str = include_str!("data/leftovers_dict.json");
 const SLANG_JSON: &str = include_str!("data/slang_dict.json");
 
-/// Month abbreviations (added dynamically like Python version)
+/// Month abbreviations. The Python package adds these in code, not in a table.
 const MONTH_ABBREVS: &[(&str, &str)] = &[
     ("jan.", "january"),
     ("feb.", "february"),
@@ -96,41 +65,39 @@ const MONTH_ABBREVS: &[(&str, &str)] = &[
     ("dec.", "december"),
 ];
 
-/// One key: what it expands to, and the two things the automaton cannot hold.
+/// What the automaton cannot store about a key.
 ///
-/// Indexed by the automaton's `PatternID`, so the order of this vector is the order
-/// the automaton's patterns were added in — [`Tables::new`] builds both.
+/// Indexed by the automaton's `PatternID`. [`Tables::new`] builds this vector and
+/// the automaton from the same sorted list, so the indices line up.
 #[derive(Debug)]
 struct Rule {
-    /// The words the key becomes, verbatim from the table. Lower case, which is
-    /// where a `(?i)` match's replacement has always come from.
+    /// The replacement text, verbatim from the table. Always lower case.
     expansion: String,
-    /// Whether the key has to end on a word boundary.
+    /// Whether the key must end on a word boundary.
     ///
-    /// False only for [`MONTH_ABBREVS`], because upstream's key for January is
-    /// `jan.` *including* the dot and it expects the space that follows: the
-    /// pattern is `\bjan\.` with no trailing boundary, so `jan. 15` expands and
-    /// `jan.15` does too (the two are separate divergences from the reference —
-    /// see `the_regex_rules_differ_from_the_reference_in_these_places`).
+    /// False only for the month keys. Their key includes the dot (`jan.`), so
+    /// both `jan. 15` and `jan.15` expand.
     trailing_boundary: bool,
-    /// Whether the key is a writing convention rather than a word, and therefore
-    /// has to be matched in exactly the case the table writes it in.
+    /// Whether the key only matches in the case the table writes it in (lower
+    /// case). True for the text-speak keys; see [`convention_keys`].
     exact_case: bool,
-    /// Whether the key's first and last characters are word characters, which is
-    /// what the boundary test compares its neighbours against. See [`is_word`].
+    /// Whether the key's first and last characters are word characters. The
+    /// boundary test compares these with the characters around the match.
     first_is_word: bool,
     last_is_word: bool,
 }
 
 impl Rule {
-    /// Whether a match of this key, at this place in this text, is one of the
-    /// key's occurrences.
+    /// Whether this occurrence of the key counts.
     ///
-    /// This is the `\b…\b` the patterns used to carry, written out. A `\b` is a
-    /// change of word-character-ness, so the leading test is "the character before
-    /// the match is a word character exactly when the key's first character is
-    /// not", and the trailing test is the mirror of it. Both ends of the text count
-    /// as non-word characters, which is what makes `\b` fire at a string's edge.
+    /// A word boundary sits between a word character and a non-word character,
+    /// and the edges of the text count as non-word. So an occurrence is
+    /// accepted when the character before it differs in word-ness from the key's
+    /// first character, and (if `trailing_boundary`) the character after it
+    /// differs from the key's last character.
+    ///
+    /// Example: `'ll` starts with a non-word character, so it needs a word
+    /// character before it. `John'll` matches; `John 'll` does not.
     fn accepts(&self, haystack: &str, matched: &str, start: usize, end: usize) -> bool {
         if self.exact_case && matched.chars().any(|c| c.is_ascii_uppercase()) {
             return false;
@@ -149,47 +116,34 @@ impl Rule {
     }
 }
 
-/// Whether `character` is a word character, the way `\b` counts them.
+/// Whether `character` is a word character for the boundary test. `None` is the
+/// edge of the text, which counts as non-word.
 ///
-/// `None` is the edge of the string, which `\b` treats as a non-word character.
-///
-/// # An approximation of the `regex` crate's `\w`
-///
-/// The patterns this replaced asked a Unicode-aware `\b`, whose word class is
-/// `\p{Word}` — alphabetics, marks, decimal digits, connector punctuation and join
-/// controls. This asks [`char::is_alphanumeric`] plus `_`, which agrees with
-/// `\p{Word}` on every ASCII character and differs for the categories `\p{Word}`
-/// has and `is_alphanumeric` does not (combining marks, join controls) and the
-/// reverse (`No` and `Nl`: `①`, `Ⅷ`, and the six that sit inside Latin-1, `²³¹¼½¾`).
-/// Measured rather than asserted:
-/// `is_word_agrees_with_the_regex_word_class_over_these_code_points` compares the
-/// two over the first three Unicode blocks and pins both the exceptions and the
-/// counts.
-///
-/// It matters only for a *neighbour* of a match: every key in the tables is ASCII,
-/// so this is asked about the character before and after an occurrence of one of
-/// them.
+/// This is [`char::is_alphanumeric`] plus `_`, an approximation of the regex
+/// crate's `\w`. The two agree on all of ASCII. Outside ASCII, `\w` also covers
+/// combining marks and join controls, and `is_alphanumeric` also covers number
+/// forms such as `²`, `½` and `①`. Every key is ASCII apart from `’`, so this
+/// only affects how the characters next to a key are classified. The test
+/// `is_word_agrees_with_the_regex_word_class_over_these_code_points` pins the
+/// differences.
 fn is_word(character: Option<char>) -> bool {
     character.is_some_and(|c| c.is_alphanumeric() || c == '_')
 }
 
-/// The tables and the automaton over them.
+/// The automaton and the per-key rules.
 ///
-/// **One automaton, and it has to be a `Standard` one.** `Standard` is the only
-/// match kind that reports *every* match — `LeftmostFirst` and `LeftmostLongest`
-/// refuse the overlapping iteration [`Tables::expand`] needs — and it is the only
-/// one whose report the scan can filter. It is deliberately *not* the thing that
-/// decides which key wins: measured, `Standard` resolves two keys that match at the
-/// same position by taking the one that ends **first**, so a search of it on
-/// `o'clocks` answers `o'` where the tables want `o'clock`. The scan does that part
-/// itself.
+/// The automaton uses `MatchKind::Standard` because it is the only kind that
+/// supports overlapping iteration, which [`Tables::expand`] needs in order to see
+/// every candidate. The automaton does not choose the winner: when two keys match
+/// at the same position, `Standard` reports the one that ends first (`o'` before
+/// `o'clock`), but the rule wants the longest. `expand` picks the winner itself.
 struct Tables {
-    /// Every match, including the shorter ones inside a longer one.
+    /// Reports every match, including shorter keys inside longer ones.
     automaton: AhoCorasick,
     /// Indexed by `PatternID`.
     rules: Vec<Rule>,
-    /// The longest key, in bytes. It is what lets [`Tables::expand`] stop
-    /// enumerating: nothing longer than this can be hiding.
+    /// The length of the longest key, in bytes. Lets [`Tables::expand`] stop
+    /// scanning early.
     max_key_len: usize,
 }
 
@@ -205,8 +159,8 @@ impl Tables {
             let last = key.chars().next_back().expect("no key is empty");
             let rule = Rule {
                 expansion,
-                // Upstream's month keys carry their dot and no trailing boundary;
-                // every other key is `\b`-delimited on both sides.
+                // Month keys end in `.` and have no trailing boundary; every
+                // other key needs one.
                 trailing_boundary: !key.ends_with('.'),
                 exact_case: conventions.contains(&key),
                 first_is_word: is_word(Some(first)),
@@ -215,10 +169,9 @@ impl Tables {
             entries.push((key, rule));
         }
 
-        // Deterministic order, so the automaton and `rules` are a function of the
-        // tables rather than of `HashMap`'s iteration order. Not load-bearing — the
-        // scan decides which key wins, not the pattern order — but a build that is
-        // reproducible is one that can be compared when it changes.
+        // Sort so the build does not depend on `HashMap` iteration order. The
+        // output of `expand` does not depend on pattern order; this only keeps
+        // builds reproducible.
         entries.sort_by(|(left, _), (right, _)| left.cmp(right));
 
         let patterns: Vec<&str> = entries.iter().map(|(key, _)| key.as_str()).collect();
@@ -237,75 +190,59 @@ impl Tables {
         }
     }
 
-    /// One scan: every key in `text` becomes its expansion.
+    /// Replace every accepted key occurrence in `text` with its expansion.
     ///
-    /// # The rule
+    /// # Rule
     ///
-    /// The match to take is the **leftmost, then longest, among the matches the
-    /// tables accept** — upstream's `TextSearch`, and what the loop of sorted patterns
-    /// this replaced was emulating. The automaton gives "leftmost" and it gives
-    /// "longest" separately, but it knows nothing about boundaries or case — those are
-    /// [`Rule::accepts`] — and asking it for one match per step and filtering does not
-    /// work, in four different ways.
+    /// Starting from the current position: among all accepted matches, take the
+    /// one that starts leftmost, and of those that start there, the longest.
+    /// Replace it and continue after it. The Python reference's `TextSearch`
+    /// does the same.
     ///
-    /// # Four ways to get it wrong, measured
+    /// # Why every match is enumerated
     ///
-    /// Each shape below was run over a 2481-input corpus (every key in six carriers,
-    /// plus prose and the adversarial overlaps) against [`tests::reference`], the regex
-    /// implementation this module replaced — the corpus and the reference of
-    /// `the_engine_swap_changes_nothing_over_these_inputs`, which is what makes these
-    /// counts reproducible: substitute a shape's body for `expand`'s and run it. "Wrong"
-    /// counts inputs whose output differs; the examples are inputs it is wrong on, and
-    /// each of them is in that corpus.
+    /// Asking the automaton for one match and then filtering it does not work,
+    /// because the automaton's choice ignores boundaries and case:
     ///
-    /// | shape | wrong | what it misses |
-    /// |---|---|---|
-    /// | `LeftmostLongest`, one match per step, reject and move on | 260 | the matches a rejected one skipped over: `awe'll` comes back unchanged, where the key is `'ll` → `" will"` and the rejected `we'll` took the scan past it |
-    /// | the same, restarting one character into a rejected match | 46 | a match at the *same* start as the rejected one: `o'clocks` comes back unchanged, where `o'clock` is rejected there and `o'` → `of` begins where it did |
-    /// | `Standard`, one match per step | 525 | the longer of two matches at one position — it answers with the one that ends *first*: `that’d’ve` becomes `that would’ve`, `o'er` becomes `ofer` |
-    /// | `Standard`, every match, no early exit | **0** | nothing at all — but it scans to the end of the text once per replacement: 112 iterator steps against 28 on a 208-character paragraph, and 174 µs against 16 µs on an 860-character one |
+    /// - `LeftmostLongest`, skipping past a rejected match. In `awe'll`, `we'll`
+    ///   is rejected (it starts mid-word) and the skip jumps over `'ll`, which
+    ///   should have matched.
+    /// - The same, but restarting one character into a rejected match. In
+    ///   `o'clocks`, `o'clock` is rejected (it ends mid-word) and the restart
+    ///   misses `o'`, which starts at the same place. The right answer is
+    ///   `ofclocks`.
+    /// - `Standard`, one match at a time. At a given position it reports the
+    ///   shorter key first, so `o'er` becomes `ofer` instead of `over`.
     ///
-    /// So the scan cannot be a search with a filter. It enumerates every match and picks
-    /// the best accepted one, and the early exit below is what makes that affordable —
-    /// it is the difference between the last row and what ships.
+    /// So the loop walks all overlapping matches with `find_overlapping_iter` and
+    /// keeps the best accepted one.
     ///
-    /// # Why the early exit is sound
+    /// # Stopping early
     ///
-    /// The iterator reports matches in the order of their **end** offsets — the
-    /// crate's own example for `append the app to the appendage` yields `0..3` before
-    /// `0..6` before `11..14` — and every key is at most [`max_key_len`](Tables::max_key_len)
-    /// bytes. So once a match ends more than `max_key_len` past `best`'s start, no
-    /// match still to come can start at or before `best`'s start:
+    /// Walking to the end of the text for every replacement is slow (174 µs
+    /// instead of 16 µs on an 860-character paragraph). The loop stops as soon as
+    /// no later match can beat the current best.
+    ///
+    /// The iterator reports matches in order of their end offset, and no key is
+    /// longer than `max_key_len` bytes. So once a match ends more than
+    /// `max_key_len` bytes after `best` starts, every later match starts after
+    /// `best`:
     ///
     /// ```text
-    /// later.start >= later.end - max_key_len     (a key is at most max_key_len long)
-    ///             >= found.end - max_key_len     (matches come in end order)
-    ///             >  best.start                  (the exit condition)
+    /// later.start >= later.end - max_key_len   (no key is longer than max_key_len)
+    ///             >= found.end - max_key_len   (later matches end no earlier)
+    ///             >  best.start                (the stop condition)
     /// ```
     ///
-    /// which settles both halves of the rule at once: nothing later can be further
-    /// left, and nothing later can be a longer match at `best`'s own start. The check
-    /// runs *before* the match is filtered, which is what keeps a rejected match from
-    /// walking the rest of the text — and it is safe there for the same reason: a
-    /// match that trips the condition starts right of `best`, so considering it could
-    /// not have changed the answer.
+    /// A match that starts after `best` is neither further left nor a longer
+    /// match at the same start, so it cannot win. The check runs before the
+    /// boundary and case filter, so a rejected match can end the loop too.
     ///
-    /// A trace of `I'd've said so, and we'll see.` is the shape of it. For the first
-    /// replacement the iterator yields `i'd` (accepted, so far the best), `'d` inside it
-    /// (accepted, not better) and `i'd've` (accepted, longer at the same start, now the
-    /// best), and then `we'll` — whose end is past `0 + max_key_len`, and that is the
-    /// exit: the rest of the sentence is never looked at. The second replacement takes
-    /// two matches (`we'll`, then `'ll` inside it) and the text ends. Over a
-    /// 128-character paragraph with six replacements that is 2.8 iterator steps per
-    /// replacement; without the exit the same paragraph takes 112 steps for 28, because
-    /// every replacement rescans to the end of the text.
-    ///
-    /// Measured, this shape against the two-automaton one it replaced (fast path plus
-    /// a correction walk) on the same sentence and paragraph: 1.56 µs against 0.92 µs,
-    /// and 15.8 µs against 8.6 µs. Both are noise against a 500–750 ms synthesis, and
-    /// this one is a single automaton, a single loop and no correction path — the
-    /// trade the `NOTICE` records. What it gives up is the sub-microsecond case; what
-    /// it keeps is the rule.
+    /// Example, `I'd've said so, and we'll see.`: the first round sees `i'd`
+    /// (best so far), shorter keys inside it, then `i'd've` (same start, longer,
+    /// so the new best). The next match is `we'll`, which ends more than 16 bytes
+    /// after position 0, so the round stops without reading the rest. The second
+    /// round takes `we'll`.
     fn expand(&self, text: &str) -> String {
         let mut out = String::with_capacity(text.len());
         // Everything before `copied` is already in `out`.
@@ -319,9 +256,8 @@ impl Tables {
                 .automaton
                 .find_overlapping_iter(Input::new(text).span(from..text.len()))
             {
-                // Settled: see the module's proof. `MAX - end` in the comparison below
-                // is how "longer is better" is spelled for an ordering that reads
-                // left to right.
+                // No later match can start at or before `best`; see "Stopping
+                // early" above.
                 if let Some(current) = &best {
                     if found.end() > current.start() + self.max_key_len {
                         break;
@@ -338,7 +274,8 @@ impl Tables {
                     continue;
                 }
                 let better = match &best {
-                    // Leftmost first, then longest: the whole rule.
+                    // Smaller start wins; at the same start, larger end wins.
+                    // `usize::MAX - end` turns "larger end" into "smaller value".
                     Some(current) => {
                         (found.start(), usize::MAX - found.end())
                             < (current.start(), usize::MAX - current.end())
@@ -362,38 +299,30 @@ impl Tables {
     }
 }
 
-/// Whether `text` contains an apostrophe one of the tables is keyed with.
+/// Whether `text` contains `'` (U+0027) or `’` (U+2019), the two apostrophes the
+/// keys are spelled with.
 ///
-/// `'` (U+0027) and `’` (U+2019), because [`merged_tables`] holds every
-/// apostrophe-bearing key under both spellings. That duplication is upstream's —
-/// the Python `contractions` package does
-/// `contractions_dict.update({k.replace("'", "’"): v …})` — and it is what makes
-/// a curly apostrophe work at all.
-///
-/// **The predicate lives here, beside the tables, because the caller that guards
-/// the call has to ask the question the tables answer.** `normalizer.rs` used to
-/// test `text.contains('\'')`, which is upstream's own guard, so a curly
-/// apostrophe never reached [`fix_contractions`] — the `’` keys were unreachable
-/// in the Python reference too. See `Normalizer::normalize_with_config`.
+/// `Normalizer::normalize_with_config` only calls [`fix_contractions`] when this
+/// is true. Python's WeText checks only for `'`, so a sentence that uses only `’`
+/// is never expanded there, even though the tables contain `’` keys.
 pub fn has_apostrophe(text: &str) -> bool {
     text.contains('\'') || text.contains('\u{2019}')
 }
 
-/// Build the automaton now, so that no sentence has to.
+/// Build the automaton now instead of on the first sentence that needs it.
 ///
-/// Called by `crate::tn::engine::english`, which runs in `finish_loading` — the
-/// seam where this crate already pays for everything expensive once per worker
-/// (English's two FSTs are 70 ms of parsing beside this 0.7 ms). Without it the
-/// build would land on whichever sentence first contains an apostrophe, which the
-/// measurement in the module comment is about.
+/// Called from `crate::tn::engine::english` during `finish_loading`, alongside
+/// the English FST parses (70 ms; this takes 0.7 ms).
 pub fn warm_up() {
     Lazy::force(&TABLES);
 }
 
-/// The three tables merged the way upstream merges them, plus the month keys.
+/// Every key and its expansion: the three JSON tables, the month keys, and a `’`
+/// copy of every key that contains `'`. Keys are lower-cased, and leftover
+/// entries with an empty expansion are dropped. Later tables overwrite earlier
+/// ones on the same key.
 ///
-/// Shared with the tests, which keep the regex implementation this module used to
-/// be so that the engine swap can be diffed rather than believed.
+/// The tests use this as well, to build the regex reference implementation.
 fn merged_tables() -> HashMap<String, String> {
     let mut map = HashMap::new();
 
@@ -401,31 +330,30 @@ fn merged_tables() -> HashMap<String, String> {
         serde_json::from_str::<HashMap<String, String>>(json).unwrap_or_default()
     };
 
-    // Load standard contractions
+    // Standard contractions
     for (k, v) in parse_json(CONTRACTIONS_JSON) {
         map.insert(k.to_lowercase(), v);
     }
 
-    // Load leftovers
+    // Leftovers, skipping empty mappings such as "'all" → ""
     for (k, v) in parse_json(LEFTOVERS_JSON) {
         if !v.is_empty() {
-            // Skip empty mappings like "'all" → ""
             map.insert(k.to_lowercase(), v);
         }
     }
 
-    // Load slang (optional, can be disabled)
+    // Slang
     for (k, v) in parse_json(SLANG_JSON) {
         map.insert(k.to_lowercase(), v);
     }
 
-    // Add month abbreviations
+    // Month abbreviations
     for (abbrev, full) in MONTH_ABBREVS {
         map.insert(abbrev.to_string(), full.to_string());
     }
 
-    // Handle apostrophe variants: ' (U+0027) vs ' (U+2019 curly apostrophe)
-    // Add curly apostrophe variants for keys that contain straight apostrophe
+    // A `’` (U+2019) copy of every key containing `'` (U+0027), as the Python
+    // package does.
     let variants: Vec<(String, String)> = map
         .iter()
         .filter(|(k, _)| k.contains('\''))
@@ -439,30 +367,23 @@ fn merged_tables() -> HashMap<String, String> {
     map
 }
 
-/// The slang keys that are writing conventions rather than words, and are matched
-/// case-**sensitively**.
+/// The text-speak keys from the slang table, which only match in lower case:
+/// `b4`, `bc`, `kk`, `r `, `rn`, `u`, `ur`.
 ///
-/// Seven of the shipped table's forty-eight entries are text-speak — `b4`, `bc`,
-/// `kk`, `r `, `rn`, `u`, `ur` — and every one of them collides with a capitalised
-/// word or initialism in ordinary prose. Measured through the shipped pipeline,
-/// with the tables running because the sentence happens to contain an apostrophe:
+/// Each of them is also a capitalised word or initialism in ordinary prose, so
+/// case-insensitive matching breaks real text. Through the full pipeline:
 ///
-/// | text | with `(?i)` on every key | what it should be |
-/// |------|--------------------------|-------------------|
+/// | text | matched case-insensitively | correct |
+/// |------|----------------------------|---------|
 /// | `It's 500 BC` | `it is five hundred because` | `five hundred B C` |
 /// | `It's the U.S. Army` | `it is the you.S. Army` | `the U S Army` |
 ///
-/// The other direction is why the keys are kept rather than dropped: `It's 4 u`
-/// is `four you` and `It's b4 noon` is `before noon`, which is what those
-/// conventions are for. Matching them exactly keeps both, because the conventions
-/// are only ever written in lower case, while what they collide with is only ever
-/// written in upper case — `BC` (before Christ), `U.S.`, `U` (uranium), `Ur` (the
-/// city), `RN` (registered nurse), `B4` (the paper size), `R` (the letter).
+/// Text-speak is written in lower case and the colliding words are not (`BC`,
+/// `U.S.`, `Ur` the city, `RN` registered nurse, `B4` the paper size), so
+/// case-sensitive matching keeps both: `It's 4 u` still becomes `it is 4 you`.
 ///
-/// **Upstream has the same collision** — `contractions.fix("It's 500 BC")` is
-/// `It's 500 BECAUSE`, straight from the table — so this is a divergence from the
-/// reference on purpose. It is pinned in `tests`, including the row in
-/// [`tests::the_regex_rules_differ_from_the_reference_in_these_places`].
+/// The Python package matches these case-insensitively and turns `It's 500 BC`
+/// into `It is 500 BECAUSE`. This is a deliberate difference.
 fn convention_keys() -> HashSet<String> {
     serde_json::from_str::<HashMap<String, String>>(SLANG_JSON)
         .unwrap_or_default()
@@ -472,38 +393,32 @@ fn convention_keys() -> HashSet<String> {
         .collect()
 }
 
-/// Whether a slang key is a writing convention rather than a word.
-///
-/// "Two characters or fewer, or containing a digit" is the rule, and it is a rule
-/// rather than the seven names it currently picks out so that a table bump which
-/// adds `gr8` or `2day` gets the same treatment without anyone remembering to.
+/// Whether a slang key is text-speak: at most two characters, or containing a
+/// digit. A rule rather than a fixed list, so new entries such as `gr8` or
+/// `2day` are handled the same way.
 fn is_a_convention_rather_than_a_word(key: &str) -> bool {
     key.chars().count() <= 2 || key.chars().any(|c| c.is_ascii_digit())
 }
 
-/// Expand English contractions in text
+/// Expand English contractions in `text`.
 ///
-/// This function is equivalent to Python's `contractions.fix(text)`.
-/// It handles standard contractions, leftovers, and slang.
-///
-/// # Arguments
-/// * `text` - Input text with potential contractions
-///
-/// # Returns
-/// Text with contractions expanded
+/// The equivalent of Python's `contractions.fix(text)`, with the differences
+/// listed in the module documentation. A matched key is replaced by the table's
+/// lower-case text, so `It's` becomes `it is`.
 ///
 /// # Example
 /// ```rust,ignore
 /// use phonemize::tn::wetext::contractions::fix_contractions;
 ///
 /// assert_eq!(fix_contractions("I don't know"), "I do not know");
-/// assert_eq!(fix_contractions("It's gonna be fine"), "It is going to be fine");
+/// assert_eq!(fix_contractions("It's gonna be fine"), "it is going to be fine");
 /// assert_eq!(fix_contractions("Jan. 15th"), "january 15th");
 /// ```
 pub fn fix_contractions(text: &str) -> String {
-    // Quick check: if no apostrophe-like chars and no known patterns, skip. With the
-    // automaton this costs nothing to *run* (one pass either way), so the check is
-    // here for the allocation, not for the scan.
+    // Fast path: skip the scan and the allocation unless the text has an
+    // apostrophe or one of the apostrophe-less keys in `needs_expansion`. An
+    // apostrophe-less key that is not on that list (such as `whats`) therefore
+    // only expands when the text also contains an apostrophe.
     if !has_apostrophe(text) && !needs_expansion(text) {
         return text.to_string();
     }
@@ -511,17 +426,18 @@ pub fn fix_contractions(text: &str) -> String {
     TABLES.expand(text)
 }
 
-/// Quick check for common patterns that need expansion (optimization)
+/// The apostrophe-less keys the fast path in [`fix_contractions`] looks for:
+/// common slang and the month keys. Not every apostrophe-less key is listed.
 fn needs_expansion(text: &str) -> bool {
     let lower = text.to_lowercase();
-    // Check for common slang that doesn't contain apostrophes
+    // Slang without an apostrophe
     lower.contains("gonna")
         || lower.contains("wanna")
         || lower.contains("gotta")
         || lower.contains("dunno")
         || lower.contains("gimme")
         || lower.contains("lemme")
-        // Check for month abbreviations
+        // Month abbreviations
         || lower.contains("jan.")
         || lower.contains("feb.")
         || lower.contains("mar.")
@@ -535,18 +451,9 @@ fn needs_expansion(text: &str) -> bool {
         || lower.contains("dec.")
 }
 
-/// Expand contractions with configuration options
-///
-/// # Arguments
-/// * `text` - Input text
-/// * `_include_slang` - Whether to expand slang (default: true in Python)
-///
-/// Note: For simplicity, this implementation always includes slang.
-/// If you need the option to exclude slang, rebuild PATTERNS without slang entries.
+/// Unused. `_include_slang` is ignored: slang is always expanded.
 #[allow(dead_code)]
 pub fn fix_contractions_with_options(text: &str, _include_slang: bool) -> String {
-    // Current implementation always includes slang for simplicity
-    // To support this option properly, would need separate pattern sets
     fix_contractions(text)
 }
 
@@ -554,20 +461,18 @@ pub fn fix_contractions_with_options(text: &str, _include_slang: bool) -> String
 mod tests {
     use super::*;
 
-    /// **The old regex implementation, kept so the engine swap can be diffed.**
+    /// A second implementation of the same rules, used only as a test reference.
     ///
-    /// This is `fix_contractions` as it was before the automaton: one
-    /// `(?i)\b…\b` (or `\b…` for a month key, or exactly-cased for a convention)
-    /// `Regex` per key, applied in a loop over the mutating string, longest key
-    /// first. It exists only for the test below — the shipped path is the
-    /// automaton — and it is deliberately not tidied: a reference that has been
-    /// rewritten is no longer a reference.
+    /// One regex per key: `(?i)\b…\b`, without `(?i)` for text-speak keys and
+    /// without the trailing `\b` for month keys. The regexes are applied in a
+    /// loop, longest key first. It is deliberately simple and shares no matching
+    /// code with the automaton, so that comparing the two means something. Keep
+    /// it that way.
     fn reference(text: &str) -> String {
         use std::sync::OnceLock;
 
-        /// Built once, like the `Lazy` the shipped module used to hold: compiling
-        /// 412 patterns per call is what made this test take twelve minutes the
-        /// first time it ran.
+        /// Compiled once. Compiling 412 regexes per call makes the test take
+        /// minutes.
         static PATTERNS: OnceLock<Vec<(regex::Regex, String)>> = OnceLock::new();
 
         if !has_apostrophe(text) && !needs_expansion(text) {
@@ -611,22 +516,16 @@ mod tests {
         result
     }
 
-    /// **The engine swap changed nothing, and this is the diff that says so.**
+    /// The automaton and [`reference`] give the same output on about 4,500
+    /// inputs.
     ///
-    /// Every key in the tables inside eleven carriers — word boundaries, text
-    /// edges, letters, digits, quotes, dots — plus prose and the adversarial
-    /// overlaps (`he'll've`, `I'd've`, `y'all'll`), run through the automaton and
-    /// through [`reference`], which is the regex implementation the automaton
-    /// replaced.
+    /// The inputs are every key in 11 surroundings (spaces, text edges, letters,
+    /// digits, quotes, dots, hyphens, newlines), plus prose and overlapping keys
+    /// (`he'll've`, `I'd've`, `y'all'll`).
     ///
-    /// The corpus is ASCII, which is the whole practical domain, and the one input
-    /// class it therefore cannot cover is the one the two engines cannot agree on:
-    /// `(?i)` is Unicode case folding and `ascii_case_insensitive` is not, so a long
-    /// s (`ſ`) is an `s` to the reference and not to the automaton. That is asserted
-    /// on its own in
-    /// `the_regex_rules_differ_from_the_reference_in_these_places`, together with the
-    /// reading it produces, and it is a step *towards* upstream rather than away from
-    /// it.
+    /// The inputs are ASCII. The one known disagreement is outside ASCII: the
+    /// regex `(?i)` folds the long s `ſ` to `s` and the automaton does not. That
+    /// case is in `differences_from_the_python_package`.
     #[test]
     fn the_engine_swap_changes_nothing_over_these_inputs() {
         let mut carriers = Vec::new();
@@ -654,8 +553,8 @@ mod tests {
             "Jan. 15th, 2 p.m., 500 BC, the U.S. Army, and 4 u.",
             "'twas brillig, and the slithy toves did gyre and gimble in the wabe",
             "Whatcha gonna do when nothin' works, and somethin' breaks?",
-            // Long enough that several matches land in one text and the early exit is
-            // exercised where there is a great deal after each match.
+            // Several matches in one text, each with a lot of text after it, so
+            // the early stop in `expand` is exercised.
             "It's the best of times, and we'll see whether they don't mind that she's already gone, \
              because I'd've said so too, and he'd not have minded; o'clock came and went, and the \
              U.S. Army moved on. 'Cause nothin' works the way it should, don't you know.",
@@ -695,29 +594,22 @@ mod tests {
             carriers.len(),
             differences.join("\n")
         );
-        // A corpus that stopped covering the tables would pass the assertion above
-        // and prove nothing.
+        // If the corpus stopped covering the tables, the assertion above would
+        // pass without proving anything.
         assert!(carriers.len() > 4000, "only {} inputs", carriers.len());
     }
 
-    /// **What `is_word` is not: the regex crate's `\w`, measured.**
+    /// How [`is_word`] differs from the regex crate's `\w`, over U+0000–U+2FFF.
     ///
-    /// The patterns this module replaced asked a Unicode-aware `\b`; the boundary
-    /// predicates here ask [`char::is_alphanumeric`] plus `_`. The claim in [`is_word`]
-    /// is that the two agree on every ASCII and Latin-1 character and part company in
-    /// two categories, and this is the measurement rather than the assertion of it:
+    /// - `\w` also includes combining marks and join controls: 432 characters,
+    ///   starting at U+0300.
+    /// - `is_word` also includes the `No` and `Nl` number categories: 235
+    ///   characters, including `²`, `½`, `①` and `Ⅷ`.
     ///
-    /// - `\p{Word}` includes the combining marks and the join controls, which
-    ///   `is_alphanumeric` does not — 432 characters below U+3000, starting at U+0300.
-    /// - `is_alphanumeric` includes `No` and `Nl`, which `\p{Word}` does not — 235
-    ///   characters below U+3000, starting at `²` and including `①` and `⅐`.
-    ///
-    /// **Nothing in either list is ASCII**, which is the whole reason this approximation
-    /// is acceptable here: the keys are ASCII, so the predicate is only ever asked about
-    /// a *neighbour* of one of them. Latin-1 is not as clean as it looked — the six `No`
-    /// characters `²³¹¼½¾` are word characters here and not to `\w` — so the exception
-    /// is pinned by name rather than by a range. The counts are pinned too, so that a
-    /// change to either side of the comparison surfaces here.
+    /// None of them is ASCII, which is what matters, because the keys are
+    /// (apart from `’`). Six of them are in Latin-1 (`²³¹¼½¾`), so those are
+    /// listed by name. The counts are pinned so that a change on either side
+    /// shows up here.
     #[test]
     fn is_word_agrees_with_the_regex_word_class_over_these_code_points() {
         let theirs = regex::Regex::new(r"^\w$").expect("the pattern compiles");
@@ -757,17 +649,17 @@ mod tests {
             "marks and join controls, which \\w includes"
         );
 
-        // The shapes behind the counts, so that a swap of one category for another
+        // One example per category, so that swapping one category for another
         // cannot pass by keeping the totals.
         for (character, mine) in [
-            ('½', true),         // No — a word character here, not to `\w`
+            ('½', true),         // No: a word character here, not to `\w`
             ('①', true),         // No
             ('Ⅷ', true),         // Nl
-            ('é', true),         // agreed: a letter either way
-            ('_', true),         // agreed: connector punctuation that both have
-            ('\u{0301}', false), // Mn — a word character to `\w`, not here
-            ('\u{200d}', false), // Cf (join control) — the same
-            ('\u{203f}', false), // Pc, which `\w` has and `_` above does not stand for
+            ('é', true),         // a letter to both
+            ('_', true),         // connector punctuation both include
+            ('\u{0301}', false), // Mn: a word character to `\w`, not here
+            ('\u{200d}', false), // Cf (join control): the same
+            ('\u{203f}', false), // Pc other than `_`: `\w` includes it, this does not
         ] {
             assert_eq!(
                 is_word(Some(character)),
@@ -778,41 +670,33 @@ mod tests {
         }
     }
 
-    /// **The early exit keeps the longest match at a position, and the one inside.**
+    /// The early stop in [`Tables::expand`] keeps the longest match at a
+    /// position, and still finds a match inside a rejected one.
     ///
-    /// [`Tables::expand`] stops enumerating as soon as nothing later can beat the best
-    /// it has, on the strength of the automaton's end-offset ordering and
-    /// [`max_key_len`](Tables::max_key_len). A bound that stopped too *early* would not
-    /// fail loudly — it would quietly take the shorter of two matches at the same
-    /// position, or lose the one hiding inside a rejected match — so both are pinned
-    /// here, next to the rule they protect. (A bound that stopped too *late* is only
-    /// slower, and the equivalence harness would not see it either.)
-    ///
-    /// The length that matters: the longest key in the tables is
-    /// `MAX_KEY_LEN`-ish, so the window is wide enough for the pairs below.
+    /// A stop that came too early would not fail loudly: it would quietly take
+    /// the shorter of two keys at the same position, or miss a key inside a
+    /// rejected match. These are the cases that would catch it. (The longest key
+    /// is 16 bytes.)
     #[test]
     fn the_early_exit_keeps_the_longest_match_at_a_position() {
-        // Longest at one position, where the shorter key is accepted too: `o'` → `of`
-        // and `o'clock` → `of the clock` both match `o'clock`, and the tables want the
-        // longer one. A bound of "stop once something ends past the best's start" would
-        // answer `ofclock`.
+        // Two accepted keys at the same position: `o'` → `of` and
+        // `o'clock` → `of the clock`. The longer must win; stopping as soon as
+        // something ends past the best's start would give `ofclock`.
         assert_eq!(fix_contractions("o'clock"), "of the clock");
         assert_eq!(fix_contractions("o'clock today"), "of the clock today");
 
-        // The same shape with the apostrophe leftovers: `I` + `'d` → ` would`, and
-        // `I'd've` → `I would have`, at one position.
+        // The same with longer keys: `I'd` and `I'd've` at one position.
         assert_eq!(fix_contractions("I'd've"), "I would have");
         assert_eq!(fix_contractions("he'll've"), "he will have");
 
-        // And the matches *inside* a rejected one, which is what the enumeration is for:
-        // `o'clock` is rejected inside `o'clocks` (trailing boundary), and `o'` is the key
-        // that fires; `you’d` is rejected inside `ayou’d` (leading boundary), and `’d` is.
+        // A key inside a rejected match. `o'clock` is rejected inside `o'clocks`
+        // (it ends mid-word), so `o'` applies. `you’d` is rejected inside
+        // `ayou’d` (it starts mid-word), so `’d` applies.
         assert_eq!(fix_contractions("o'clocks"), "ofclocks");
         assert_eq!(fix_contractions("ayou’d"), "ayou would");
 
-        // Several matches in one text, so the exit has to be right more than once — and
-        // a paragraph, because the bound is only load-bearing when there is text after
-        // the match.
+        // Several matches in one text, so the stop has to be right more than
+        // once, with text after each match.
         assert_eq!(
             fix_contractions("It's John's, and it's not what's-his-name's."),
             "it is John's, and it is not what is-his-name's."
@@ -822,14 +706,11 @@ mod tests {
              nothin' works the way it should.";
         assert_eq!(
             fix_contractions(paragraph),
-            // `'cause` and `nothin'` are left alone, and not by accident: a key that
-            // starts with an apostrophe needs a *word* character before it and one that
-            // ends with one needs a *word* character after it, so `'cause` after a comma
-            // and `nothin'` before a space are not occurrences of those keys. That is the
-            // `doin' it` row of
-            // `the_regex_rules_differ_from_the_reference_in_these_places` — the shape
-            // this module has always had, and the half of it the reference reads the
-            // other way round.
+            // `'cause` and `nothin'` stay unchanged on purpose. A key that starts
+            // with an apostrophe needs a word character before it, and a key that
+            // ends with one needs a word character after it. The comma before
+            // `'cause` and the space after `nothin'` are not word characters. See
+            // the `doin' it` case in `differences_from_the_python_package`.
             "it is the best of times, and we will see whether they do not mind that she \
              is already gone. I would have said so, and he would not have minded, 'cause \
              nothin' works the way it should."
@@ -839,14 +720,14 @@ mod tests {
     #[test]
     fn test_basic_contractions() {
         assert_eq!(fix_contractions("I don't know"), "I do not know");
-        // Note: regex replacement outputs lowercase expansion
+        // The replacement is the table's lower-case text.
         assert_eq!(fix_contractions("It's fine"), "it is fine");
         assert_eq!(fix_contractions("we're here"), "we are here");
     }
 
     #[test]
     fn test_slang() {
-        // "I'm" is mapped to "I am" (preserves case in JSON)
+        // The table writes "I'm" → "I am" with a capital I.
         assert_eq!(fix_contractions("I'm gonna go"), "I am going to go");
         assert_eq!(fix_contractions("I wanna eat"), "I want to eat");
         assert_eq!(fix_contractions("I gotta leave"), "I got to leave");
@@ -860,45 +741,28 @@ mod tests {
 
     #[test]
     fn test_curly_apostrophe() {
-        // Test both straight and curly apostrophes
         assert_eq!(fix_contractions("don't"), "do not");
-        assert_eq!(fix_contractions("don’t"), "do not"); // curly apostrophe
+        assert_eq!(fix_contractions("don’t"), "do not");
     }
 
-    /// **A specific key beats the general one it overlaps with.**
+    /// `We'll` becomes `we will` (main table), not `We` + `'ll` → ` will`
+    /// (leftovers table). `we'll` starts further left than `'ll`, so it wins.
     ///
-    /// `we'll` → `we will` rather than `We` + `'ll` → `" will"`, which is what
-    /// the leftovers table would give and what an unordered walk of
-    /// [`CONTRACTIONS`] gave *sometimes* — see [`PATTERNS`] for the measurement.
-    /// The two readings phonemize the same today, so this is a pin on the reading
-    /// rather than on an audible difference: it is here because it is the only
-    /// thing that would go red if the sort were dropped, and because a word-level
-    /// expectation that flips between runs is worse than no expectation at all.
+    /// Both readings sound the same; this pins the text so it cannot vary.
+    /// `John'll` has no specific key, so the general `'ll` applies.
     #[test]
     fn a_specific_contraction_wins_over_the_leftover_that_overlaps_it() {
         assert_eq!(fix_contractions("We'll go"), "we will go");
         assert_eq!(fix_contractions("We’ll go"), "we will go");
         assert_eq!(fix_contractions("I'll go"), "I will go");
-        // The general key still answers where it is the only match — the case it
-        // exists for.
         assert_eq!(fix_contractions("John'll go"), "John will go");
     }
 
-    /// **Where these rules differ from the package the tables come from.**
+    /// Where this module differs from `contractions.fix` in the Python package,
+    /// version 0.1.73 (the version the tables come from). Measured against it:
     ///
-    /// This file is a *regex* implementation of what upstream does with a
-    /// literal-string engine (`TextSearch`), and five behaviours fall out of that
-    /// difference. Each is asserted here with the upstream value beside it, so a
-    /// reader comparing the two has the disagreement in front of them rather than in
-    /// a commit message — and so that a rewrite (a single `aho-corasick` automaton,
-    /// which is what would replace 412 compiled regexes) is a change of *decisions*
-    /// rather than a change of behaviour nobody had written down.
-    ///
-    /// Measured against `contractions.fix` from `pip install contractions`, version
-    /// 0.1.73 — the same version these tables are byte-identical to:
-    ///
-    /// | input | here | upstream |
-    /// |-------|------|----------|
+    /// | input | here | Python |
+    /// |-------|------|--------|
     /// | `doin' it` | `doin' it` | `doing it` |
     /// | `doin'it` | `doingit` | `doin'it` |
     /// | `jan.15` | `january15` | `jan.15` |
@@ -907,71 +771,49 @@ mod tests {
     /// | `We'll go` | `we will go` | `We will go` |
     /// | `It's 500 BC` | `it is 500 BC` | `It is 500 BECAUSE` |
     #[test]
-    fn the_regex_rules_differ_from_the_reference_in_these_places() {
-        // 1. A key that ends in an apostrophe (`doin'`) is written `\bdoin'\b`, and
-        //    a `\b` after a non-word character needs a word character to follow it.
-        //    So the apostrophe form expands only when a letter comes next — exactly
-        //    inverted from upstream, which takes the whole word `doin'` and leaves
-        //    `doin'it` alone.
+    fn differences_from_the_python_package() {
+        // 1. A key that ends in an apostrophe (`doin'`) needs a word character
+        //    after it, because a boundary after a non-word character needs one.
+        //    So `doin' it` is unchanged and `doin'it` expands: the reverse of
+        //    Python, which matches the whole word `doin'`.
         assert_eq!(fix_contractions("doin' it"), "doin' it");
         assert_eq!(fix_contractions("doin'it"), "doingit");
 
-        // 2. A month abbreviation is written `\bjan.` with no trailing boundary, on
-        //    purpose — upstream's key is `jan.` and expects the space after it — so
-        //    `jan.15` matches here and not there.
+        // 2. Month keys include the dot and have no trailing boundary, so
+        //    `jan.15` expands here and not in Python.
         assert_eq!(fix_contractions("jan. 15"), "january 15");
         assert_eq!(fix_contractions("jan.15"), "january15");
 
-        // 3. `needs_expansion`, the quick check in front of the loop, does not list
-        //    the two apostrophe-less leftovers, so the same word expands or does not
-        //    depending on whether *some other part* of the sentence has an
-        //    apostrophe.
+        // 3. `whats` has no apostrophe and is not in `needs_expansion`, so it
+        //    only expands when the text also contains an apostrophe.
         assert_eq!(fix_contractions("whats up"), "whats up");
         assert_eq!(fix_contractions("It's whats"), "it is what is");
 
-        // 4. `ascii_case_insensitive` is ASCII case folding where the regex this
-        //    replaced asked Unicode's `(?i)` and turned a long s into an `s`. The
-        //    automaton does not, which is what upstream does too — so this is the
-        //    one row in this table where the two engines *disagree* and the
-        //    automaton is the closer to the reference. See
-        //    `the_engine_swap_changes_nothing_over_these_inputs` for why this row is
-        //    not in that diff.
+        // 4. Case folding is ASCII only, so `ſ` (long s) is not read as `s` and
+        //    nothing matches. The regex reference, whose `(?i)` is Unicode, would
+        //    read `she's`; that is why this case is not in the equivalence test.
         assert_eq!(fix_contractions("ſhe's here"), "ſhe's here");
 
-        // 5. The replacement is the table's own lowercase value, where upstream
-        //    keeps the case of the text it matched. Inaudible in English — the CMU
-        //    lookup and the IPA are the same either way — but visible in the text
-        //    this step hands to the tagger, so it is pinned.
+        // 5. The replacement is the table's lower-case text; Python keeps the
+        //    case of the matched text. It sounds the same, but it changes the
+        //    text the tagger sees.
         assert_eq!(fix_contractions("We'll go"), "we will go");
 
-        // 6. The seven convention keys from the slang table are matched exactly
-        //    here and case-insensitively there, where `BC` really does become
-        //    `BECAUSE`. See `SMS_STYLE_KEYS`, and
-        //    `a_convention_is_matched_exactly_so_prose_survives` for the rule.
+        // 6. Text-speak keys only match in lower case, so `BC` is not `because`.
+        //    See `convention_keys`.
         assert_eq!(fix_contractions("It's 500 BC"), "it is 500 BC");
     }
 
-    /// **The text-speak keys are matched exactly, so ordinary prose survives.**
+    /// Text-speak keys only match in lower case, so ordinary prose survives and
+    /// text-speak still expands.
     ///
-    /// Seven of the slang table's entries are conventions rather than words
-    /// (`b4`, `bc`, `kk`, `r `, `rn`, `u`, `ur`), and with the whole table
-    /// case-insensitive every one of them ate a capitalised word or initialism.
-    /// Both directions are asserted here, because both are why the rule is
-    /// "exact case" rather than "drop the table":
-    ///
-    /// - the sentence has to keep `BC` and `U.S.` — the initialisms the
-    ///   conventions collide with, and the reason this fix exists at all. (That
-    ///   `500` becomes `five hundred` is the *tagger's* work, not this step's, so
-    ///   the pipeline-level version of these rows lives in `tests/wetext_en.rs`.)
-    /// - and `4 u` / `b4` / `kk` / `rn` still expand, which is what the table is
-    ///   for.
-    ///
-    /// Note what the first four rows have in common: they run only because the
-    /// sentence contains an apostrophe (`Normalizer::normalize_with_config`'s
-    /// guard), which is also why the last two are unchanged — `Normalizer`'s
-    /// documented inconsistency, not this rule's doing.
+    /// Every input starts with `It's` because in the pipeline this step only runs
+    /// on sentences with an apostrophe. Turning `500` into `five hundred` is the
+    /// tagger's job; the pipeline-level versions of these cases are in
+    /// `tests/wetext_en.rs`.
     #[test]
     fn a_convention_is_matched_exactly_so_prose_survives() {
+        // Initialisms and capitalised words that collide with text-speak keys.
         assert_eq!(fix_contractions("It's 500 BC"), "it is 500 BC");
         assert_eq!(
             fix_contractions("It's the U.S. Army"),
@@ -979,13 +821,12 @@ mod tests {
         );
         assert_eq!(fix_contractions("It's the RN"), "it is the RN");
         assert_eq!(fix_contractions("It's ancient Ur"), "it is ancient Ur");
-        // The conventions themselves still work, which is the other half.
+        // Text-speak itself still expands.
         assert_eq!(fix_contractions("It's 4 u"), "it is 4 you");
         assert_eq!(fix_contractions("It's b4 noon"), "it is before noon");
         assert_eq!(fix_contractions("It's kk"), "it is okay");
         assert_eq!(fix_contractions("It's rn"), "it is right now");
-        // And the rule that picks them out, over the shipped table: only the
-        // conventions, never a word, and never nothing.
+        // The rule selects exactly these keys from the shipped table.
         let mut picked: Vec<String> = convention_keys().into_iter().collect();
         picked.sort_unstable();
         assert_eq!(picked, ["b4", "bc", "kk", "r ", "rn", "u", "ur"]);
@@ -993,13 +834,11 @@ mod tests {
         assert!(!is_a_convention_rather_than_a_word("gonna"));
     }
 
-    /// The guard and the tables have to agree about which apostrophes count.
+    /// [`has_apostrophe`] must recognise every apostrophe the keys use.
     ///
-    /// A `false` here means the caller skips the call, so a character the tables
-    /// are keyed with but this predicate did not know would be a contraction that
-    /// silently does not expand — which is the bug this predicate was extracted
-    /// for. The list on the left is every apostrophe Unicode offers; the assertion
-    /// is that whatever the tables actually use, the guard knows.
+    /// If a key used an apostrophe the guard did not know, the caller would skip
+    /// expansion for sentences containing it, silently. This checks every key
+    /// against a list of apostrophe-like characters.
     #[test]
     fn has_apostrophe_knows_the_apostrophes_the_tables_are_keyed_with() {
         assert!(has_apostrophe("don't"));
@@ -1039,7 +878,7 @@ mod tests {
 
     #[test]
     fn test_case_insensitive() {
-        // Regex case-insensitive matching replaces with lowercase expansion
+        // Matching ignores case; the replacement is the table's lower-case text.
         assert_eq!(fix_contractions("DON'T SHOUT"), "do not SHOUT");
         assert_eq!(fix_contractions("It's OK"), "it is OK");
     }

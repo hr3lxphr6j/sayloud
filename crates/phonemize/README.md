@@ -1,217 +1,79 @@
 # `phonemize`
 
-Text → phonemes (IPA) for SayLoud's on-device Kokoro voices, compiled to a single
-wasm module and run in a dedicated worker.
+Text → phonemes (IPA) for SayLoud's on-device Kokoro voices, compiled to a single wasm module and run in a dedicated worker.
 
-This crate is the **whole** of text preprocessing: number reading, punctuation
-normalisation, script segmentation, dictionary lookup, G2P, and the vocabulary
-gate. It replaced a JavaScript chain (kuromoji + kuroshiro + jieba + espeak +
-pinyin-pro) that is gone from the tree: the extension's text preprocessing is
-this crate, reached through `lib/models/phonemize-rust.ts`, which runs it in a
-dedicated worker.
+This crate handles all text preprocessing: number reading, punctuation normalization, script segmentation, dictionary lookup, G2P, and vocabulary validation. It exposes three languages (en-US, ja-JP, zh-CN) through a unified `phonemize(text, options)` interface.
 
-## How the code is laid out
+## Architecture
 
-Three directories, one per stage of the pipeline, and a handful of files at the
-top that belong to no stage:
+Three pipeline stages, each in its own directory:
 
-| | |
-|---|---|
-| `src/tn/` | text normalization: text in, text out. The vendored WeText engine (`wetext/`), the English gate in front of it (`gate.rs`), and the wiring that builds one per language (`engine.rs`). **The engine is the only numeral reader there is** — the three hand-written ones were deleted — so `mod.rs` is `normalize(text, Lang, engine) -> Result<_, NoReader>`, and a sentence the engine did not read is declined rather than read without its numerals. |
-| `src/g2p/` | grapheme to phoneme, one directory per language: `ja/` (lindera, the kana table), `zh/` (jieba, readings, the tone rules, the Chinese punctuation rules), `en/` (the CMU dictionary and the NRL 7948 rules). |
-| `src/pipeline.rs` | the orchestration: one function per language, `ToneRules`, and the error and warning types they return. |
-| `src/lib.rs`, `dictionary.rs`, `vocab.rs`, `text.rs`, `kana.rs`, `types.rs` | the wasm boundary, the dictionary protocol, the vocabulary gate, and the shared text and kana primitives. |
-
-`tn` is the one stage that is not per language, which is why it is not inside the
-language directories: every language runs the same engine, and what differs is
-which reader stands in for it and whether the gate looks first.
-
-## What it does, and what it deliberately does not
-
-| Language | How | Dictionary |
+| Stage | Path | Purpose |
 |---|---|---|
-| Chinese (`zh-CN`) | **traditional→simplified** → **WeText numerals** (no fallback: a sentence with a digit in it is refused without the engine) → punctuation map → **full-width fold** → jieba word boundaries → pinyin → **tone sandhi and erhua** → IPA (or zhuyin, for v1.1-zh) | `jieba-zh-dict.bin.zst`, 1.63 MB, plus `wetext-zh-tn-{tagger,verbalizer}.bin.zst`, 160 KB, and `wetext-zh-tn-traditional-to-simple.bin.zst`, 25 KB, all fetched on `prepare` |
-| Japanese (`ja-JP`) | punctuation map → **full-width fold** → **WeText numerals** (no fallback: a sentence with a digit in it is refused without the engine) → lindera IPADic → katakana → IPA table | `lindera-ipadic-ja.bin.zst`, 8.51 MB, plus `wetext-ja-tn-{tagger,verbalizer}.bin.zst`, 63 KB, and the shared `wetext-tn-full-to-half.bin.zst`, 956 B, all fetched on `prepare` |
-| English (`en-US`) | **contractions** → punctuation map → **full-width fold** → **WeText numerals** (no fallback: a sentence with a digit, a symbol or a full-width form in it is refused without the engine — see below) → CMU Dict → **NRL 7948 letter-to-sound rules** for a word it lacks → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst`, 707 KB, plus the shared `wetext-tn-full-to-half.bin.zst`, 956 B, both fetched on `prepare` — the pronunciation dictionary itself is 3.75 MB compiled in, and the rules 17 KB more |
+| **Text Normalization** | `src/tn/` | Numerals, dates, times, symbols → words. Uses WeText FSTs for all three languages. |
+| **G2P** | `src/g2p/{en,ja,zh}/` | Words → phonemes. CMU Dict + NRL rules (en), lindera + kana table (ja), jieba + pinyin + tone sandhi (zh). |
+| **Pipeline** | `src/pipeline.rs` | Per-language orchestration, error/warning types. |
 
-**All three languages now reach the model the same way.** The
-Kokoro engine used to send English to `kokoro-js`'s own `generate(text)`, which
-phonemized with its internal espeak — a *second* front end running over words this
-crate had already phonemized, and one whose IPA never matched the token count the
-sentence was cut with. All three languages now reach the model as IPA through
-`generate_from_ids()`. The trade that came with it is real: en-GB voices have no
-variant of their own here, and espeak read a few classes better. **The listening
-test has not been done.**
+Supporting modules at the top level:
 
-A word the CMU dictionary does not have is read instead of spelled. It used to be
-spelled, and `GitHub` was `dʒˈiː aɪ tˈiː ˈeɪtʃ jˈuː bˈiː` — six letters read
-as six letters — and a mixed-case proper noun is exactly what a dictionary of
-common English does not have. It now goes through the letter-to-sound rules of NRL
-Report 7948 as HeadTTS adapted them
-(`src/g2p/en/headtts/`, MIT): `GitHub` → `ɡɪθəb`, `TypeScript` →
-`tɪpɛskɹɪpt`, `Kokoro` → `kɑkɔɹoʊ`. Three layers, in this order — **the dictionary,
-then the rules, then the letters** — because the dictionary is the only one of the
-three that is a transcription rather than a reading, and because the last layer is
-what used to happen and must keep happening for anything the other two refuse.
+- `lib.rs` — wasm boundary
+- `dictionary.rs` — lazy-loading protocol for compressed dictionaries
+- `vocab.rs` — vocabulary gate (rejects phonemes outside the model's vocabulary)
+- `text.rs`, `kana.rs`, `types.rs` — shared primitives
 
-Two things the rules are **not** asked to do. An all-capitals run is an initialism
-and is spelled (`HTTP` → `ˈeɪtʃ tˈiː tˈiː pˈiː`), which is the initialism rule
-and is not overridden by the engine that offers `ttp` for it. And a run with
-no `A`/`E`/`I`/`O`/`U` in it never reaches the rules at all, because `xyz` → `sɪz`
-and `sql` → `skl` are what a spelling oracle answers when it is handed a word that
-is not one; the letters are more informative there. The rule table is 309 entries —
-the "7948" is the report's number, not its size — and it is `const` data: no
-fetched asset, 17,385 B of wasm, and no second dictionary. The measurements, the
-quality comparison (including the readings that are wrong and were kept) and the
-list of what was deliberately not ported are in
-`src/g2p/en/headtts/` and its `NOTICE`.
+## Language Pipelines
 
-The English *numeral* step is weighted FSTs vendored from
-WeTextProcessing (`src/tn/wetext/`), which reads dates, times, money,
-percentages, ordinals and abbreviations where the hand-written reader it replaced
-read a number and left the rest. It costs 1 MB of wasm and 707 KB of fetched
-grammars, plus the two preprocessors the configuration turns on — English expands
-contractions (`We'll` is `we will`) and folds full-width forms (`ＡＢＣ` is `ABC`),
-and Chinese rewrites a traditional spelling to simplified before pinyin-pro's
-phrase table sees it (`銀行` is read `háng`, where the traditional spelling gave it
-the character's default `xíng`). Those three switches are upstream's, off by
-default, and each is on because the reading without it is wrong: `src/tn/engine.rs`
-carries the measurement for every one of them, including the two — `15％` and a
-full-width `．` in Chinese — that the ordering of its own pipeline makes it give
-up. English's contraction tables are also the one part of this stage that is not
-Apache-2.0 — they are the Python `contractions` package's, MIT — so they carry
-their own notice beside them, `src/tn/wetext/data/contractions-NOTICE.txt`.
-It was also measurably **worse at a bare integer** — `123` came
-out `one two three` where the reader it replaced says `one hundred twenty three` — and that
-was written up as the grammar having several equal-cost readings for one. It was
-not: the grammar's cheapest reading of `123` is `one hundred and twenty three`,
-and the copy's path extraction, `rustfst::shortest_path`, was returning a path
-**more expensive** than the minimum because these grammars carry negative arc
-weights that it does not handle. The copy now computes the minimum itself (see
-`src/tn/wetext/text_normalizer.rs`). `1000` still reads
-`ten hundred`, which is the grammar's own tie and not the extraction's. Both
-halves are pinned by tests and written up in that module's `README.md`.
+| Language | Steps | Dictionaries |
+|---|---|---|
+| **Chinese** (`zh-CN`) | traditional→simplified → WeText numerals → punctuation map → full-width fold → jieba → pinyin → tone sandhi & erhua → IPA | `jieba-zh-dict.bin.zst` (1.63 MB), `wetext-zh-tn-{tagger,verbalizer}.bin.zst` (160 KB), `wetext-zh-tn-traditional-to-simple.bin.zst` (25 KB) |
+| **Japanese** (`ja-JP`) | punctuation map → full-width fold → WeText numerals → lindera → katakana → IPA table | `lindera-ipadic-ja.bin.zst` (8.51 MB), `wetext-ja-tn-{tagger,verbalizer}.bin.zst` (63 KB), `wetext-tn-full-to-half.bin.zst` (956 B) |
+| **English** (`en-US`) | contractions → punctuation map → full-width fold → WeText numerals → CMU Dict → NRL 7948 rules → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst` (707 KB), `wetext-tn-full-to-half.bin.zst` (956 B) — dictionary and rules compiled in (3.75 MB + 17 KB) |
 
-**The hand-written readers are gone, and that is the one place this stage got
-*smaller*.** English's went first (2026-10-08): `num2words`, a crate reading the
-same cardinals the engine reads and a worse remainder, 60 KB of the release wasm —
-measured by building the module with it and without it, 6,102,605 B → 6,041,188 B.
-Chinese's and Japanese's went the next day, for another 6,361 B of wasm — 67,778 B
-(−66 KB) for all three, against a module of 6.03 MB. They were the frozen pipeline
-the JavaScript parity corpora were asserted against, and what survives of that
-argument is the *corpus* — `tests/zh_pipeline.rs` keeps the JavaScript strings, asserts the
-forty-two samples the engine does not move byte for byte, and lists the five it
-does with what it reads them as instead (`NUMERAL_READING_CHANGED`).
-`tests/ja_pipeline.rs` needed no list at all: its expectations come from
-pyopenjtalk, and all sixty-three rows — the eight with digits included — come out
-identically through the engine.
+All three languages reach the Kokoro model through `generate_from_ids()` with IPA tokens. en-GB voices have no variant of their own, and the English path has not had a listening test.
 
-What remains in their place is one rule, in `src/tn/mod.rs`: a numeral is read by
-the engine or the sentence is *declined*, never read with the digit missing. A
-caller that never called `prepare` therefore gets, for a sentence with something in
-it that only the engine can read — a digit, a symbol the grammar maps to a word, a
-full-width form — the `dictionary-not-loaded` error, which is the same error and
-the same fix as any other missing dictionary. The line is narrower than the gate
-(`src/tn/gate.rs::drops_without_engine`): a contraction, a capital run or an
-abbreviation is read *worse* without the engine, not skipped, and every language
-still reads those unprepared, exactly as it did before the engine existed.
+### Numerals require the engine
 
-A **gate** sits in front of that engine
-(`src/tn/gate.rs`), because 92% of its cost is the tagger FST and the
-tagger runs on every English sentence whether or not there is anything in it to
-tag — upstream's English TN is deliberately not gated on digits
-(`should_normalize` has `lang != "en"` on that branch). The gate is a
-hand-written byte scan for the shapes TN can rewrite: an ASCII digit, a symbol
-from upstream's `whitelist/symbol.tsv`, a capital run, a terminated abbreviation,
-a short list of dot-less abbreviations whose reading changes (`Mon` →
-`Monday`, `Mr` → `Mister`), an apostrophe or a full-width character — the last two
-because the configuration expands contractions and folds full-width forms around
-the composition, so a sentence containing either is one the normalizer changes
-whether or not the tagger has anything to add. It costs **2.8 µs for 950 characters** where the
-composition it replaces costs 43 ms, and **+977 B** of wasm, which is why it is a
-scan and not a `regex`.
+The WeText engine is the only numeral reader. A sentence containing something only the engine can read (a digit, a symbol the grammar maps to a word, a full-width form) is declined with `dictionary-not-loaded` if `prepare` has not been called, rather than read with the numeral missing. Contractions, capital runs and abbreviations are still read without the engine, just less well. The exact line is `src/tn/gate.rs::drops_without_engine`.
 
-Saying "skip" is a promise that TN would have returned the text unchanged, so
-the promise is asserted rather than assumed: `tests/tn_gate.rs` holds a 70-entry
-corpus against the shipped grammars and checks that a skip implies (a) the tagger
-found nothing but its two pass-through classes, (b) the normalizer left the text
-alone, and (c) the phonemes through `phonemize_en` do not depend on whether the
-engine was asked. It is a filter, not a second opinion about what needs
-normalizing, and that test is what keeps it from becoming one. **Deleting the
-gate costs speed and nothing else** — the invariant tests have no subject without
-it, and every one of them passes vacuously — so the failure mode of removing it
-is the 33 ms/710 characters, not wrong audio. What the gate *can* get wrong is
-the other direction, and it does: the grammar's whitelist is 3,050 strings with
-no shape at all, so a proper noun in it that the pipeline would have respelled is
-skipped. The short version is 1,127 missed
-keys, 182 of them audible, and 0 misses over 127 sentences of real prose.
+### English Word Reading
 
-The last step of the Chinese pipeline is
-**Mandarin tone sandhi and the erhua coda** (`src/g2p/zh/tone_sandhi/`, ported
-from PaddleSpeech's
-`ToneSandhi` and `_merge_erhua`). `pinyin-pro` gives one tone per character and
-Mandarin does not pronounce them as written — 你好 is *ní hǎo*, 一个 is *yí ge*,
-and the 儿 of 玩儿 is not a syllable but a coda on the one before it (`wanr2`,
-`wa↗nɻ`). The rules read jieba's words *and its part-of-speech tags*, so they also
-decide the word boundaries the tokenizer sees, and `Plan::word_lengths` is how
-that reaches the spacing.
+Three layers, in priority order:
 
-Two things about it are worth knowing before touching it. **It is switchable**:
-`pipeline::ToneRules` has an `Off` that is the frozen pre-tone-rules pipeline
-byte for byte,
-and the corpus in `tests/fixtures/zh-frontend-parity.json` is pinned through it —
-because the v1.0 voices were trained *without* these rules, so the
-only way to keep that decision reversible is to keep the old path runnable and
-tested. `lib.rs` passes `On`; both arguments, and the evidence for each, are in
-`src/g2p/zh/tone_sandhi/mod.rs`.
-**And it was verified against the reference rather than against a reading of
-it**: PaddleSpeech's `ToneSandhi` was imported and driven with `pypinyin` and
-jieba's `posseg` on 466 sentences, which found **0 rule differences** and 13
-sentences that differ because the two engines' dictionaries do (listed in that
-document). The three places this port deliberately answers differently are in its
-§五, each pinned by a test.
+1. **CMU Dictionary**
+2. **NRL 7948 letter-to-sound rules** for words the dictionary lacks (`src/g2p/en/headtts/`, adapted from HeadTTS, MIT): `GitHub` → `ɡɪθəb`, `Kokoro` → `kɑkɔɹoʊ`
+3. **Letter names** for anything the first two refuse
 
-The same WeText engine is wired up for **Chinese and Japanese numerals**
-(`src/tn/engine.rs`), so all three languages read a year as a year, a
-clock time as a clock time and a phone number digit by digit rather than through
-the three hand-written readers, which only ever matched a digit. It is the
-smallest of these steps — **+1,459 B** of wasm, because the FST engine is shared
-with English, against 223 KB of fetched grammars for both languages combined
-— and the only one that had to change the vendored copy: `should_normalize`
-tested digits with `is_ascii_digit` where the reference's `\d` is Unicode-wide, and
-`０` is U+FF10, so **every full-width numeral in a Chinese or Japanese sentence
-skipped the normalizer entirely** and came out as the digits it was written with.
-That could not reach English (the branch it guards is `lang != En`), which is why
-it went unnoticed until the two CJK languages were wired up. Modifying it brought
-this copy from 45/48 to **47/48**
-agreement with `pip install wetext==0.1.8` on Chinese probes and from 23/29 to
-**29/29** on Japanese ones. (With `full_to_half` on, the full-width digits that
-motivated it are folded before the test sees them, so what the branch still covers
-is the `Nd` characters no fold touches — measured to be passed through unchanged by
-these grammars, and pinned so that "the digit test is now redundant" cannot quietly
-become "the digit test may be removed".)
+Two kinds of word skip the rules and are spelled:
+- An all-capitals run is an initialism: `HTTP` → `ˈeɪtʃ tˈiː tˈiː pˈiː`.
+- A run with no `A`/`E`/`I`/`O`/`U` never reaches the rules, because they would answer `xyz` → `sɪz`.
 
-What the two CJK readings cost and buy is pinned in `src/tn/engine.rs`,
-`tests/wetext_zh.rs` and `tests/wetext_ja.rs` — including the two readings this
-made *worse* (`０１２３` and a lone `０`). The readers that used to be the comparison
-are accounted for above; `Option<&Normalizer>`'s `None` is now only ever "no engine
-was built", which is a state a sentence with a numeral in it cannot be read in.
+The rule table is 309 entries of `const` data (17,385 B of wasm, no fetched asset). Its known wrong readings and what was not ported are in `src/g2p/en/headtts/` and its `NOTICE`.
 
-## Two rules the rest of the crate is shaped by
+### English Text Normalization Gate
 
-1. **The vocabulary gate is a gate, not a warning.** The tokenizer's normaliser
-   is a `Replace` with an empty string: a phoneme outside the model's vocabulary
-   is *deleted*, silently. ガ行 once came out as ア行 because the kana table wrote
-   an ASCII `g` where the vocabulary has `ɡ` (U+0261), and nothing reported it.
-   `vocab.rs` refuses instead.
-2. **There is no filesystem and no network in here.** `wasm32-unknown-unknown` has
-   neither, so every byte the pipeline needs arrives through `load_dictionary`,
-   and everything else is `include_str!`'d at build time.
+A hand-written byte scanner (`src/tn/gate.rs`) skips the WeText engine for sentences containing no digits, mapped symbols, capital runs, abbreviations, apostrophes, or full-width characters. Costs **2.8 µs/950 chars** where the engine costs 43 ms.
 
-## Using it
+Invariant: if the gate says skip, the normalizer would have returned the text unchanged. `tests/tn_gate.rs` checks this over a 70-entry corpus. Removing the gate costs only speed.
 
-From Rust — the shape `cargo test` uses, and the reason the pipeline is callable
-without a browser at all:
+Known gap: the grammar's whitelist is 3,050 strings with no common shape, so the gate skips 1,127 of its keys. 182 of those change the phonemes. Over 127 sentences of real prose there were 0 misses.
+
+### Chinese Tone Sandhi
+
+Mandarin tone sandhi and erhua rules (`src/g2p/zh/tone_sandhi/`) ported from PaddleSpeech. Uses jieba word boundaries and part-of-speech tags to determine:
+- Tone changes (你好 → *ní hǎo*, 一个 → *yí ge*)
+- Erhua coda merging (玩儿 → `wanr2`, `wa↗nɻ`)
+
+Switchable via `pipeline::ToneRules::Off` to preserve byte-for-byte parity with v1.0 voices (trained without these rules). Current default is `On`.
+
+## Core Rules
+
+1. **Vocabulary gate is strict.** Phonemes outside the model's vocabulary are rejected, not replaced. This catches mismatches like ASCII `g` vs Unicode `ɡ` (U+0261) that would otherwise silently delete phonemes.
+
+2. **No filesystem or network.** All dictionaries arrive through `load_dictionary()`. Everything else is `include_str!` at build time.
+
+## Usage
+
+### From Rust
 
 ```rust
 use phonemize::{PhonemizeOptions, Phonemizer};
@@ -219,10 +81,8 @@ use phonemize::{PhonemizeOptions, Phonemizer};
 let mut phonemizer = Phonemizer::new();
 phonemizer
     .load_dictionary("lindera-ipadic-ja", &compressed)
-    .unwrap_or_else(|_| panic!("the asset loads"));
-phonemizer
-    .finish_loading()
-    .unwrap_or_else(|_| panic!("the asset is complete"));
+    .unwrap();
+phonemizer.finish_loading().unwrap();
 
 let options = PhonemizeOptions {
     frontend: "kokoro-v1".to_string(),
@@ -231,87 +91,55 @@ let options = PhonemizeOptions {
 let result = phonemizer.phonemize_with("こんにちは", &options)?;
 ```
 
-`phonemize_with`, not `phonemize`: the `#[wasm_bindgen]` methods are the boundary
-and speak in `JsValue` — `phonemize(text, options)` is what the extension calls,
-through the wrapper — while `phonemize_with` takes a `PhonemizeOptions` and
-returns a `PhonemizeResult`. Keeping the pipeline callable from a native test is
-the whole reason the parity corpora can run under `cargo test`.
+Use `phonemize_with()` from Rust (takes `PhonemizeOptions`, returns `PhonemizeResult`). The `phonemize()` method is the `#[wasm_bindgen]` boundary for JavaScript callers.
 
-From TypeScript, use the wrapper rather than the generated bindings:
-`lib/models/phonemize-rust.ts` owns the dictionary URLs, the Cache Storage
-entries and the per-`(frontend, lang)` preparation state, and exposes the three
-methods callers actually want (`ready`, `prepare`, `phonemize`). The generated
-`Phonemizer` is the layer below it and knows nothing about where bytes come from
-— by design, so that a change of dictionary format is not a change of
-JavaScript.
+### From TypeScript
 
-## Building and testing
+Use `lib/models/phonemize-rust.ts` (not the generated bindings directly). It handles dictionary URLs, Cache Storage, and per-language preparation state. Three methods: `ready()`, `prepare(frontend, lang)`, `phonemize(text, options)`.
+
+## Building and Testing
 
 ```bash
 ./scripts/build/build-phonemize-wasm.sh   # wasm-pack → lib/models/phonemize-wasm/
-cargo test --workspace              # 299 tests, native, no browser
-cargo clippy --all-targets          # must stay at 0 warnings
+cargo test --workspace                     # 299 tests, native, no browser
+cargo clippy --all-targets                 # must stay at 0 warnings
 python3 scripts/generate/gen-ja-ipa-table.py --check
 ```
 
-`pnpm build` runs the wasm build first through its `prebuild` hook, and CI runs
-`cargo test` — the Rust half has tests that nothing else would run.
+`pnpm build` runs the wasm build via its `prebuild` hook. CI runs `cargo test`.
 
-Four dependencies have a **load-bearing feature setting**, each for a different
-reason that `Cargo.toml` explains at length: `lindera` and `jieba-rs` need
-`default-features = false` (the default features are `mmap` and a C `zstd` that
-cannot link for `wasm32-unknown-unknown` on macOS), `piper-plus-g2p` needs it
-too (the default set pulls in six other frontends, including a second Japanese
-pipeline), and `rustfst` needs its default features left **on** — the default is
-`state-label-u32`, and turning it off changes the label type the vendored WeText
-engine casts to UTF-8 bytes. Changing any of the four breaks the build or reads
-the text wrong.
+### Load-bearing Dependencies
 
-A fifth dependency, `getrandom`, is not called by anything here: it arrives with
-`rustfst`'s FST writer and refuses to compile for `wasm32-unknown-unknown` unless
-`.cargo/config.toml` names a backend and a direct dependency turns the matching
-feature on. That is the fourth time a dependency has not crossed the wasm
-boundary as published, and the first with a `cfg` for a fix rather than a swap.
+Four dependencies require specific feature settings (see `Cargo.toml` for full rationale):
+
+- `lindera`, `jieba-rs`: `default-features = false` (defaults pull in `mmap` + C `zstd` that won't link for wasm on macOS)
+- `piper-plus-g2p`: `default-features = false` (defaults pull in six other frontends)
+- `rustfst`: defaults **must stay on** (`state-label-u32` affects label type casting)
+
+`getrandom` 0.3 arrives through `rustfst` and does not compile for `wasm32-unknown-unknown` unless a backend is named. The workspace `.cargo/config.toml` sets `getrandom_backend="wasm_js"` for that target, and `Cargo.toml` enables the matching `wasm_js` feature.
 
 ## Data (`data/`)
 
-| File | Source | Regenerate with |
+| File | Source | Regenerate |
 |---|---|---|
-| `pinyin-chars.txt`, `pinyin-phrases.txt`, `pinyin-special.txt`, `pinyin-syllables.txt` | `pinyin-pro` in `node_modules`, and `pinyin-table.json` | `node scripts/generate/gen-pinyin-pro-data.mjs` (`--check` in CI) |
+| `pinyin-chars.txt`, `pinyin-phrases.txt`, `pinyin-special.txt`, `pinyin-syllables.txt` | `pinyin-pro` + `pinyin-table.json` | `node scripts/generate/gen-pinyin-pro-data.mjs` |
 | `pinyin-table.json` | pypinyin via misaki's `transcription.py` | `python3 scripts/generate/gen-pinyin-table.py` |
-| `vocab-v1.txt`, `vocab-v11-zh.txt` | the two models' `tokenizer.json`, recorded in `tests/fixtures/kokoro-vocabs.json` | `node scripts/generate/gen-kokoro-vocab.mjs` (`--check` in CI) |
-| `ja-ipa-table.json` | hand-maintained; the source of truth for the kana table | — |
-| `pinyin-NOTICE.txt` | — | MIT notices for `pinyin-pro` and misaki |
+| `vocab-v1.txt`, `vocab-v11-zh.txt` | Kokoro models' `tokenizer.json` | `node scripts/generate/gen-kokoro-vocab.mjs` |
+| `ja-ipa-table.json` | Hand-maintained (source of truth for kana table) | — |
+| `pinyin-NOTICE.txt` | MIT notices | — |
 
-The English rule table is **not** here either: it lives in
-`src/g2p/en/headtts/rules.rs`, generated by
-`node scripts/generate/gen-headtts-rules.mjs` (`--check` in CI as `pnpm check:headtts`)
-from `tests/fixtures/headtts-en-parity.json`. That fixture is not a golden file
-of this repository's making — `scripts/generate/headtts-parity.mjs` dumps it by running
-upstream HeadTTS, and `tests/headtts_en.rs` checks both the 309 rules and the 296
-words against it. It also holds the upstream revision and module SHA-256, which
-`rules.rs` quotes in its own header.
+The English rule table (`src/g2p/en/headtts/rules.rs`) is generated from `tests/fixtures/headtts-en-parity.json` by `scripts/generate/gen-headtts-rules.mjs` (checked in CI via `pnpm check:headtts`).
 
-The four word lists the tone rules use are **not** here: they are verbatim
-upstream data
-rather than something generated, so they live in
-`src/g2p/zh/tone_sandhi/tables.rs` with that directory's `NOTICE`.
+The Japanese IPA table module (`src/g2p/ja/table.rs`) is generated from `ja-ipa-table.json` by `scripts/generate/gen-ja-ipa-table.py`. `tests/ja_ipa_table_parity.rs` verifies they match.
 
-`src/g2p/ja/table.rs` is **generated** from `ja-ipa-table.json` by
-`scripts/generate/gen-ja-ipa-table.py`. Do not edit it by hand:
-`tests/ja_ipa_table_parity.rs` reads the JSON back and fails if the two differ.
+The English contraction tables (`src/tn/wetext/data/*.json`) are copied unchanged from the Python `contractions` package 0.1.73. They are MIT, unlike the Apache-2.0 rest of `src/tn/wetext/`, and carry their own `data/contractions-NOTICE.txt`.
 
-## Test corpora
+Chinese tone sandhi word lists live in `src/g2p/zh/tone_sandhi/tables.rs` (verbatim upstream data, not generated).
 
-`tests/fixtures/{zh-parity,zh-frontend-parity}.json` are **frozen golden files**:
-the JavaScript pipeline's own output, recorded before that chain was deleted. The
-generators are gone, so those two can no longer be regenerated.
+## Test Corpora
 
-`tests/fixtures/ja-reference.json` is a *reference* corpus rather than a frozen
-one. Its readings come from pyopenjtalk — the OpenJTalk chain, which is what the
-Japanese voices were trained with — and `scripts/check/check-ja-reference.py`
-recomputes and checks them (`pip install pyopenjtalk`). Each sample records the
-reference reading (`kana`) next to the phonemes this crate produces (`expected`),
-so a dictionary that falls behind the reference is visible rather than silently
-frozen in; a sample where the two disagree carries a `gap` note, and there is one
-of those today.
+- `tests/fixtures/{zh-parity,zh-frontend-parity}.json` — Frozen golden files (JavaScript pipeline output before deletion)
+- `tests/fixtures/ja-reference.json` — Reference corpus from pyopenjtalk; regenerated via `scripts/check/check-ja-reference.py` (`pip install pyopenjtalk`)
+- `tests/fixtures/headtts-en-parity.json` — HeadTTS reference output; regenerated via `scripts/generate/headtts-parity.mjs`
+
+Each Japanese sample records both the reference reading (`kana`) and this crate's output (`expected`). Samples where they disagree carry a `gap` note.

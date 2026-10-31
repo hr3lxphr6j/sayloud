@@ -1,37 +1,23 @@
 # Text normalization (`wetext`)
 
-Weighted-FST text normalization, vendored from `wetext-rs` 0.1.2 and wired up for
-all three languages by `crate::tn::engine`. See `NOTICE` in this directory for the
-licence and the seven modifications; this file is about *using* it.
+Weighted-FST text normalization, vendored from `wetext-rs` 0.1.2 and wired up for all three languages by `crate::tn::engine`. See `NOTICE` in this directory for the licenses and the list of modifications.
 
-Everything below is written from the English side, because English is where it
-was first wired up and where the interesting behaviour (abbreviations, and a
-3,050-key whitelist with no shape) lives. The other two are the same three-stage
-pipeline over different grammars; what they buy and what they cost is in
-`tests/wetext_zh.rs` and `tests/wetext_ja.rs`.
+## Sources
 
-## Where it comes from
+| Component | Upstream | License |
+|---|---|---|
+| Grammar | `wenet-e2e/WeTextProcessing` (PaddleSpeech TN) | Apache-2.0 |
+| Rust port | `SpenserCai/wetext-rs` 0.1.2 | Apache-2.0 |
+| FST data | the Python `wetext` distribution's build of the same grammars | see `public/dictionaries/wetext-*-tn-NOTICE.txt` |
+| Contraction tables (`data/*.json`) | Python `contractions` 0.1.73, unchanged | MIT, see `data/contractions-NOTICE.txt` |
 
-| | |
-|---|---|
-| Grammar | `wenet-e2e/WeTextProcessing` (PaddleSpeech's TN), Apache-2.0 |
-| Rust port | `SpenserCai/wetext-rs` 0.1.2, Apache-2.0 |
-| FST data | the `wetext` Python distribution's own build of the same grammars |
-| Here | a copy, not a dependency — the published crate cannot run in `wasm32-unknown-unknown` |
-
-The reason for a copy rather than a `wetext-rs = "0.1"` line: upstream's only
-constructor reads a directory, upstream has a defect that makes full-width
-numerals normalize to nothing, and the crate is nine stars with one release.
-Forking it means maintaining a fork; copying it means the code is ours to keep
-building.
+This is a copy rather than a dependency. The published crate cannot run in `wasm32-unknown-unknown`: its only constructor reads a directory. It also has defects this copy fixes, listed in `NOTICE`.
 
 ## What it normalizes
 
-Eight classes were missing from the hand-written English numeral reader, and they
-are what this module is here for (English; the other two have their own tables in
-`tests/wetext_zh.rs` and `tests/wetext_ja.rs`):
+Eight entity classes (English examples; see `tests/wetext_zh.rs` and `tests/wetext_ja.rs` for other languages):
 
-| In | Out |
+| Input | Output |
 |---|---|
 | `3:30pm` | `three thirty PM` |
 | `50%` | `fifty percent` |
@@ -42,144 +28,64 @@ are what this module is here for (English; the other two have their own tables i
 | `$20.50` | `twenty point five dollars` |
 | `10/4/2024` | `the fourth of october twenty twenty four` |
 
-## Cost, and what the early exit does *not* cover
+## Cost
 
-Measured in the release wasm, in Node, on the shipped crate (`pnpm build:wasm`,
-`--target nodejs`, `Phonemizer` through the whole `prepare` flow):
+Measured in release wasm on Node (`pnpm build:wasm`, `--target nodejs`):
 
-| | |
+| Metric | Impact |
 |---|---|
-| wasm | 5,081,554 -> 6,095,459 B, **+1.01 MB (+19.9%)** — `rustfst`, not this module (~50 KB) |
-| FST assets | 707 KB compressed (161,322 + 545,550), fetched on `prepare` like every other dictionary |
-| decompress | 24 ms, on `prepare` |
-| parse | 70 ms (English, 12.04 MB of FST), on `prepare` |
-| hot path | 0.54 ms for `hello world`, 0.97 ms for `I have 3 cats`, 2.25 ms for a 44-character sentence |
+| Wasm size | +1.01 MB (+19.9%): 5.08 MB → 6.10 MB (mostly `rustfst`, not this module) |
+| FST assets | 707 KB compressed (tagger 161 KB + verbalizer 546 KB), fetched on `prepare` |
+| Decompress | 24 ms (one-time, on `prepare`) |
+| Parse | 70 ms for English (12.04 MB FST, on `prepare`) |
+| Per-sentence | 0.54 ms (`hello world`), 0.97 ms (`I have 3 cats`), 2.25 ms (44 chars) |
 
-The evaluation predicted +2.01 MB and a ~0.001 ms hot path for a sentence with no
-digit. Both were wrong, and for the same reason in different directions: the
-0.001 ms came from the `should_normalize` bug fixed by modification 5 in
-`NOTICE` — the reference normalizes English text whether or not it has a digit in
-it, so the tagger *does* run on `hello world` — while the size was measured on a
-shell app that linked more of `rustfst` than this crate reaches.
+All decompression and parsing happens during `prepare`, once per worker. Each sentence after that pays 0.5–2.3 ms against 500–750 ms synthesis time.
 
-`prepare` is where all of it lands: 94 ms of decompression and parsing, once per
-worker, before the first sentence. Every sentence after that pays the table above,
-against a synthesis that takes 500-750 ms.
+## Key Differences from Upstream
 
-## Known differences from upstream behaviour
+- **`normalize` trims** in both `preprocess` and `postprocess`, as upstream does. English and Japanese collapse whitespace afterwards anyway. Chinese's numeral step does not trim, so `phonemize_zh` relies on `collapse_whitespace` at the end.
 
-- **`normalize` trims.** Upstream trims in both `preprocess` and `postprocess`,
-  and this copy does too. Harmless for English and for Japanese, whose pipelines
-  collapse whitespace at the end anyway — but it is why this could not be dropped
-  into the Chinese pipeline's numeral step unchanged: that step deliberately does
-  not trim, and the pipeline has to rely on `collapse_whitespace` at the end
-  instead. Verified rather than assumed: see `phonemize_zh`.
-- **`full_to_half` moved** (modification 3 in `NOTICE`), so a full-width digit is
-  normalized where upstream would skip the TN entirely. It is **on** for English
-  and Japanese — the fold a full-width `ＡＢＣ` needs before `text::classify`
-  drops it — and off for Chinese, whose fold is the pipeline's
-  (`text::to_half_width`, after its punctuation map). See
-  `crate::tn::engine::chinese`.
-- **`should_normalize` regained its `lang` parameter** (modification 5 in
-  `NOTICE`), so English is normalized whether or not it contains a digit, as the
-  Python reference does.
-- **`should_normalize` tests digits with `char::is_numeric`**, not
-  `is_ascii_digit` (modification 7 in `NOTICE`). The narrower test is a faithful
-  reading of nothing: the reference's `\d` is Unicode category `Nd`, and the
-  difference only ever reaches the two languages that were added later. Before
-  the fix this copy agreed with `pip install wetext==0.1.8` on 45 of 48 Chinese
-  probes and 23 of 29 Japanese ones; after it, 47 and 29. With `full_to_half` on,
-  the full-width digits that motivated it are folded before the test sees them, so
-  what it still covers is the `Nd` characters the fold does not touch — measured
-  to be passed through unchanged by these grammars, and pinned in
-  `tests/wetext_zh.rs` so the branch cannot be deleted as dead code.
-- **`fix_contractions` runs, and its guard knows both apostrophes**
-  (modification 8 in `NOTICE`). The `’` keys upstream builds were unreachable in
-  the reference because its guard tests for `'`, and the pattern order was a
-  `HashMap` walk where two tables overlap — `We'll go` came back `we will go` or
-  `We will go` depending on the seed.
-- **The contraction keys are matched by an `AhoCorasick` automaton**, not by one
-  `Regex` per key (modification 9 in `NOTICE`). An automaton is the same object the
-  Python reference's `TextSearch` builds, and the numbers are why: 412 compiled
-  regexes cost 56 ms and 6.7 MB of heap for the build, where the automaton costs
-  0.73 ms and 89 KB. `contractions.rs` carries the table, the rule the scan applies
-  (leftmost, then longest, among the matches the tables accept), the three wrong
-  shapes, and the diff of the new engine against the old one over every key in
-  eleven carriers — which is a test, not a comment.
+- **`full_to_half` moved** (modification 3 in `NOTICE`) so full-width digits are normalized. Enabled for English and Japanese (folds `ＡＢＣ` before classification); disabled for Chinese (which has its own fold after punctuation mapping).
 
-## Path selection, and the bug that used to be here
+- **`should_normalize` tests `lang`** (modification 5 in `NOTICE`). English normalizes all text (not just sentences with digits), matching Python reference behavior.
 
-The one-best path used to come out of `rustfst::shortest_path`. With its default
-`nshortest = 1` that is `single_shortest_path`: a relaxation loop whose queue
-comes from `AutoQueue`, which picks the discipline from the FST's *structure* —
-LIFO when it is unweighted, the SCC condensation's order when it is acyclic,
-per-SCC queues otherwise — and never from the sign of the weights. So it returned
-*a* path, not the cheapest one, and these grammars are full of negative weights:
-upstream ranks competing readings with `pynutil.add_weight(..., -0.0001)`, and a
-composed FST reaches `-0.0001`. Modification 6 in `NOTICE` replaced it with the
-copy's own Bellman-Ford relaxation over the composed FST; the full write-up,
-including the two independent shortest-path computations that established the
-defect and the enumeration below, is in `NOTICE`. `push_weights` was tried
-and does not help: it normalises the total weight without changing which reading
-is chosen.
+- **`should_normalize` uses `char::is_numeric`**, not `is_ascii_digit` (modification 7 in `NOTICE`), matching Python's `\d` (Unicode `Nd`). Agreement with `pip install wetext==0.1.8` is 47/48 on Chinese probes and 29/29 on Japanese ones. With `full_to_half` on, full-width digits are folded before this test, so it now covers the `Nd` characters no fold touches; `tests/wetext_zh.rs` pins that.
 
-Every reading of the composed FST for `cardinal { integer: "123" }`, with its
-cost — this is the case the old write-up in this file got wrong:
+- **`fix_contractions` runs for both apostrophes** (modification 8 in `NOTICE`). Upstream's guard is `"'" in text`, so a sentence with only `’` never reaches the tables and their `’` keys are unreachable. The guard here is `contractions::has_apostrophe`, which accepts `'` and `’`. The tables are also scanned in a fixed order, so overlapping keys always resolve the same way (`We'll go` → `we will go`).
 
-| cost | reading |
+- **Contraction matching uses one `AhoCorasick` automaton** (modification 9 in `NOTICE`), the same kind of engine as the Python reference's `TextSearch`. It builds in 0.73 ms / 89 KB, during `prepare`. See `contractions.rs` for the matching rule (leftmost, then longest, among accepted matches) and where it deliberately differs from upstream.
+
+## Path Selection
+
+The one-best path comes from this copy's own Bellman-Ford relaxation over the composed FST (modification 6 in `NOTICE`), not from `rustfst::shortest_path`. `shortest_path` picks its queue discipline from the FST's structure and ignores weight signs, so on these grammars, which rank readings with negative weights (`pynutil.add_weight(..., -0.0001)`), it can return a path that is not the cheapest. `push_weights` does not help: it changes the total weight, not which reading wins.
+
+Every reading of the composed FST for `cardinal { integer: "123" }`:
+
+| Cost | Reading |
 |---|---|
-| 0.000000 | `one hundred and twenty three` ← the minimum |
+| 0.000000 | `one hundred and twenty three` ← returned |
 | 0.000100 | `one twenty three` |
 | 0.000100 | `a hundred and twenty three` |
 | 0.000110 | `one hundred twenty three` |
-| 0.000200 | `one two three` ← what `shortest_path` returned |
+| 0.000200 | `one two three` |
 | 0.000210 | `a hundred twenty three` |
 | 1.000200 | `one two three` |
 
-The rows the fix moved, measured through the whole engine:
+Readings through the whole engine:
 
-| input | before | after |
-|---|---|---|
-| `I have 123 apples.` | `one two three apples` | `one hundred and twenty three apples` |
-| `There are 100 people.` | `one oh oh people` | `one hundred people` |
-| `Total 1,234 items.` | `one two three four items` | `thousand two hundred and thirty four items` |
-| `About 1000000 people.` | `one oh oh oh oh oh oh people` | `one million people` |
-| `It is 250 km away.` | `two hundred fifty kilometers` | `two hundred and fifty kilometers` |
-| `Call 555-1234.` | `five hundred fifty five minus …` | `five hundred and fifty five to …` |
-| `Between 100 and 200 people.` | `one oh oh and two hundred people` | `one hundred and two hundred people` |
+| Input | Output |
+|---|---|
+| `I have 123 apples.` | `one hundred and twenty three apples` |
+| `There are 100 people.` | `one hundred people` |
+| `Total 1,234 items.` | `thousand two hundred and thirty four items` |
+| `About 1000000 people.` | `one million people` |
+| `It is 250 km away.` | `two hundred and fifty kilometers` |
+| `Call 555-1234.` | `five hundred and fifty five to …` |
+| `Between 100 and 200 people.` | `one hundred and two hundred people` |
 
-7 of 18 probe sentences changed and 11 did not — `3:30pm`, `50%`, `1st`, `1/2`,
-`2024`, `2,000`, `42` and `007` among them. `Call 555-1234.` moves further than
-the `and`: the tagger reads `555-1234` as a `range`, and the cheapest
-verbalization of a range is `… to …` at `-0.000100`, where the telephone reading
-`… minus …` sits at `0.000000`. The plan's table wrote that row's expected
-column with `minus`, which was the shipped reading's, not the minimum's.
+`Call 555-1234.` reads as a range (`… to …`, cost −0.000100), which is cheaper than the telephone reading (`… minus …`, 0.000000). These readings are pinned in `crates/phonemize/tests/wetext_en.rs`.
 
-### The one bare number that is still wrong, and is not this bug
+### Known incorrect reading
 
-`1000` reads `ten hundred`. The tagger tags it `date { year: "1000" }`, and the
-grammar offers `ten hundred` and `one thousand` at the **same** cost, `0.000100`;
-the Python reference picks `ten hundred` too. That one is a tie in the grammar,
-and it is deliberately left alone.
-
-### What this section used to say
-
-It claimed the grammar had several *equal-cost* readings for a bare digit string
-and that each FST library broke the tie its own way (`fst_utils.py` says
-something similar about pynini and kaldifst). For `123` that is false: the
-readings differ in cost and the cardinal is strictly the cheapest. The 41 inputs
-it reported as "34 agree, the rest are ties" were probed against
-`pip install wetext==0.1.8` **before modification 6**, so the differences it
-counted were this bug; the probe was a one-off and is not committed, so no
-agreement count is claimed here now. The probe is not committed; what is *pinned*
-is every row of the tables above, in `crates/phonemize/tests/wetext_en.rs`.
-
-What it means for this crate: the engine is markedly better than the hand-written
-reader on *entities* — `3:30pm`, `50%`, `1st`, `1/2`, `2,000`, `10/4/2024`,
-`$20.50` — and it reads a bare integer as its cardinal, `one hundred and twenty
-three` where the reader it replaced says `one hundred twenty three`. The English
-pipeline prefers the engine and the tests pin the readings, so neither half can
-change quietly; **English's reader has since been removed altogether** (it was
-`num2words`, 60 KB of the release wasm — see the crate README, so an English
-sentence with a digit in it is now declined rather than read by something else
-when the engine is absent.
+`1000` → `ten hundred`. The tagger produces `date { year: "1000" }`, and the grammar offers `ten hundred` and `one thousand` at **equal cost** (0.000100). The Python reference also picks `ten hundred`. This is a tie in the grammar, and it is left alone.

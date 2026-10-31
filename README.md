@@ -97,6 +97,8 @@ directly from your browser to that service with your API key — nowhere else.
 Site access permissions are requested only when needed for a specific service
 and can be revoked anytime in Chrome's extension settings.
 
+See [PRIVACY.md](PRIVACY.md) for the full policy.
+
 ## Install
 
 SayLoud isn't on the Chrome Web Store yet. Install the packaged build:

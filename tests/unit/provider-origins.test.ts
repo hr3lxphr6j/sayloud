@@ -8,14 +8,27 @@ describe('requiredOrigins', () => {
     ]);
   });
 
-  it('asks for the configured host only, without its path', () => {
+  it('asks for nothing when a custom baseUrl points at an undeclared host', () => {
+    // Chrome only grants origins listed in `optional_host_permissions`, and
+    // that list is `openspeech.bytedance.com` alone. A proxy has to answer the
+    // CORS preflight itself.
     expect(
       requiredOrigins({
         provider: 'volcengine',
         apiKey: 'k',
         baseUrl: 'https://proxy.example.com:8443/tts/api/v3',
       })
-    ).toEqual(['https://proxy.example.com:8443/*']);
+    ).toEqual([]);
+  });
+
+  it('drops the path from a baseUrl on the declared host', () => {
+    expect(
+      requiredOrigins({
+        provider: 'volcengine',
+        apiKey: 'k',
+        baseUrl: 'https://openspeech.bytedance.com/tts/api/v3',
+      })
+    ).toEqual(['https://openspeech.bytedance.com/*']);
   });
 
   it('asks for nothing for services that answer the CORS preflight', () => {

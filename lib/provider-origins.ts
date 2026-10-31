@@ -9,11 +9,22 @@
  * any origin but leaves `X-Api-Key` out of `Access-Control-Allow-Headers`, and
  * only a granted host permission lets the extension skip CORS.
  *
- * The request names the exact origin from the configuration, so the prompt
- * shows one host rather than "all sites".
+ * The manifest declares exactly one optional host — Volcengine's — so that is
+ * the only origin Chrome will let the extension ask for. A custom `baseUrl` on
+ * another host has to answer the CORS preflight itself, the way every other
+ * provider does: requesting an origin the manifest does not declare fails.
  */
 import type { ProviderConfig } from './providers/types';
 import { DEFAULT_BASE_URL as VOLCENGINE_BASE_URL } from './providers/volcengine';
+
+/**
+ * The one origin `optional_host_permissions` declares.
+ *
+ * Kept next to the request rather than read from the manifest: the manifest is
+ * not reachable from here, and the two have to agree — which is why
+ * `scripts/check/check-manifest.mjs` asserts the manifest's value.
+ */
+const DECLARED_ORIGIN = new URL(VOLCENGINE_BASE_URL).origin;
 
 /** The slice of `chrome.permissions` this module needs. */
 export interface PermissionsApi {
@@ -27,14 +38,18 @@ export interface PermissionsApi {
   contains?(permissions: { origins: string[] }): Promise<boolean>;
 }
 
-/** Match patterns for the hosts `config` talks to that need a grant. */
+/**
+ * Match patterns for the hosts `config` talks to that need a grant.
+ *
+ * Returns nothing for a Volcengine configuration pointed at some other host:
+ * Chrome only grants origins the manifest declares, and asking for an
+ * undeclared one rejects. Such an endpoint falls back to CORS, which is what
+ * every other provider already relies on.
+ */
 export function requiredOrigins(config: ProviderConfig): string[] {
-  switch (config.provider) {
-    case 'volcengine':
-      return [originPattern(config.baseUrl || VOLCENGINE_BASE_URL)];
-    default:
-      return [];
-  }
+  if (config.provider !== 'volcengine') return [];
+  const origin = new URL(config.baseUrl || VOLCENGINE_BASE_URL).origin;
+  return origin === DECLARED_ORIGIN ? [originPattern(origin)] : [];
 }
 
 /**

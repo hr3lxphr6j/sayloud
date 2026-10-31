@@ -96,15 +96,25 @@ export default defineConfig({
   manifest: ({ mode }) => ({
     name: 'SayLoud',
     version: '0.6.0',
+    description:
+      'Read web pages aloud with sentence highlighting, browser voices, on-device models, or your own cloud TTS service.',
+    homepage_url: 'https://github.com/hr3lxphr6j/sayloud',
+    // `sidePanel` needs Chrome 114, `offscreen` 109, and the caption window
+    // 116. Declaring 116 keeps the store from installing it on a browser where
+    // one of the three is silently missing.
+    minimum_chrome_version: '116',
     // The reader is injected into the clicked tab under `activeTab`, so the
     // extension asks for no standing access to any site. `offscreen` is what
     // lets the service worker own an audio document, which is the only place
     // cloud audio can be decoded and played.
     permissions: ['activeTab', 'scripting', 'storage', 'tts', 'offscreen'],
-    // Declared, never granted on install. The settings panel asks for the one
-    // host a provider needs when it is tested or saved — only services whose
-    // CORS preflight rejects the extension need it (see provider-origins.ts).
-    optional_host_permissions: ['https://*/*', 'http://*/*'],
+    // Declared, never granted on install. Volcengine is the one service whose
+    // CORS preflight rejects the extension (its `X-Api-Key` header is missing
+    // from `Access-Control-Allow-Headers`), so it is the only host a user may
+    // be asked for. Every other provider answers the preflight itself, and a
+    // custom Volcengine `baseUrl` on another host has to answer it too (see
+    // provider-origins.ts).
+    optional_host_permissions: ['https://openspeech.bytedance.com/*'],
     action: {},
     // `wasm-unsafe-eval` is what lets ONNX Runtime compile its wasm module.
     // Measured: without it the wasm backend does not start at all.

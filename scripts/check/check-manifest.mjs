@@ -60,7 +60,8 @@ if (manifest.host_permissions?.length) {
 }
 
 // Only declared: granted per host from the settings panel, never on install.
-const EXPECTED_OPTIONAL_HOSTS = ['http://*/*', 'https://*/*'];
+// Volcengine is the only service that needs a grant (see lib/provider-origins.ts).
+const EXPECTED_OPTIONAL_HOSTS = ['https://openspeech.bytedance.com/*'];
 const optionalHosts = [...(manifest.optional_host_permissions ?? [])].sort();
 if (JSON.stringify(optionalHosts) !== JSON.stringify(EXPECTED_OPTIONAL_HOSTS)) {
   problems.push(

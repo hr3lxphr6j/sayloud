@@ -1,5 +1,8 @@
 # SayLoud
 
+[![Chrome ウェブストア](https://img.shields.io/chrome-web-store/v/ipfkdkhaoiecfnffcmognjdmglmoijoh?label=Chrome%20%E3%82%A6%E3%82%A7%E3%83%96%E3%82%B9%E3%83%88%E3%82%A2&logo=googlechrome)](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh)
+[![Chrome ウェブストアのユーザー数](https://img.shields.io/chrome-web-store/users/ipfkdkhaoiecfnffcmognjdmglmoijoh?label=%E3%83%A6%E3%83%BC%E3%82%B6%E3%83%BC&logo=googlechrome)](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh)
+
 [English](README.md) · [中文](README.zh.md) · **日本語**
 
 SayLoud は Chrome で Web ページを読み上げます。現在読んでいる文をハイライトし、単語のタイミングを返す音声であれば、発音されている単語もひとつずつハイライトします。
@@ -63,20 +66,20 @@ SayLoud は独自のバックエンドサーバーを持たず、データを一
 
 ## インストール
 
-SayLoud はまだ Chrome ウェブストアに公開していません。現在はパッケージ済みのビルドをインストールします:
+[Chrome ウェブストア](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh) から SayLoud をインストールできます。ストア版は自動で更新されます。
+
+まだストアに公開されていないビルド(プレリリースや自分でビルドしたもの)を試す場合は、パッケージ済みの zip をインストールします:
 
 1. `chrome://extensions` を開き、**デベロッパーモード**を有効にします。
 2. [リリースページ](https://github.com/hr3lxphr6j/sayloud/releases)の **Assets** から `sayloud-<version>-chrome.zip` をダウンロードし、そのページにドラッグします —— Chrome が展開して、パッケージ化されていない拡張機能としてインストールします。
 
 ドラッグしても反応しない場合は、アーカイブを専用のフォルダーに展開し、**パッケージ化されていない拡張機能を読み込む**からそのフォルダー(中に `manifest.json` があるもの)を選びます。このフォルダーはそのままにしておいてください —— Chrome はそこから拡張機能を読み込みます。
 
-更新するときは、新しい zip をダウンロードして同じようにドラッグします。この経路には自動更新はありません。デベロッパーモードでのインストールなので、Chrome はデベロッパーモードの通知を表示し続けます。
+デベロッパーモードでインストールしたものを更新するときは、新しい zip をダウンロードして同じようにドラッグします。この経路には自動更新はありません。デベロッパーモードでのインストールなので、Chrome はデベロッパーモードの通知を表示し続けます。
 
 ソースからビルドする場合(Node.js 22 以降、pnpm 9 以降、Rust ツールチェーン、`wasm-pack`)は [CONTRIBUTING.md](CONTRIBUTING.md) にあります。
 
 現在の Chrome で動作します。キャプションウィンドウには Chrome 116 以降が必要です。それより古いバージョンでは他の機能はそのまま使え、キャプションの切り替えボタンがバージョン要件を表示します。
-
-*Chrome ウェブストアでの公開は準備中です。*
 
 ## ライセンス
 

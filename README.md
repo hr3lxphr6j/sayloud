@@ -1,5 +1,8 @@
 # SayLoud
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/ipfkdkhaoiecfnffcmognjdmglmoijoh?label=Chrome%20Web%20Store&logo=googlechrome)](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh)
+[![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/ipfkdkhaoiecfnffcmognjdmglmoijoh?label=users&logo=googlechrome)](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh)
+
 **English** · [中文](README.zh.md) · [日本語](README.ja.md)
 
 SayLoud reads web pages aloud in Chrome. It highlights the current sentence,
@@ -101,7 +104,11 @@ See [PRIVACY.md](PRIVACY.md) for the full policy.
 
 ## Install
 
-SayLoud isn't on the Chrome Web Store yet. Install the packaged build:
+[Install SayLoud from the Chrome Web Store](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh).
+Store installs update automatically.
+
+To run a build that hasn't reached the store yet — a pre-release, or your own
+build — install the packaged zip:
 
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. Download `sayloud-<version>-chrome.zip` from the
@@ -113,9 +120,9 @@ If dragging the zip doesn't work, unzip it into a folder of its own and click
 **Load unpacked**, selecting that folder — the one with `manifest.json` in it. That
 folder has to stay where it is: Chrome loads the extension from it.
 
-To update, download the newer zip and drop it again. This channel has no automatic
-updates, and because it is a Developer mode install Chrome keeps showing its
-Developer mode notice.
+To update a Developer mode install, download the newer zip and drop it again. This
+channel has no automatic updates, and because it is a Developer mode install
+Chrome keeps showing its Developer mode notice.
 
 To build from source instead — Node.js 22+, pnpm 9+, a Rust toolchain and
 `wasm-pack`, which compiles a small Rust module to WebAssembly — see
@@ -124,8 +131,6 @@ To build from source instead — Node.js 22+, pnpm 9+, a Rust toolchain and
 Works with current Chrome. The caption window requires Chrome 116+; on older
 versions all other features work normally and the caption toggle explains the
 requirement.
-
-*The Chrome Web Store listing is coming.*
 
 ## License
 

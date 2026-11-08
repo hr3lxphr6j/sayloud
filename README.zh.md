@@ -1,5 +1,8 @@
 # SayLoud
 
+[![Chrome 应用商店](https://img.shields.io/chrome-web-store/v/ipfkdkhaoiecfnffcmognjdmglmoijoh?label=Chrome%20%E5%BA%94%E7%94%A8%E5%95%86%E5%BA%97&logo=googlechrome)](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh)
+[![Chrome 应用商店用户数](https://img.shields.io/chrome-web-store/users/ipfkdkhaoiecfnffcmognjdmglmoijoh?label=%E7%94%A8%E6%88%B7&logo=googlechrome)](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh)
+
 [English](README.md) · **中文** · [日本語](README.ja.md)
 
 SayLoud 让 Chrome 朗读网页。它会高亮当前正在朗读的句子,如果使用的语音支持词级时间戳,还会逐词高亮。
@@ -64,20 +67,20 @@ SayLoud 没有后端服务器,不收集任何数据。浏览器内置语音和�
 
 ## 安装
 
-SayLoud 尚未上架 Chrome 应用商店。目前请安装打包好的版本:
+从 [Chrome 应用商店](https://chromewebstore.google.com/detail/sayloud/ipfkdkhaoiecfnffcmognjdmglmoijoh) 安装 SayLoud,商店版本会自动更新。
+
+如果你想试用还没上架的版本(预览版或自己构建的版本),可以安装打包好的 zip:
 
 1. 打开 `chrome://extensions`,开启**开发者模式**。
 2. 在 [Releases 页面](https://github.com/hr3lxphr6j/sayloud/releases)的 **Assets** 里下载 `sayloud-<version>-chrome.zip`,把它拖到这个页面上 —— Chrome 会解开它并作为已解压的扩展安装。
 
 如果拖放没反应,就把压缩包解压到一个单独的文件夹,点**加载已解压的扩展程序**,选择那个文件夹(里面有 `manifest.json` 的那个)。这个文件夹要留在原地:Chrome 是从它里面加载扩展的。
 
-更新时:下载新的 zip,再拖一次即可。这个渠道没有自动更新,而且它是开发者模式安装,所以 Chrome 会一直显示开发者模式的提示。
+更新开发者模式安装的版本时:下载新的 zip,再拖一次即可。这个渠道没有自动更新,而且它是开发者模式安装,所以 Chrome 会一直显示开发者模式的提示。
 
 想从源码构建(Node.js 22+、pnpm 9+、Rust 工具链,以及把一小段 Rust 代码编译为 WebAssembly 的 `wasm-pack`)见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 兼容当前版本的 Chrome。字幕窗口需要 Chrome 116 或更高版本;在旧版本上其他所有功能均正常工作,字幕开关会说明版本要求。
-
-*Chrome 应用商店页即将上线。*
 
 ## 许可证
 

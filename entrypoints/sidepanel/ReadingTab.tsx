@@ -27,7 +27,9 @@ import {
 } from '~/lib/settings-store';
 import { Card } from './ui/Card';
 import { SpeakerGlyph } from './ui/icons';
+import { Row } from './ui/Row';
 import { Slider } from './ui/Slider';
+import { Switch } from './ui/Switch';
 import { type ModelAdmin, useDevice, useLocalReadiness } from './use-models';
 import { useSettings } from './use-settings';
 
@@ -229,6 +231,15 @@ export function ReadingTab({
               setDraft((current) => ({ ...current, rate: undefined }));
             }}
           />
+
+          <Row label={t('settings.autoscroll.label')} help={t('settings.autoscroll.help')}>
+            <Switch
+              id="autoscroll-switch"
+              label={t('settings.autoscroll.label')}
+              checked={saved.autoScroll}
+              onChange={(checked) => update({ autoScroll: checked })}
+            />
+          </Row>
         </div>
       </Card>
 

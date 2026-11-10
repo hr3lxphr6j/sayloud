@@ -48,6 +48,8 @@ export const zh: Record<MessageKey, string> = {
   'settings.volume.label': '音量',
   'settings.volume.browser-cap': '浏览器语音最高 100%。',
   'settings.rate.label': '语速',
+  'settings.autoscroll.label': '自动滚动',
+  'settings.autoscroll.help': '页面跟随正在朗读的句子滚动。',
   'settings.language.label': '界面语言',
   'settings.language.auto': '跟随浏览器',
   'settings.language.en': 'English',

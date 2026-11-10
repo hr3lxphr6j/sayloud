@@ -1,5 +1,13 @@
 import { type Browser, browser } from 'wxt/browser';
-import { needsReveal, SCROLL_PAUSE_MS, ScrollSuspension } from '~/lib/autoscroll';
+import {
+  findScrollContainer,
+  followDelta,
+  SCROLL_PAUSE_MS,
+  ScrollSuspension,
+  scrollBehavior,
+  scrollFrame,
+  sentenceRect,
+} from '~/lib/autoscroll';
 import { extractBlocks } from '~/lib/extractor';
 import { Highlighter, installHighlightStyles } from '~/lib/highlighter';
 import { createTranslator, resolveLang, type Translator } from '~/lib/i18n';
@@ -71,6 +79,15 @@ const RECONNECT_DELAY_MS = 250;
 /** Clicks on these belong to the page, not to "read from here". */
 const INTERACTIVE = 'a, button, input, textarea, select, [contenteditable], [role="button"]';
 
+/** Keys that move the page. Pressed elsewhere, they may be typing. */
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+
+/** A scroll event smaller than this is layout noise, not the reader. */
+const SCROLL_NOISE_PX = 4;
+
+/** How long after a resize the layout has settled enough to re-align. */
+const RESIZE_REALIGN_MS = 150;
+
 type Port = Browser.runtime.Port;
 
 /** What the reader needs from the settings before it starts reading. */
@@ -125,6 +142,11 @@ export class ReaderController {
   private reconnects = 0;
   private reconnectTimer: number | null = null;
   private scrollTimer: number | null = null;
+  /** The element whose scrolling the article lives in; null is the page. */
+  private scroller: Element | null = null;
+  /** Last scrollTop seen, so layout-driven scrolls can be told from the reader's. */
+  private lastScrollTop = 0;
+  private resizeTimer: number | null = null;
   private disposed = false;
   /** Whether the sentence list was already handed to the engine. */
   private loaded = false;
@@ -162,6 +184,15 @@ export class ReaderController {
     }
 
     window.addEventListener('scroll', this.onScroll, { passive: true });
+    // User intent comes from the input itself: a scroll event cannot tell the
+    // reader from a lazy image, a reflow, or our own smooth scroll.
+    window.addEventListener('wheel', this.onWheel, { passive: true });
+    window.addEventListener('touchmove', this.onTouchMove, { passive: true });
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('pointerdown', this.onPointerDown, { passive: true });
+    window.addEventListener('resize', this.onResize);
+    window.visualViewport?.addEventListener('resize', this.onResize);
+    document.addEventListener('scrollend', this.onScrollEnd);
     document.addEventListener('click', this.onClick, true);
   }
 
@@ -292,8 +323,18 @@ export class ReaderController {
     this.unsubscribeSettings?.();
     this.unsubscribeSettings = null;
     window.removeEventListener('scroll', this.onScroll);
+    window.removeEventListener('wheel', this.onWheel);
+    window.removeEventListener('touchmove', this.onTouchMove);
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('pointerdown', this.onPointerDown);
+    window.removeEventListener('resize', this.onResize);
+    window.visualViewport?.removeEventListener('resize', this.onResize);
+    document.removeEventListener('scrollend', this.onScrollEnd);
     document.removeEventListener('click', this.onClick, true);
+    this.trackScroller(null);
     this.clearScrollTimer();
+    if (this.resizeTimer !== null) window.clearTimeout(this.resizeTimer);
+    this.resizeTimer = null;
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     try {
@@ -535,33 +576,42 @@ export class ReaderController {
   }
 
   /**
-   * Scroll the sentence back into view when it has left the viewport.
+   * Scroll the sentence back into view when it has left its comfort band.
    *
-   * `force` is for the reader asking to go back, which overrides both the
-   * "still visible" test and the suspension.
+   * The sentence's own rect decides where it is and how far to move — not its
+   * parent element: a paragraph can be taller than the viewport, and centring it
+   * would leave the sentence being read off screen. `force` is for the reader
+   * asking to go back, which overrides both the band and the suspension.
    */
   private reveal(index: number, force = false): void {
     if (!force && !this.autoScroll) return;
     if (!force && this.suspension.active) return;
+
     const range = this.doc?.rangeForSentence(index) ?? null;
     if (!range?.startContainer.isConnected) return;
-    if (!force && !needsReveal(range.getBoundingClientRect(), window.innerHeight)) return;
 
-    const element = range.startContainer.parentElement;
-    if (!element) return;
+    const scroller = findScrollContainer(range.startContainer);
+    this.trackScroller(scroller);
+    const frame = scrollFrame(scroller);
+    const delta = followDelta({
+      top: sentenceRect(range).top,
+      viewportTop: frame.top,
+      viewportHeight: frame.height,
+    });
+
+    // Near the document's edges the anchor is unreachable, so the clamped
+    // target can be where we already are: do not start a pointless animation.
+    const max = Math.max(0, frame.scrollHeight - frame.height);
+    const target = Math.min(max, Math.max(0, frame.scrollTop + delta));
+    if (!force && Math.abs(target - frame.scrollTop) < 1) return;
 
     // Our own smooth scroll fires scroll events; announce it so they are not
     // mistaken for the reader scrolling away.
     this.suspension.noteProgrammatic();
 
-    // Choose scroll alignment based on element's position in the document, not
-    // in the viewport. For elements near the document top, 'start' keeps the
-    // page from scrolling down unnecessarily; for the rest, 'center' keeps the
-    // sentence visible during continuous playback.
-    const distanceFromTop = element.getBoundingClientRect().top + window.scrollY;
-    const block = distanceFromTop < window.innerHeight * 0.5 ? 'start' : 'center';
-
-    element.scrollIntoView({ behavior: 'smooth', block });
+    const behavior = scrollBehavior();
+    if (scroller) scroller.scrollTo({ top: target, behavior });
+    else window.scrollTo({ top: target, behavior });
   }
 
   private readonly onScroll = (): void => {
@@ -569,7 +619,35 @@ export class ReaderController {
     // from: there is no suspension to show and no hint to offer.
     if (!this.autoScroll) return;
 
+    const frame = scrollFrame(this.scroller);
+    const delta = Math.abs(frame.scrollTop - this.lastScrollTop);
+    this.lastScrollTop = frame.scrollTop;
+    // A reflow or a lazy image nudges the page a pixel or two. Only a real move
+    // is worth suspending for — and our own animation is already ignored by the
+    // programmatic window inside `noteScroll`.
+    if (delta < SCROLL_NOISE_PX) return;
+
     this.suspension.noteScroll();
+    this.noteScrolled();
+  };
+
+  /**
+   * Follow the container the article lives in.
+   *
+   * A nested scroller's `scroll` events do not reach the window, so the page's
+   * listener alone would never see the reader dragging it. The window listener
+   * stays: the page can still scroll around the container.
+   */
+  private trackScroller(next: Element | null): void {
+    if (next === this.scroller) return;
+    this.scroller?.removeEventListener('scroll', this.onScroll);
+    this.scroller = next;
+    next?.addEventListener('scroll', this.onScroll, { passive: true });
+    this.lastScrollTop = scrollFrame(next).scrollTop;
+  }
+
+  /** Record that the reader moved the page and start the settle timer. */
+  private noteScrolled(): void {
     this.syncScrolledAway();
 
     this.clearScrollTimer();
@@ -579,7 +657,72 @@ export class ReaderController {
       this.scrollTimer = null;
       this.syncScrolledAway();
     }, SCROLL_PAUSE_MS + 50);
+  }
+
+  private readonly onWheel = (event: WheelEvent): void => {
+    // Ctrl+wheel is zoom and a horizontal wheel is not a vertical scroll; nor
+    // is a wheel inside the player, which belongs to its own list.
+    if (event.ctrlKey || event.deltaY === 0) return;
+    if (this.host && event.composedPath().includes(this.host)) return;
+    this.noteUserScroll();
   };
+
+  private readonly onTouchMove = (): void => {
+    // `touchstart` is deliberately absent: tapping "read from here" would pause
+    // auto-scrolling just before the seek it triggers.
+    this.noteUserScroll();
+  };
+
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (event.defaultPrevented || !SCROLL_KEYS.has(event.key)) return;
+    const target = event.composedPath()[0];
+    if (!(target instanceof Element)) return;
+    if (target instanceof HTMLElement && target.isContentEditable) return;
+    if (target.closest(INTERACTIVE)) return;
+    this.noteUserScroll();
+  };
+
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    // Middle-click auto-scroll, or a click on the page's scrollbar. Overlay
+    // scrollbars (the macOS default) leave no gutter to hit, which the scroll
+    // event fallback covers.
+    if (event.button === 1) {
+      this.noteUserScroll();
+      return;
+    }
+    const gutter = window.innerWidth - document.documentElement.clientWidth;
+    if (gutter > 0 && event.clientX >= document.documentElement.clientWidth) {
+      this.noteUserScroll();
+    }
+  };
+
+  /**
+   * A resize can move the sentence out of the band without changing the
+   * sentence: the window got shorter, the mobile keyboard opened, the reader
+   * zoomed. Re-align once the layout settles.
+   */
+  private readonly onResize = (): void => {
+    if (this.resizeTimer !== null) window.clearTimeout(this.resizeTimer);
+    this.resizeTimer = window.setTimeout(() => {
+      this.resizeTimer = null;
+      if (!this.autoScroll || this.suspension.active) return;
+      const status = this.state.status;
+      if (!status || status.phase === 'idle' || status.phase === 'ended') return;
+      this.reveal(status.index, false);
+    }, RESIZE_REALIGN_MS);
+  };
+
+  private readonly onScrollEnd = (): void => {
+    // The browser says the page has settled: our animation is over, so a scroll
+    // from here on is the reader's.
+    this.suspension.clearProgrammatic();
+  };
+
+  private noteUserScroll(): void {
+    if (!this.autoScroll) return;
+    this.suspension.noteUserInput();
+    this.noteScrolled();
+  }
 
   private clearScrollTimer(): void {
     if (this.scrollTimer === null) return;

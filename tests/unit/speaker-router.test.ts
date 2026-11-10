@@ -9,10 +9,11 @@ const ELEVEN: ProviderConfig = { provider: 'elevenlabs', apiKey: 'k' };
 const REQUEST: SpeakRequest = { text: 'hello', voice: 'v1', rate: 1, lang: 'en-US' };
 
 /** A speaker that records what it was asked to say and can be told to speak. */
-function fakeSpeaker(name: string, options: { prefetch?: boolean } = {}) {
+function fakeSpeaker(name: string, options: { prefetch?: boolean; liveRate?: boolean } = {}) {
   const requests: SpeakRequest[] = [];
   const prefetches: PrefetchRequest[][] = [];
   const volumes: number[] = [];
+  const rates: number[] = [];
   const listeners = new Map<keyof SpeakerEvents, Set<(payload: never) => void>>();
   const speaker: Speaker = {
     speak(request) {
@@ -21,6 +22,14 @@ function fakeSpeaker(name: string, options: { prefetch?: boolean } = {}) {
     setVolume(volume: number) {
       volumes.push(volume);
     },
+    ...(options.liveRate
+      ? {
+          setRate(rate: number) {
+            rates.push(rate);
+            return true;
+          },
+        }
+      : {}),
     ...(options.prefetch
       ? {
           prefetch(batch: readonly PrefetchRequest[]) {
@@ -49,6 +58,7 @@ function fakeSpeaker(name: string, options: { prefetch?: boolean } = {}) {
     requests,
     prefetches,
     volumes,
+    rates,
     stop: speaker.stop as ReturnType<typeof vi.fn>,
     dispose: speaker.dispose as ReturnType<typeof vi.fn>,
     deliver(event: keyof SpeakerEvents, payload: unknown): void {
@@ -110,7 +120,7 @@ describe('SpeakerRouter', () => {
 
   beforeEach(() => {
     browser = fakeSpeaker('browser');
-    cloud = fakeSpeaker('cloud', { prefetch: true });
+    cloud = fakeSpeaker('cloud', { prefetch: true, liveRate: true });
     created = [];
     router = new SpeakerRouter({
       browser: browser.speaker,
@@ -385,6 +395,42 @@ describe('SpeakerRouter', () => {
 
       expect(browser.volumes).toEqual([0.4]);
       expect(cloud.volumes).toEqual([]);
+    });
+  });
+
+  describe('setRate', () => {
+    it('forwards a live change to the cloud speaker and reports it applied', async () => {
+      router = new SpeakerRouter({
+        browser: browser.speaker,
+        config: fakeConfig(DASHSCOPE, { dashscope: 'longxiaochun' }),
+        createCloud: () => cloud.speaker,
+        resolveBrowserVoice: (lang) => `browser:${lang}`,
+      });
+      await router.refresh();
+
+      expect(router.setRate(1.5)).toBe(true);
+
+      expect(cloud.rates).toEqual([1.5]);
+      // The rate travels with the next `speak` request; the inactive delegate
+      // has nothing playing to change.
+      expect(browser.rates).toEqual([]);
+    });
+
+    it('reports that the browser voice cannot change the rate live', () => {
+      expect(router.setRate(1.5)).toBe(false);
+      expect(browser.rates).toEqual([]);
+    });
+
+    it('reports a live change as impossible once the browser voice is active again', async () => {
+      const config = mutableConfig(DASHSCOPE, { dashscope: 'longxiaochun' });
+      router = routerOver(config.source, browser, cloud);
+      await router.refresh();
+      expect(router.setRate(1.5)).toBe(true);
+
+      config.state.config = null;
+      await router.refresh();
+
+      expect(router.setRate(2)).toBe(false);
     });
   });
 

@@ -24,9 +24,10 @@ export interface PlaybackTarget {
  * second copy of the settings to compare against.
  *
  * The rate only goes to a session that exists. `setRate` re-speaks the sentence
- * in progress, and with nothing in progress there is nothing to re-speak — the
- * next `load` carries the rate instead (the content script reads it when it
- * starts reading).
+ * in progress when the speaker cannot change the rate live (the browser voice);
+ * with nothing in progress there is nothing to re-speak — the next `load`
+ * carries the rate instead (the content script reads it when it starts
+ * reading).
  */
 export function applyPlaybackSettings(
   target: PlaybackTarget,

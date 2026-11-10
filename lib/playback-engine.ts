@@ -379,14 +379,27 @@ export class PlaybackEngine {
     else this.emitStatus();
   }
 
+  /**
+   * Change the playback speed.
+   *
+   * A speaker that can change the rate of audio that is already playing — the
+   * cloud voice, through the offscreen player — does so without interrupting
+   * the sentence. One that cannot (`chrome.tts` takes the rate per utterance)
+   * gets the sentence re-spoken, which is audible as a restart from its
+   * beginning; that is the only honest answer for the browser voice.
+   */
   setRate(rate: number): void {
     const next = clampRate(rate);
     if (next === this.rate) return;
     this.rate = next;
 
-    // `chrome.tts` takes the rate per utterance, so the current sentence has to
-    // be re-spoken for the change to be audible.
-    if (this.phase === 'playing' || this.phase === 'loading') {
+    const running = this.phase === 'playing' || this.phase === 'loading';
+    if (running && this.speaker.setRate?.(next) === true) {
+      this.emitStatus();
+      return;
+    }
+
+    if (running) {
       this.setPhase('loading');
       this.speakCurrent();
       return;
@@ -546,7 +559,8 @@ export class PlaybackEngine {
     // Stay in `playing` across the boundary: `chrome.tts` starts the next
     // utterance immediately, and dropping to `loading` would flash the play
     // button's spinner on every sentence. Only user-initiated restarts (load,
-    // play, seek, setRate) go through `loading`.
+    // play, seek, and a rate change the speaker cannot make live) go through
+    // `loading`.
     this.emitStatus();
     this.speakCurrent();
   }

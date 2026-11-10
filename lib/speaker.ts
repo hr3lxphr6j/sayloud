@@ -81,6 +81,15 @@ export interface Speaker {
    */
   setVolume?(volume: number): void;
   /**
+   * Change the speed of the sentence that is playing.
+   *
+   * Returns whether the change reached audio that is already playing. Optional:
+   * `chrome.tts` takes the rate per utterance, so the browser voice has nothing
+   * to change live — the engine has to re-speak that sentence instead, which is
+   * audible as a restart from its beginning.
+   */
+  setRate?(rate: number): boolean;
+  /**
    * Get the current playback position within the sentence, in milliseconds.
    * Optional: only meaningful for speakers that use an audio element (cloud and
    * local providers). Browser voice has no seekable position and returns undefined.

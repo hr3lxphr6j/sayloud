@@ -8,10 +8,11 @@ import type { PrefetchRequest, Speaker, SpeakRequest } from '~/lib/speaker';
  * current utterance, so events fired afterwards are dropped just like stale
  * `chrome.tts` events would be.
  */
-function fakeSpeaker(options: { prefetch?: boolean } = {}) {
+function fakeSpeaker(options: { prefetch?: boolean; liveRate?: boolean } = {}) {
   const requests: SpeakRequest[] = [];
   const prefetches: PrefetchRequest[][] = [];
   const volumes: number[] = [];
+  const rates: number[] = [];
   const listeners = new Map<string, Set<(payload: never) => void>>();
   let live = false;
   let stopCount = 0;
@@ -24,6 +25,14 @@ function fakeSpeaker(options: { prefetch?: boolean } = {}) {
     setVolume(volume: number) {
       volumes.push(volume);
     },
+    ...(options.liveRate
+      ? {
+          setRate(rate: number) {
+            rates.push(rate);
+            return true;
+          },
+        }
+      : {}),
     ...(options.prefetch === false
       ? {}
       : {
@@ -61,6 +70,7 @@ function fakeSpeaker(options: { prefetch?: boolean } = {}) {
     requests,
     prefetches,
     volumes,
+    rates,
     get stopCount() {
       return stopCount;
     },
@@ -435,6 +445,53 @@ describe('PlaybackEngine', () => {
 
       expect(status().rate).toBe(2);
       expect(fake.requests).toHaveLength(before);
+    });
+
+    it('changes the rate in place when the speaker can do it live', () => {
+      const live = fakeSpeaker({ liveRate: true });
+      const liveEngine = new PlaybackEngine({
+        speaker: live.speaker,
+        resolveVoice,
+        now: () => time,
+      });
+      liveEngine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+      live.fire.start();
+
+      liveEngine.dispatch({ type: 'setRate', rate: 1.5 });
+
+      // No second synthesis: the sentence that is already playing keeps going,
+      // and only its speed changes.
+      expect(live.requests).toHaveLength(1);
+      expect(live.rates).toEqual([1.5]);
+      expect(liveEngine.getStatus().rate).toBe(1.5);
+      expect(liveEngine.getStatus().phase).toBe('playing');
+    });
+
+    it('changes the rate in place while the sentence is still loading', () => {
+      const live = fakeSpeaker({ liveRate: true });
+      const liveEngine = new PlaybackEngine({
+        speaker: live.speaker,
+        resolveVoice,
+        now: () => time,
+      });
+      liveEngine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+
+      liveEngine.dispatch({ type: 'setRate', rate: 2 });
+
+      expect(live.requests).toHaveLength(1);
+      expect(live.rates).toEqual([2]);
+      expect(liveEngine.getStatus().phase).toBe('loading');
+    });
+
+    it('re-speaks while loading when the speaker cannot change the rate live', () => {
+      engine.dispatch({ type: 'load', sentences: SENTENCES, startIndex: 0, rate: 1 });
+      const before = fake.requests.length;
+
+      engine.dispatch({ type: 'setRate', rate: 2 });
+
+      expect(fake.requests).toHaveLength(before + 1);
+      expect(fake.requests.at(-1)).toMatchObject({ text: 'Hello world.', rate: 2 });
+      expect(status().phase).toBe('loading');
     });
 
     it('ignores a rate that is already in effect', () => {

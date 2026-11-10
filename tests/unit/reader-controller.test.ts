@@ -357,9 +357,9 @@ describe('ReaderController', () => {
 });
 
 /**
- * Auto-scrolling is the page following the sentence, and it is a preference
- * rather than a fact about the page: with it off, a new sentence must not move
- * the reader's viewport at all.
+ * Auto-scrolling keeps the sentence being read inside a comfort band near the
+ * top of the viewport, and it is a preference: with it off, a new sentence must
+ * not move the reader's viewport at all.
  */
 describe('ReaderController auto-scrolling', () => {
   /** What the controller reads its preferences from, without storage. */
@@ -371,30 +371,47 @@ describe('ReaderController auto-scrolling', () => {
     } as unknown as SettingsStore;
   }
 
-  let scrollIntoView: ReturnType<typeof vi.fn>;
-  let original: typeof Element.prototype.scrollIntoView | undefined;
+  const VIEWPORT = 800;
+
+  let scrollTo: ReturnType<typeof vi.fn>;
+  let rectTop: number;
+  let originalClientRects: typeof Range.prototype.getClientRects | undefined;
 
   beforeEach(() => {
-    scrollIntoView = vi.fn();
-    original = Element.prototype.scrollIntoView;
-    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    rectTop = 900;
+    scrollTo = vi.fn();
+    vi.spyOn(window, 'scrollTo').mockImplementation(scrollTo as unknown as typeof window.scrollTo);
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: VIEWPORT });
+
+    const root = document.scrollingElement ?? document.documentElement;
+    Object.defineProperty(root, 'scrollHeight', { configurable: true, value: 5_000 });
+    Object.defineProperty(root, 'scrollTop', { configurable: true, value: 0 });
+
+    // happy-dom has no layout: every range rect is empty unless we say otherwise.
+    originalClientRects = Range.prototype.getClientRects;
+    Object.defineProperty(Range.prototype, 'getClientRects', {
       configurable: true,
-      value: scrollIntoView,
+      value: () => [{ top: rectTop, bottom: rectTop + 20, width: 200, height: 20 }],
     });
   });
 
   afterEach(() => {
-    if (original === undefined) Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
-    else
-      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    vi.restoreAllMocks();
+    if (originalClientRects === undefined) {
+      Reflect.deleteProperty(Range.prototype, 'getClientRects');
+    } else {
+      Object.defineProperty(Range.prototype, 'getClientRects', {
         configurable: true,
-        value: original,
+        value: originalClientRects,
       });
+    }
+    document.body.innerHTML = '';
   });
 
   /** Build a reader over a two-sentence page, with its preferences applied. */
-  async function readingController(overrides: Partial<Settings>) {
-    document.body.innerHTML = '<article><p>One sentence here. Another follows.</p></article>';
+  async function readingController(overrides: Partial<Settings>, html?: string) {
+    document.body.innerHTML =
+      html ?? '<article><p>One sentence here. Another follows.</p></article>';
     const port = fakePort();
     vi.spyOn(browser.runtime, 'connect').mockReturnValue(
       port.port as unknown as ReturnType<typeof browser.runtime.connect>
@@ -408,15 +425,26 @@ describe('ReaderController auto-scrolling', () => {
     return { controller, port };
   }
 
-  it('brings the sentence into view as reading moves on', async () => {
+  it('brings the sentence top back to the anchor as reading moves on', async () => {
     const { controller, port } = await readingController({ autoScroll: true });
 
     port.receive({ type: 'status', status: statusOf('playing', 1) });
 
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    // 900 − 0.33 × 800 = 636.
+    expect(scrollTo).toHaveBeenCalledWith({ top: 636, behavior: 'smooth' });
 
     controller.dispose();
-    document.body.innerHTML = '';
+  });
+
+  it('leaves the page alone while the sentence top is already in the band', async () => {
+    rectTop = VIEWPORT * 0.33;
+    const { controller, port } = await readingController({ autoScroll: true });
+
+    port.receive({ type: 'status', status: statusOf('playing', 1) });
+
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    controller.dispose();
   });
 
   it('leaves the page where the reader put it when the preference is off', async () => {
@@ -424,12 +452,157 @@ describe('ReaderController auto-scrolling', () => {
 
     port.receive({ type: 'status', status: statusOf('playing', 1) });
 
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
     // Nor does it pretend the reader scrolled away: that hint offers to bring
     // the page back, which is exactly what the preference turned off.
     expect(controller.getState().scrolledAway).toBe(false);
 
     controller.dispose();
-    document.body.innerHTML = '';
+  });
+
+  it('scrolls even a settled sentence when the reader asks to go back', async () => {
+    rectTop = VIEWPORT * 0.33;
+    const { controller, port } = await readingController({ autoScroll: true });
+    port.receive({ type: 'status', status: statusOf('playing', 0) });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    controller.returnToPosition();
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+
+    controller.dispose();
+  });
+
+  it('suspends when the reader uses the wheel', async () => {
+    const { controller } = await readingController({ autoScroll: true });
+
+    window.dispatchEvent(new WheelEvent('wheel', { deltaY: 120 }));
+
+    expect(controller.getState().scrolledAway).toBe(true);
+
+    controller.dispose();
+  });
+
+  it('suspends on a touch move but not on the tap that starts a seek', async () => {
+    const { controller } = await readingController({ autoScroll: true });
+
+    window.dispatchEvent(new Event('touchstart'));
+    expect(controller.getState().scrolledAway).toBe(false);
+
+    window.dispatchEvent(new Event('touchmove'));
+    expect(controller.getState().scrolledAway).toBe(true);
+
+    controller.dispose();
+  });
+
+  it('ignores keyboard scrolling while the reader is typing', async () => {
+    const { controller } = await readingController({ autoScroll: true });
+    const input = document.createElement('input');
+    document.body.append(input);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }));
+    expect(controller.getState().scrolledAway).toBe(false);
+
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }));
+    expect(controller.getState().scrolledAway).toBe(true);
+
+    controller.dispose();
+  });
+
+  it('does not treat Space on a button as a page scroll', async () => {
+    const { controller } = await readingController({ autoScroll: true });
+    const button = document.createElement('button');
+    document.body.append(button);
+
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+    expect(controller.getState().scrolledAway).toBe(false);
+
+    controller.dispose();
+  });
+
+  it('ignores the tiny scrolls a reflow produces', async () => {
+    const { controller } = await readingController({ autoScroll: true });
+    const root = document.scrollingElement ?? document.documentElement;
+
+    Object.defineProperty(root, 'scrollTop', { configurable: true, value: 2 });
+    window.dispatchEvent(new Event('scroll'));
+    expect(controller.getState().scrolledAway).toBe(false);
+
+    Object.defineProperty(root, 'scrollTop', { configurable: true, value: 120 });
+    window.dispatchEvent(new Event('scroll'));
+    expect(controller.getState().scrolledAway).toBe(true);
+
+    controller.dispose();
+  });
+
+  it('lets the reader take over during our own smooth scroll', async () => {
+    const { controller, port } = await readingController({ autoScroll: true });
+    port.receive({ type: 'status', status: statusOf('playing', 1) });
+    // The reveal above opened the programmatic window; a wheel must still win.
+    expect(controller.getState().scrolledAway).toBe(false);
+
+    window.dispatchEvent(new WheelEvent('wheel', { deltaY: 120 }));
+
+    expect(controller.getState().scrolledAway).toBe(true);
+
+    controller.dispose();
+  });
+
+  it('re-aligns the sentence after the layout settles from a resize', async () => {
+    const { controller, port } = await readingController({ autoScroll: true });
+    port.receive({ type: 'status', status: statusOf('playing', 1) });
+    scrollTo.mockClear();
+
+    vi.useFakeTimers();
+    window.dispatchEvent(new Event('resize'));
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+
+    controller.dispose();
+  });
+
+  it('does nothing on resize when the sentence is still in the band', async () => {
+    rectTop = VIEWPORT * 0.33;
+    const { controller, port } = await readingController({ autoScroll: true });
+    port.receive({ type: 'status', status: statusOf('playing', 1) });
+    scrollTo.mockClear();
+
+    vi.useFakeTimers();
+    window.dispatchEvent(new Event('resize'));
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    controller.dispose();
+  });
+
+  it('scrolls the container the article lives in, not the page', async () => {
+    const { controller, port } = await readingController(
+      { autoScroll: true },
+      '<div id="scroller" style="overflow-y:auto"><article><p>One sentence here. Another follows.</p></article></div>'
+    );
+    const scroller = document.querySelector('#scroller') as HTMLElement;
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 3_000 });
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 400 });
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 0 });
+    Object.defineProperty(scroller, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ top: 0, bottom: 400, left: 0, right: 800 }),
+    });
+    const containerScroll = vi.fn();
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: containerScroll });
+
+    rectTop = 300;
+    port.receive({ type: 'status', status: statusOf('playing', 1) });
+
+    // 300 − 0.33 × 400 = 168.
+    expect(containerScroll).toHaveBeenCalledWith({ top: 168, behavior: 'smooth' });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    controller.dispose();
   });
 });

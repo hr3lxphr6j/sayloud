@@ -1,39 +1,207 @@
-import { describe, expect, it } from 'vitest';
-import { needsReveal, ScrollSuspension } from '~/lib/autoscroll';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  FOLLOW_ANCHOR,
+  FOLLOW_BAND,
+  findScrollContainer,
+  followDelta,
+  SCROLL_PAUSE_MS,
+  ScrollSuspension,
+  scrollBehavior,
+  scrollFrame,
+  sentenceRect,
+} from '~/lib/autoscroll';
 
-describe('needsReveal', () => {
-  const viewport = 1000;
+describe('followDelta', () => {
+  const viewportHeight = 1000;
 
-  it('is false while the sentence is comfortably inside the viewport', () => {
-    expect(needsReveal({ top: 400, bottom: 460 }, viewport)).toBe(false);
+  it('leaves the page alone while the sentence top is inside the band', () => {
+    expect(followDelta({ top: 330, viewportTop: 0, viewportHeight })).toBe(0);
+    // The band is 18%–48% at the default anchor and half-height.
+    expect(followDelta({ top: 180, viewportTop: 0, viewportHeight })).toBe(0);
+    expect(followDelta({ top: 480, viewportTop: 0, viewportHeight })).toBe(0);
   });
 
-  it('is true when the sentence sits above the viewport', () => {
-    expect(needsReveal({ top: -120, bottom: -60 }, viewport)).toBe(true);
+  it('scrolls up when the sentence has risen above the band', () => {
+    expect(followDelta({ top: 100, viewportTop: 0, viewportHeight })).toBe(-230);
   });
 
-  it('is true when the sentence sits below the viewport', () => {
-    expect(needsReveal({ top: 1100, bottom: 1160 }, viewport)).toBe(true);
+  it('scrolls down when the sentence is below the band', () => {
+    expect(followDelta({ top: 900, viewportTop: 0, viewportHeight })).toBe(570);
   });
 
-  it('leaves a sentence alone while enough of it is still on screen', () => {
-    expect(needsReveal({ top: -10, bottom: 30 }, viewport)).toBe(false);
-    expect(needsReveal({ top: 20, bottom: 60 }, viewport)).toBe(false);
+  it('measures the band inside the scrollable area, not the window', () => {
+    // A nested scroller starting 200px down the page: band 308–488.
+    const geometry = { viewportTop: 200, viewportHeight: 600 };
+    expect(followDelta({ top: 400, ...geometry })).toBe(0);
+    expect(followDelta({ top: 700, ...geometry })).toBe(700 - (200 + 600 * FOLLOW_ANCHOR));
   });
 
-  it('scrolls back once barely any of the sentence is visible', () => {
-    expect(needsReveal({ top: 990, bottom: 1_010 }, viewport)).toBe(true);
-    expect(needsReveal({ top: -20, bottom: 10 }, viewport)).toBe(true);
+  it('only considers the top edge, however tall the sentence is', () => {
+    // A sentence spanning the whole viewport keeps its top where it is.
+    expect(followDelta({ top: 330, viewportTop: 0, viewportHeight })).toBe(0);
   });
 
-  it('honours a custom tolerance', () => {
-    const rect = { top: 980, bottom: 1_020 };
-    expect(needsReveal(rect, viewport, 10)).toBe(false);
-    expect(needsReveal(rect, viewport, 30)).toBe(true);
+  it('honours a custom anchor and band', () => {
+    const geometry = { viewportTop: 0, viewportHeight: 1000, anchor: 0.5, band: 0.1 };
+    expect(followDelta({ top: 500, ...geometry })).toBe(0);
+    expect(followDelta({ top: 450, ...geometry })).toBe(0);
+    expect(followDelta({ top: 300, ...geometry })).toBe(-200);
   });
 
   it('never asks for a scroll when the viewport has no height', () => {
-    expect(needsReveal({ top: 10, bottom: 20 }, 0)).toBe(false);
+    expect(followDelta({ top: 900, viewportTop: 0, viewportHeight: 0 })).toBe(0);
+  });
+
+  it('documents the defaults', () => {
+    expect(FOLLOW_ANCHOR).toBe(0.33);
+    expect(FOLLOW_BAND).toBe(0.15);
+  });
+});
+
+describe('sentenceRect', () => {
+  it('uses the first rect that covers pixels', () => {
+    const range = document.createRange();
+    const rects = [
+      { top: 10, bottom: 10, width: 0, height: 0 },
+      { top: 40, bottom: 60, width: 200, height: 20 },
+      { top: 60, bottom: 80, width: 120, height: 20 },
+    ];
+    Object.defineProperty(range, 'getClientRects', { value: () => rects });
+    Object.defineProperty(range, 'getBoundingClientRect', {
+      value: () => ({ top: 40, bottom: 80 }),
+    });
+
+    expect(sentenceRect(range)).toEqual({ top: 40, bottom: 60 });
+  });
+
+  it('falls back to the bounding box when there are no client rects', () => {
+    const range = document.createRange();
+    Object.defineProperty(range, 'getClientRects', { value: () => [] });
+    Object.defineProperty(range, 'getBoundingClientRect', {
+      value: () => ({ top: 12, bottom: 34 }),
+    });
+
+    expect(sentenceRect(range)).toEqual({ top: 12, bottom: 34 });
+  });
+});
+
+describe('scrollFrame', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('reads the page from scrollingElement', () => {
+    const root = document.scrollingElement ?? document.documentElement;
+    Object.defineProperty(root, 'scrollTop', { configurable: true, value: 300 });
+    Object.defineProperty(root, 'scrollHeight', { configurable: true, value: 5_000 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+
+    expect(scrollFrame(null)).toEqual({
+      scrollTop: 300,
+      scrollHeight: 5_000,
+      height: 800,
+      top: 0,
+    });
+  });
+
+  it('clips a nested container to the window and drops its border', () => {
+    const container = document.createElement('div');
+    Object.defineProperty(container, 'clientTop', { configurable: true, value: 4 });
+    Object.defineProperty(container, 'clientHeight', { configurable: true, value: 600 });
+    Object.defineProperty(container, 'scrollTop', { configurable: true, value: 120 });
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 3_000 });
+    Object.defineProperty(container, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ top: 100, bottom: 704, left: 0, right: 800 }),
+    });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 700 });
+
+    expect(scrollFrame(container)).toEqual({
+      scrollTop: 120,
+      scrollHeight: 3_000,
+      height: 596,
+      top: 104,
+    });
+  });
+});
+
+describe('findScrollContainer', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  function scrollable(element: HTMLElement): HTMLElement {
+    element.style.overflowY = 'auto';
+    Object.defineProperty(element, 'scrollHeight', { configurable: true, value: 800 });
+    Object.defineProperty(element, 'clientHeight', { configurable: true, value: 200 });
+    return element;
+  }
+
+  it('finds the nearest vertical scroller above the text', () => {
+    const outer = scrollable(document.createElement('div'));
+    const inner = scrollable(document.createElement('div'));
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'text';
+    inner.append(paragraph);
+    outer.append(inner);
+    document.body.append(outer);
+
+    expect(findScrollContainer(paragraph.firstChild as Node)).toBe(inner);
+  });
+
+  it('ignores containers that cannot scroll', () => {
+    const box = document.createElement('div');
+    box.style.overflowY = 'auto';
+    Object.defineProperty(box, 'scrollHeight', { configurable: true, value: 200 });
+    Object.defineProperty(box, 'clientHeight', { configurable: true, value: 200 });
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'text';
+    box.append(paragraph);
+    document.body.append(box);
+
+    expect(findScrollContainer(paragraph.firstChild as Node)).toBeNull();
+  });
+
+  it('ignores overflow that the reader cannot move', () => {
+    const box = document.createElement('div');
+    box.style.overflowY = 'hidden';
+    Object.defineProperty(box, 'scrollHeight', { configurable: true, value: 800 });
+    Object.defineProperty(box, 'clientHeight', { configurable: true, value: 200 });
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'text';
+    box.append(paragraph);
+    document.body.append(box);
+
+    expect(findScrollContainer(paragraph.firstChild as Node)).toBeNull();
+  });
+
+  it('falls back to the page when nothing above scrolls', () => {
+    document.body.innerHTML = '<article><p>text</p></article>';
+    const text = document.querySelector('p')?.firstChild as Node;
+
+    expect(findScrollContainer(text)).toBeNull();
+  });
+});
+
+describe('scrollBehavior', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('is instant when the reader asked for reduced motion', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: true,
+    } as MediaQueryList);
+
+    expect(scrollBehavior()).toBe('auto');
+  });
+
+  it('is smooth otherwise', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: false,
+    } as MediaQueryList);
+
+    expect(scrollBehavior()).toBe('smooth');
   });
 });
 
@@ -93,6 +261,27 @@ describe('ScrollSuspension', () => {
     expect(suspension.active).toBe(true);
   });
 
+  it('honours user input even while our own scroll is running', () => {
+    const time = clock();
+    const suspension = new ScrollSuspension({ now: time.now });
+
+    suspension.noteProgrammatic();
+    suspension.noteUserInput();
+
+    expect(suspension.active).toBe(true);
+  });
+
+  it('ends the programmatic window early when the scroll settles', () => {
+    const time = clock();
+    const suspension = new ScrollSuspension({ now: time.now });
+
+    suspension.noteProgrammatic();
+    suspension.clearProgrammatic();
+    suspension.noteScroll();
+
+    expect(suspension.active).toBe(true);
+  });
+
   it('lets a caller resume immediately', () => {
     const time = clock();
     const suspension = new ScrollSuspension({ now: time.now });
@@ -111,5 +300,9 @@ describe('ScrollSuspension', () => {
     suspension.noteScroll();
     time.advance(100);
     expect(suspension.active).toBe(false);
+  });
+
+  it('documents the default pause', () => {
+    expect(SCROLL_PAUSE_MS).toBe(5_000);
   });
 });

@@ -89,6 +89,73 @@ describe('extractor', () => {
 
       expect(extractBlocks().map((b) => b.text)).toEqual(['Inline stays', 'Before after']);
     });
+
+    it('skips subtrees hidden with display: none', () => {
+      document.body.innerHTML = `
+        <div style="display: none">
+          <p>Hidden paragraph one.</p>
+          <p>Hidden paragraph two.</p>
+          <p>Hidden paragraph three.</p>
+        </div>
+        <p>Visible paragraph one.</p>
+        <p>Visible paragraph two.</p>
+        <p>Visible paragraph three.</p>
+      `;
+
+      expect(extractBlocks().map((b) => b.text)).toEqual([
+        'Visible paragraph one.',
+        'Visible paragraph two.',
+        'Visible paragraph three.',
+      ]);
+    });
+  });
+
+  describe('display: contents wrappers', () => {
+    /**
+     * Mimic the browser's `checkVisibility`: an element with `display: contents`
+     * generates no box and is reported as invisible even though its children
+     * render normally. happy-dom reports it as visible, so the regression only
+     * reproduces with this stub in place.
+     */
+    function stubCheckVisibility(): () => void {
+      const original = Element.prototype.checkVisibility;
+      Element.prototype.checkVisibility = function (this: Element): boolean {
+        const display = getComputedStyle(this).display;
+        return display !== 'contents' && display !== 'none';
+      };
+      return () => {
+        Element.prototype.checkVisibility = original;
+      };
+    }
+
+    it('keeps paragraphs nested in display: contents wrappers', () => {
+      const restore = stubCheckVisibility();
+      try {
+        // Chat share pages wrap every message in their own `display: contents`
+        // level, so a paragraph sits under several of them at once.
+        document.body.innerHTML = `
+          <div style="display: contents">
+            <div style="display: contents">
+              <div style="display: contents">
+                <div style="display: contents">
+                  <p>First wrapped paragraph.</p>
+                  <p>Second wrapped paragraph.</p>
+                  <p>Third wrapped paragraph.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        expect(extractBlocks().map((b) => b.text)).toEqual([
+          'First wrapped paragraph.',
+          'Second wrapped paragraph.',
+          'Third wrapped paragraph.',
+        ]);
+      } finally {
+        restore();
+      }
+    });
   });
 
   describe('whitespace', () => {

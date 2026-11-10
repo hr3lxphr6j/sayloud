@@ -337,7 +337,12 @@ function isSkippedElement(el: Element): boolean {
   if (SKIP_TAGS.has(el.tagName)) return true;
   if (el.hasAttribute('hidden')) return true;
   if (el.getAttribute('aria-hidden') === 'true') return true;
-  if (typeof el.checkVisibility === 'function') {
+  // `display: contents` elements generate no box of their own, so
+  // `checkVisibility()` reports them as invisible even though their children
+  // render normally. Their descendants are still checked individually, and an
+  // ancestor that really hides them (`display: none`) does have a box.
+  const displayContents = getComputedStyle(el).display === 'contents';
+  if (!displayContents && typeof el.checkVisibility === 'function') {
     try {
       if (!el.checkVisibility()) return true;
     } catch {

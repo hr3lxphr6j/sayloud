@@ -16,3 +16,11 @@ allowBuilds:
   sharp: false
 minimumReleaseAgeExclude:
   - '@wxt-dev/browser@0.3.4'
+
+# pnpm 12 records the pinned pnpm version in a second, leading YAML document
+# inside pnpm-lock.yaml. GitHub's dependency graph, Dependabot and several
+# scanners read only the first document, so they would see pnpm's own platform
+# binaries and report zero dependencies — silently, with no error. `ignore`
+# keeps the lockfile a single document. The pin still holds where it matters:
+# Corepack locally and `pnpm/action-setup` in CI both read `packageManager`.
+pmOnFail: ignore

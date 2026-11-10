@@ -30,6 +30,8 @@ export interface Settings {
   uiLang: UiLang;
   /** Keep reading when the user switches to another tab. */
   keepPlayingInBackground: boolean;
+  /** Whether the page follows the sentence being read. */
+  autoScroll: boolean;
   /** 0–1.5. 1 is the original loudness. */
   volume: number;
   /** The default rate for a new session, 0.5–3. */
@@ -50,6 +52,7 @@ export const MAX_RATE = 3;
 export const DEFAULT_SETTINGS: Settings = {
   uiLang: 'auto',
   keepPlayingInBackground: true,
+  autoScroll: true,
   volume: 1,
   rate: 1,
   cache: { persist: true, maxBytes: 200 * 1024 * 1024 },
@@ -128,6 +131,7 @@ export function normalizeSettings(value: unknown): Settings {
       raw.keepPlayingInBackground,
       DEFAULT_SETTINGS.keepPlayingInBackground
     ),
+    autoScroll: booleanOr(raw.autoScroll, DEFAULT_SETTINGS.autoScroll),
     volume: clampOr(raw.volume, MIN_VOLUME, MAX_VOLUME, DEFAULT_SETTINGS.volume),
     rate: clampOr(raw.rate, MIN_RATE, MAX_RATE, DEFAULT_SETTINGS.rate),
     cache: {

@@ -1,5 +1,5 @@
 /**
- * The Reading tab: the voice card, the two sliders and the caption switch.
+ * The Reading tab: the voice card, the two sliders and the auto-scroll switch.
  *
  * The sliders are the interesting part. A drag must move the number on screen
  * without writing anything, and only the release may reach storage — otherwise
@@ -245,6 +245,20 @@ describe('the rate slider', () => {
     const slider = screen.getByLabelText('Speed');
     expect(slider.getAttribute('min')).toBe('0.5');
     expect(slider.getAttribute('max')).toBe('3');
+  });
+});
+
+describe('the auto-scroll switch', () => {
+  it('starts on and saves what it is set to', async () => {
+    const { store } = await renderTab({ config: DASHSCOPE });
+
+    const control = screen.getByRole('switch', { name: 'Auto-scroll' });
+    expect(control.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(control);
+
+    expect(control.getAttribute('aria-checked')).toBe('false');
+    await waitFor(async () => expect((await store.load()).autoScroll).toBe(false));
   });
 });
 

@@ -67,6 +67,8 @@ export const ja: Record<MessageKey, string> = {
   // node and can be pushed past 100%.
   'settings.volume.browser-cap': 'ブラウザの音声は100%が上限です。',
   'settings.rate.label': '速度',
+  'settings.autoscroll.label': '自動スクロール',
+  'settings.autoscroll.help': '読み上げ中の文に合わせてページをスクロールします。',
   'settings.language.label': '表示言語',
   'settings.language.auto': 'ブラウザに従う',
   'settings.language.en': 'English',

@@ -122,11 +122,19 @@ describe('SettingsStore.load', () => {
   });
 
   it('defaults a boolean that is not a real boolean', async () => {
-    const { area } = fakeArea({ [SETTINGS_KEY]: { keepPlayingInBackground: 'true' } });
+    const { area } = fakeArea({
+      [SETTINGS_KEY]: { keepPlayingInBackground: 'true', autoScroll: 'yes' },
+    });
+    const store = new SettingsStore(area);
 
-    const settings = await new SettingsStore(area).load();
+    const settings = await store.load();
 
     expect(settings.keepPlayingInBackground).toBe(true);
+    // Auto-scrolling is on by default, so a malformed value must not turn it off.
+    expect(settings.autoScroll).toBe(true);
+
+    await area.set({ [SETTINGS_KEY]: { autoScroll: false } });
+    expect((await store.load()).autoScroll).toBe(false);
   });
 
   it('fills in a missing or malformed cache object', async () => {

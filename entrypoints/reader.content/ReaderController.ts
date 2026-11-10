@@ -84,10 +84,12 @@ export interface ReaderControllerOptions {
    */
   initialRate?: number;
   /**
-   * The saved preferences, for the caption window's language.
+   * The saved preferences, for the caption window's language and the page's
+   * auto-scrolling.
    *
    * Subscribed to rather than read once: the caption window's text follows the
-   * interface language.
+   * interface language, and turning auto-scrolling off must take effect in the
+   * page that is already reading.
    */
   settings?: SettingsStore;
 }
@@ -117,6 +119,8 @@ export class ReaderController {
   private unsubscribeSettings: (() => void) | null = null;
   /** The language the caption window's own line is written in. */
   private t: Translator = createTranslator('en');
+  /** Whether the page follows the sentence being read. */
+  private autoScroll = true;
   private port: Port | null = null;
   private reconnects = 0;
   private reconnectTimer: number | null = null;
@@ -499,12 +503,35 @@ export class ReaderController {
     this.setState({ ...this.state, captionOpen: open });
   }
 
-  /** Take a settings change: the language the window reads in. */
+  /** Take a settings change: the language the window reads in, and auto-scrolling. */
   private applySettings(settings: Settings): void {
     this.t = createTranslator(resolveLang(settings.uiLang, navigator.language));
+    this.setAutoScroll(settings.autoScroll);
 
     // Redraw an open window so its own line follows the interface language.
     this.syncCaption();
+  }
+
+  /**
+   * Follow a change to the auto-scroll preference.
+   *
+   * Turning it off also clears a suspension that was already showing: the
+   * "you scrolled away" hint offers to bring the page back, and that offer
+   * makes no sense while the page is deliberately left alone.
+   */
+  private setAutoScroll(enabled: boolean): void {
+    if (enabled === this.autoScroll) return;
+    this.autoScroll = enabled;
+
+    this.suspension.resume();
+    this.syncScrolledAway();
+
+    // Turning it back on catches up at once instead of waiting for the next
+    // sentence boundary, which may be a paragraph away.
+    const status = this.state.status;
+    if (enabled && status && status.phase !== 'idle' && status.phase !== 'ended') {
+      this.reveal(status.index, true);
+    }
   }
 
   /**
@@ -514,6 +541,7 @@ export class ReaderController {
    * "still visible" test and the suspension.
    */
   private reveal(index: number, force = false): void {
+    if (!force && !this.autoScroll) return;
     if (!force && this.suspension.active) return;
     const range = this.doc?.rangeForSentence(index) ?? null;
     if (!range?.startContainer.isConnected) return;
@@ -537,6 +565,10 @@ export class ReaderController {
   }
 
   private readonly onScroll = (): void => {
+    // With auto-scrolling off, a manual scroll is not something to come back
+    // from: there is no suspension to show and no hint to offer.
+    if (!this.autoScroll) return;
+
     this.suspension.noteScroll();
     this.syncScrolledAway();
 

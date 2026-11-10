@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { ReaderController } from '~/entrypoints/reader.content/ReaderController';
 import type { EngineStatus } from '~/lib/protocol';
+import { DEFAULT_SETTINGS, type Settings, type SettingsStore } from '~/lib/settings-store';
 
 /** The extension id, read before any test hides it. */
 const liveId: unknown = browser.runtime.id;
@@ -351,6 +352,84 @@ describe('ReaderController', () => {
     // Should not send stop when already idle
     expect(port.sent).not.toContainEqual({ type: 'stop' });
 
+    document.body.innerHTML = '';
+  });
+});
+
+/**
+ * Auto-scrolling is the page following the sentence, and it is a preference
+ * rather than a fact about the page: with it off, a new sentence must not move
+ * the reader's viewport at all.
+ */
+describe('ReaderController auto-scrolling', () => {
+  /** What the controller reads its preferences from, without storage. */
+  function settingsStore(overrides: Partial<Settings>): SettingsStore {
+    const settings = { ...DEFAULT_SETTINGS, ...overrides };
+    return {
+      load: () => Promise.resolve(settings),
+      subscribe: () => () => {},
+    } as unknown as SettingsStore;
+  }
+
+  let scrollIntoView: ReturnType<typeof vi.fn>;
+  let original: typeof Element.prototype.scrollIntoView | undefined;
+
+  beforeEach(() => {
+    scrollIntoView = vi.fn();
+    original = Element.prototype.scrollIntoView;
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+  });
+
+  afterEach(() => {
+    if (original === undefined) Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    else
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: original,
+      });
+  });
+
+  /** Build a reader over a two-sentence page, with its preferences applied. */
+  async function readingController(overrides: Partial<Settings>) {
+    document.body.innerHTML = '<article><p>One sentence here. Another follows.</p></article>';
+    const port = fakePort();
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue(
+      port.port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const controller = new ReaderController(null, { settings: settingsStore(overrides) });
+    // The saved preferences arrive through a promise; let them land before the
+    // engine starts announcing sentences.
+    await Promise.resolve();
+    controller.connect();
+    return { controller, port };
+  }
+
+  it('brings the sentence into view as reading moves on', async () => {
+    const { controller, port } = await readingController({ autoScroll: true });
+
+    port.receive({ type: 'status', status: statusOf('playing', 1) });
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    controller.dispose();
+    document.body.innerHTML = '';
+  });
+
+  it('leaves the page where the reader put it when the preference is off', async () => {
+    const { controller, port } = await readingController({ autoScroll: false });
+
+    port.receive({ type: 'status', status: statusOf('playing', 1) });
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    // Nor does it pretend the reader scrolled away: that hint offers to bring
+    // the page back, which is exactly what the preference turned off.
+    expect(controller.getState().scrolledAway).toBe(false);
+
+    controller.dispose();
     document.body.innerHTML = '';
   });
 });

@@ -63,6 +63,8 @@ export const en = {
   // node and can be pushed past 100%.
   'settings.volume.browser-cap': 'The browser voice tops out at 100%.',
   'settings.rate.label': 'Speed',
+  'settings.autoscroll.label': 'Auto-scroll',
+  'settings.autoscroll.help': 'Keep the page following the sentence being read.',
   'settings.language.label': 'Interface language',
   'settings.language.auto': 'Follow the browser',
   'settings.language.en': 'English',

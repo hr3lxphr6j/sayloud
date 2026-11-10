@@ -95,7 +95,7 @@ export default defineConfig({
   },
   manifest: ({ mode }) => ({
     name: 'SayLoud',
-    version: '0.6.1',
+    version: '0.6.2',
     description:
       'Read web pages aloud with sentence highlighting, browser voices, on-device models, or your own cloud TTS service.',
     homepage_url: 'https://github.com/hr3lxphr6j/sayloud',

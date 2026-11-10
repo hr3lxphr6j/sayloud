@@ -141,6 +141,14 @@ export class TimelinePlayer {
 
   private volume = 1;
   /**
+   * The rate each new element starts at.
+   *
+   * `load` creates a fresh element, whose `playbackRate` is 1. Remembering the
+   * rate here is what keeps a sentence from falling back to normal speed when
+   * the reader changed the rate before it was synthesized.
+   */
+  private rate = 1;
+  /**
    * The shared graph, or null while it has not been built yet.
    *
    * `graphDisabled` is sticky for the document's lifetime: an element that has
@@ -183,6 +191,7 @@ export class TimelinePlayer {
 
     const url = this.createObjectUrl(new Blob([result.audio], { type: result.mime }));
     const audio = this.createAudio();
+    audio.playbackRate = this.rate;
     let source: MediaElementSourceLike | null = null;
 
     try {
@@ -299,11 +308,15 @@ export class TimelinePlayer {
    * Change the playback rate, keeping the word timeline in step.
    *
    * The audio element plays the same bytes faster, so the schedule is rebuilt
-   * from the playhead rather than restarted.
+   * from the playhead rather than restarted. The rate is remembered for the
+   * sentences that come after this one.
    */
   setRate(rate: number): void {
+    if (!Number.isFinite(rate) || rate <= 0) return;
+    this.rate = rate;
+
     const current = this.current;
-    if (!current || !Number.isFinite(rate) || rate <= 0) return;
+    if (!current) return;
 
     current.audio.playbackRate = rate;
     if (!current.audio.paused) {

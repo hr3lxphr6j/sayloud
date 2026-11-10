@@ -447,6 +447,25 @@ describe('TimelinePlayer', () => {
       expect(clock.size).toBe(0);
     });
 
+    it('keeps the rate for the next sentence', async () => {
+      await load('a', result());
+      player.setRate(1.5);
+
+      await load('b', result());
+
+      // A new element starts at 1; the sentence the reader asked for must not
+      // fall back to it.
+      expect(audios.at(1).playbackRate).toBe(1.5);
+    });
+
+    it('remembers a rate set before anything was loaded', async () => {
+      player.setRate(2);
+
+      await load('a', result());
+
+      expect(audios.at(0).playbackRate).toBe(2);
+    });
+
     it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])('ignores the rate %s', (rate) => {
       player.setRate(rate);
       expect(clock.size).toBe(0);

@@ -221,6 +221,69 @@ describe('OffscreenSpeaker', () => {
     });
   });
 
+  describe('setRate', () => {
+    it('changes the rate of the sentence that is playing, without creating a document', async () => {
+      speaker.speak({ text: 'hello', voice: 'v1', rate: 1, lang: 'en' });
+      await tick();
+
+      expect(speaker.setRate(1.5)).toBe(true);
+      await tick();
+
+      expect(channel.channel.sendCommand).toHaveBeenCalledWith(
+        { type: 'setRate', rate: 1.5 },
+        { create: false }
+      );
+    });
+
+    it('does not supersede the utterance that is playing', async () => {
+      speaker.speak({ text: 'hello', voice: 'v1', rate: 1, lang: 'en' });
+      await tick();
+      const id = utteranceId(channel.commands);
+
+      speaker.setRate(2);
+      await tick();
+      events.deliver({ type: 'sentence-end', id });
+
+      expect(ends).toBe(1);
+    });
+
+    it('survives a rate change that cannot be delivered', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(channel.channel.sendCommand).mockRejectedValue(new Error('no document'));
+
+      speaker.setRate(2);
+      await tick();
+
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('plays a pending sentence at the rate set while it was being synthesized', async () => {
+      let finishSynthesis: (reply: SynthesizeReply) => void = () => {};
+      vi.mocked(channel.channel.sendCommand).mockImplementation((command) => {
+        channel.commands.push(command);
+        return command.type === 'synthesize'
+          ? new Promise((resolve) => {
+              finishSynthesis = resolve;
+            })
+          : Promise.resolve(undefined);
+      });
+
+      speaker.speak({ text: 'hello', voice: 'v1', rate: 1, lang: 'en' });
+      speaker.setRate(2);
+      finishSynthesis({ durationMs: 1000, hasTimings: false });
+      await tick();
+
+      // The rate travels ahead of playback, so the last one before `play` must
+      // be the newest — not the one captured when synthesis started.
+      const playIndex = channel.commands.findIndex((command) => command.type === 'play');
+      expect(playIndex).toBeGreaterThan(0);
+      const beforePlay = channel.commands.slice(0, playIndex);
+      const rate = beforePlay.filter((command) => command.type === 'setRate').at(-1);
+      expect(rate).toEqual({ type: 'setRate', rate: 2 });
+    });
+  });
+
   describe('setVolume', () => {
     it('changes the volume of the sentence that is playing, without creating a document', async () => {
       speaker.speak({ text: 'hello', voice: 'v1', rate: 1, lang: 'en' });

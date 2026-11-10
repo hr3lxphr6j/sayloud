@@ -154,6 +154,19 @@ export class SpeakerRouter implements Speaker {
   }
 
   /**
+   * Change the speed of the sentence the active speaker is playing.
+   *
+   * The method always exists, but whether it can act is the active speaker's
+   * answer: the browser voice has no live rate and returns false, which tells
+   * the engine to re-speak the sentence instead. Nothing is forwarded to an
+   * inactive delegate — unlike the volume, the rate is not a property that has
+   * to survive a switch, because every `speak` request carries it.
+   */
+  setRate(rate: number): boolean {
+    return this.active.setRate?.(rate) === true;
+  }
+
+  /**
    * Warm the cache on whichever speaker is active.
    *
    * A no-op when that speaker has no prefetch — the browser voice — which is

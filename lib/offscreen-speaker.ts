@@ -64,6 +64,15 @@ export class OffscreenSpeaker implements Speaker {
    * Updated by 'paused' events sent when the audio is paused.
    */
   private lastPausedTimeMs = 0;
+  /**
+   * The rate the next `play` should use.
+   *
+   * Kept here rather than only in the request that started the utterance: a
+   * change that arrives while the sentence is still being synthesized has to
+   * win over the rate captured when `speak` was called, or the sentence would
+   * start at the old speed while the UI shows the new one.
+   */
+  private rate = 1;
 
   constructor(deps: OffscreenSpeakerDeps) {
     this.manager = deps.manager;
@@ -76,7 +85,30 @@ export class OffscreenSpeaker implements Speaker {
     const generation = ++this.generation;
     const id = `sayloud-${++this.sequence}`;
     this.activeId = id;
-    void this.run(generation, id, text, voice, rate, lang, volume, resumeTimeMs);
+    this.rate = rate;
+    void this.run(generation, id, text, voice, lang, volume, resumeTimeMs);
+  }
+
+  /**
+   * Change the speed of the sentence that is playing.
+   *
+   * The stored rate is what the pending (or next) utterance is played at, so a
+   * change during synthesis is not lost to the snapshot `speak` took. `create:
+   * false` for the same reason `setVolume` uses it: a rate change is only
+   * meaningful while audio is playing, and it must never be what brings the
+   * offscreen document into existence.
+   *
+   * Always reports `true`: the engine only asks while a sentence is running,
+   * and the offscreen player applies the rate to whatever is loaded.
+   */
+  setRate(rate: number): boolean {
+    this.rate = rate;
+    void this.manager
+      .sendCommand({ type: 'setRate', rate }, { create: false })
+      .catch((error: unknown) => {
+        console.warn('[SayLoud] could not change the cloud voice rate', error);
+      });
+    return true;
   }
 
   /**
@@ -176,7 +208,6 @@ export class OffscreenSpeaker implements Speaker {
     id: string,
     text: string,
     voice: string | undefined,
-    rate: number,
     lang: string,
     volume: number | undefined,
     resumeTimeMs: number | undefined
@@ -199,8 +230,10 @@ export class OffscreenSpeaker implements Speaker {
       if (!reply) return;
 
       // The rate is set before playback starts, so the word timeline is
-      // scheduled at the right speed from the first word.
-      await this.manager.sendCommand({ type: 'setRate', rate });
+      // scheduled at the right speed from the first word. Read at this point
+      // rather than passed in: a change that arrived while synthesis was in
+      // flight is the one the reader asked for.
+      await this.manager.sendCommand({ type: 'setRate', rate: this.rate });
       if (this.stale(generation)) return;
 
       // Same for the volume: the first word is already at the right loudness.

@@ -57,8 +57,6 @@ export interface ReaderState {
    * caption window reads the same way the page highlight does: no estimate.
    */
   word: WordPosition | null;
-  /** Whether the settings ask the bar to offer the caption window. */
-  captionEnabled: boolean;
   /** Whether the caption window is open. */
   captionOpen: boolean;
 }
@@ -86,10 +84,9 @@ export interface ReaderControllerOptions {
    */
   initialRate?: number;
   /**
-   * The saved preferences, for the caption window's switch and language.
+   * The saved preferences, for the caption window's language.
    *
-   * Subscribed to rather than read once: turning the switch off must close a
-   * window that is already open, and the caption window's text follows the
+   * Subscribed to rather than read once: the caption window's text follows the
    * interface language.
    */
   settings?: SettingsStore;
@@ -146,7 +143,6 @@ export class ReaderController {
       errorDetail: null,
       scrolledAway: false,
       word: null,
-      captionEnabled: false,
       captionOpen: false,
     };
 
@@ -503,18 +499,12 @@ export class ReaderController {
     this.setState({ ...this.state, captionOpen: open });
   }
 
-  /** Take a settings change: the switch, and the language the window reads in. */
+  /** Take a settings change: the language the window reads in. */
   private applySettings(settings: Settings): void {
     this.t = createTranslator(resolveLang(settings.uiLang, navigator.language));
 
-    if (settings.captionWindow !== this.state.captionEnabled) {
-      this.setState({ ...this.state, captionEnabled: settings.captionWindow });
-    }
-
-    // Turning the switch off closes a window that is already open, which the
-    // reader expects to happen the moment the switch moves.
-    if (settings.captionWindow) this.syncCaption();
-    else this.caption.close();
+    // Redraw an open window so its own line follows the interface language.
+    this.syncCaption();
   }
 
   /**

@@ -9,15 +9,6 @@
  */
 import type { BrowserContext, Page } from '@playwright/test';
 import { control, expect, test } from './fixtures';
-import { saveSettings } from './helpers';
-
-/** Turn the bar's caption button on, the way the settings panel does. */
-async function enableCaptionWindow(context: BrowserContext, extensionId: string): Promise<void> {
-  const settingsPage = await context.newPage();
-  await settingsPage.goto(`chrome-extension://${extensionId}/options.html`);
-  await saveSettings(settingsPage, { captionWindow: true });
-  await settingsPage.close();
-}
 
 /** The window the click opened, once Chromium has made it. */
 async function captionWindow(context: BrowserContext, before: Page[]): Promise<Page> {
@@ -40,11 +31,9 @@ async function captionText(page: Page): Promise<string> {
 
 test('opens the caption window from the bar and closes it again', async ({
   context,
-  extensionId,
   page,
   activate,
 }) => {
-  await enableCaptionWindow(context, extensionId);
   await page.goto('/article.html');
   await activate();
   await expect(control(page, 'Pause')).toBeVisible();
@@ -65,36 +54,10 @@ test('opens the caption window from the bar and closes it again', async ({
   await expect.poll(() => context.pages().length).toBe(before.length);
 });
 
-test('shows no caption button while the setting is off', async ({ page, activate }) => {
+test('offers the caption button without any setting', async ({ page, activate }) => {
   await page.goto('/article.html');
   await activate();
   await expect(control(page, 'Pause')).toBeVisible();
 
-  await expect(control(page, 'Caption window')).toHaveCount(0);
-});
-
-test('closes an open caption window when the setting is turned off', async ({
-  context,
-  extensionId,
-  page,
-  activate,
-}) => {
-  await enableCaptionWindow(context, extensionId);
-  await page.goto('/article.html');
-  await activate();
-  await expect(control(page, 'Pause')).toBeVisible();
-
-  const before = context.pages();
-  await control(page, 'Caption window').click();
-  await captionWindow(context, before);
-
-  const settingsPage = await context.newPage();
-  await settingsPage.goto(`chrome-extension://${extensionId}/options.html`);
-  await saveSettings(settingsPage, { captionWindow: false });
-  await settingsPage.close();
-
-  // The content script hears the change through `storage.onChanged`, so this
-  // is also the check that it is subscribed at all.
-  await expect.poll(() => context.pages().length).toBe(before.length);
-  await expect(control(page, 'Caption window')).toHaveCount(0);
+  await expect(control(page, 'Caption window')).toHaveCount(1);
 });

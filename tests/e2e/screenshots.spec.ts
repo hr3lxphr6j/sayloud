@@ -26,7 +26,7 @@ import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { BrowserContext, Page } from '@playwright/test';
 import { control, expect, test } from './fixtures';
-import { saveSettings, sentenceHighlight } from './helpers';
+import { sentenceHighlight } from './helpers';
 
 const OUT = resolve(process.cwd(), 'assets');
 const STORE = resolve(process.cwd(), 'store-assets');
@@ -288,11 +288,8 @@ test.describe('README and Chrome Web Store images', () => {
   test('writes them', async ({ context, extensionId, page, activate }) => {
     await mkdir(OUT, { recursive: true });
 
-    // The bar's caption button only appears once the reader has been told to
-    // offer it, which is a setting.
     const options = await context.newPage();
     await options.goto(`chrome-extension://${extensionId}/options.html`);
-    await saveSettings(options, { captionWindow: true });
     // The Reading tab shows "No provider is configured" until a config exists,
     // even though the browser voice is the default. Pick it explicitly so the
     // store screenshot shows the panel as a configured user sees it.

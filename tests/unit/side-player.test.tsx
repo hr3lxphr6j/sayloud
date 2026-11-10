@@ -38,7 +38,6 @@ function stateOf(overrides: Partial<ReaderState> = {}): ReaderState {
     errorDetail: null,
     scrolledAway: false,
     word: null,
-    captionEnabled: false,
     captionOpen: false,
     ...overrides,
   };
@@ -280,22 +279,15 @@ describe('SidePlayer', () => {
       Reflect.deleteProperty(window, 'documentPictureInPicture');
     });
 
-    it('is absent while the settings leave the caption window off', () => {
-      installPictureInPicture();
-      renderPlayer(stateOf({ captionEnabled: false }));
-
-      expect(screen.queryByRole('button', { name: 'Caption window' })).toBeNull();
-    });
-
     it('is absent in a browser that cannot open the window at all', () => {
-      renderPlayer(stateOf({ captionEnabled: true }));
+      renderPlayer(stateOf());
 
       expect(screen.queryByRole('button', { name: 'Caption window' })).toBeNull();
     });
 
     it('sits between the speed control and the settings gear', () => {
       installPictureInPicture();
-      renderPlayer(stateOf({ captionEnabled: true }));
+      renderPlayer(stateOf());
 
       const labels = screen
         .getAllByRole('button')
@@ -306,7 +298,7 @@ describe('SidePlayer', () => {
 
     it('toggles the window and shows whether it is open', () => {
       installPictureInPicture();
-      const { push, toggleCaption } = renderPlayer(stateOf({ captionEnabled: true }));
+      const { push, toggleCaption } = renderPlayer(stateOf());
 
       const button = screen.getByRole('button', { name: 'Caption window' });
       expect(button.getAttribute('aria-pressed')).toBe('false');
@@ -314,7 +306,7 @@ describe('SidePlayer', () => {
       fireEvent.click(button);
       expect(toggleCaption).toHaveBeenCalledTimes(1);
 
-      push(stateOf({ captionEnabled: true, captionOpen: true }));
+      push(stateOf({ captionOpen: true }));
       expect(
         screen.getByRole('button', { name: 'Caption window' }).getAttribute('aria-pressed')
       ).toBe('true');

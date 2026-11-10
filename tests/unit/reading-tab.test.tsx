@@ -248,20 +248,6 @@ describe('the rate slider', () => {
   });
 });
 
-describe('the caption switch', () => {
-  it('starts off and saves what it is set to', async () => {
-    const { store } = await renderTab({ config: DASHSCOPE });
-
-    const control = screen.getByRole('switch', { name: 'Caption window' });
-    expect(control.getAttribute('aria-checked')).toBe('false');
-
-    fireEvent.click(control);
-
-    expect(control.getAttribute('aria-checked')).toBe('true');
-    await waitFor(async () => expect((await store.load()).captionWindow).toBe(true));
-  });
-});
-
 /**
  * The on-device provider's two notices.
  *

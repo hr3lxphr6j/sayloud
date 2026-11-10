@@ -122,14 +122,11 @@ describe('SettingsStore.load', () => {
   });
 
   it('defaults a boolean that is not a real boolean', async () => {
-    const { area } = fakeArea({
-      [SETTINGS_KEY]: { keepPlayingInBackground: 'true', captionWindow: 1 },
-    });
+    const { area } = fakeArea({ [SETTINGS_KEY]: { keepPlayingInBackground: 'true' } });
 
     const settings = await new SettingsStore(area).load();
 
     expect(settings.keepPlayingInBackground).toBe(true);
-    expect(settings.captionWindow).toBe(false);
   });
 
   it('fills in a missing or malformed cache object', async () => {
@@ -147,12 +144,12 @@ describe('SettingsStore.load', () => {
 
 describe('SettingsStore.update', () => {
   it('merges a patch into what is stored', async () => {
-    const { area, data } = fakeArea({ [SETTINGS_KEY]: { rate: 1.5, captionWindow: true } });
+    const { area, data } = fakeArea({ [SETTINGS_KEY]: { rate: 1.5 } });
     const store = new SettingsStore(area);
 
     const settings = await store.update({ volume: 0.5 });
 
-    expect(settings).toEqual({ ...DEFAULT_SETTINGS, rate: 1.5, captionWindow: true, volume: 0.5 });
+    expect(settings).toEqual({ ...DEFAULT_SETTINGS, rate: 1.5, volume: 0.5 });
     expect(data.get(SETTINGS_KEY)).toEqual(settings);
   });
 

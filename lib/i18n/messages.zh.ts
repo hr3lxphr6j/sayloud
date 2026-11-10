@@ -221,6 +221,7 @@ export const zh: Record<MessageKey, string> = {
   'sideplayer.rate': '播放速度 {rate}',
   'sideplayer.caption': '悬浮窗字幕',
   'sideplayer.settings': '设置',
+  'sideplayer.close': '关闭 SayLoud',
   'sideplayer.progress': '朗读进度 {percent}%',
   'sideplayer.progress-remaining': '朗读进度 {percent}%，{remaining}',
   'sideplayer.hint.no-content.title': '没有可读内容',

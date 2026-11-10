@@ -17,14 +17,22 @@ export interface ReaderPanelProps {
   /** The shadow host the player is mounted in, which carries the language. */
   host: HTMLElement;
   onOpenSettings: () => void;
+  /** Stop reading and remove the player from the page. */
+  onClose: () => void;
 }
 
-export function ReaderPanel({ controller, settings, host, onOpenSettings }: ReaderPanelProps) {
+export function ReaderPanel({
+  controller,
+  settings,
+  host,
+  onOpenSettings,
+  onClose,
+}: ReaderPanelProps) {
   const { lang } = useUiLanguage(settings);
 
   return (
     <I18nProvider lang={lang} langElement={host}>
-      <SidePlayer controller={controller} onOpenSettings={onOpenSettings} />
+      <SidePlayer controller={controller} onOpenSettings={onOpenSettings} onClose={onClose} />
     </I18nProvider>
   );
 }

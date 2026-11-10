@@ -35,6 +35,13 @@ export interface SidePlayerProps {
    * sending — see `lib/open-settings.ts`.
    */
   onOpenSettings: () => void;
+  /**
+   * Stop reading and take the bar off the page.
+   *
+   * The reader owns the mount, so the button only reports the intent; tearing
+   * down the shadow UI (and the engine session with it) is the reader's job.
+   */
+  onClose: () => void;
 }
 
 /** Speeds the reader can step through, slow to fast. */
@@ -78,7 +85,7 @@ export const HINTS: Record<ReaderError, { titleKey: MessageKey; messageKey: Mess
  * spec fixes the controls to remaining time, play/pause, previous, next and
  * speed, with the voice picker and settings deferred to P3.
  */
-export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
+export function SidePlayer({ controller, onOpenSettings, onClose }: SidePlayerProps) {
   const t = useT();
   const [state, setState] = useState<ReaderState>(() => controller.getState());
   const [dismissed, setDismissed] = useState<ReaderError | null>(null);
@@ -223,6 +230,18 @@ export function SidePlayer({ controller, onOpenSettings }: SidePlayerProps) {
         <GearIcon />
       </button>
 
+      {/* Everything above is about the reading; this is the way out of it. */}
+      <div class="divider" aria-hidden="true" />
+
+      <button
+        type="button"
+        class="control close"
+        aria-label={t('sideplayer.close')}
+        onClick={onClose}
+      >
+        <CloseIcon />
+      </button>
+
       {hint && (
         <BubbleCard
           title={t(hint.titleKey)}
@@ -303,6 +322,20 @@ function CaptionIcon() {
       />
       <rect x="4" y="8.5" width="5" height="1.5" rx="0.75" fill="currentColor" />
       <rect x="10" y="8.5" width="2" height="1.5" rx="0.75" fill="currentColor" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width={ICON_SIZE} height={ICON_SIZE} aria-hidden="true">
+      <path
+        d="m4.5 4.5 7 7m0-7-7 7"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+      />
     </svg>
   );
 }

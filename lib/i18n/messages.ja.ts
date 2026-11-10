@@ -296,6 +296,7 @@ export const ja: Record<MessageKey, string> = {
   'sideplayer.rate': '再生速度{rate}',
   'sideplayer.caption': '字幕ウィンドウ',
   'sideplayer.settings': '設定',
+  'sideplayer.close': 'SayLoudを閉じる',
   'sideplayer.progress': '読み上げ進行度{percent}%',
   'sideplayer.progress-remaining': '読み上げ進行度{percent}%、{remaining}',
   'sideplayer.hint.no-content.title': '読み上げ可能なコンテンツなし',

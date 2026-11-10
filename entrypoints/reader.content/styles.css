@@ -61,6 +61,19 @@
   background: rgba(255, 255, 255, 0.16);
 }
 
+/* Playback controls above the line, the way out below it. */
+.side-player .divider {
+  width: 16px;
+  height: 1px;
+  margin: 2px 0;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.side-player .close:not(:disabled):hover {
+  background: rgba(255, 107, 107, 0.22);
+  color: #ff6b6b;
+}
+
 .side-player .rate {
   width: auto;
   min-width: 22px;

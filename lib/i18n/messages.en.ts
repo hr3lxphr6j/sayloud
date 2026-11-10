@@ -288,6 +288,7 @@ export const en = {
   'sideplayer.rate': 'Playback speed {rate}',
   'sideplayer.caption': 'Caption window',
   'sideplayer.settings': 'Settings',
+  'sideplayer.close': 'Close SayLoud',
   'sideplayer.progress': 'Reading progress {percent} percent',
   'sideplayer.progress-remaining': 'Reading progress {percent} percent, {remaining}',
   'sideplayer.hint.no-content.title': 'Nothing to read',

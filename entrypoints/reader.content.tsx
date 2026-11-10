@@ -54,6 +54,9 @@ export default defineContentScript({
               // click's transient activation, which an `await` here would spend.
               void browser.runtime.sendMessage({ type: OPEN_SETTINGS });
             }}
+            // `remove()` runs `onRemove`, which disposes the controller: stop
+            // playback, close the caption window, drop the port and listeners.
+            onClose={() => ui.remove()}
           />,
           container
         );

@@ -83,10 +83,11 @@ function fakeController(initial: ReaderState) {
 function renderPlayer(state: ReaderState = stateOf()) {
   const fake = fakeController(state);
   const onOpenSettings = vi.fn();
+  const onClose = vi.fn();
   const result = render(
-    <SidePlayer controller={fake.controller} onOpenSettings={onOpenSettings} />
+    <SidePlayer controller={fake.controller} onOpenSettings={onOpenSettings} onClose={onClose} />
   );
-  return { ...fake, ...result, onOpenSettings };
+  return { ...fake, ...result, onOpenSettings, onClose };
 }
 
 /**
@@ -183,6 +184,7 @@ describe('ReaderPanel', () => {
         settings={settings}
         host={host}
         onOpenSettings={() => {}}
+        onClose={() => {}}
       />
     );
 
@@ -209,6 +211,7 @@ describe('ReaderPanel', () => {
         settings={settings}
         host={host}
         onOpenSettings={() => {}}
+        onClose={() => {}}
       />
     );
     expect(screen.getByRole('button', { name: 'Pause' })).toBeDefined();
@@ -412,6 +415,14 @@ describe('SidePlayer', () => {
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('closes SayLoud when the close button is clicked', () => {
+    const { onClose } = renderPlayer();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close SayLoud' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('offers the gear even when the document has nothing to read', () => {
     // Settings are how a user fixes a broken provider, so the gear must not be
     // gated on there being sentences to play.
@@ -424,7 +435,7 @@ describe('SidePlayer', () => {
     const fake = fakeController(stateOf({ status: null, error: 'no-content' }));
     render(
       <I18nProvider lang="zh-CN">
-        <SidePlayer controller={fake.controller} onOpenSettings={() => {}} />
+        <SidePlayer controller={fake.controller} onOpenSettings={() => {}} onClose={() => {}} />
       </I18nProvider>
     );
 

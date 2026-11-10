@@ -209,7 +209,7 @@ export function SidePlayer({ controller, onOpenSettings, onClose }: SidePlayerPr
         {formatRate(status?.rate ?? 1)}
       </button>
 
-      {state.captionEnabled && CaptionWindow.isSupported() && (
+      {CaptionWindow.isSupported() && (
         <button
           type="button"
           class="control"

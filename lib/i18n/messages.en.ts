@@ -63,9 +63,6 @@ export const en = {
   // node and can be pushed past 100%.
   'settings.volume.browser-cap': 'The browser voice tops out at 100%.',
   'settings.rate.label': 'Speed',
-  'settings.caption.label': 'Caption window',
-  'settings.caption.help': 'Turn it on here, then open it from the bar on the page.',
-  'settings.caption.unsupported': 'This browser cannot show a caption window.',
   'settings.language.label': 'Interface language',
   'settings.language.auto': 'Follow the browser',
   'settings.language.en': 'English',

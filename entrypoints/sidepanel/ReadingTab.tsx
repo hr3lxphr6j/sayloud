@@ -11,7 +11,6 @@
  * settings once, when the handle is released.
  */
 import { useEffect, useState } from 'preact/hooks';
-import { supportsPictureInPicture } from '~/lib/document-pip';
 import { formatRate } from '~/lib/format-rate';
 import { type MessageKey, useT } from '~/lib/i18n';
 import type { SessionSnapshot } from '~/lib/protocol';
@@ -28,9 +27,7 @@ import {
 } from '~/lib/settings-store';
 import { Card } from './ui/Card';
 import { SpeakerGlyph } from './ui/icons';
-import { Row } from './ui/Row';
 import { Slider } from './ui/Slider';
-import { Switch } from './ui/Switch';
 import { type ModelAdmin, useDevice, useLocalReadiness } from './use-models';
 import { useSettings } from './use-settings';
 
@@ -232,24 +229,6 @@ export function ReadingTab({
               setDraft((current) => ({ ...current, rate: undefined }));
             }}
           />
-
-          <Row
-            label={t('settings.caption.label')}
-            // The window is opened from the page's bar, never from here: Chrome
-            // refuses `requestWindow()` in a side panel. So the help says where
-            // the button is — and when the browser has no such API at all, it
-            // says that instead of pointing at a button that will not appear.
-            help={t(
-              supportsPictureInPicture() ? 'settings.caption.help' : 'settings.caption.unsupported'
-            )}
-          >
-            <Switch
-              id="caption-switch"
-              label={t('settings.caption.label')}
-              checked={saved.captionWindow}
-              onChange={(checked) => update({ captionWindow: checked })}
-            />
-          </Row>
         </div>
       </Card>
 

@@ -67,9 +67,6 @@ export const ja: Record<MessageKey, string> = {
   // node and can be pushed past 100%.
   'settings.volume.browser-cap': 'ブラウザの音声は100%が上限です。',
   'settings.rate.label': '速度',
-  'settings.caption.label': '字幕ウィンドウ',
-  'settings.caption.help': 'ここでオンにしてから、ページのバーから開きます。',
-  'settings.caption.unsupported': 'このブラウザでは字幕ウィンドウを表示できません。',
   'settings.language.label': '表示言語',
   'settings.language.auto': 'ブラウザに従う',
   'settings.language.en': 'English',

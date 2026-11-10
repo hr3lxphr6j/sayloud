@@ -256,7 +256,7 @@ test('production settings and model controls work without horizontal overflow', 
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
-  await expect(page.getByRole('switch', { name: 'Caption window' })).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Auto-scroll' })).toBeVisible();
   await page.locator('#volume-slider').fill('1.5');
   await expect(page.getByText('150%')).toBeVisible();
   await expect.poll(() => stored(serviceWorker, 'sayloud:settings')).toMatchObject({ volume: 1.5 });

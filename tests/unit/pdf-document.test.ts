@@ -108,6 +108,7 @@ describe('openPdf', () => {
     await expect(openPdf(fixture('encrypted.pdf'), assets, askPassword)).rejects.toBe('cancelled');
 
     expect(askPassword).toHaveBeenCalledTimes(1);
+    expect(calls).toHaveLength(1);
   });
 
   it('re-prompts after a wrong password and opens on the correct one', async () => {
@@ -120,6 +121,8 @@ describe('openPdf', () => {
     const page = await doc.getPageText(1);
 
     expect(askPassword).toHaveBeenCalledTimes(2);
+    // A wrong password must retry inside the one task instead of re-parsing.
+    expect(calls).toHaveLength(1);
     expect(doc.pageCount).toBe(1);
     expect(page.items.map((item) => item.str).join(' ')).toContain('Hello');
 
@@ -132,6 +135,7 @@ describe('openPdf', () => {
     await expect(openPdf(fixture('encrypted.pdf'), assets, askPassword)).rejects.toBe('password');
 
     expect(askPassword).toHaveBeenCalledTimes(3);
+    expect(calls).toHaveLength(1);
   });
 
   it('disables eval and passes the bundled asset locations to pdf.js', async () => {

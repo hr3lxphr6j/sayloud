@@ -193,7 +193,7 @@ describe('PhonemizeService', () => {
 
     // The same string `ja_pipeline.rs` pins on the Rust side: what this proves
     // is that it survives the worker's seam.
-    expect(service.phonemize('経営', 'kokoro-v1', 'ja-JP').phonemes).toBe('keiei');
+    expect(service.phonemize('経営', 'kokoro-v1', 'ja-JP').phonemes).toBe('keːeː');
 
     // And the numeral step the grammars are fetched for: `1/2` is 二分の一, which
     // the deleted hand-written reader read as the two cardinals いちに.

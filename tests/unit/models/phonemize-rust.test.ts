@@ -481,7 +481,7 @@ describe('RustPhonemizer.phonemize', () => {
     const phonemizer = await prepared();
 
     expect(phonemizer.phonemize('経営', { vocab: 'kokoro-v1', lang: 'ja-JP' })).toEqual({
-      phonemes: 'keiei',
+      phonemes: 'keːeː',
     });
   });
 

@@ -293,7 +293,7 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     // The dictionary was asked for by the *phonemize* worker, not by the model:
     // `prepare` is what makes the language usable, and nothing else loads it.
     expect(phonemizer.posted[1]).toMatchObject({ type: 'prepare', lang: 'ja-JP' });
-    expect(kokoro.pieces).toEqual([{ ipa: 'keiei' }]);
+    expect(kokoro.pieces).toEqual([{ ipa: 'keːeː' }]);
   });
 
   it.skipIf(REAL_JIEBA === null)('hands the model Chinese phonemes', async () => {

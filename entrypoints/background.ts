@@ -7,6 +7,7 @@ import { modelSourceMessage } from '~/lib/models/source-channel';
 import { ModelStore } from '~/lib/models/store';
 import { isCachePolicyRequest, isModelSourceRequest } from '~/lib/offscreen-protocol';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
+import { syncPdfIntercept } from '~/lib/pdf/dnr';
 import { isPdfTab, stagePdfBytes, takePdfBytes } from '~/lib/pdf/tab';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
@@ -55,10 +56,30 @@ export default defineBackground(() => {
   // read there could let a pause land after a newer session had started.
   // Until the first read lands, the defaults are what a tab switch sees.
   let settings: Settings = DEFAULT_SETTINGS;
+
+  /**
+   * The installed state of the PDF interception rule.
+   *
+   * `null` means "not known yet": the first settings read always writes the
+   * rule state, which is what clears a dynamic rule left behind by an earlier
+   * run. After that, only a real change talks to the browser — `applySettings`
+   * runs for every volume nudge as well, and `updateDynamicRules` is a browser
+   * call rather than a local write.
+   */
+  let interceptPdf: boolean | null = null;
+  const applyIntercept = (enabled: boolean): void => {
+    if (interceptPdf === enabled) return;
+    interceptPdf = enabled;
+    void syncPdfIntercept(enabled).catch((error: unknown) => {
+      console.error('[SayLoud] cannot update the pdf interception rule', error);
+    });
+  };
+
   const applySettings = (next: Settings): void => {
     const previous = settings;
     settings = next;
     applyPlaybackSettings(app.engine, previous, next);
+    applyIntercept(next.interceptPdf);
     // An offscreen document cannot read `storage`, so a cache change has to be
     // pushed to it. The same subscription carries every other preference, and
     // those are no reason to disturb a document that is playing audio.
@@ -72,6 +93,9 @@ export default defineBackground(() => {
     .then(applySettings)
     .catch((error: unknown) => {
       console.error('[SayLoud] cannot apply the saved settings', error);
+      // An unreadable preference is not a reason to keep intercepting: drop
+      // the rule rather than leaving one that no setting accounts for.
+      applyIntercept(false);
     });
 
   // The engine resolves a voice synchronously per sentence, so the cache has to

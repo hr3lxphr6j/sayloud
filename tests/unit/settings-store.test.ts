@@ -137,6 +137,18 @@ describe('SettingsStore.load', () => {
     expect((await store.load()).autoScroll).toBe(false);
   });
 
+  it('defaults an invalid pdf interception choice to off', async () => {
+    const { area } = fakeArea({ [SETTINGS_KEY]: { interceptPdf: 'yes' } });
+    const store = new SettingsStore(area);
+
+    // Off is the safe default: a malformed value must never install a redirect
+    // rule behind the user's back.
+    expect((await store.load()).interceptPdf).toBe(false);
+
+    await area.set({ [SETTINGS_KEY]: { interceptPdf: true } });
+    expect((await store.load()).interceptPdf).toBe(true);
+  });
+
   it('fills in a missing or malformed cache object', async () => {
     const { area } = fakeArea({ [SETTINGS_KEY]: { cache: 'nope' } });
     const store = new SettingsStore(area);

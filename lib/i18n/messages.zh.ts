@@ -69,6 +69,13 @@ export const zh: Record<MessageKey, string> = {
   'settings.cache.cancel': '取消',
   'settings.cache.cleared': '缓存已清除。',
 
+  // --- the pdf card ---------------------------------------------------------
+  'settings.pdf.title': 'PDF',
+  'settings.interceptPdf': '在 SayLoud 中打开 PDF',
+  'settings.interceptPdf.desc':
+    '自动在 SayLoud 查看器中打开 PDF，替代 Chrome 内置的 PDF 查看器。需要访问你浏览的网站。',
+  'settings.interceptPdf.denied': '需要网站访问权限，才能自动打开 PDF。',
+
   // --- the about line -------------------------------------------------------
   'settings.about.line': 'SayLoud {version} · MIT · 音频仅发送至你配置的服务商。',
   'settings.about.plain': 'SayLoud · MIT · 音频仅发送至你配置的服务商。',

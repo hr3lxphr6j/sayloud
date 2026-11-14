@@ -32,6 +32,13 @@ export interface Settings {
   keepPlayingInBackground: boolean;
   /** Whether the page follows the sentence being read. */
   autoScroll: boolean;
+  /**
+   * Whether a PDF navigation is redirected to the SayLoud viewer.
+   *
+   * Off by default: the built-in viewer is what Chrome users expect, and the
+   * rule needs host access the extension otherwise never asks for.
+   */
+  interceptPdf: boolean;
   /** 0–1.5. 1 is the original loudness. */
   volume: number;
   /** The default rate for a new session, 0.5–3. */
@@ -53,6 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
   uiLang: 'auto',
   keepPlayingInBackground: true,
   autoScroll: true,
+  interceptPdf: false,
   volume: 1,
   rate: 1,
   cache: { persist: true, maxBytes: 200 * 1024 * 1024 },
@@ -132,6 +140,7 @@ export function normalizeSettings(value: unknown): Settings {
       DEFAULT_SETTINGS.keepPlayingInBackground
     ),
     autoScroll: booleanOr(raw.autoScroll, DEFAULT_SETTINGS.autoScroll),
+    interceptPdf: booleanOr(raw.interceptPdf, DEFAULT_SETTINGS.interceptPdf),
     volume: clampOr(raw.volume, MIN_VOLUME, MAX_VOLUME, DEFAULT_SETTINGS.volume),
     rate: clampOr(raw.rate, MIN_RATE, MAX_RATE, DEFAULT_SETTINGS.rate),
     cache: {

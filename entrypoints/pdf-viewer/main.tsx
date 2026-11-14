@@ -5,7 +5,9 @@
  * reading bar that talks to the engine, and this page only has to hand it a
  * document. Rendering is EmbedPDF/PDFium (`viewer.tsx`), and this file is the
  * shell around it: the toolbar, the file picker, the password prompt, and the
- * reader that reads the page's text aloud.
+ * reader that reads the page's text aloud. The document comes from one of three
+ * places: a file the reader picked, an id the toolbar click staged in the
+ * worker, or a `#url=…` fragment written by the DNR redirect (lib/pdf/dnr.ts).
  *
  * Reading a whole PDF up front would make the first sentence wait for the last
  * page, so each page's text is handed over as soon as PDFium has extracted it,
@@ -25,6 +27,7 @@ import { ReaderController } from '~/entrypoints/reader.content/ReaderController'
 import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import type { Block } from '~/lib/extractor';
 import { I18nProvider, type Lang, resolveLang, useT, useUiLanguage } from '~/lib/i18n';
+import { isInterceptHash, parseInterceptedUrl } from '~/lib/pdf/dnr';
 import type { EmbedBlock } from '~/lib/pdf/embed/blocks';
 import {
   closePdfDocuments,
@@ -48,6 +51,9 @@ import { PdfViewer, type SidebarLabels, type ViewerApi, type ViewerSearchState }
 const MISSING_TIMEOUT_MS = 2_000;
 /** Debounce between a keystroke in the search bar and the PDFium scan. */
 const SEARCH_DEBOUNCE_MS = 180;
+
+/** How long a redirected document gets to arrive before it is called missing. */
+const INTERCEPT_TIMEOUT_MS = 30_000;
 
 /** The page's root elements, all of which the HTML provides. */
 const chromeEl = element('pdf-chrome');
@@ -584,7 +590,10 @@ function PasswordCard({ wrong, onAnswer }: PasswordCardProps) {
   );
 }
 
-/** The viewer's entry point: a hash id, or a file the reader picks. */
+/**
+ * The viewer's entry point: a redirected URL, a staged hash id, or a file the
+ * reader picks.
+ */
 function start(): void {
   document.addEventListener('keydown', handleKeydown);
   // The chrome is drawn before the settings answer so the picker is not
@@ -597,6 +606,22 @@ function start(): void {
     });
   settings.subscribe((loaded) => applyUiLang(loaded.uiLang));
   drawChrome();
+
+  // A declarativeNetRequest redirect names the document in the fragment. It
+  // takes precedence over the staged-id form because it is the whole reason
+  // this page was navigated to.
+  const intercepted = parseInterceptedUrl(location.hash);
+  if (intercepted !== null) {
+    show('opening');
+    void openIntercepted(intercepted);
+    return;
+  }
+  // A `#url=` that did not parse is a redirect we cannot follow, not a
+  // staged document with an unusual id.
+  if (isInterceptHash(location.hash)) {
+    show('missing');
+    return;
+  }
 
   const id = location.hash.replace(/^#/, '');
   if (!id) return; // the picker is already on screen
@@ -615,6 +640,46 @@ function start(): void {
     }
     await openBytes(bytes, 'document.pdf');
   })();
+}
+
+/**
+ * Fetch the document a redirect named in the fragment.
+ *
+ * The page does the fetching rather than the worker: the navigation replaced
+ * the PDF's own tab, so there is no document left to ask for its bytes. Host
+ * access is granted with the settings toggle that installed the redirect rule,
+ * which is also what lets this cross-origin request read the response;
+ * `credentials: 'include'` keeps a PDF behind a session cookie readable where
+ * the browser is willing to send that cookie.
+ */
+async function openIntercepted(url: string): Promise<void> {
+  let bytes: ArrayBuffer | null = null;
+  try {
+    const response = await fetch(url, {
+      credentials: 'include',
+      signal: AbortSignal.timeout(INTERCEPT_TIMEOUT_MS),
+    });
+    if (response.ok) bytes = await response.arrayBuffer();
+  } catch (error) {
+    console.error('[SayLoud] cannot fetch the redirected pdf', error);
+  }
+
+  if (!bytes) {
+    show('missing');
+    return;
+  }
+  await openBytes(bytes, documentNameFromUrl(url));
+}
+
+/** A readable name from the URL's last path segment. */
+function documentNameFromUrl(url: string): string {
+  try {
+    const name = new URL(url).pathname.split('/').pop();
+    if (name) return decodeURIComponent(name);
+  } catch {
+    // The fetch already succeeded, so this is only a label; fall through.
+  }
+  return 'document.pdf';
 }
 
 /**

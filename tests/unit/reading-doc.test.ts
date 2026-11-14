@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { Block } from '~/lib/extractor';
 import { extractBlocks } from '~/lib/extractor';
 import { buildReadingDoc, detectDocumentLang } from '~/lib/reading-doc';
+
+/** A PDF-style block: the viewer joins the page's text runs with `\n`. */
+function pdfBlock(text: string): Block {
+  return { text, rangeFor: () => null, offsetAt: () => null };
+}
 
 function firstTextNode(selector: string): { node: Text; element: Element } {
   const element = document.querySelector(selector);
@@ -104,5 +110,30 @@ describe('reading-doc', () => {
     document.body.innerHTML = '<p>   </p><p>Real text.</p>';
     const doc = buildReadingDoc(extractBlocks());
     expect(doc.sentences.map((s) => s.text)).toEqual(['Real text.']);
+  });
+
+  describe('pdf line wraps', () => {
+    it('does not split a sentence at a soft wrap', () => {
+      const doc = buildReadingDoc([pdfBlock('第一行\n第二行。')], 'zh');
+
+      expect(doc.sentences.map((s) => s.text)).toEqual(['第一行\n第二行。']);
+      expect(doc.sentences[0]?.start).toBe(0);
+      expect(doc.sentences[0]?.end).toBe('第一行\n第二行。'.length);
+    });
+
+    it('still splits at a paragraph break', () => {
+      const doc = buildReadingDoc([pdfBlock('第一段。\n\n第二段。')], 'zh');
+
+      expect(doc.sentences.map((s) => s.text)).toEqual(['第一段。', '第二段。']);
+      expect(doc.sentences[1]?.start).toBe('第一段。\n\n'.length);
+    });
+
+    it('keeps sentence-relative word offsets usable across a wrap', () => {
+      const doc = buildReadingDoc([pdfBlock('Hello\nworld.')], 'en');
+      const sentence = doc.sentences[0];
+
+      expect(sentence?.text).toBe('Hello\nworld.');
+      expect(sentence?.text.slice(6, 11)).toBe('world');
+    });
   });
 });

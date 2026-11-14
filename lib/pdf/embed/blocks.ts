@@ -75,9 +75,10 @@ const SEPARATOR = '\n';
  *     column change, which is what keeps two-column text from being glued
  *     into one run when the columns are emitted one after the other).
  *
- * `text` joins a block's rectangles with `\n`, which `Intl.Segmenter` treats as
- * whitespace: the sentence text keeps its words apart without inventing a
- * space that the PDF did not have.
+ * `text` joins a block's rectangles with `\n`, the marker for a layout line
+ * wrap. `segmentSentences` (`lib/text-utils.ts`) treats it as a soft wrap: it
+ * disappears between two CJK characters and becomes one space everywhere else,
+ * so a wrapped line never ends a sentence and Latin words stay apart.
  */
 export function buildEmbedBlocks(
   textRects: readonly PdfTextRectObject[],

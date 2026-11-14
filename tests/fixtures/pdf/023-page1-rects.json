@@ -1,0 +1,716 @@
+[
+  {
+    "content": "[4⭠\u001b\u0010",
+    "font": {
+      "family": "TimesNewRomanPS-BoldMT",
+      "size": 17.25
+    },
+    "rect": {
+      "origin": {
+        "x": 200,
+        "y": 59
+      },
+      "size": {
+        "width": 4,
+        "height": 15
+      }
+    }
+  },
+  {
+    "content": "数学分析\u0010",
+    "font": {
+      "family": "MicrosoftYaHei-Bold",
+      "size": 17.25
+    },
+    "rect": {
+      "origin": {
+        "x": 204,
+        "y": 56
+      },
+      "size": {
+        "width": 69,
+        "height": 17
+      }
+    }
+  },
+  {
+    "content": "] ⭠\u001b\u0010",
+    "font": {
+      "family": "TimesNewRomanPS-BoldMT",
+      "size": 17.25
+    },
+    "rect": {
+      "origin": {
+        "x": 273,
+        "y": 59
+      },
+      "size": {
+        "width": 10,
+        "height": 15
+      }
+    }
+  },
+  {
+    "content": "泛函分析不泛寒 \u0018",
+    "font": {
+      "family": "MicrosoftYaHei-Bold",
+      "size": 17.25
+    },
+    "rect": {
+      "origin": {
+        "x": 283,
+        "y": 56
+      },
+      "size": {
+        "width": 121,
+        "height": 17
+      }
+    }
+  },
+  {
+    "content": " I⭠\u001b\u0010",
+    "font": {
+      "family": "MicrosoftYaHei-Bold",
+      "size": 17.25
+    },
+    "rect": {
+      "origin": {
+        "x": 403,
+        "y": 59
+      },
+      "size": {
+        "width": 11,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "线性泛函分析的基本概念",
+    "font": {
+      "family": "MicrosoftYaHei-Bold",
+      "size": 12.75
+    },
+    "rect": {
+      "origin": {
+        "x": 236,
+        "y": 94
+      },
+      "size": {
+        "width": 141,
+        "height": 13
+      }
+    }
+  },
+  {
+    "content": "O. Anqiao",
+    "font": {
+      "family": "TimesNewRomanPS-BoldMT",
+      "size": 12.75
+    },
+    "rect": {
+      "origin": {
+        "x": 279,
+        "y": 124
+      },
+      "size": {
+        "width": 55,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "泛函分析概论ia\u0018",
+    "font": {
+      "family": "MicrosoftYaHei-Bold",
+      "size": 17.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 155
+      },
+      "size": {
+        "width": 104,
+        "height": 17
+      }
+    }
+  },
+  {
+    "content": "泛函分析是一个主要研究函数空间和函数的变换的数学分支，我们会更关注赋范线性空间（包括巴拿变",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 60,
+        "y": 194
+      },
+      "size": {
+        "width": 495,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "赫空间和希尔伯特空间）及其线性算子的性质。",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 212
+      },
+      "size": {
+        "width": 229,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "泛函分析是现代数学研究中许多领域的桥梁和基础，我们建立起对线性空间、内积空间、范数空间等和",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 60,
+        "y": 242
+      },
+      "size": {
+        "width": 495,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "数学结构的抽象理论框架，可以进一步应用到偏微分方程、几何分析等领域。开始写这篇文章的不久到",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 260
+      },
+      "size": {
+        "width": 495,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "前，我花了一些时间阅读柯尔莫戈洛夫的《函数论与泛函分析初步》，除了以理论知识为主的章节，函",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 278
+      },
+      "size": {
+        "width": 487,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "后续的章节中也有讲将相关的数学分析技巧应用于实际数学问题的方法（涉及测度论、勒贝格积分、应",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 296
+      },
+      "size": {
+        "width": 488,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "Hilbert \u0018",
+    "font": {
+      "family": "TimesNewRomanPSMT",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 316
+      },
+      "size": {
+        "width": 35,
+        "height": 8
+      }
+    }
+  },
+  {
+    "content": "空间、傅里叶变换、巴拿赫代数等等的换多方面的泛函分析方法）书中的解释非常清晰全面，",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 89,
+        "y": 314
+      },
+      "size": {
+        "width": 454,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "我会向被泛函分析困扰的小伙伴们推荐它。",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 332
+      },
+      "size": {
+        "width": 206,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "在写文章的期间我也有阅读 ",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 60,
+        "y": 362
+      },
+      "size": {
+        "width": 135,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": " Haim Brezis ",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 195,
+        "y": 364
+      },
+      "size": {
+        "width": 63,
+        "height": 8
+      }
+    }
+  },
+  {
+    "content": "的 ⭠\u001b\u0010",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 257,
+        "y": 362
+      },
+      "size": {
+        "width": 11,
+        "height": 11
+      }
+    }
+  },
+  {
+    "content": "Analyse Fonctionnelle, Théorie Et Applicationse",
+    "font": {
+      "family": "TimesNewRomanPS-ItalicMT",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 270,
+        "y": 364
+      },
+      "size": {
+        "width": 215,
+        "height": 11
+      }
+    }
+  },
+  {
+    "content": "，以我阅读的偮䵓\u0018",
+    "font": {
+      "family": "",
+      "size": 12
+    },
+    "rect": {
+      "origin": {
+        "x": 487,
+        "y": 362
+      },
+      "size": {
+        "width": 66,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "部分内容来看，这份教材的内容会稍微抽象，可能不适合作为入门教材，但对于已有一定基础的读者，",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 380
+      },
+      "size": {
+        "width": 495,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "来说是很适合进阶学习。",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 398
+      },
+      "size": {
+        "width": 116,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "另一点，泛函分析常常涉及到高度抽象的概念和推理方法，学习和应用泛函分析有利于提升抽象思",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 60,
+        "y": 428
+      },
+      "size": {
+        "width": 484,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "维、逻辑推理和问题解决能力。这不是很酷吗？",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 446
+      },
+      "size": {
+        "width": 231,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "我在⭠\u001b\u0010",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 60,
+        "y": 476
+      },
+      "size": {
+        "width": 23,
+        "height": 11
+      }
+    }
+  },
+  {
+    "content": "2024\u0010",
+    "font": {
+      "family": "TimesNewRomanPSMT",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 82,
+        "y": 478
+      },
+      "size": {
+        "width": 22,
+        "height": 8
+      }
+    }
+  },
+  {
+    "content": "年的年初已经发过一篇实分析的文章，其中第一章已经涵盖了本文需要的有关度量空间部分其",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 105,
+        "y": 476
+      },
+      "size": {
+        "width": 450,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "的基础，以及泛函分析学习所需要的一些基础我在过去的文章都有写过。为了避免文章内容重复过",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 55,
+        "y": 494
+      },
+      "size": {
+        "width": 483,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "多，本文的内容假设读者已掌握微积分、线性代数和一般拓扑学的基础知识。我会着重介绍泛函分析性",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 512
+      },
+      "size": {
+        "width": 495,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "中的基础知识，覆盖一些常见的概念，分享一些个人的理解。",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 55,
+        "y": 530
+      },
+      "size": {
+        "width": 296,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "没事，不怕！作为并不长的泛函分析第一篇，肯定还是很 长",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 560
+      },
+      "size": {
+        "width": 281,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": " Beginner",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 335,
+        "y": 562
+      },
+      "size": {
+        "width": 45,
+        "height": 11
+      }
+    }
+  },
+  {
+    "content": "-friendly r",
+    "font": {
+      "family": "",
+      "size": 11
+    },
+    "rect": {
+      "origin": {
+        "x": 380,
+        "y": 562
+      },
+      "size": {
+        "width": 42,
+        "height": 11
+      }
+    }
+  },
+  {
+    "content": "的！⭠\u001b\u0010",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 422,
+        "y": 560
+      },
+      "size": {
+        "width": 15,
+        "height": 11
+      }
+    }
+  },
+  {
+    "content": "拓扑线性空间ne\u0018",
+    "font": {
+      "family": "MicrosoftYaHei-Bold",
+      "size": 17.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 624
+      },
+      "size": {
+        "width": 103,
+        "height": 17
+      }
+    }
+  },
+  {
+    "content": "一个线性空间被赋予一个拓扑，使得加法运算和数乘运算作为映射从积空间到原空间是连续的，则称算",
+    "font": {
+      "family": "",
+      "size": 12
+    },
+    "rect": {
+      "origin": {
+        "x": 60,
+        "y": 663
+      },
+      "size": {
+        "width": 495,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "该线性空间为拓扑线性空间。最典型的就是所有的赋范线性空间都是拓扑线性空间（我们可以以范数所",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 681
+      },
+      "size": {
+        "width": 495,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": "诱导出这个拓扑），但也有非赋范空间是拓扑线性空间的研究对象，例如无限维的 ",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 54,
+        "y": 699
+      },
+      "size": {
+        "width": 405,
+        "height": 12
+      }
+    }
+  },
+  {
+    "content": " Montel \u0018",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 459,
+        "y": 701
+      },
+      "size": {
+        "width": 39,
+        "height": 8
+      }
+    }
+  },
+  {
+    "content": "空间。\u001b\u0010",
+    "font": {
+      "family": "PXAAAD+MicrosoftYaHei",
+      "size": 11.25
+    },
+    "rect": {
+      "origin": {
+        "x": 497,
+        "y": 699
+      },
+      "size": {
+        "width": 26,
+        "height": 11
+      }
+    }
+  }
+]

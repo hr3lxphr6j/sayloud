@@ -33,6 +33,25 @@ what the reference encoder writes):
 zstd -19 -f -q tests/fixtures/test-dict.json -o tests/fixtures/test-dict.json.zst
 ```
 
+## `pdf/023-page1-rects.json`
+
+PDFium's text rectangles for page 1 of <https://www.aqouyang.com/pdf/023.pdf>,
+in PDF points and in PDFium's text order (content stream, not visual order).
+`lib/pdf/embed/blocks.ts` groups these rectangles into blocks, and the same
+page's hand-grouped text is what `tests/unit/text-utils.test.ts` segments, so
+this fixture is the raw input that makes the grouping rule testable: one string
+per block was hiding whether the rule over-fragments.
+
+Kept verbatim, including the `\u0010`/`\u0018`/`\u001b` glyph ids and the `⭠`
+ligature placeholders: the builder cleans them, and that cleaning is part of
+what the test covers. `font.family` is kept for provenance; the grouping only
+reads `rect`.
+
+Regenerate with `createPdfiumEngine` from `@embedpdf/engines/pdfium-direct-engine`
+(the wasm file is `node_modules/@embedpdf/pdfium/dist/pdfium.wasm`): open the
+page, call `engine.getPageTextRects(doc, doc.pages[0])`, and keep `content`,
+`font` and `rect` of each result.
+
 ## `kokoro-vocabs.json`
 
 The two Kokoro models' tokenizer vocabularies, read from each model repository's

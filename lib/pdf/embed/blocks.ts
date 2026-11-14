@@ -74,7 +74,9 @@ const SEPARATOR = '\n';
  *   - a vertical gap larger than a line starts a new block (a paragraph break);
  *   - a horizontal jump wider than a couple of lines starts a new block (a
  *     column change, which is what keeps two-column text from being glued
- *     into one run when the columns are emitted one after the other).
+ *     into one run when the columns are emitted one after the other);
+ *   - otherwise the rectangle joins the block, whether it is the next line of
+ *     the paragraph or another run on the same line.
  *
  * `text` joins a block's rectangles with `\n`, the marker for a layout line
  * wrap. `segmentSentences` (`lib/text-utils.ts`) treats it as a soft wrap: it
@@ -135,8 +137,20 @@ function startsNewBlock(previous: Rect, next: Rect): boolean {
   if (gap < -lineHeight * 1.5) return true;
   // A paragraph break, or any gap wider than the text's own line.
   if (gap > lineHeight * 0.9) return true;
-  // A column change, an indent running far enough to be a different region.
-  return Math.abs(next.origin.x - previous.origin.x) > lineHeight * 2.5;
+
+  // A column change: measure the jump from the previous rect's *right edge*,
+  // not from its origin. Inline runs of one visual line — an author name, an
+  // italic book title, a superscript — start a run-width to the right of the
+  // previous origin, so comparing origins cut that line into one block per run
+  // (023.pdf p1: 27 blocks, the sentence with “Haim Brezis” split into four).
+  // Comparing edges leaves only the whitespace between runs, which is a few
+  // pixels on one line and a column-width on a real column change. A line
+  // wrap, on the other hand, puts the next rect's left edge to the *left* of
+  // the previous right edge, so it is never mistaken for a column change; the
+  // old `Math.abs(origin - origin)` did mistake it, which is why every wrapped
+  // line became its own block.
+  const runGap = next.origin.x - (previous.origin.x + previous.size.width);
+  return runGap > lineHeight * 2.5;
 }
 
 /** Materialise one block: the wrapper span, its runs, and the char map. */

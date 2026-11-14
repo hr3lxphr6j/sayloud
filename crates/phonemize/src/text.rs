@@ -146,7 +146,7 @@ pub fn segment_text(text: &str) -> Vec<ScriptRun> {
 /// [`segment_text`]'s Han/Kana split is a *rendering* distinction and not a word
 /// boundary, so it must not be a boundary for the dictionary either: 詳しい is a
 /// Han character followed by a kana run, and asking the dictionary about 「詳」 on
-/// its own gets no answer at all — it has no entry as a word — while the same
+/// its own gets a different word — ツマビラカ, not クワシー — while the same
 /// split reads 「語る」 as カタリ + ル, which is a different word. Japanese passes
 /// these runs to `SegmenterJa::read_as_katakana` one at a time, which is what
 /// makes them whole words again; the Latin runs and the marks that separate them

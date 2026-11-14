@@ -22,7 +22,7 @@
 # failure `Cargo.toml` documents for `ruzstd`, and it is why `jieba-rs` is
 # depended on with `default-features = false` and the dictionary is a separate
 # asset instead. The wasm-side decoder is `ruzstd`, which is already there for
-# IPADic.
+# UniDic.
 #
 # Idempotent: an existing asset is left alone. Set FORCE=1 to rebuild it.
 #

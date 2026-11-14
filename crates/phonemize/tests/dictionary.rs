@@ -12,7 +12,7 @@ use phonemize::dictionary::{primary_language, DictionaryError, DictionaryRegistr
 use phonemize::Phonemizer;
 
 /// The Japanese dictionary's name, as `required_dictionaries` spells it.
-const IPADIC: &str = "lindera-ipadic-ja";
+const UNIDIC: &str = "lindera-unidic-ja";
 
 /// The Chinese dictionary's name, as `required_dictionaries` spells it.
 const JIEBA: &str = "jieba-zh-dict";
@@ -55,7 +55,7 @@ const WETEXT_JA: [&str; 3] = [
 
 /// Everything `required_dictionaries("kokoro-v1", "ja-JP")` returns, in order:
 /// the language's own dictionary first, then its FSTs.
-const JA_REQUIRED: [&str; 4] = [IPADIC, WETEXT_JA[0], WETEXT_JA[1], WETEXT_JA[2]];
+const JA_REQUIRED: [&str; 4] = [UNIDIC, WETEXT_JA[0], WETEXT_JA[1], WETEXT_JA[2]];
 
 /// Everything `required_dictionaries("kokoro-v1", "zh-CN")` returns.
 const ZH_REQUIRED: [&str; 4] = [JIEBA, WETEXT_ZH[0], WETEXT_ZH[1], WETEXT_ZH[2]];
@@ -97,7 +97,7 @@ fn load_fixture(registry: &mut DictionaryRegistry, names: &[&str]) {
 }
 
 #[test]
-fn japanese_needs_the_ipadic_dictionary_and_three_grammars() {
+fn japanese_needs_the_unidic_dictionary_and_three_grammars() {
     let registry = declared("kokoro-v1", "ja-JP");
 
     assert_eq!(registry.required(), JA_REQUIRED);
@@ -184,7 +184,7 @@ fn a_dictionary_is_decompressed_on_load() {
     let mut registry = declared("kokoro-v1", "ja-JP");
 
     registry
-        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .load(UNIDIC, &fixture_bytes("test-dict.json.zst"))
         .unwrap();
     load_fixture(&mut registry, &WETEXT_JA);
 
@@ -192,7 +192,7 @@ fn a_dictionary_is_decompressed_on_load() {
     // `zstd` CLI compressed, byte for byte. A `load` that stored the compressed
     // bytes would pass `finish` and fail here.
     assert_eq!(
-        registry.get(IPADIC).unwrap(),
+        registry.get(UNIDIC).unwrap(),
         fixture_bytes("test-dict.json").as_slice()
     );
 }
@@ -202,15 +202,15 @@ fn loading_a_dictionary_nobody_asked_for_is_an_error() {
     let mut registry = declared("kokoro-v1", "ja-JP");
 
     let error = registry
-        .load("lindera-unidic-ja", &fixture_bytes("test-dict.json.zst"))
-        .expect_err("unidic was never declared");
+        .load("lindera-neologd-ja", &fixture_bytes("test-dict.json.zst"))
+        .expect_err("neologd was never declared");
 
     // The message has to name what *was* declared, or the caller cannot tell a
     // typo from a version skew.
     assert_eq!(
         error,
         DictionaryError::UnknownDictionary {
-            name: "lindera-unidic-ja".to_string(),
+            name: "lindera-neologd-ja".to_string(),
             declared: JA_REQUIRED.iter().map(|name| (*name).to_string()).collect(),
         }
     );
@@ -222,13 +222,13 @@ fn bytes_that_are_not_a_zstd_frame_are_rejected_by_the_magic_number() {
 
     // A gzip file where a zstd one belongs — the mistake a build script makes.
     let error = registry
-        .load(IPADIC, &[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00])
+        .load(UNIDIC, &[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00])
         .expect_err("gzip is not zstd");
 
     assert_eq!(
         error,
         DictionaryError::NotZstd {
-            name: IPADIC.to_string(),
+            name: UNIDIC.to_string(),
             leading: vec![0x1f, 0x8b, 0x08, 0x00],
         }
     );
@@ -243,12 +243,12 @@ fn an_empty_dictionary_is_rejected_rather_than_panicking() {
 
     // A zero-byte file is what a truncated fetch or a botched build leaves
     // behind, and slicing the first four bytes would panic on it.
-    let error = registry.load(IPADIC, &[]).expect_err("empty is not zstd");
+    let error = registry.load(UNIDIC, &[]).expect_err("empty is not zstd");
 
     assert_eq!(
         error,
         DictionaryError::NotZstd {
-            name: IPADIC.to_string(),
+            name: UNIDIC.to_string(),
             leading: vec![],
         }
     );
@@ -265,11 +265,11 @@ fn a_frame_that_cannot_be_decoded_is_reported_as_a_decompression_failure() {
     corrupt.extend_from_slice(&[0xff; 32]);
 
     let error = registry
-        .load(IPADIC, &corrupt)
+        .load(UNIDIC, &corrupt)
         .expect_err("noise is not a frame");
 
     assert!(
-        matches!(error, DictionaryError::Decompress { ref name, .. } if name == IPADIC),
+        matches!(error, DictionaryError::Decompress { ref name, .. } if name == UNIDIC),
         "{error:?}"
     );
 }
@@ -286,25 +286,25 @@ fn finishing_before_every_dictionary_arrived_names_the_missing_ones() {
             names: JA_REQUIRED.iter().map(|name| (*name).to_string()).collect(),
         }
     );
-    assert!(error.to_string().contains(IPADIC), "{error}");
+    assert!(error.to_string().contains(UNIDIC), "{error}");
 }
 
 #[test]
 fn feeding_the_same_dictionary_twice_keeps_the_first_copy() {
     let mut registry = declared("kokoro-v1", "ja-JP");
     registry
-        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .load(UNIDIC, &fixture_bytes("test-dict.json.zst"))
         .unwrap();
 
     // The second feed is garbage, and has to be *ignored* rather than decoded:
     // `prepare` runs again every time the user switches voices, and
-    // re-decompressing 45.3 MB to get the same bytes back is the one cost this
+    // re-decompressing 199 MB to get the same bytes back is the one cost this
     // protocol can avoid for free. Rejecting the garbage is what proves the
     // bytes were not decoded again.
-    registry.load(IPADIC, b"not a frame at all").unwrap();
+    registry.load(UNIDIC, b"not a frame at all").unwrap();
 
     assert_eq!(
-        registry.get(IPADIC).unwrap(),
+        registry.get(UNIDIC).unwrap(),
         fixture_bytes("test-dict.json").as_slice()
     );
 }
@@ -313,7 +313,7 @@ fn feeding_the_same_dictionary_twice_keeps_the_first_copy() {
 fn switching_language_back_does_not_demand_the_dictionary_again() {
     let mut registry = declared("kokoro-v1", "ja-JP");
     registry
-        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .load(UNIDIC, &fixture_bytes("test-dict.json.zst"))
         .unwrap();
     load_fixture(&mut registry, &WETEXT_JA);
 
@@ -339,7 +339,7 @@ fn a_voice_switch_between_two_languages_that_need_dictionaries() {
     // `a_dictionary_stays_loadable_after_the_required_set_moved_on`.
     let mut registry = declared("kokoro-v1", "ja-JP");
     registry
-        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .load(UNIDIC, &fixture_bytes("test-dict.json.zst"))
         .unwrap();
     load_fixture(&mut registry, &WETEXT_JA);
 
@@ -366,7 +366,7 @@ fn a_dictionary_stays_loadable_after_the_required_set_moved_on() {
     // so they must not be refused as unknown.
     registry.declare_required("kokoro-v1", "zh-CN").unwrap();
     registry
-        .load(IPADIC, &fixture_bytes("test-dict.json.zst"))
+        .load(UNIDIC, &fixture_bytes("test-dict.json.zst"))
         .expect("declared earlier, still accepted");
 
     // And the mirror image, so the test is about the rule and not about one

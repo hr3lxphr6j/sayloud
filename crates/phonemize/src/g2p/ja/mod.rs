@@ -1,7 +1,7 @@
 //! Japanese: the kana table, and the dictionary that fills it in.
 //!
 //! The split is by what needs a dictionary: [`segmenter`] reads text with kanji
-//! in it through lindera and IPADic, and [`ipa`] turns katakana — from the
+//! in it through lindera and UniDic, and [`ipa`] turns katakana — from the
 //! dictionary, or straight from input that was already kana — into phonemes.
 //! [`table`] is the generated katakana table `ipa` is a lookup over.
 

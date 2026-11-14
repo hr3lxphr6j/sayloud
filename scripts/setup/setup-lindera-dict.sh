@@ -2,7 +2,7 @@
 #
 # Builds the Japanese dictionary asset the Rust phonemizer loads.
 #
-# IPADic ships from lindera's GitHub releases as a zip of nine files, and the
+# UniDic ships from lindera's GitHub releases as a zip of nine files, and the
 # extension ships it as one zstd frame holding a tar of those nine. The tar is a
 # transport wrapper and nothing more: the files inside are lindera's own, byte for
 # byte, because lindera's dictionary format is fixed by the crate and re-packing
@@ -35,8 +35,8 @@ cd "$(dirname "$0")/../.."
 # time, but only against itself — a mismatch here shows up as a dictionary that
 # will not load at all.
 LINDERA_VERSION="6.2.0"
-ASSET_NAME="lindera-ipadic-ja"
-RELEASE_URL="https://github.com/lindera/lindera/releases/download/v${LINDERA_VERSION}/lindera-ipadic-${LINDERA_VERSION}.zip"
+ASSET_NAME="lindera-unidic-ja"
+RELEASE_URL="https://github.com/lindera/lindera/releases/download/v${LINDERA_VERSION}/lindera-unidic-${LINDERA_VERSION}.zip"
 
 DICT_DIR="public/dictionaries"
 TARGET="${DICT_DIR}/${ASSET_NAME}.bin.zst"
@@ -76,17 +76,17 @@ fi
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-echo "📚 Building the Japanese dictionary (IPADic ${LINDERA_VERSION})..."
+echo "📚 Building the Japanese dictionary (UniDic ${LINDERA_VERSION})..."
 curl --fail --location --silent --show-error --max-time 600 \
-  "$RELEASE_URL" -o "$work/ipadic.zip"
+  "$RELEASE_URL" -o "$work/unidic.zip"
 
-unzip -q "$work/ipadic.zip" -d "$work"
+unzip -q "$work/unidic.zip" -d "$work"
 
 # The release unpacks into a single top-level directory; find it rather than
 # hard-coding the name, so a change of prefix is not a broken build.
-root="$(find "$work" -mindepth 1 -maxdepth 1 -type d -name 'lindera-ipadic*' | head -1)"
+root="$(find "$work" -mindepth 1 -maxdepth 1 -type d -name 'lindera-unidic*' | head -1)"
 if [ -z "$root" ]; then
-  echo "⚠️  The archive does not contain a lindera-ipadic directory" >&2
+  echo "⚠️  The archive does not contain a lindera-unidic directory" >&2
   exit 1
 fi
 
@@ -106,7 +106,7 @@ mkdir -p "$DICT_DIR"
 tar -cf - -C "$root" "${DICTIONARY_FILES[@]}" | zstd -19 -q -o "${TARGET}.tmp"
 mv "${TARGET}.tmp" "$TARGET"
 
-# IPADic is BSD-licensed and the notice is a condition of redistributing it. It
+# UniDic is BSD-licensed and the notice is a condition of redistributing it. It
 # is kept next to the asset rather than inside the archive because it is not a
 # file lindera reads, and the loader should not have to know about it.
 if [ -f "${root}/NOTICE.txt" ]; then

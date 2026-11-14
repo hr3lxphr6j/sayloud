@@ -32,8 +32,8 @@ const WASM = new Uint8Array(
 );
 
 /** The Japanese dictionary the wasm asks for, and where it looks for it. */
-const IPADIC = 'lindera-ipadic-ja';
-const IPADIC_URL = `/dictionaries/${IPADIC}.bin.zst`;
+const UNIDIC = 'lindera-unidic-ja';
+const UNIDIC_URL = `/dictionaries/${UNIDIC}.bin.zst`;
 
 /** The Chinese word list. */
 const JIEBA = 'jieba-zh-dict';
@@ -45,7 +45,7 @@ const JIEBA_URL = `/dictionaries/${JIEBA}.bin.zst`;
  * English's *pronunciation* dictionary is still compiled into the wasm — the CMU
  * dictionary — but all three languages read their numerals through the
  * vendored WeText engine, and those grammars are OpenFST binaries. They arrive
- * the same way IPADic and jieba's word list do.
+ * the same way UniDic and jieba's word list do.
  */
 const WETEXT_EN = [
   'wetext-en-tn-tagger',
@@ -103,7 +103,7 @@ function asset(name: string): DictionaryBytes | null {
   }
 }
 
-const REAL_IPADIC = asset(IPADIC);
+const REAL_UNIDIC = asset(UNIDIC);
 const REAL_JIEBA = asset(JIEBA);
 
 /** The English grammars, or null when skipping was asked for. */
@@ -182,9 +182,9 @@ describe('PhonemizeService', () => {
     expect(service.phonemize('50%', 'kokoro-v1', 'en-US').phonemes).toBe('fˈɪftiː pɚsˈɛnt');
   });
 
-  it.skipIf(REAL_IPADIC === null)('speaks Japanese once its dictionary is loaded', async () => {
+  it.skipIf(REAL_UNIDIC === null)('speaks Japanese once its dictionary is loaded', async () => {
     const service = serviceWith({
-      [IPADIC_URL]: REAL_IPADIC ?? new Uint8Array(),
+      [UNIDIC_URL]: REAL_UNIDIC ?? new Uint8Array(),
       ...wetextRoutes(WETEXT_JA),
     });
     await service.init();
@@ -236,7 +236,7 @@ describe('PhonemizeService', () => {
     expect((error as DictionaryLoadError).reason).toBe('unsupported-language');
   });
 
-  it.skipIf(REAL_IPADIC === null)('refuses to phonemize a language it never prepared', async () => {
+  it.skipIf(REAL_UNIDIC === null)('refuses to phonemize a language it never prepared', async () => {
     // Not an empty string: a segmenter that is not there would otherwise be a
     // sentence read without word boundaries, which is audible.
     const service = serviceWith({});

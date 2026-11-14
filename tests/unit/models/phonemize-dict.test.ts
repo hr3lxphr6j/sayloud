@@ -92,7 +92,7 @@ describe('fetchDictionary', () => {
 
     expect(bytes).toEqual(COMPRESSED);
     // The whole point of caching a compressed dictionary: the *compressed*
-    // bytes are what is stored, so the cache costs 10 MB rather than 45 MB.
+    // bytes are what is stored, so the cache costs 34 MB rather than 199 MB.
     expect(bucket.entries.get(URL)).toEqual(COMPRESSED);
   });
 
@@ -222,10 +222,10 @@ describe('fetchDictionary', () => {
     // Root-relative, so the same spelling resolves against the extension's
     // origin from a page and from a worker alike — the arrangement the deleted
     // kuromoji dictionary used first, and the one `public/dictionaries/` keeps.
-    const fetch = fakeFetch({ '/dictionaries/lindera-ipadic-ja.bin.zst': { bytes: COMPRESSED } });
+    const fetch = fakeFetch({ '/dictionaries/lindera-unidic-ja.bin.zst': { bytes: COMPRESSED } });
 
-    await fetchDictionary('lindera-ipadic-ja', { fetch, cacheStorage: null });
+    await fetchDictionary('lindera-unidic-ja', { fetch, cacheStorage: null });
 
-    expect(fetch.calls).toEqual(['/dictionaries/lindera-ipadic-ja.bin.zst']);
+    expect(fetch.calls).toEqual(['/dictionaries/lindera-unidic-ja.bin.zst']);
   });
 });

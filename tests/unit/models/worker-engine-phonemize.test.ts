@@ -39,14 +39,14 @@ const WASM = new Uint8Array(
   readFileSync(resolve(ROOT, 'lib/models/phonemize-wasm/phonemize_bg.wasm'))
 );
 
-const IPADIC_URL = '/dictionaries/lindera-ipadic-ja.bin.zst';
+const UNIDIC_URL = '/dictionaries/lindera-unidic-ja.bin.zst';
 const JIEBA_URL = '/dictionaries/jieba-zh-dict.bin.zst';
 
 /**
  * Every text-normalization grammar the registry can ask for.
  *
  * All three languages read their numerals through the vendored WeText engine.
- * They are fetched on `prepare` like any other dictionary, and — unlike IPADic
+ * They are fetched on `prepare` like any other dictionary, and — unlike UniDic
  * or jieba's word list — they are parsed by `finish_loading`, so a stand-in
  * frame would fail rather than pass quietly.
  */
@@ -75,7 +75,7 @@ function asset(name: string): DictionaryBytes | null {
   }
 }
 
-const REAL_IPADIC = asset('lindera-ipadic-ja');
+const REAL_UNIDIC = asset('lindera-unidic-ja');
 const REAL_JIEBA = asset('jieba-zh-dict');
 
 /** Every grammar, under the same missing-is-a-failure rule. */
@@ -85,7 +85,7 @@ const REAL_WETEXT = WETEXT.map((name) => [name, asset(name)] as const);
 function shippedDictionaries(): Record<string, DictionaryBytes> {
   const routes: Record<string, DictionaryBytes> = {};
   for (const [name, bytes] of [
-    ['lindera-ipadic-ja', REAL_IPADIC],
+    ['lindera-unidic-ja', REAL_UNIDIC],
     ['jieba-zh-dict', REAL_JIEBA],
     ...REAL_WETEXT,
   ] as const) {
@@ -282,9 +282,9 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     expect(kokoro.pieces).toEqual([{ ipa: 'həlˈoʊ wˈɜːld' }]);
   });
 
-  it.skipIf(REAL_IPADIC === null)('hands the model Japanese phonemes', async () => {
+  it.skipIf(REAL_UNIDIC === null)('hands the model Japanese phonemes', async () => {
     const { engine, kokoro, phonemizer } = await assembled({
-      [IPADIC_URL]: REAL_IPADIC ?? new Uint8Array(),
+      [UNIDIC_URL]: REAL_UNIDIC ?? new Uint8Array(),
     });
     const signal = new AbortController().signal;
 
@@ -352,13 +352,13 @@ describe('WorkerLocalEngine with the real phonemizer', () => {
     //
     // `null` removes the route rather than serving a body, so the fake transport
     // answers exactly what a missing file does: nothing.
-    const { engine } = await assembled({ [IPADIC_URL]: null });
+    const { engine } = await assembled({ [UNIDIC_URL]: null });
 
     const error = await engine
       .synthesize('経営', 'jf_alpha', 'ja-JP', new AbortController().signal)
       .catch((thrown: unknown) => thrown);
 
     expect((error as Error).name).toBe('model-load-failed');
-    expect((error as Error).message).toContain(IPADIC_URL);
+    expect((error as Error).message).toContain(UNIDIC_URL);
   });
 });

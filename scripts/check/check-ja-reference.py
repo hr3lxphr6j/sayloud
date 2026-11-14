@@ -10,9 +10,12 @@ first one — **the reading**:
 
 `pyopenjtalk` is the reference for the dictionary step because it is the
 OpenJTalk chain: the same pronunciation field (`pron`) the first-generation
-misaki used when Kokoro's Japanese voices were trained. IPADic, which this crate
-loads through lindera, is a NAIST-lineage dictionary like OpenJTalk's own, so the
-two agree on the reading — and this script is what would notice if they stopped.
+misaki used when Kokoro's Japanese voices were trained. This crate loads UniDic
+through lindera, whose `phonological_surface_form` is the same kind of spoken
+form, and the two agree on most of this corpus — but not all of it: long vowels
+(ケーエー), 日本 inside 日本語, and 九 are samples where they differ. The fixture's
+`kana` and `expected` are therefore what THIS crate produces, and the samples
+marked `gap` record where the reference disagrees on purpose.
 
 The renderer half (`kana_to_ipa` plus the script-run split and the punctuation
 filter) is the crate's own, reproduced here from `data/ja-ipa-table.json` so the
@@ -31,6 +34,11 @@ Requires : pip install pyopenjtalk
 Usage:
     python3 scripts/check/check-ja-reference.py            # check the fixture
     python3 scripts/check/check-ja-reference.py --write     # regenerate it
+
+`--write` recomputes every sample from pyopenjtalk, so it writes OpenJTalk
+readings and not UniDic ones: the samples where the two dictionaries disagree
+(the ones marked `gap`) have to be updated by hand. This is not the way to fix a
+failing pipeline test.
 """
 
 from __future__ import annotations

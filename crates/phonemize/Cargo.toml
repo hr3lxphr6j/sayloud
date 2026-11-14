@@ -28,7 +28,7 @@ serde-wasm-bindgen = "0.6"
 #
 # ruzstd reads the same `.zst` frames — verified byte-identical against the
 # reference `zstd -19` CLI — with no C toolchain. It is decode-only, which is all
-# the wasm does. Cost: ~120 ms for a 45 MB dictionary, measured in wasm.
+# the wasm does. Cost: decompression is proportional to the asset — the 199 MB UniDic tar takes ~505 ms natively (measured), more in wasm.
 ruzstd = "0.9"
 
 # Japanese segmentation. `default-features = false` is required
@@ -99,7 +99,7 @@ tar = "0.4"
 # fails on every `ZSTD_*` symbol (`undefined symbol: ZSTD_freeDCtx`, reproduced
 # 2026-10-03). This is the same failure the `ruzstd` note above describes, and
 # the same answer: keep the C zstd out of the build. The dictionary arrives
-# through the registry instead, like IPADic — see `scripts/setup/setup-jieba-dict.sh`.
+# through the registry instead, like UniDic — see `scripts/setup/setup-jieba-dict.sh`.
 #
 # The HMM model and the segmentation algorithm are not behind that feature, so
 # disabling it costs nothing but the embedded dictionary.

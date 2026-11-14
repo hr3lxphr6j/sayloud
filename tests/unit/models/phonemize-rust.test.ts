@@ -34,10 +34,10 @@ const COMPRESSED: DictionaryBytes = new Uint8Array(
 );
 
 /** The dictionary the Japanese pipeline asks for. */
-const IPADIC = 'lindera-ipadic-ja';
+const UNIDIC = 'lindera-unidic-ja';
 
 /** Where the wrapper looks for it, under the extension root. */
-const IPADIC_URL = `/dictionaries/${IPADIC}.bin.zst`;
+const UNIDIC_URL = `/dictionaries/${UNIDIC}.bin.zst`;
 
 /** The dictionary the Chinese pipeline asks for. */
 const JIEBA = 'jieba-zh-dict';
@@ -46,7 +46,7 @@ const JIEBA = 'jieba-zh-dict';
 const JIEBA_URL = `/dictionaries/${JIEBA}.bin.zst`;
 
 /**
- * The real IPADic asset, or `null` when skipping was asked for.
+ * The real UniDic asset, or `null` when skipping was asked for.
  *
  * `test-dict.json.zst` is a stand-in for the *transport* — bytes arrive
  * compressed and come out whole. It cannot feed `finish_loading`, which builds
@@ -61,7 +61,7 @@ const JIEBA_URL = `/dictionaries/${JIEBA}.bin.zst`;
 function realDictionary(): DictionaryBytes | null {
   const asset = resolve(
     dirname(fileURLToPath(import.meta.url)),
-    `../../../public/dictionaries/${IPADIC}.bin.zst`
+    `../../../public/dictionaries/${UNIDIC}.bin.zst`
   );
   try {
     return new Uint8Array(readFileSync(asset));
@@ -87,7 +87,7 @@ const hasDictionary = REAL_DICTIONARY !== null;
 /**
  * The real jieba word list, or `null` when skipping was asked for.
  *
- * Unlike IPADic, this asset *is* a plain file — `word freq tag` per line — so a
+ * Unlike UniDic, this asset *is* a plain file — `word freq tag` per line — so a
  * stand-in could satisfy it in principle. It is the real one anyway, because the
  * point of the tests below is to compare the two pipelines' output, and a
  * stand-in word list would compare them on text neither can segment.
@@ -123,11 +123,11 @@ const hasJieba = REAL_JIEBA !== null;
  *
  * The source records the URLs it was asked for, so a `prepare` that quietly
  * loaded nothing cannot look like one that worked. Every grammar is routed as
- * well as IPADic, because a `prepare('kokoro-v1', 'ja-JP')` now asks for three
+ * well as UniDic, because a `prepare('kokoro-v1', 'ja-JP')` now asks for three
  * files and the route table is what answers them.
  */
 function phonemizerWith(bytes: DictionaryBytes = COMPRESSED) {
-  const fetch = fakeFetch(served({ [IPADIC_URL]: bytes, ...grammarRoutes() }));
+  const fetch = fakeFetch(served({ [UNIDIC_URL]: bytes, ...grammarRoutes() }));
   const caches = new FakeCaches();
   const phonemizer = new RustPhonemizer({ wasm: WASM, fetch, cacheStorage: caches });
   return { phonemizer, fetch, caches };
@@ -146,7 +146,7 @@ function chinesePhonemizerWith(bytes: DictionaryBytes) {
  * All three languages read their numerals through the vendored WeText engine.
  * English's *pronunciation* dictionary is compiled into the wasm — the CMU
  * dictionary — so for English these two are the whole of what `prepare`
- * fetches, and for the other two they arrive alongside IPADic or jieba's word
+ * fetches, and for the other two they arrive alongside UniDic or jieba's word
  * list.
  *
  * Listed together because `phonemizerWith` has to satisfy `/dictionaries/*` for
@@ -286,9 +286,9 @@ describe('RustPhonemizer.prepare', () => {
 
     // The names come from the wasm, not from this side — `required_dictionaries`
     // is the one place that decides what a language costs, which is what keeps a
-    // dictionary swap from being a JavaScript change. Three: IPADic and the two
+    // dictionary swap from being a JavaScript change. Three: UniDic and the two
     // Japanese TN grammars.
-    expect(fetch.calls).toEqual([IPADIC_URL, ...WETEXT_JA_URLS]);
+    expect(fetch.calls).toEqual([UNIDIC_URL, ...WETEXT_JA_URLS]);
     for (const url of fetch.calls) {
       expect(caches.bucket(DICTIONARIES_CACHE).has(url)).toBe(true);
     }
@@ -299,7 +299,7 @@ describe('RustPhonemizer.prepare', () => {
     // dictionary — so `prepare('kokoro-v1', 'en-US')` has no dictionary to fetch.
     // It does have to fetch numerals, which go through vendored WeText grammars:
     // those are 12 MB of OpenFST binary, so they are fetched on `prepare` the way
-    // IPADic and jieba's word list are.
+    // UniDic and jieba's word list are.
     //
     // Both, in the order the wasm asks for them, and parsed — `finish_loading`
     // is inside `prepare`, so a stand-in frame would fail here rather than pass
@@ -411,7 +411,7 @@ describe('RustPhonemizer.prepare', () => {
     // failure a user can actually act on ("reinstall the extension").
     const phonemizer = new RustPhonemizer({
       wasm: WASM,
-      fetch: fakeFetch({ [IPADIC_URL]: { status: 404 } }),
+      fetch: fakeFetch({ [UNIDIC_URL]: { status: 404 } }),
       cacheStorage: null,
     });
     await phonemizer.ready;
@@ -421,7 +421,7 @@ describe('RustPhonemizer.prepare', () => {
       .catch((thrown: unknown) => thrown)) as DictionaryLoadError;
 
     expect(error.reason).toBe('status');
-    expect(error.message).toContain(IPADIC);
+    expect(error.message).toContain(UNIDIC);
   });
 
   it.skipIf(!hasDictionary)('loads every dictionary and then finishes', async () => {
@@ -438,12 +438,12 @@ describe('RustPhonemizer.prepare', () => {
 
       await phonemizer.prepare('kokoro-v1', 'ja-JP');
 
-      // Not `toHaveBeenCalledWith(IPADIC, REAL_DICTIONARY)`: vitest's deep
-      // equality on an 8.5 MB typed array takes ~10 s (measured), against 2 ms
-      // for the memcmp below. The assertion is the same one either way — the
+      // Not `toHaveBeenCalledWith(UNIDIC, REAL_DICTIONARY)`: vitest's deep
+      // equality on a dictionary-sized typed array is orders of magnitude slower
+      // than the memcmp below. The assertion is the same one either way — the
       // bytes the wasm was handed are the bytes that were fetched, all of them.
       const [name, handedOver] = load.mock.calls[0] ?? [];
-      expect(name).toBe(IPADIC);
+      expect(name).toBe(UNIDIC);
       expect(Buffer.from(handedOver as Uint8Array).equals(Buffer.from(REAL_DICTIONARY ?? []))).toBe(
         true
       );

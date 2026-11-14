@@ -9,7 +9,7 @@
 //! The registry holds decompressed bytes. That is the format the protocol asks
 //! for — "解压即可用" — and the one the lindera dictionary already has: its trie and
 //! connection matrix are prebuilt, so decompression is the whole of the load
-//! (measured: 45.3 MB in 9.6 ms).
+//! (measured: 199 MB in ~505 ms on a native release build).
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -25,7 +25,7 @@ pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 /// name list have to agree on it and nothing else would notice if they stopped:
 /// the registry would hand the bytes to no one and `finish` would report them
 /// loaded.
-pub const IPADIC_JA: &str = "lindera-ipadic-ja";
+pub const UNIDIC_JA: &str = "lindera-unidic-ja";
 
 /// The Chinese dictionary's name, as the JavaScript side sees it.
 ///
@@ -149,10 +149,10 @@ pub fn supported_languages(vocab: &str) -> Option<&'static [&'static str]> {
 /// [`crate::tn::engine::chinese`].
 fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
     match language {
-        // IPADic: prebuilt trie + connection matrix, ~10 MB compressed and
-        // 45.3 MB in memory.
+        // UniDic: prebuilt trie + connection matrix, 34 MB compressed and
+        // 199 MB in memory.
         "ja" => Some(&[
-            IPADIC_JA,
+            UNIDIC_JA,
             WETEXT_JA_TN_TAGGER,
             WETEXT_JA_TN_VERBALIZER,
             WETEXT_TN_FULL_TO_HALF,
@@ -304,10 +304,10 @@ impl std::error::Error for DictionaryError {}
 ///   flow is ask → fetch → feed → finish.
 /// - `declared` is everything ever asked for. [`load`](Self::load) accepts these
 ///   and no others, so a name that no one asked about is an error rather than a
-///   silently useless 45 MB.
+///   silently useless 199 MB.
 /// - `loaded` is what is in memory. Never evicted: a dictionary is an immutable
 ///   extension asset, and the alternative — dropping it when the user switches
-///   voices — buys back 45 MB at the price of a re-decompression on the way
+///   voices — buys back 199 MB at the price of a re-decompression on the way
 ///   back.
 #[derive(Debug, Default)]
 pub struct DictionaryRegistry {
@@ -357,7 +357,7 @@ impl DictionaryRegistry {
     /// Feed one dictionary, compressed.
     ///
     /// Safe to call twice for the same name: the second call is ignored, because
-    /// `prepare` runs again on every voice switch and re-decompressing 45.3 MB to
+    /// `prepare` runs again on every voice switch and re-decompressing 199 MB to
     /// arrive at the bytes already in memory is pure cost. A name that was never
     /// declared is an error, not a silent no-op — dropping a dictionary would
     /// otherwise show up as a few words mispronounced rather than as a failure to

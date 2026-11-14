@@ -20,12 +20,15 @@ use crate::kana::to_raw_katakana;
 /// Re-exported so the table is reachable from the module it belongs to.
 pub use crate::g2p::ja::table::KATAKANA_TO_IPA;
 
-/// The numeral sound changes the dictionary does not make.
+/// The numeral sound changes a dictionary can leave out.
 ///
-/// IPADic reads numerals one character at a time, so 「三百」 comes back
-/// サンヒャク where the language says サンビャク. Five cases, each unambiguous in
-/// practice: ヒャク and セン only follow サン, ロク or ハチ inside a numeral, so
-/// there is no other word these patterns could belong to.
+/// IPADic read numerals one character at a time, so 「三百」 came back サンヒャク
+/// where the language says サンビャク. UniDic already gives the changed form for
+/// all five of these, so with the dictionary this crate now loads the table does
+/// not fire on them; it is kept because it is part of the crate's public surface
+/// and `scripts/check/check-ja-reference.py` mirrors it. Five cases, each
+/// unambiguous in practice: ヒャク and セン only follow サン, ロク or ハチ inside a
+/// numeral, so there is no other word these patterns could belong to.
 ///
 /// The patterns are literal — no metacharacters — so plain replacement is the
 /// same operation as the JavaScript `String.replaceAll` with a `/g` regex, and

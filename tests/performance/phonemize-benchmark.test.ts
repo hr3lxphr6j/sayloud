@@ -8,7 +8,7 @@
  * there to catch a change of kind, not a change of a few percent, because the
  * machine running them is not the machine they were measured on.
  *
- * It runs the **real** inputs: the wasm the build ships, the 8.5 MB IPADic
+ * It runs the **real** inputs: the wasm the build ships, the 34 MB UniDic
  * dictionary and the 1.6 MB Chinese word list. A benchmark on stand-in data
  * would measure the stand-in.
  *
@@ -25,7 +25,7 @@
  *   whichever sentence comes first unless something warms it. It is measured
  *   instead of being hidden by a warm-up loop.
  * - **Cold start.** `prepare` decompresses the dictionary inside the wasm —
- *   1.6 MB for Chinese, 8.5 MB for Japanese, 0.7 MB of text-normalization
+ *   1.6 MB for Chinese, 34 MB for Japanese, 0.7 MB of text-normalization
  *   grammars for English — and that is what the first sentence pays. This says
  *   how big it actually is.
  *
@@ -51,7 +51,7 @@ const WASM = new Uint8Array(
   readFileSync(resolve(ROOT, 'lib/models/phonemize-wasm/phonemize_bg.wasm'))
 );
 
-const IPADIC_URL = '/dictionaries/lindera-ipadic-ja.bin.zst';
+const UNIDIC_URL = '/dictionaries/lindera-unidic-ja.bin.zst';
 const JIEBA_URL = '/dictionaries/jieba-zh-dict.bin.zst';
 
 /**
@@ -83,7 +83,7 @@ function newPhonemizer(): RustPhonemizer {
   return new RustPhonemizer({
     wasm: WASM,
     fetch: fakeFetch({
-      [IPADIC_URL]: { bytes: asset('lindera-ipadic-ja') },
+      [UNIDIC_URL]: { bytes: asset('lindera-unidic-ja') },
       [JIEBA_URL]: { bytes: asset('jieba-zh-dict') },
       ...Object.fromEntries(
         WETEXT.map((name) => [`/dictionaries/${name}.bin.zst`, { bytes: asset(name) }])
@@ -157,7 +157,7 @@ const WARM_BOUND_MS = 1;
 const WARM_ENGLISH_BOUND_MS = 12;
 /** Measured 25.2 ms — the CMU hash map, once per phonemizer: ~6x. */
 const FIRST_ENGLISH_BOUND_MS = 150;
-/** Measured 74.5 ms (zh, 1.6 MB), 152.7 ms (ja, 8.5 MB), 82.9 ms (en, 0.7 MB): ~6x. */
+/** Measured 74.5 ms (zh, 1.6 MB), 152.7 ms (ja, 8.5 MB IPADic — the UniDic asset is larger and not yet remeasured), 82.9 ms (en, 0.7 MB): ~6x. */
 const COLD_BOUND_MS = 1000;
 
 describe('the cost of one sentence, warm', () => {
@@ -211,12 +211,12 @@ describe('the cost of starting from nothing', () => {
     expect(elapsed).toBeLessThan(COLD_BOUND_MS);
   });
 
-  it('Japanese, including its 8.5 MB dictionary', async () => {
+  it('Japanese, including its 34 MB dictionary', async () => {
     const start = performance.now();
     await prepared({ vocab: 'kokoro-v1', lang: 'ja-JP' });
     const elapsed = performance.now() - start;
 
-    console.log(`Cold start, Japanese: ${elapsed.toFixed(1)} ms (wasm + 8.5 MB dictionary)`);
+    console.log(`Cold start, Japanese: ${elapsed.toFixed(1)} ms (wasm + 34 MB dictionary)`);
     expect(elapsed).toBeLessThan(COLD_BOUND_MS);
   });
 

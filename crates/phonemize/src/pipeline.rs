@@ -167,8 +167,7 @@ pub struct Phonemized {
 ///    which separates Han from kana. Japanese passes each of these runs to the
 ///    dictionary, so a run has to be a word or a sequence of words — 詳しい is a
 ///    Han character followed by a kana run, and read one run at a time it loses
-///    its opening character (no IPADic entry for 詳 on its own, so the surface
-///    form comes through and the vocabulary gate refuses the sentence), while
+///    its opening character (詳 alone is ツマビラカ, not クワシー), while
 ///    語る becomes カタリ + ル, a different word. Latin, digits and marks are not
 ///    handed to the dictionary at all, which is also what keeps the space after a
 ///    comma: lindera swallows whitespace the way MeCab does.

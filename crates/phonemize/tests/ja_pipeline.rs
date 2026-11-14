@@ -1,19 +1,21 @@
-//! The Japanese pipeline, end to end, against the real IPADic dictionary.
+//! The Japanese pipeline, end to end, against the real UniDic dictionary.
 //!
 //! Two things live here, and they answer different questions:
 //!
 //! - the segmenter tests say what the dictionary reads a word as, which is where
-//!   a lindera or IPADic change would show up;
+//!   a lindera or UniDic change would show up;
 //! - the reference corpus says the whole pipeline produces the phonemes the
 //!   reference chain produces, which is the acceptance criterion now that the
 //!   JavaScript chain is gone.
 //!
 //! The corpus is `tests/fixtures/ja-reference.json`, and its two halves come from
-//! different places on purpose: `kana` is what pyopenjtalk — the OpenJTalk chain,
-//! which is what Kokoro's Japanese voices were trained with — reads the text as,
-//! and `expected` is those readings put through this crate's own table.
-//! `scripts/check/check-ja-reference.py` recomputes both from the reference, so a
-//! wrong expectation fails there as well as here. Two kinds of sample are the
+//! different places on purpose: `kana` is what this crate's dictionary — UniDic's
+//! `phonological_surface_form` — reads the text as, and `expected` is that reading
+//! put through this crate's own table. Most of the corpus was recorded from
+//! pyopenjtalk, the OpenJTalk chain Kokoro's Japanese voices were trained with,
+//! whose `pron` agrees with UniDic on most of it;
+//! `scripts/check/check-ja-reference.py` recomputes both from pyopenjtalk, so it
+//! disagrees on purpose where the two dictionaries do. Two kinds of sample are the
 //! exceptions, and each says so in the file: the ones with a Latin run this crate
 //! reads with its own English backend (`check: skip`), and the dictionary gaps
 //! (`gap`), where `expected` is what this dictionary can reach today.
@@ -23,7 +25,7 @@ mod common;
 use std::collections::HashMap;
 
 use phonemize::dictionary::DictionaryRegistry;
-use phonemize::dictionary::IPADIC_JA;
+use phonemize::dictionary::UNIDIC_JA;
 use phonemize::g2p::SegmenterJa;
 
 use common::{dictionary_bytes, japanese_options, japanese_phonemizer};
@@ -42,11 +44,11 @@ fn segmenter() -> Option<SegmenterJa> {
         .declare_required("kokoro-v1", "ja-JP")
         .expect("kokoro-v1 speaks ja");
     registry
-        .load(IPADIC_JA, &compressed)
+        .load(UNIDIC_JA, &compressed)
         .expect("the dictionary loads");
 
     Some(
-        SegmenterJa::from_container(registry.get(IPADIC_JA).expect("loaded"))
+        SegmenterJa::from_container(registry.get(UNIDIC_JA).expect("loaded"))
             .expect("the container is a usable dictionary"),
     )
 }
@@ -57,21 +59,18 @@ fn reads_kanji_through_the_dictionary() {
         return;
     };
 
-    // The reading comes from IPADic's `pronunciation` field, looked up through
-    // lindera's schema rather than by array index. `pronunciation` and not
-    // `reading` because that is the field the reference chain uses: it is where
-    // 学校 is ガッコー and the particle は is ワ.
-    // A `pronunciation` field, not a `reading` one: 学校 is ガッコー, 新聞 is
-    // シンブン. The two fields differ exactly where Japanese is not written the way
-    // it is said — see the module comment — and 経営 is the one worth naming: our
-    // IPADic keeps ケイエイ where the reference dictionaries have ケーエー, because
-    // it collapses the ウ-row long vowels and not the エ-row ones. That is a gap in
-    // the dictionary, not in this crate, and it is recorded as one in
-    // `tests/fixtures/ja-reference.json`.
+    // The reading comes from UniDic's `phonological_surface_form` field, looked up
+    // through lindera's schema rather than by array index. That field and not
+    // `reading` because it is the spoken form: it is where 学校 is ガッコー, the
+    // particle は is ワ, and the particle を is オ.
+    // A spoken-form field, not a reading one: 学校 is ガッコー, 新聞 is シンブン,
+    // and 経営 is ケーエー — the エ-row long vowel that IPADic left as ケイエイ and
+    // that `tests/fixtures/ja-reference.json` used to record as a dictionary gap.
+    // UniDic closes it.
     for (text, expected) in [
-        ("経営", "ケイエイ"),
-        // 日本 reads ニッポン on its own and ニホン inside 日本語, and both
-        // pipelines agree on both — the reading depends on how the sentence
+        ("経営", "ケーエー"),
+        // 日本 reads ニッポン both on its own and inside 日本語 (ニッポンゴ), and
+        // both pipelines agree — the reading depends on how the sentence
         // segments, which is why 日本語 is in the reference corpus as well.
         ("日本", "ニッポン"),
         ("学校", "ガッコー"),
@@ -96,10 +95,11 @@ fn falls_back_to_the_surface_when_the_dictionary_has_no_reading() {
     // without it an unknown word would reach the IPA table as hiragana and be
     // mapped anyway. `kana_to_ipa` shifts too, so the two agree either way; what
     // this pins is that the *segmenter* does it, which is what keeps a mixed run
-    // consistent.
+    // consistent. `ゔぁ` is the example rather than `ぴゃぴゃ` because UniDic has
+    // an entry for ぴ and ゃ individually and reads those as ピ + ヤ.
     assert_eq!(
-        segmenter.read_as_katakana("ぴゃぴゃ").expect("segments"),
-        "ピャピャ"
+        segmenter.read_as_katakana("ゔぁ").expect("segments"),
+        "ヴァ"
     );
 
     // Digits have no reading, and their surface is not kana, so they pass
@@ -131,12 +131,12 @@ fn splits_a_sentence_into_words() {
 /// The reference corpus: `tests/fixtures/ja-reference.json`.
 ///
 /// Every sample records where its expectation comes from. `expected` is what this
-/// crate is asserted to produce; `kana` is the reading the reference tool
-/// (pyopenjtalk, the OpenJTalk chain) gives the same text, and `reading` — when
-/// present — is what the punctuation map and the text normalizer hand the
-/// dictionary, which is the input that reading belongs to. Those two columns are
-/// documentation for a failure, and `scripts/check/check-ja-reference.py` is what
-/// checks them against the reference rather than against this crate.
+/// crate is asserted to produce; `kana` is the reading this crate's dictionary
+/// (UniDic's `phonological_surface_form`) gives the same text, and `reading` —
+/// when present — is what the punctuation map and the text normalizer hand the
+/// dictionary, which is the input that reading belongs to. The corpus was first
+/// recorded from pyopenjtalk, the OpenJTalk chain, and the samples marked `gap`
+/// are where the two dictionaries disagree.
 ///
 /// The file replaces `ja-parity.json`, whose values were the JavaScript chain's
 /// output. That chain is gone, and the readings it pinned are ones this crate now
@@ -152,7 +152,7 @@ struct Corpus {
 #[derive(serde::Deserialize)]
 struct Sample {
     input: String,
-    /// The reading the reference gives, in the reference's own alphabet.
+    /// The reading this crate's dictionary gives the same text.
     #[allow(dead_code)]
     kana: String,
     expected: String,

@@ -45,7 +45,7 @@ mod types;
 pub mod vocab;
 
 use dictionary::{
-    DictionaryError, DictionaryRegistry, IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER,
+    DictionaryError, DictionaryRegistry, JIEBA_ZH, UNIDIC_JA, WETEXT_EN_TN_TAGGER,
     WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF,
     WETEXT_ZH_TN_TAGGER, WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE, WETEXT_ZH_TN_VERBALIZER,
 };
@@ -70,7 +70,7 @@ pub struct Phonemizer {
     ///
     /// Not rebuilt on a later `prepare`: the dictionary is immutable and never
     /// evicted, so a second build could only arrive at the same object at the
-    /// cost of another 45 MB of copying.
+    /// cost of another 199 MB of copying.
     japanese: Option<SegmenterJa>,
     /// The Chinese segmenter, built the same way and for the same reason.
     ///
@@ -340,7 +340,7 @@ impl Phonemizer {
     /// is for.
     fn build_backends(&mut self) -> Result<(), BackendError> {
         if self.japanese.is_none() {
-            if let Some(bytes) = self.dictionaries.get(IPADIC_JA) {
+            if let Some(bytes) = self.dictionaries.get(UNIDIC_JA) {
                 self.japanese = Some(SegmenterJa::from_container(bytes)?);
             }
         }

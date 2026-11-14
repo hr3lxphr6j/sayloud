@@ -1,7 +1,7 @@
 //! Japanese G2P, without a dictionary.
 //!
 //! Everything here is a pure function, so these run everywhere — including where
-//! the 8.5 MB dictionary asset has not been built. The expectations were copied
+//! the 34 MB dictionary asset has not been built. The expectations were copied
 //! from the JavaScript chain's `tests/unit/models/phonemize/japanese.test.ts`
 //! (since deleted) and live here now: the same inputs had to produce the
 //! same strings on both sides, and a table or range that drifts shows up here as

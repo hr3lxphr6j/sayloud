@@ -22,7 +22,7 @@ scripts/
 ├── setup/              # Dictionary assets (network; run by `pnpm install`)
 │   ├── setup-dictionaries.sh     # entry point — calls the three below
 │   ├── setup-jieba-dict.sh       # Chinese word list
-│   ├── setup-lindera-dict.sh     # Japanese IPADic
+│   ├── setup-lindera-dict.sh     # Japanese UniDic
 │   └── setup-wetext-fsts.sh      # six text-normalization grammars
 ├── generate/           # Data generation (local inputs; committed output)
 │   ├── gen-pinyin-pro-data.mjs
@@ -88,7 +88,7 @@ to **`public/dictionaries/`**, which is git-ignored.
 | Asset | Source | Size |
 |---|---|---|
 | `jieba-zh-dict.bin.zst` | `jieba-rs` 0.11.0's `dict.txt`, sha256-pinned | 1.6 MB |
-| `lindera-ipadic-ja.bin.zst` | lindera 6.2.0's IPADic release zip, nine files in a tar | 8.5 MB |
+| `lindera-unidic-ja.bin.zst` | lindera 6.2.0's UniDic release zip, nine files in a tar | 34.2 MB |
 | `wetext-{en,zh,ja}-tn-{tagger,verbalizer}.bin.zst` | `wetext` 0.1.8 wheel, sha256-pinned | 707 / 160 / 63 KB |
 
 `NOTICE` files land beside them: these are other people's dictionaries and the
@@ -124,7 +124,7 @@ macOS. Needs `curl` and `zstd`.
 
 ### `setup/setup-lindera-dict.sh`
 
-lindera's IPADic release: a zip of the nine files `load_from_path` reads, packed
+lindera's UniDic release: a zip of the nine files `load_from_path` reads, packed
 into one zstd frame. The tar is a transport wrapper only — the files inside are
 lindera's own, byte for byte, because re-packing them would be a second format to
 keep working. The file list is explicit and ordered, so the archive is identical
@@ -270,10 +270,15 @@ Runs against a **built** manifest, which is why CI runs it after `pnpm build`.
 
 ### `check/check-ja-reference.py`
 
-Recomputes the Japanese reference corpus and compares it against
-`crates/phonemize/tests/fixtures/ja-reference.json`. The reference is
-`pyopenjtalk` — the OpenJTalk chain Kokoro's Japanese voices were trained with —
-so a reading that drifts shows up here rather than being frozen into a fixture.
+Recomputes the Japanese reference corpus from `pyopenjtalk` — the OpenJTalk
+chain Kokoro's Japanese voices were trained with — and compares it against
+`crates/phonemize/tests/fixtures/ja-reference.json`. The crate itself reads
+UniDic through lindera, and the two dictionaries disagree on part of the corpus
+(long vowels, 日本語, 九), so the fixture records what the crate produces and the
+script reports the samples where they disagree. Review those rather than running
+`--write`, which would replace the crate's readings with OpenJTalk's. Where the
+two agree, a reading that drifts still shows up here rather than being frozen
+into a fixture.
 
 ```bash
 python3 scripts/check/check-ja-reference.py           # check
@@ -429,7 +434,7 @@ from, and "do not edit" — see the head of
 `pinyin-pro` 3.29.4, `jieba-rs` 0.11.0, lindera 6.2.0 and `wetext` 0.1.8 are
 constants in these scripts, and the two network downloads that have no version in
 a lockfile (jieba's word list, the wetext wheel) are additionally pinned by
-sha256. IPADic's release zip is pinned by version only — its contents are checked
+sha256. UniDic's release zip is pinned by version only — its contents are checked
 by the crate's own metadata validation at load time.
 
 ---

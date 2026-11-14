@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cleanPdfText,
   mergeLineBreaks,
   normalizeText,
   protectSpecialNumbers,
@@ -63,6 +64,44 @@ describe('text-utils', () => {
     });
   });
 
+  describe('cleanPdfText', () => {
+    it('drops the control characters PDFium emits for unmapped glyphs', () => {
+      expect(cleanPdfText('Hello\u0010World\u001B')).toBe('HelloWorld');
+      expect(cleanPdfText('中文\u0018测试')).toBe('中文测试');
+    });
+
+    it('keeps the whitespace the segmenter needs', () => {
+      expect(cleanPdfText('a\tb\nc\rd')).toBe('a\tb\nc\rd');
+      // NUL and every other C0 control still goes.
+      expect(cleanPdfText('\u0000a\u000bb\u000cc\u001fd')).toBe('abcd');
+    });
+
+    it('drops CJK Extension A and the B-F planes', () => {
+      expect(cleanPdfText('中文\u3400测试')).toBe('中文测试');
+      expect(cleanPdfText('中文\u4DBF测试')).toBe('中文测试');
+      expect(cleanPdfText(`中文\u{20000}\u{2A6DF}\u{2F800}测试`)).toBe('中文测试');
+    });
+
+    it('keeps ordinary Han, kana, hangul and emoji', () => {
+      const readable = '中文ひらがな한글😀';
+      expect(cleanPdfText(readable)).toBe(readable);
+    });
+
+    it('drops the lone half of a broken surrogate pair', () => {
+      // `\uddb3` is the tail of a pair whose head never arrived.
+      expect(cleanPdfText('a\uddb3b')).toBe('ab');
+      expect(cleanPdfText('a\ud83db')).toBe('ab');
+      // A whole pair is one code point, not a lone surrogate.
+      expect(cleanPdfText('a\u{1F600}b')).toBe('a\u{1F600}b');
+    });
+
+    it('is idempotent', () => {
+      const once = cleanPdfText('的 ⭠\u001b\u0010\nAnalyse');
+      expect(once).toBe('的 ⭠\nAnalyse');
+      expect(cleanPdfText(once)).toBe(once);
+    });
+  });
+
   describe('special numbers', () => {
     it('masks version numbers', () => {
       expect(protectSpecialNumbers('v1.2.3 发布')).toBe('v1_DOT_2_DOT_3 发布');
@@ -86,6 +125,71 @@ describe('text-utils', () => {
     });
   });
 
+  describe('list markers and abbreviations', () => {
+    it('masks a numbered list item at the start of a line', () => {
+      const masked = protectSpecialNumbers('1. First\n2. Second');
+      expect(masked).toContain('1_LIST_');
+      expect(masked).toContain('2_LIST_');
+    });
+
+    it('masks an indented list item', () => {
+      expect(protectSpecialNumbers('  1. First')).toBe('  1_LIST_ First');
+    });
+
+    it('leaves a sentence-final number alone', () => {
+      // `The answer is 1.` really does end a sentence.
+      expect(protectSpecialNumbers('The answer is 1. Next')).toBe('The answer is 1. Next');
+    });
+
+    it('masks titles, references and initials', () => {
+      expect(protectSpecialNumbers('Dr. Smith and U.S. citizens')).toBe(
+        'Dr_ABBR_ Smith and U_ABBR_S_ABBR_ citizens'
+      );
+      expect(protectSpecialNumbers('O. Anqiao works')).toBe('O_ABBR_ Anqiao works');
+      expect(protectSpecialNumbers('see Fig. 3 and Eq. 4')).toBe('see Fig_ABBR_ 3 and Eq_ABBR_ 4');
+      expect(protectSpecialNumbers('J.R.R. Tolkien')).toBe('J_ABBR_R_ABBR_R_ABBR_ Tolkien');
+    });
+
+    it('leaves abbreviations that can end a sentence alone', () => {
+      expect(protectSpecialNumbers('NASA. In 1969')).toBe('NASA. In 1969');
+      expect(protectSpecialNumbers('Apple Inc. The company grew')).toBe(
+        'Apple Inc. The company grew'
+      );
+      expect(protectSpecialNumbers('Buy milk, tea, etc. Then leave')).toBe(
+        'Buy milk, tea, etc. Then leave'
+      );
+    });
+
+    it('round-trips every mask', () => {
+      const source = '1. 项目，U.S. 政府（见 Fig. 3），Dr. Smith';
+      expect(restoreSpecialNumbers(protectSpecialNumbers(source))).toBe(source);
+    });
+
+    it('keeps a list item or an abbreviation inside one sentence', () => {
+      expect(segmentSentences('1. First item\n2. Second item', 'en').map((s) => s.text)).toEqual([
+        '1. First item\n2. Second item',
+      ]);
+      expect(segmentSentences('Dr. Smith arrived. He left.', 'en').map((s) => s.text)).toEqual([
+        'Dr. Smith arrived.',
+        'He left.',
+      ]);
+      expect(segmentSentences('O. Anqiao wrote it. Then left.', 'en').map((s) => s.text)).toEqual([
+        'O. Anqiao wrote it.',
+        'Then left.',
+      ]);
+    });
+
+    it('still keeps offsets aligned once a list item is masked', () => {
+      const source = '1. 第一项\n2. 第二项。再见。';
+      const segments = segmentSentences(source, 'zh');
+
+      for (const segment of segments) {
+        expect(source.slice(segment.start, segment.end)).toBe(segment.text);
+      }
+      expect(segments.map((s) => s.text)).toEqual(['1. 第一项\n2. 第二项。', '再见。']);
+    });
+  });
+
   describe('soft wraps in segmentation', () => {
     it('keeps a CJK line wrap inside one sentence', () => {
       const sents = segmentSentences('第一行\n第二行。', 'zh');
@@ -100,6 +204,16 @@ describe('text-utils', () => {
     it('still splits at a paragraph break', () => {
       const sents = segmentSentences('第一段。\n\n第二段。', 'zh');
       expect(sents.map((s) => s.text)).toEqual(['第一段。', '第二段。']);
+    });
+
+    it('lets a cleaned control character reveal the wrap', () => {
+      // Without `cleanPdfText` the `\u0010` before the wrap is a non-CJK
+      // neighbour, so the wrap becomes a space instead of joining the line.
+      const sents = segmentSentences('分析\u0010\n方法。', 'zh');
+      expect(sents).toHaveLength(1);
+      // The dropped character stays out of the edges of the span, the rest of
+      // the source slice is untouched.
+      expect(sents[0]?.text).toBe('分析\u0010\n方法。');
     });
 
     it('does not split numbers across sentences', () => {
@@ -168,7 +282,8 @@ describe('text-utils', () => {
     // one block, i.e. one `segmentSentences` call in the viewer. `\n` is a
     // layout line wrap. `\u0010`/`\u0018`/`\u001b`, `⭠`, `偮䵓` and `慴楬` are
     // what this file's ToUnicode table emits for ligature glyphs; they are kept
-    // verbatim, because the test is about the text the viewer really receives.
+    // verbatim here, because these tests are about the text the viewer really
+    // receives (P1 cleans it at the block level — see the test below).
     const PAGE_1: readonly string[] = [
       // 00 (2 rects)
       '[4⭠\u001b\u0010\n数学分析\u0010',
@@ -229,19 +344,33 @@ describe('text-utils', () => {
     const HAN = /[\u3040-\u30FF\u3400-\u9FFF]/u;
     const TERMINATOR = /[。！？!?…%；;]/;
 
+    /** A C0 control other than the whitespace a layout may keep. */
+    function hasControlChar(value: string): boolean {
+      return [...value].some((char) => {
+        const code = char.codePointAt(0) ?? 0;
+        return code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d;
+      });
+    }
+
     /** Every sentence of the page, tagged with the block it came from. */
     function page() {
-      return PAGE_1.flatMap((block) =>
-        segmentSentences(block, 'zh').map((segment) => ({ ...segment, block }))
-      );
+      // `buildEmbedBlocks` cleans each rectangle before it becomes a block, so
+      // this is the text the viewer really segments.
+      return PAGE_1.flatMap((raw) => {
+        const block = cleanPdfText(raw);
+        return segmentSentences(block, 'zh').map((segment) => ({ ...segment, block }));
+      });
     }
 
     it('never breaks a sentence at a layout wrap', () => {
       const segments = page();
 
-      // 36 sentences for the page; 13 of them still carry a `\n` from a merged
-      // wrap. Straight into `Intl.Segmenter` this page split into 51.
-      expect(segments).toHaveLength(36);
+      // 34 sentences for the page; 13 of them still carry a `\n` from a merged
+      // wrap. Straight into `Intl.Segmenter` this page split into 51, and P0
+      // left 36: `O. Anqiao` was two, and the trailing `\u001b\u0010` of the
+      // last block was a "sentence" of its own. P1 masks the initial and drops
+      // the glyph ids, which is what removed those two.
+      expect(segments).toHaveLength(34);
       expect(segments.filter((segment) => segment.text.includes('\n'))).toHaveLength(13);
 
       // The rule P0 enforces: a boundary with Han on both sides is only legal
@@ -306,17 +435,51 @@ describe('text-utils', () => {
       console.log('[023.pdf p1]', stats);
 
       expect(stats.blocks).toBe(27);
-      expect(stats.total).toBe(36);
+      expect(stats.total).toBe(34);
       // Over-splitting would pull the average down towards the raw run's 18.4.
       expect(stats.avgLength).toBeGreaterThan(20);
-      expect(stats.minLength).toBeGreaterThanOrEqual(2);
+      // The shortest is the lone `⭠` (U+2B60) PDFium emitted for a ligature in
+      // `的！⭠`; it is a symbol, so cleaning leaves it alone. Dropping
+      // symbol-only segments is a separate decision, not part of this pass.
+      expect(stats.minLength).toBeGreaterThanOrEqual(1);
       expect(stats.maxLength).toBeLessThanOrEqual(200);
       expect(stats.withNumbers).toBe(2);
-      expect(stats.withEnglish).toBe(11);
+      expect(stats.withEnglish).toBe(10);
       // Highlighters slice the block with `[start, end)`.
       expect(stats.offsetMismatches).toBe(0);
       // ~6ms for ~1k characters locally; 500ms only trips on a real regression.
       expect(elapsed).toBeLessThan(500);
+    });
+
+    it('drops the glyph-id garbage once the blocks are cleaned', () => {
+      // `buildEmbedBlocks` cleans each rectangle, so this is the text the
+      // viewer actually segments — the same page, minus the ToUnicode debris.
+      const cleaned = PAGE_1.map((block) => cleanPdfText(block));
+      const segments = cleaned.flatMap((block) => segmentSentences(block, 'zh'));
+
+      expect(segments).toHaveLength(34);
+      // No sentence carries a control character any more (13 did), and none is
+      // made only of glyph ids.
+      expect(segments.filter((s) => hasControlChar(s.text))).toEqual([]);
+
+      // The specific P1 fixes, on the text they came from.
+      expect(segmentSentences(cleanPdfText(PAGE_1[4] as string), 'zh').map((s) => s.text)).toEqual([
+        'O. Anqiao',
+      ]);
+      expect(segmentSentences(cleanPdfText(PAGE_1[26] as string), 'zh').map((s) => s.text)).toEqual(
+        ['空间。']
+      );
+      // Extension A (`䵓`) is where the ToUnicode fallback landed; it goes, and
+      // the real character before it stays.
+      expect(cleanPdfText(PAGE_1[13] as string)).toBe('，以我阅读的偮');
+
+      // Offsets still slice the cleaned source exactly.
+      for (const [index, block] of cleaned.entries()) {
+        for (const segment of segmentSentences(block, 'zh')) {
+          expect(segment.text).toBe(block.slice(segment.start, segment.end));
+          expect(segment.end).toBeLessThanOrEqual((PAGE_1[index] as string).length);
+        }
+      }
     });
   });
 });

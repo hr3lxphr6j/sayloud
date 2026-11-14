@@ -1,5 +1,6 @@
 import type { PdfTextRectObject, Rect } from '@embedpdf/models';
 import type { Block } from '~/lib/extractor';
+import { cleanPdfText } from '~/lib/text-utils';
 
 /**
  * One text rectangle as the page renders it, in CSS pixels.
@@ -79,6 +80,13 @@ const SEPARATOR = '\n';
  * wrap. `segmentSentences` (`lib/text-utils.ts`) treats it as a soft wrap: it
  * disappears between two CJK characters and becomes one space everywhere else,
  * so a wrapped line never ends a sentence and Latin words stay apart.
+ *
+ * Each rectangle's content goes through `cleanPdfText` before it is written to
+ * a span, because PDFium's ToUnicode table emits raw glyph ids (C0 controls)
+ * and occasional junk ideographs where it cannot map a glyph. Cleaning here,
+ * rather than only in the splitter, is what keeps `text` and the live text
+ * node identical: `rangeFor` and `offsetAt` address the DOM offsets the block
+ * text already describes, so the block must not carry characters no node has.
  */
 export function buildEmbedBlocks(
   textRects: readonly PdfTextRectObject[],
@@ -147,8 +155,13 @@ function buildBlock(
   const runs: EmbedRun[] = [];
   let text = '';
 
-  for (const [position, entry] of entries.entries()) {
-    if (position > 0) {
+  for (const entry of entries) {
+    // A rectangle that is nothing but glyph ids has nothing to show: no span,
+    // no separator, no characters.
+    const content = cleanPdfText(entry.content);
+    if (content.length === 0) continue;
+
+    if (runs.length > 0) {
       // The line break exists in `text` only; no node carries it.
       chars.push(null);
       text += SEPARATOR;
@@ -166,16 +179,16 @@ function buildBlock(
     // geometry in the right place without drawing the text twice.
     span.style.fontSize = `${rect.height}px`;
     span.style.lineHeight = `${rect.height}px`;
-    span.textContent = entry.content;
+    span.textContent = content;
 
     const node = span.firstChild as Text | null;
     if (!node) continue; // `textContent` above guarantees a text child
     wrapper.appendChild(span);
 
     const start = text.length;
-    for (let offset = 0; offset < entry.content.length; offset++) {
+    for (let offset = 0; offset < content.length; offset++) {
       chars.push({ node, offset });
-      text += entry.content.charAt(offset);
+      text += content.charAt(offset);
     }
     runs.push({ span, rect, start, end: text.length });
   }

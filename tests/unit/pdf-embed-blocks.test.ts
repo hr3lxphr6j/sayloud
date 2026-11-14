@@ -145,6 +145,36 @@ describe('buildEmbedBlocks', () => {
     expect(blocks.map((block) => block.text)).toEqual(['real text']);
   });
 
+  it('cleans glyph-id garbage out of the text and the node alike', () => {
+    const container = slots();
+    // What PDFium's ToUnicode fallback emits: a glyph id per unmapped glyph.
+    const block = buildEmbedBlocks(
+      [textRect('数学\u001b\u0010分析\u0018', 0, 0)],
+      container,
+      1
+    )[0] as EmbedBlock | undefined;
+
+    expect(block?.text).toBe('数学分析');
+    // The span carries the same characters the block advertises, so a range
+    // built from a block offset lands on the right glyphs.
+    expect(textNodeOf(block as EmbedBlock).data).toBe('数学分析');
+    expect(block?.rangeFor(0, 2)?.toString()).toBe('数学');
+  });
+
+  it('skips a rectangle that is nothing but garbage', () => {
+    const container = slots();
+    const blocks = buildEmbedBlocks(
+      [textRect('\u001b\u0010', 0, 0), textRect('real text', 0, 30)],
+      container,
+      1
+    );
+
+    // No stray newline and no empty run: the garbage rect never became a line.
+    expect(blocks.map((block) => block.text)).toEqual(['real text']);
+    expect(blocks[0]?.run).toHaveLength(1);
+    expect(container.textLayer.querySelectorAll('.pdf-text-run')).toHaveLength(1);
+  });
+
   it('maps a DOM position back to an offset in the block', () => {
     const container = slots();
     const block = buildEmbedBlocks([textRect('Hello PDF', 0, 0)], container, 1)[0] as EmbedBlock;

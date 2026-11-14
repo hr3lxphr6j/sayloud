@@ -39,3 +39,6 @@ poc/
 # `pnpm build:wasm` to have run first.
 /target/
 lib/models/phonemize-wasm/
+
+# EmbedPDF POC wasm (4.4 MB); copied from node_modules by the build:done hook.
+public/pdfium.wasm

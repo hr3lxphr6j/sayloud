@@ -33,6 +33,22 @@ const PDFJS_ASSETS = [
 ] as const;
 
 /**
+ * POC only: the EmbedPDF v2 PDFium wasm binary.
+ *
+ * 4.4 MB, so it is not checked in (`public/pdfium.wasm` is gitignored). The
+ * copy lives in `build:done` next to the pdf.js assets so a fresh clone builds
+ * without a manual `cp`. Remove together with `entrypoints/pdf-poc/` if the
+ * POC is rejected.
+ */
+const PDFIUM_WASM_SOURCE = join('node_modules', '@embedpdf', 'pdfium', 'dist', 'pdfium.wasm');
+
+async function copyPdfiumWasm(root: string, outDir: string): Promise<void> {
+  const source = join(root, PDFIUM_WASM_SOURCE);
+  if (!existsSync(source)) return;
+  await cp(source, join(outDir, 'pdfium.wasm'), { force: false, errorOnExist: false });
+}
+
+/**
  * Copy the pdf.js assets into a built extension.
  *
  * Existing files are skipped: in dev, `build:done` runs on every rebuild and
@@ -151,7 +167,16 @@ export default defineConfig({
     // `pdfjs/*` would admit the worker but not `pdfjs/cmaps/…`.
     web_accessible_resources: [
       {
-        resources: ['pdfjs/pdf.worker.min.mjs', 'pdfjs/cmaps/*', 'pdfjs/standard_fonts/*'],
+        resources: [
+          'pdfjs/pdf.worker.min.mjs',
+          'pdfjs/cmaps/*',
+          'pdfjs/standard_fonts/*',
+          // POC only, and not actually required: `pdf-poc.html` is an extension
+          // page, so `chrome-extension://…/pdfium.wasm` is same-origin there.
+          // Listed because the planned integration may render PDFs inside the
+          // reader content script, where the wasm does need to be accessible.
+          'pdfium.wasm',
+        ],
         matches: ['<all_urls>'],
       },
     ],
@@ -172,6 +197,13 @@ export default defineConfig({
     // talks to six cloud TTS services. Measured (V17): with `numThreads: 1` the
     // wasm backend initialises fine without it, so the global manifest change
     // and the six-provider regression it would require are both avoidable.
+    // EmbedPDF POC finding (2026-11-14): do **not** add `worker-src 'self' blob:`
+    // here. MV3 rejects `blob:` as a script/worker source in
+    // `extension_pages`, and an invalid CSP makes Chrome refuse to load the
+    // whole extension — silently, with no manifest warning in the browser log.
+    // The EmbedPDF worker engine therefore has to be tested against this CSP
+    // as-is, and falls back to `pdfium-direct-engine` if blob workers are
+    // blocked at runtime (see docs/research/embedpdf-poc-report.md).
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
@@ -204,6 +236,7 @@ export default defineConfig({
       }
       for (const outDir of targetOutDirs) {
         await copyPdfJsAssets(wxt.config.root, outDir);
+        await copyPdfiumWasm(wxt.config.root, outDir);
       }
     },
     /**

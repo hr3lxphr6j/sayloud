@@ -10,7 +10,6 @@ import {
 } from '@embedpdf/models';
 import pdfiumWasm from '@embedpdf/pdfium/pdfium.wasm?url';
 import type { DocumentManagerCapability } from '@embedpdf/plugin-document-manager';
-import { browser } from 'wxt/browser';
 
 /** The engine the viewer drives; PDFium hands back page rasters as blobs. */
 export type EmbedEngine = PdfEngine<Blob>;
@@ -62,8 +61,10 @@ export function isPasswordError(reason: PdfErrorReason | null): boolean {
 export function pdfiumWasmUrl(): string {
   // `?url` yields a root-relative path. The worker engine runs in a blob
   // worker, where a relative fetch has no useful base URL, so resolve it
-  // against the extension origin before handing it over.
-  return new URL(pdfiumWasm, browser.runtime.getURL('/')).toString();
+  // against the page before handing it over. `location` rather than
+  // `runtime.getURL('/')`: under `wxt dev` the page is served by the Vite dev
+  // server and the asset is there, not in the extension's own origin.
+  return new URL(pdfiumWasm, location.href).toString();
 }
 
 /**

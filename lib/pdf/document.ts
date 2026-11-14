@@ -3,6 +3,7 @@ import {
   getDocument,
   type PDFDocumentLoadingTask,
   type PDFDocumentProxy,
+  type PDFPageProxy,
 } from 'pdfjs-dist';
 import type { PdfAssetUrls } from './assets';
 import type { PdfOpenError, PdfPageText, PdfTextItem } from './types';
@@ -22,6 +23,14 @@ export interface PdfDocument {
   readonly pageCount: number;
   /** Text items of a 1-based page, in content-stream order. */
   getPageText(pageNumber: number): Promise<PdfPageText>;
+  /**
+   * The page proxy itself, for callers that draw it.
+   *
+   * The viewer needs the proxy to render its canvas and to ask pdf.js for the
+   * geometry of the text layer; going through `getPageText` alone would lose
+   * the positions the layer has to reproduce.
+   */
+  getPage(pageNumber: number): Promise<PDFPageProxy>;
   /** Release the document and its worker. */
   destroy(): Promise<void>;
 }
@@ -64,6 +73,7 @@ export async function openPdf(
 
       return { pageNumber, items: textItems };
     },
+    getPage: (pageNumber: number) => pdf.getPage(pageNumber),
     destroy: () => pdf.destroy(),
   };
 }

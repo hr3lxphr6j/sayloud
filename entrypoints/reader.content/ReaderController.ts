@@ -109,6 +109,15 @@ export interface ReaderControllerOptions {
    * page that is already reading.
    */
   settings?: SettingsStore;
+  /**
+   * The document to read, when the page already has one.
+   *
+   * The PDF viewer extracts its blocks from a canvas it drew itself, so there
+   * is nothing in the DOM for {@link extractBlocks} to find. Passing the ready
+   * document skips extraction entirely; omitting it keeps the content script's
+   * original behaviour.
+   */
+  doc?: ReadingDoc;
 }
 
 /**
@@ -160,8 +169,8 @@ export class ReaderController {
     installHighlightStyles();
     this.initialRate = options.initialRate ?? DEFAULT_RATE;
 
-    const blocks = extractBlocks();
-    this.doc = blocks.length > 0 ? buildReadingDoc(blocks) : null;
+    const blocks = options.doc ? null : extractBlocks();
+    this.doc = options.doc ?? (blocks && blocks.length > 0 ? buildReadingDoc(blocks) : null);
     this.state = {
       status: null,
       hasContent: this.doc !== null,

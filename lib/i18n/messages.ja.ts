@@ -314,6 +314,17 @@ export const ja: Record<MessageKey, string> = {
   'sideplayer.hint.orphaned.message':
     'このページを更新して読み上げを続けてください。拡張機能が更新されました。',
 
+  // --- the pdf viewer -------------------------------------------------------
+  'pdf.missing': 'このPDFを読み込めませんでした',
+  'pdf.empty': 'このPDFには読み上げられるテキストがありません',
+  'pdf.password.title': 'このPDFにはパスワードが必要です',
+  'pdf.password.wrong': 'パスワードが正しくありません',
+  // リーダー上部に常駐する一行で、閉じられるヒントではない。段組みの
+  // 読み順はテキストレイヤーの既知の制限なので、明記しておく。
+  'pdf.order.hint':
+    'PDFのテキスト順に読み上げます。段組みのページでは順序が前後することがあります。',
+  'pdf.pick': 'PDFファイルを選択',
+
   // --- the caption window ---------------------------------------------------
   'caption.counter': '文{index}/{total}',
 

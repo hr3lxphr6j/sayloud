@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { ReaderController } from '~/entrypoints/reader.content/ReaderController';
 import type { EngineStatus } from '~/lib/protocol';
+import type { ReadingDoc } from '~/lib/reading-doc';
 import { DEFAULT_SETTINGS, type Settings, type SettingsStore } from '~/lib/settings-store';
 
 /** The extension id, read before any test hides it. */
@@ -160,6 +161,47 @@ describe('ReaderController', () => {
     expect(() => controller.sendCommand({ type: 'toggle' })).not.toThrow();
 
     controller.dispose();
+  });
+
+  it('reads the document it was handed instead of the page', () => {
+    // The PDF viewer hands its own document in: the page it lives on holds a
+    // canvas, not prose. Extracting would find nothing worth reading — or,
+    // worse, some chrome around the viewer — so the option has to win.
+    document.body.innerHTML = '<article><p>Text from the page. It must not be read.</p></article>';
+
+    const port = fakePort();
+    vi.spyOn(browser.runtime, 'connect').mockReturnValue(
+      port.port as unknown as ReturnType<typeof browser.runtime.connect>
+    );
+
+    const sentence = {
+      text: 'Only from the pdf.',
+      lang: 'en',
+      blockIndex: 0,
+      start: 0,
+      end: 18,
+    };
+    const doc: ReadingDoc = {
+      blocks: [],
+      sentences: [sentence],
+      getSentence: (index) => (index === 0 ? sentence : null),
+      rangeForSentence: () => null,
+      rangeForWord: () => null,
+      sentenceAt: () => null,
+    };
+
+    const controller = new ReaderController(null, { doc });
+    controller.connect();
+
+    expect(controller.getState().hasContent).toBe(true);
+    const load = port.sent.find((message) => (message as { type?: string }).type === 'load');
+    expect(load).toBeDefined();
+    expect((load as { sentences: { text: string }[] }).sentences).toEqual([
+      { text: 'Only from the pdf.', lang: 'en' },
+    ]);
+
+    controller.dispose();
+    document.body.innerHTML = '';
   });
 
   it('sends the document again when the worker says it lost the session', () => {

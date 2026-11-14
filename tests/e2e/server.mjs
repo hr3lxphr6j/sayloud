@@ -167,11 +167,19 @@ const server = createServer(async (request, response) => {
 
   const name = pathname.replace(/^\/+/, '') || 'index.html';
 
-  // A document, not a page from `pages/`: the toolbar path keys on the tab's
-  // URL ending in `.pdf`, and `inline` is what makes Chrome render it built-in
-  // viewer instead of downloading it.
-  if (pathname.startsWith('/pdf/')) {
-    const pdf = resolve(PDF_FIXTURES, pathname.slice('/pdf/'.length));
+  // Documents, not pages from `pages/`. `/pdf/…` is the shape the toolbar
+  // recognises from the URL alone; `/paper/…` is the same kind of document
+  // served from a URL that does not end in `.pdf` (the arXiv form), where only
+  // the response's MIME type says what it is. `inline` is what makes Chrome
+  // render either one with its built-in viewer instead of downloading it.
+  const pdf =
+    pathname.startsWith('/pdf/') || pathname === '/paper/2301.12345v1'
+      ? resolve(
+          PDF_FIXTURES,
+          pathname.startsWith('/pdf/') ? pathname.slice('/pdf/'.length) : 'hello.pdf'
+        )
+      : null;
+  if (pdf !== null) {
     if (!pdf.startsWith(PDF_FIXTURES)) {
       response.writeHead(403).end('forbidden');
       return;

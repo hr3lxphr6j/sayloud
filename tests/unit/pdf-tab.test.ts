@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isPdfTab, stagePdfBytes, takePdfBytes } from '~/lib/pdf/tab';
+import { isOwnViewerUrl, isPdfTab, stagePdfBytes, takePdfBytes } from '~/lib/pdf/tab';
 
 describe('isPdfTab', () => {
   it('recognises a local pdf', () => {
@@ -41,6 +41,17 @@ describe('isPdfTab', () => {
 
   it('answers false for a tab without a url', () => {
     expect(isPdfTab({})).toBe(false);
+  });
+});
+
+describe('isOwnViewerUrl', () => {
+  it('recognises the viewer page itself', () => {
+    expect(isOwnViewerUrl('chrome-extension://abc/pdf-viewer.html#missing')).toBe(true);
+  });
+
+  it('is not fooled by a document or a page with the same name', () => {
+    expect(isOwnViewerUrl('https://example.com/pdf-viewer.html')).toBe(false);
+    expect(isOwnViewerUrl('chrome-extension://abc/reader.html')).toBe(false);
   });
 });
 

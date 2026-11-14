@@ -8,7 +8,7 @@ import { ModelStore } from '~/lib/models/store';
 import { isCachePolicyRequest, isModelSourceRequest } from '~/lib/offscreen-protocol';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
 import { syncPdfIntercept } from '~/lib/pdf/dnr';
-import { isPdfTab, stagePdfBytes, takePdfBytes } from '~/lib/pdf/tab';
+import { isOwnViewerUrl, isPdfTab, stagePdfBytes, takePdfBytes } from '~/lib/pdf/tab';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
 import { applyPlaybackSettings } from '~/lib/settings-effects';
@@ -239,27 +239,46 @@ export default defineBackground(() => {
    *
    * Clicking the icon again when the reader is already mounted is a no-op,
    * not a replay from the beginning.
+   *
+   * A PDF is the one kind of tab this cannot read in place, so it is handed to
+   * the viewer page instead. The URL recognises the common shape; the rest is
+   * decided by the document's own `Content-Type` (see `contentTypeOf`).
    */
   async function activate(tabId?: number): Promise<void> {
     const id = tabId ?? (await activeTabId());
     if (id === undefined) return;
 
-    // A PDF has no prose to inject a reader into, and Chrome's viewer rejects
-    // the injection anyway. It gets the viewer page instead, before anything
-    // is injected into a page that has nothing to read.
     const tab = await browser.tabs.get(id).catch((error: unknown) => {
       console.warn('[SayLoud] cannot look at this tab', error);
       return undefined;
     });
     if (!tab) return;
+
+    // Already the reader: a second viewer would nest inside this one, and the
+    // document it shows is the one the click was aimed at.
+    if (tab.url && isOwnViewerUrl(tab.url)) return;
+
+    // The cheap case, and the only one a `file:` tab has: the URL ends in
+    // `.pdf`, so nothing has to be asked.
     if (isPdfTab(tab)) {
       await openInViewer(id);
       return;
     }
 
     // If the tab already has an active port, the content script is running.
+    // Checked before the MIME probe: a page the reader is already in is not a
+    // PDF, and a repeat click should not pay for an injection either.
     if (activeTabs.has(id)) {
       console.log('[SayLoud] content script already active in tab', id);
+      return;
+    }
+
+    // A PDF with no `.pdf` in its URL (`arxiv.org/pdf/2301.12345`, a
+    // `/download?id=…` link) is only recognisable from the document's own MIME
+    // type. Chrome renders it with the built-in viewer, and the PDF page has no
+    // prose to inject a reader into, so the answer decides the whole path.
+    if ((await contentTypeOf(id)) === 'application/pdf') {
+      await openInViewer(id);
       return;
     }
 
@@ -274,9 +293,32 @@ export default defineBackground(() => {
         files: [CONTENT_SCRIPT],
       });
     } catch (error) {
-      // Restricted pages (chrome://, the Web Store, PDF viewers) reject
-      // injection; there is no reader to show a hint in, so just report it.
+      // Restricted pages (chrome://, the Web Store, other extensions' pages)
+      // reject injection; there is no reader to show a hint in, so just report
+      // it.
       console.warn('[SayLoud] cannot read this page', error);
+    }
+  }
+
+  /**
+   * The clicked tab's own MIME type, or null when it cannot be inspected.
+   *
+   * Injected under `activeTab`, granted by the click that got us here.
+   * `executeScript` rejects on pages the extension may not touch (chrome://, the
+   * Web Store, another extension's page); none of them has prose to read either,
+   * so the caller carries on and the reader injection reports it.
+   */
+  async function contentTypeOf(id: number): Promise<string | null> {
+    try {
+      const [injection] = await browser.scripting.executeScript({
+        target: { tabId: id },
+        func: contentTypeInPage,
+      });
+      const value = injection?.result;
+      return typeof value === 'string' ? value : null;
+    } catch (error) {
+      console.warn('[SayLoud] cannot inspect this tab', error);
+      return null;
     }
   }
 
@@ -325,6 +367,18 @@ export default defineBackground(() => {
     return tab?.id;
   }
 });
+
+/**
+ * Runs in the tab, not in the worker.
+ *
+ * `document.contentType` is the response's own MIME type as Chrome decided to
+ * render it. It is the only thing that recognises a PDF served from an
+ * extension-less URL, and it says `text/html` for a page, which is what sends
+ * the click down the reader path.
+ */
+function contentTypeInPage(): string {
+  return document.contentType;
+}
 
 /**
  * Runs in the PDF tab, not in the worker.

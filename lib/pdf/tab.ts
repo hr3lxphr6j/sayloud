@@ -23,20 +23,28 @@ interface Staged {
 const staged = new Map<string, Staged>();
 
 /**
- * Whether the tab is showing a PDF.
+ * Whether the tab's URL says it is a PDF.
  *
  * `tab.url` is the document, not Chrome's viewer: under the built-in viewer it
- * is still the PDF's own URL, which is why the trailing `.pdf` check is the
- * whole rule for local and online files alike. The viewer forms below are kept
- * because older Chrome builds did report the viewer page, with the document in
- * its query.
+ * is still the PDF's own URL, which is why the trailing `.pdf` check covers
+ * local and online files alike. The viewer forms below are kept because older
+ * Chrome builds did report the viewer page, with the document in its query.
+ *
+ * This is only the cheap half of the answer. Plenty of papers are served from
+ * extension-less URLs (`arxiv.org/pdf/2301.12345`), and the URL cannot say what
+ * the response is; the worker asks the page for `document.contentType` for
+ * those (see `contentTypeOf` in `entrypoints/background.ts`).
  */
 export function isPdfTab(tab: { url?: string; title?: string }): boolean {
   const url = tab.url;
   if (!url) return false;
-  // Already the reader: opening a second viewer would nest one inside another.
-  if (isOwnViewer(url)) return false;
+  if (isOwnViewerUrl(url)) return false;
   return isPdfUrl(isBuiltInViewer(url) ? documentInViewer(url) : url);
+}
+
+/** Whether the tab is already SayLoud's own PDF viewer. */
+export function isOwnViewerUrl(url: string): boolean {
+  return url.startsWith('chrome-extension://') && url.includes('pdf-viewer.html');
 }
 
 /** Stage bytes for the viewer and return the id that claims them. */
@@ -59,10 +67,6 @@ export function takePdfBytes(id: string): ArrayBuffer | null {
   staged.delete(id);
   clearTimeout(entry.expires);
   return entry.bytes;
-}
-
-function isOwnViewer(url: string): boolean {
-  return url.startsWith('chrome-extension://') && url.includes('pdf-viewer.html');
 }
 
 function isBuiltInViewer(url: string): boolean {

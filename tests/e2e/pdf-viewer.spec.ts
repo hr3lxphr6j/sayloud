@@ -74,6 +74,31 @@ test.describe('the pdf viewer', () => {
     expect(page.isClosed()).toBe(false);
   });
 
+  /**
+   * A paper served from a URL that does not end in `.pdf`, the arXiv shape.
+   *
+   * The URL cannot say what the tab holds, so the click has to ask the document
+   * for its own MIME type; Chrome renders this response with the built-in
+   * viewer, and the answer is what routes the click to SayLoud's viewer.
+   */
+  test('opens the viewer on a pdf the url does not name', async ({
+    page,
+    context,
+    extensionId,
+    activate,
+  }) => {
+    await page.goto(`${BASE_URL}/paper/2301.12345v1`);
+
+    const [viewer] = await Promise.all([context.waitForEvent('page'), activate()]);
+
+    await expect(viewer).toHaveURL(
+      new RegExp(`^chrome-extension://${extensionId}/pdf-viewer\\.html#`)
+    );
+    // The bytes made the trip from the extension-less URL.
+    await expect(viewer.locator('.pdf-text-layer')).toContainText('Hello', { timeout: 15_000 });
+    expect(page.isClosed()).toBe(false);
+  });
+
   test('starts reading a pdf and highlights the sentence', async ({ page, extensionId }) => {
     await page.goto(`chrome-extension://${extensionId}/pdf-viewer.html`);
     await page.locator('input[type=file]').setInputFiles(HELLO);

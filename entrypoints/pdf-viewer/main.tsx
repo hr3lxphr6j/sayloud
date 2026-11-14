@@ -31,6 +31,7 @@ import { buildReadingDoc, type ReadingDoc, type ReadingSentence } from '~/lib/re
 import { SettingsStore } from '~/lib/settings-store';
 import '~/entrypoints/reader.content/styles.css';
 import { renderCanvas, renderTextLayer } from './page-view';
+import { appendSync, type PageLayer, rescaleTextLayers } from './sync';
 
 /** The only zoom levels offered, as a readable choice instead of a slider. */
 const SCALES = [1, 1.5] as const;
@@ -62,13 +63,14 @@ let chrome: ChromeState = { notice: 'pick', scale: 1, password: null, open: fals
 let passwordResolve: ((value: string | null) => void) | null = null;
 let passwordAttempts = 0;
 
-/** One page's DOM and its place in the reading document. */
-interface Slot {
-  container: HTMLElement;
+/**
+ * One page's DOM and its place in the reading document.
+ *
+ * `layer` and `block` are the `PageLayer` the zoom rebuilds; the rest is what
+ * the viewer needs to draw the page and to know whether that drawing is stale.
+ */
+interface Slot extends PageLayer {
   page: PDFPageProxy | null;
-  layer: HTMLElement | null;
-  /** Null for a page with no readable text. */
-  block: Block | null;
   /** The scale its layer was built at; a zoom makes every other layer stale. */
   scale: number;
   canvas: HTMLCanvasElement | null;
@@ -78,10 +80,20 @@ let pdf: PdfDocument | null = null;
 let slots: Slot[] = [];
 let current: ReadingDoc | null = null;
 let controller: ReaderController | null = null;
+/** The controller's own state subscription, dropped when the controller is. */
+let unsubscribeController: (() => void) | null = null;
 let announced = false;
 let scale: number = SCALES[0];
 let initialRate = 1;
 let appendStopped = false;
+/**
+ * Pages arrived while the engine was speaking, so their `load` was held back.
+ *
+ * Sending it then would stop the audio: the engine stops the speaker before it
+ * reads `resume`. The longer list stays in the local document and goes out on
+ * the next sync that finds the engine quiet.
+ */
+let appendPending = false;
 /** Bumped for every document opened, so a slow open cannot overwrite a newer one. */
 let generation = 0;
 
@@ -385,6 +397,12 @@ async function openBytes(bytes: ArrayBuffer): Promise<void> {
   controller = new ReaderController(host, { initialRate, settings, doc: redirect });
   controller.connect();
   announced = true;
+  // A page appended while the engine was speaking is held back; this is what
+  // sends it once the engine goes quiet, which is the only moment a `load`
+  // cannot cut the audio off.
+  unsubscribeController = controller.subscribe(() => {
+    if (appendPending) resend();
+  });
   render(
     <ReaderPanel
       controller={controller}
@@ -462,7 +480,7 @@ function syncDoc(): void {
   current = next;
 
   if (!hadText && next.sentences.length > 0 && chrome.notice === 'empty') show('ready');
-  if (grew && announced) resend();
+  if ((grew || appendPending) && announced) resend();
 
   // A later page arrived with the same block order but a new layer, which is
   // what a zoom looks like. The highlight has to point into the new nodes.
@@ -480,12 +498,23 @@ function isAppendOnly(
 /**
  * Give the engine the document again, at the sentence being read.
  *
- * `resume` is what keeps a growing document from restarting playback: the
- * reader may have paused, and new pages are not a request to speak.
+ * Only while the engine is quiet. A `load` stops the speaker before it looks
+ * at `resume`, so one sent while audio is coming out cuts the reading off; the
+ * sentences stay in the local document and this is tried again on the next
+ * sync. `resume` is what keeps a quiet engine from starting to speak just
+ * because a later page arrived.
  */
 function resend(): void {
   if (!controller || !current) return;
   const status = controller.getState().status;
+
+  const decision = appendSync(status?.phase);
+  if (!decision.send) {
+    appendPending = true;
+    return;
+  }
+
+  appendPending = false;
   controller.sendCommand({
     type: 'load',
     sentences: current.sentences.map((sentence) => ({
@@ -494,7 +523,7 @@ function resend(): void {
     })),
     startIndex: status?.index ?? 0,
     rate: status?.rate ?? initialRate,
-    resume: true,
+    resume: decision.resume,
   });
 }
 
@@ -546,19 +575,25 @@ function setScale(next: number): void {
   chrome = { ...chrome, scale: next };
   drawChrome();
 
-  // Every page is now the wrong size. Visible ones are redrawn below; the rest
-  // are cleared and rebuilt when they come back into view.
-  for (const slot of slots) {
-    slot.canvas?.remove();
-    slot.canvas = null;
-    slot.container.replaceChildren();
-    slot.layer = null;
-  }
+  // The text layer of every page, not just the visible ones: the blocks the
+  // reader holds point at those nodes, and a page left pointing at detached
+  // ones is a page the reader can neither highlight nor scroll to. The canvas
+  // is the expensive part, so only the pages near the viewport get one back.
+  void enqueue(async () => {
+    for (const slot of slots) {
+      slot.canvas?.remove();
+      slot.canvas = null;
+    }
 
-  scheduleVisiblePages();
-  // After the visible pages are back, point the sentence highlight at the new
-  // text nodes: the controller's own range died with the old ones.
-  void enqueue(async () => refreshHighlight());
+    await rescaleTextLayers(slots, scale, (pageScale, container) => {
+      const slot = slots.find((candidate) => candidate.container === container);
+      if (!slot?.page) throw new Error('pdf viewer is redrawing a page it has not opened');
+      return renderTextLayer(slot.page, pageScale, container);
+    });
+    for (const slot of slots) if (slot.layer) slot.scale = scale;
+
+    scheduleVisiblePages();
+  });
 }
 
 /**
@@ -605,6 +640,8 @@ function answerPassword(value: string | null): void {
 }
 
 function closeReader(): void {
+  unsubscribeController?.();
+  unsubscribeController = null;
   controller?.dispose();
   controller = null;
   announced = false;
@@ -615,10 +652,13 @@ function closeReader(): void {
 /** Tear down the previous document, if there was one. */
 function resetViewer(): void {
   answerPassword(null);
+  unsubscribeController?.();
+  unsubscribeController = null;
   controller?.dispose();
   controller = null;
   announced = false;
   appendStopped = false;
+  appendPending = false;
   current = null;
   slots = [];
   pagesEl.replaceChildren();

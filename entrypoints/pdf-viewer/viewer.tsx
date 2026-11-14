@@ -17,8 +17,9 @@
 
 import { createPluginRegistration, type PluginRegistry } from '@embedpdf/core';
 import { EmbedPDF, useDocumentState } from '@embedpdf/core/preact';
-import type { PdfPageObject, PdfTextRectObject } from '@embedpdf/models';
+import type { PdfBookmarkObject, PdfPageObject, PdfTextRectObject } from '@embedpdf/models';
 import { calculateDegree } from '@embedpdf/models';
+import { BookmarkPluginPackage, useBookmarkCapability } from '@embedpdf/plugin-bookmark/preact';
 import {
   DocumentContent,
   DocumentManagerPluginPackage,
@@ -30,7 +31,18 @@ import {
 } from '@embedpdf/plugin-interaction-manager/preact';
 import { RenderLayer, RenderPluginPackage } from '@embedpdf/plugin-render/preact';
 import type { PageLayout } from '@embedpdf/plugin-scroll';
-import { Scroller, ScrollPluginPackage, ScrollStrategy } from '@embedpdf/plugin-scroll/preact';
+import {
+  Scroller,
+  ScrollPluginPackage,
+  ScrollStrategy,
+  useScroll,
+} from '@embedpdf/plugin-scroll/preact';
+import { SearchLayer, SearchPluginPackage, useSearch } from '@embedpdf/plugin-search/preact';
+import {
+  ThumbImg,
+  ThumbnailPluginPackage,
+  ThumbnailsPane,
+} from '@embedpdf/plugin-thumbnail/preact';
 import { Viewport, ViewportPluginPackage } from '@embedpdf/plugin-viewport/preact';
 import { useZoom, ZoomMode, ZoomPluginPackage } from '@embedpdf/plugin-zoom/preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -41,16 +53,43 @@ import { type EmbedEngine, pageTextRects } from '~/lib/pdf/embed/document';
 export interface ViewerApi {
   zoomIn(): void;
   zoomOut(): void;
+  /** Fit the page width to the viewport (`0` in the keyboard shortcuts). */
+  fitWidth(): void;
+  nextPage(): void;
+  previousPage(): void;
+  goToPage(page: number): void;
+  /** Run a full-text search; an empty query clears the highlights. */
+  search(query: string): void;
+  nextMatch(): void;
+  previousMatch(): void;
+  /** Close the search session and drop its highlights. */
+  stopSearch(): void;
+}
+
+/** The live result count the search toolbar shows. */
+export interface ViewerSearchState {
+  /** 0-based index of the current match, or -1 when there is none. */
+  active: number;
+  total: number;
+  loading: boolean;
 }
 
 export interface ViewerProps {
   engine: EmbedEngine;
+  /** Whether the thumbnail/outline sidebar is on screen. */
+  sidebarOpen: boolean;
+  /** Sidebar tab names, supplied by the page so this file carries no copy. */
+  sidebarLabels: SidebarLabels;
   /** Called once when the plugin registry is ready, and null when it goes away. */
   onRegistry: (registry: PluginRegistry | null) => void;
-  /** Zoom controls, as soon as the zoom plugin is available for a document. */
+  /** Viewer controls, as soon as the plugins are available for a document. */
   onApi: (api: ViewerApi | null) => void;
   /** Current zoom factor, for the percentage in the viewer's toolbar. */
   onScale: (scale: number) => void;
+  /** Current page (1-based) and the page count, for the page navigation field. */
+  onPage: (page: number, total: number) => void;
+  /** Search progress, for the match counter in the search bar. */
+  onSearch: (state: ViewerSearchState) => void;
   /**
    * One page finished extracting its text.
    *
@@ -124,6 +163,7 @@ function PageTextLayer({ documentId, layout, engine, onPageBlocks }: PageTextLay
   const page = doc?.pages[layout.pageIndex] ?? null;
 
   const layerRef = useRef<HTMLDivElement>(null);
+  const searchLayerRef = useRef<HTMLDivElement>(null);
   const pageElRef = useRef<HTMLDivElement>(null);
   const [rasterVisible, setRasterVisible] = useState(false);
 
@@ -151,6 +191,11 @@ function PageTextLayer({ documentId, layout, engine, onPageBlocks }: PageTextLay
     const layer = layerRef.current;
     if (!doc || !page || !layer) return;
 
+    // The text and the search layer share PDFium's own coordinate space (top
+    // left, y down), so they are laid out and rotated together.
+    applyPageTransform(layer, page, scale);
+    if (searchLayerRef.current) applyPageTransform(searchLayerRef.current, page, scale);
+
     let cancelled = false;
     void pageTextRects(engine, doc, layout.pageIndex)
       .then((rects: PdfTextRectObject[]) => {
@@ -166,7 +211,6 @@ function PageTextLayer({ documentId, layout, engine, onPageBlocks }: PageTextLay
           scale
         );
         for (const block of blocks) block.pageIndex = layout.pageIndex;
-        applyPageTransform(target, page, scale);
         onPageBlocks(documentId, layout.pageIndex, blocks, target);
       })
       .catch((error: unknown) => {
@@ -185,46 +229,269 @@ function PageTextLayer({ documentId, layout, engine, onPageBlocks }: PageTextLay
       )}
       <div class="pdf-page-layer" ref={pageElRef}>
         <div class="pdf-text-layer" ref={layerRef} />
+        {/* The search plugin paints its own rectangles in PDF points; the
+            wrapper gives it the page's scale and rotation. */}
+        <div class="pdf-search-layer" ref={searchLayerRef}>
+          <SearchLayer documentId={documentId} pageIndex={layout.pageIndex} scale={scale} />
+        </div>
       </div>
     </>
   );
 }
 
 /**
- * Bridges the zoom plugin to the viewer's own toolbar.
+ * Bridges the plugins to the viewer's own chrome.
  *
- * Headless on purpose: the buttons live in `#pdf-chrome`, outside EmbedPDF's
- * tree, so the capability is pushed out through callbacks rather than pulled
- * in through a render prop.
+ * Headless on purpose: the toolbar, the search bar and the page field live in
+ * `#pdf-chrome`, outside EmbedPDF's tree, so the capabilities are pushed out
+ * through callbacks rather than pulled in through render props.
  */
-function ZoomBridge({
+function ViewerController({
   documentId,
   onApi,
   onScale,
+  onPage,
+  onSearch,
 }: {
   documentId: string;
   onApi: ViewerProps['onApi'];
   onScale: ViewerProps['onScale'];
+  onPage: ViewerProps['onPage'];
+  onSearch: ViewerProps['onSearch'];
 }) {
-  const { state, provides } = useZoom(documentId);
+  const zoom = useZoom(documentId);
+  const scroll = useScroll(documentId);
+  const search = useSearch(documentId);
+
+  const zoomScope = zoom.provides;
+  const scrollScope = scroll.provides;
+  const searchScope = search.provides;
 
   useEffect(() => {
-    if (!provides) {
+    if (!zoomScope || !scrollScope || !searchScope) {
       onApi(null);
       return;
     }
-    onApi({ zoomIn: () => provides.zoomIn(), zoomOut: () => provides.zoomOut() });
+    onApi({
+      zoomIn: () => zoomScope.zoomIn(),
+      zoomOut: () => zoomScope.zoomOut(),
+      fitWidth: () => zoomScope.requestZoom(ZoomMode.FitWidth),
+      nextPage: () => scrollScope.scrollToNextPage('smooth'),
+      previousPage: () => scrollScope.scrollToPreviousPage('smooth'),
+      goToPage: (page: number) =>
+        scrollScope.scrollToPage({
+          pageNumber: Math.min(Math.max(page, 1), scrollScope.getTotalPages()),
+          behavior: 'smooth',
+        }),
+      search: (query: string) => {
+        void searchScope.searchAllPages(query);
+      },
+      nextMatch: () => {
+        searchScope.nextResult();
+      },
+      previousMatch: () => {
+        searchScope.previousResult();
+      },
+      stopSearch: () => searchScope.stopSearch(),
+    });
     return () => onApi(null);
-  }, [provides, onApi]);
+  }, [zoomScope, scrollScope, searchScope, onApi]);
 
   useEffect(() => {
-    onScale(state.currentZoomLevel);
-  }, [state.currentZoomLevel, onScale]);
+    onScale(zoom.state.currentZoomLevel);
+  }, [zoom.state.currentZoomLevel, onScale]);
+
+  useEffect(() => {
+    onPage(scroll.state.currentPage, scroll.state.totalPages);
+  }, [scroll.state.currentPage, scroll.state.totalPages, onPage]);
+
+  useEffect(() => {
+    onSearch({
+      active: search.state.activeResultIndex,
+      total: search.state.total,
+      loading: search.state.loading,
+    });
+  }, [search.state.activeResultIndex, search.state.total, search.state.loading, onSearch]);
+
+  // The search plugin moves the active match but does not scroll; following
+  // the active index is what makes "next result" land on screen.
+  useEffect(() => {
+    if (!searchScope || !scrollScope) return;
+    return searchScope.onActiveResultChange((index) => {
+      const result = searchScope.getState().results[index];
+      if (!result) return;
+      scrollScope.scrollToPage({ pageNumber: result.pageIndex + 1, behavior: 'smooth' });
+    });
+  }, [searchScope, scrollScope]);
 
   return null;
 }
 
-export function PdfViewer({ engine, onRegistry, onApi, onScale, onPageBlocks }: ViewerProps) {
+/** The labels the sidebar needs, kept in the page so this file stays text-free. */
+export interface SidebarLabels {
+  pages: string;
+  contents: string;
+  empty: string;
+}
+
+/** The thumbnail/outline rail to the left of the pages. */
+function PdfSidebar({ documentId, labels }: { documentId: string; labels: SidebarLabels }) {
+  const [tab, setTab] = useState<'pages' | 'contents'>('pages');
+  const scroll = useScroll(documentId);
+  const currentPage = scroll.state.currentPage;
+
+  const goTo = (pageNumber: number): void => {
+    scroll.provides?.scrollToPage({ pageNumber, behavior: 'smooth' });
+  };
+
+  return (
+    <aside class="pdf-sidebar">
+      <div class="pdf-sidebar-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'pages'}
+          onClick={() => setTab('pages')}
+        >
+          {labels.pages}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'contents'}
+          onClick={() => setTab('contents')}
+        >
+          {labels.contents}
+        </button>
+      </div>
+      {tab === 'pages' ? (
+        <ThumbnailsPane documentId={documentId} class="pdf-thumbs-pane">
+          {(meta) => (
+            <div
+              class="pdf-thumb"
+              style={{ top: `${meta.top}px`, height: `${meta.wrapperHeight}px` }}
+            >
+              <button
+                type="button"
+                class={meta.pageIndex + 1 === currentPage ? 'pdf-thumb-current' : ''}
+                aria-current={meta.pageIndex + 1 === currentPage ? 'page' : undefined}
+                onClick={() => goTo(meta.pageIndex + 1)}
+              >
+                <ThumbImg
+                  documentId={documentId}
+                  meta={meta}
+                  class="pdf-thumb-image"
+                  style={{ width: `${meta.width}px`, height: `${meta.height}px` }}
+                />
+                <span class="pdf-thumb-label">{meta.pageIndex + 1}</span>
+              </button>
+            </div>
+          )}
+        </ThumbnailsPane>
+      ) : (
+        <PdfOutline documentId={documentId} emptyLabel={labels.empty} onGo={goTo} />
+      )}
+    </aside>
+  );
+}
+
+/** The PDF's own table of contents, as a tree of jump targets. */
+function PdfOutline({
+  documentId,
+  emptyLabel,
+  onGo,
+}: {
+  documentId: string;
+  emptyLabel: string;
+  onGo: (pageNumber: number) => void;
+}) {
+  const { provides } = useBookmarkCapability();
+  const [items, setItems] = useState<PdfBookmarkObject[] | null>(null);
+
+  useEffect(() => {
+    if (!provides) {
+      setItems(null);
+      return;
+    }
+    let cancelled = false;
+    setItems(null);
+    try {
+      provides
+        .forDocument(documentId)
+        .getBookmarks()
+        .toPromise()
+        .then((result) => {
+          if (!cancelled) setItems(result.bookmarks);
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          console.warn('[SayLoud] cannot read the pdf outline', error);
+          setItems([]);
+        });
+    } catch (error) {
+      console.warn('[SayLoud] cannot read the pdf outline', error);
+      setItems([]);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [provides, documentId]);
+
+  return (
+    <div class="pdf-outline">
+      {items === null ? null : items.length === 0 ? (
+        <p class="pdf-outline-empty">{emptyLabel}</p>
+      ) : (
+        <OutlineList items={items} onGo={onGo} />
+      )}
+    </div>
+  );
+}
+
+function OutlineList({
+  items,
+  onGo,
+}: {
+  items: readonly PdfBookmarkObject[];
+  onGo: (pageNumber: number) => void;
+}) {
+  return (
+    <ul>
+      {items.map((item, index) => {
+        const page =
+          item.target?.type === 'destination' ? item.target.destination.pageIndex + 1 : null;
+        return (
+          <li key={`${index}-${item.title}`}>
+            <button
+              type="button"
+              disabled={page === null}
+              onClick={() => {
+                if (page !== null) onGo(page);
+              }}
+            >
+              {item.title}
+            </button>
+            {item.children && item.children.length > 0 && (
+              <OutlineList items={item.children} onGo={onGo} />
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export function PdfViewer({
+  engine,
+  sidebarOpen,
+  onRegistry,
+  onApi,
+  onScale,
+  onPage,
+  onSearch,
+  onPageBlocks,
+  sidebarLabels,
+}: ViewerProps) {
   const plugins = useMemo(
     () => [
       createPluginRegistration(DocumentManagerPluginPackage, {}),
@@ -243,6 +510,15 @@ export function PdfViewer({ engine, onRegistry, onApi, onScale, onPageBlocks }: 
       }),
       createPluginRegistration(InteractionManagerPluginPackage),
       createPluginRegistration(RenderPluginPackage),
+      createPluginRegistration(SearchPluginPackage, { showAllResults: true }),
+      createPluginRegistration(ThumbnailPluginPackage, {
+        width: 120,
+        gap: 8,
+        labelHeight: 16,
+        paddingY: 8,
+        autoScroll: true,
+      }),
+      createPluginRegistration(BookmarkPluginPackage),
       createPluginRegistration(ZoomPluginPackage, {
         // Fit-width, not a fixed 1×. The zoom plugin gates the viewport until
         // its first request, and it only makes that request itself for an
@@ -275,29 +551,42 @@ export function PdfViewer({ engine, onRegistry, onApi, onScale, onPageBlocks }: 
               if (isError || !isLoaded) return null;
               return (
                 <GlobalPointerProvider documentId={activeDocumentId}>
-                  <ZoomBridge documentId={activeDocumentId} onApi={onApi} onScale={onScale} />
-                  <Viewport
-                    id="pdf-viewport"
-                    documentId={activeDocumentId}
-                    style="position:absolute;inset:0;overflow:auto"
-                  >
-                    <Scroller
-                      documentId={activeDocumentId}
-                      renderPage={(layout) => (
-                        <PagePointerProvider
+                  <div class="pdf-viewer-root">
+                    {sidebarOpen && (
+                      <PdfSidebar documentId={activeDocumentId} labels={sidebarLabels} />
+                    )}
+                    <div class="pdf-viewer-main">
+                      <ViewerController
+                        documentId={activeDocumentId}
+                        onApi={onApi}
+                        onScale={onScale}
+                        onPage={onPage}
+                        onSearch={onSearch}
+                      />
+                      <Viewport
+                        id="pdf-viewport"
+                        documentId={activeDocumentId}
+                        style="position:absolute;inset:0;overflow:auto"
+                      >
+                        <Scroller
                           documentId={activeDocumentId}
-                          pageIndex={layout.pageIndex}
-                        >
-                          <PageTextLayer
-                            documentId={activeDocumentId}
-                            layout={layout}
-                            engine={engine}
-                            onPageBlocks={onPageBlocks}
-                          />
-                        </PagePointerProvider>
-                      )}
-                    />
-                  </Viewport>
+                          renderPage={(layout) => (
+                            <PagePointerProvider
+                              documentId={activeDocumentId}
+                              pageIndex={layout.pageIndex}
+                            >
+                              <PageTextLayer
+                                documentId={activeDocumentId}
+                                layout={layout}
+                                engine={engine}
+                                onPageBlocks={onPageBlocks}
+                              />
+                            </PagePointerProvider>
+                          )}
+                        />
+                      </Viewport>
+                    </div>
+                  </div>
                 </GlobalPointerProvider>
               );
             }}

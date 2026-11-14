@@ -19,12 +19,12 @@
 
 import type { PluginRegistry } from '@embedpdf/core';
 import { render } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { ReaderController } from '~/entrypoints/reader.content/ReaderController';
 import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import type { Block } from '~/lib/extractor';
-import { I18nProvider, useT, useUiLanguage } from '~/lib/i18n';
+import { I18nProvider, type Lang, resolveLang, useT, useUiLanguage } from '~/lib/i18n';
 import type { EmbedBlock } from '~/lib/pdf/embed/blocks';
 import {
   closePdfDocuments,
@@ -39,13 +39,15 @@ import {
 } from '~/lib/pdf/embed/document';
 import { EmbedHighlightLayer } from '~/lib/pdf/embed/highlight';
 import { buildReadingDoc, type ReadingDoc, type ReadingSentence } from '~/lib/reading-doc';
-import { SettingsStore } from '~/lib/settings-store';
+import { DEFAULT_SETTINGS, SettingsStore, type UiLang } from '~/lib/settings-store';
 import '~/entrypoints/reader.content/styles.css';
 import { appendSync } from './sync';
-import { PdfViewer, type ViewerApi } from './viewer';
+import { PdfViewer, type SidebarLabels, type ViewerApi, type ViewerSearchState } from './viewer';
 
 /** How long a hash id gets to be answered before it is called missing. */
 const MISSING_TIMEOUT_MS = 2_000;
+/** Debounce between a keystroke in the search bar and the PDFium scan. */
+const SEARCH_DEBOUNCE_MS = 180;
 
 /** The page's root elements, all of which the HTML provides. */
 const chromeEl = element('pdf-chrome');
@@ -57,6 +59,16 @@ const settings = new SettingsStore(browser.storage.local, browser.storage.onChan
 /** What the strip above the pages is saying right now. */
 type Notice = 'opening' | 'pick' | 'missing' | 'empty' | 'ready';
 
+interface SearchUiState {
+  open: boolean;
+  /** What the reader typed; the plugin's own query lags behind the debounce. */
+  query: string;
+  /** 0-based index of the current match, or -1 when there is none. */
+  active: number;
+  total: number;
+  loading: boolean;
+}
+
 interface ChromeState {
   notice: Notice;
   /** Current zoom factor, from EmbedPDF's zoom plugin. */
@@ -65,6 +77,12 @@ interface ChromeState {
   password: { wrong: boolean } | null;
   /** Whether a document is open, which is what the zoom control needs to know. */
   open: boolean;
+  /** Current page (1-based) and the page count, from the scroll plugin. */
+  page: number;
+  total: number;
+  /** Whether the thumbnail/outline rail is visible. */
+  sidebar: boolean;
+  search: SearchUiState;
 }
 
 let chrome: ChromeState = {
@@ -72,17 +90,27 @@ let chrome: ChromeState = {
   zoom: 1,
   password: null,
   open: false,
+  page: 1,
+  total: 0,
+  sidebar: false,
+  search: { open: false, query: '', active: -1, total: 0, loading: false },
 };
 
-/** The zoom controls, once the embedding tree has a document to zoom. */
+/** The zoom/paging/search controls, once the embedding tree has a document. */
 let viewerApi: ViewerApi | null = null;
+/** The open document's own bytes, kept for the download button. */
+let documentBytes: ArrayBuffer | null = null;
+let documentName = 'document.pdf';
+/** The pending debounced search, so a fast typist only runs the last one. */
+let searchTimer: number | null = null;
 
 let passwordResolve: ((value: string | null) => void) | null = null;
 let passwordAttempts = 0;
 
 let engine: EmbedEngine | null = null;
 let enginePromise: Promise<EmbedEngine> | null = null;
-let viewerMounted = false;
+/** The language the chrome and the sidebar render in. */
+let uiLang: Lang = resolveLang(DEFAULT_SETTINGS.uiLang, navigator.language);
 
 let registry: PluginRegistry | null = null;
 let pending: { bytes: ArrayBuffer; name: string } | null = null;
@@ -144,6 +172,71 @@ const redirect: ReadingDoc = {
   sentenceAt: (node, offset) => current?.sentenceAt(node, offset) ?? null,
 };
 
+/** The labels this page adds on top of the shared catalogue. */
+interface PdfUiLabels {
+  search: string;
+  closeSearch: string;
+  previousMatch: string;
+  nextMatch: string;
+  noMatches: string;
+  sidebar: SidebarLabels;
+  toggleSidebar: string;
+  download: string;
+  fitWidth: string;
+  previousPage: string;
+  nextPage: string;
+  pageBefore: string;
+  pageAfter: (total: number) => string;
+}
+
+const PDF_LABELS: Record<Lang, PdfUiLabels> = {
+  en: {
+    search: 'Search…',
+    closeSearch: 'Close search',
+    previousMatch: 'Previous match',
+    nextMatch: 'Next match',
+    noMatches: 'No matches',
+    sidebar: { pages: 'Pages', contents: 'Contents', empty: 'No table of contents' },
+    toggleSidebar: 'Toggle the thumbnail panel',
+    download: 'Download the PDF',
+    fitWidth: 'Fit the page width',
+    previousPage: 'Previous page',
+    nextPage: 'Next page',
+    pageBefore: 'Page ',
+    pageAfter: (total) => ` of ${total}`,
+  },
+  ja: {
+    search: '検索…',
+    closeSearch: '検索を閉じる',
+    previousMatch: '前の一致',
+    nextMatch: '次の一致',
+    noMatches: '一致なし',
+    sidebar: { pages: 'ページ', contents: '目次', empty: '目次はありません' },
+    toggleSidebar: 'サムネイルを表示',
+    download: 'PDF をダウンロード',
+    fitWidth: '幅に合わせる',
+    previousPage: '前のページ',
+    nextPage: '次のページ',
+    pageBefore: '',
+    pageAfter: (total) => ` / ${total} ページ`,
+  },
+  'zh-CN': {
+    search: '搜索…',
+    closeSearch: '关闭搜索',
+    previousMatch: '上一个匹配',
+    nextMatch: '下一个匹配',
+    noMatches: '没有匹配',
+    sidebar: { pages: '页面', contents: '目录', empty: '这份 PDF 没有目录' },
+    toggleSidebar: '切换缩略图侧边栏',
+    download: '下载 PDF',
+    fitWidth: '适合页面宽度',
+    previousPage: '上一页',
+    nextPage: '下一页',
+    pageBefore: '第 ',
+    pageAfter: (total) => ` 页 / 共 ${total} 页`,
+  },
+};
+
 function drawChrome(): void {
   render(
     <Chrome
@@ -151,8 +244,16 @@ function drawChrome(): void {
       state={chrome}
       api={viewerApi}
       onZoom={zoomBy}
+      onFitWidth={fitWidth}
       onPick={pickFile}
       onPassword={answerPassword}
+      onPage={goToPage}
+      onSearchQuery={setSearchQuery}
+      onSearchNext={nextMatch}
+      onSearchPrevious={previousMatch}
+      onSearchClose={closeSearch}
+      onToggleSidebar={toggleSidebar}
+      onDownload={downloadDocument}
     />,
     chromeEl
   );
@@ -163,41 +264,102 @@ function show(notice: Notice): void {
   drawChrome();
 }
 
-/** The reading-order line, the zoom control, and whatever is blocking the view. */
+/** The toolbar, the search bar, and whatever is blocking the view. */
 interface ChromeProps {
   settings: SettingsStore;
   state: ChromeState;
   api: ViewerApi | null;
   onZoom: (direction: 1 | -1) => void;
+  onFitWidth: () => void;
   onPick: (file: File) => void;
   onPassword: (value: string | null) => void;
+  onPage: (page: number) => void;
+  onSearchQuery: (query: string) => void;
+  onSearchNext: () => void;
+  onSearchPrevious: () => void;
+  onSearchClose: () => void;
+  onToggleSidebar: () => void;
+  onDownload: () => void;
 }
 
 function Chrome(props: ChromeProps) {
   const { lang } = useUiLanguage(props.settings);
   return (
     <I18nProvider lang={lang}>
-      <ChromeBody {...props} />
+      <ChromeBody {...props} labels={PDF_LABELS[lang]} />
     </I18nProvider>
   );
 }
 
-function ChromeBody({ state, api, onZoom, onPick, onPassword }: ChromeProps) {
+function ChromeBody({
+  state,
+  api,
+  labels,
+  onZoom,
+  onFitWidth,
+  onPick,
+  onPassword,
+  onPage,
+  onSearchQuery,
+  onSearchNext,
+  onSearchPrevious,
+  onSearchClose,
+  onToggleSidebar,
+  onDownload,
+}: ChromeProps & { labels: PdfUiLabels }) {
   const t = useT();
   const canPick = state.notice === 'pick' || state.notice === 'missing' || state.notice === 'empty';
+  const controls = state.open && api !== null;
 
   return (
     <>
       <div class="pdf-top">
+        <button
+          type="button"
+          class="pdf-icon-button"
+          aria-label={labels.toggleSidebar}
+          aria-pressed={state.sidebar}
+          disabled={!controls}
+          onClick={onToggleSidebar}
+        >
+          ⊞
+        </button>
         {/* Never dismissible: a multi-column paper read down the columns looks
             like broken ordering, and the line is what distinguishes the two. */}
         <p class="pdf-order-hint">{t('pdf.order.hint')}</p>
+        {state.open && (
+          <div class="pdf-page-nav">
+            <button
+              type="button"
+              aria-label={labels.previousPage}
+              disabled={!controls || state.page <= 1}
+              onClick={() => onPage(state.page - 1)}
+            >
+              ←
+            </button>
+            <PageField
+              page={state.page}
+              total={state.total}
+              before={labels.pageBefore}
+              after={labels.pageAfter(state.total)}
+              onGo={onPage}
+            />
+            <button
+              type="button"
+              aria-label={labels.nextPage}
+              disabled={!controls || state.page >= state.total}
+              onClick={() => onPage(state.page + 1)}
+            >
+              →
+            </button>
+          </div>
+        )}
         {state.open && (
           <fieldset class="pdf-zoom">
             <button
               type="button"
               aria-label={t('pdf.zoom.out')}
-              disabled={!api}
+              disabled={!controls}
               onClick={() => onZoom(-1)}
             >
               −
@@ -208,14 +370,86 @@ function ChromeBody({ state, api, onZoom, onPick, onPassword }: ChromeProps) {
             <button
               type="button"
               aria-label={t('pdf.zoom.in')}
-              disabled={!api}
+              disabled={!controls}
               onClick={() => onZoom(1)}
             >
               +
             </button>
+            <button
+              type="button"
+              aria-label={labels.fitWidth}
+              disabled={!controls}
+              onClick={onFitWidth}
+            >
+              ⤢
+            </button>
           </fieldset>
         )}
+        {state.open && (
+          <button
+            type="button"
+            class="pdf-text-button"
+            aria-label={labels.search}
+            aria-expanded={state.search.open}
+            disabled={!controls}
+            onClick={openSearch}
+          >
+            {labels.search.replace('…', '')}
+          </button>
+        )}
+        {state.open && (
+          <button
+            type="button"
+            class="pdf-icon-button"
+            aria-label={labels.download}
+            disabled={!controls}
+            onClick={onDownload}
+          >
+            ↓
+          </button>
+        )}
       </div>
+
+      {state.search.open && (
+        <div class="pdf-search">
+          <input
+            type="text"
+            aria-label={labels.search}
+            placeholder={labels.search}
+            value={state.search.query}
+            autofocus
+            onInput={(event) => onSearchQuery(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              if (event.shiftKey) onSearchPrevious();
+              else onSearchNext();
+            }}
+          />
+          <span class="pdf-search-count" aria-live="polite">
+            {searchCount(state.search, labels)}
+          </span>
+          <button
+            type="button"
+            aria-label={labels.previousMatch}
+            disabled={state.search.total === 0}
+            onClick={onSearchPrevious}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            aria-label={labels.nextMatch}
+            disabled={state.search.total === 0}
+            onClick={onSearchNext}
+          >
+            ↓
+          </button>
+          <button type="button" aria-label={labels.closeSearch} onClick={onSearchClose}>
+            ×
+          </button>
+        </div>
+      )}
 
       {state.notice === 'opening' && <p class="pdf-notice">{t('panel.loading')}</p>}
 
@@ -249,6 +483,68 @@ function ChromeBody({ state, api, onZoom, onPick, onPassword }: ChromeProps) {
         />
       )}
     </>
+  );
+}
+
+/** The "3/12" counter, or a state label when there is nothing to count. */
+function searchCount(search: SearchUiState, labels: PdfUiLabels): string {
+  if (search.query.trim() === '') return '';
+  if (search.loading && search.total === 0) return '…';
+  if (search.total === 0) return labels.noMatches;
+  return `${search.active + 1}/${search.total}`;
+}
+
+/** The editable page number in the middle of the page navigation control. */
+function PageField({
+  page,
+  total,
+  before,
+  after,
+  onGo,
+}: {
+  page: number;
+  total: number;
+  before: string;
+  after: string;
+  onGo: (page: number) => void;
+}) {
+  const [value, setValue] = useState(String(page));
+  const [editing, setEditing] = useState(false);
+
+  // While the reader is typing, the field owns its value; otherwise it follows
+  // the page the viewer is actually on (scrolling, page buttons, search).
+  useEffect(() => {
+    if (!editing) setValue(String(page));
+  }, [page, editing]);
+
+  return (
+    <form
+      class="pdf-page-field"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const next = Number.parseInt(value, 10);
+        if (!Number.isFinite(next)) {
+          setValue(String(page));
+          return;
+        }
+        onGo(Math.min(Math.max(next, 1), Math.max(total, 1)));
+      }}
+    >
+      {before && <span>{before}</span>}
+      <input
+        type="text"
+        inputMode="numeric"
+        aria-label="Page"
+        value={value}
+        onFocus={() => setEditing(true)}
+        onInput={(event) => setValue(event.currentTarget.value)}
+        onBlur={() => {
+          setEditing(false);
+          setValue(String(page));
+        }}
+      />
+      <span>{after}</span>
+    </form>
   );
 }
 
@@ -290,6 +586,16 @@ function PasswordCard({ wrong, onAnswer }: PasswordCardProps) {
 
 /** The viewer's entry point: a hash id, or a file the reader picks. */
 function start(): void {
+  document.addEventListener('keydown', handleKeydown);
+  // The chrome is drawn before the settings answer so the picker is not
+  // blocked on storage; the language arrives as soon as it does.
+  settings
+    .load()
+    .then((loaded) => applyUiLang(loaded.uiLang))
+    .catch((error: unknown) => {
+      console.error('[SayLoud] cannot read the interface language', error);
+    });
+  settings.subscribe((loaded) => applyUiLang(loaded.uiLang));
   drawChrome();
 
   const id = location.hash.replace(/^#/, '');
@@ -386,9 +692,8 @@ async function openBytes(bytes: ArrayBuffer, name: string): Promise<void> {
     return;
   }
 
-  let created: EmbedEngine;
   try {
-    created = await ensureEngine();
+    await ensureEngine();
   } catch (error) {
     console.error('[SayLoud] cannot start the pdf engine', error);
     if (run === generation) show('missing');
@@ -396,7 +701,7 @@ async function openBytes(bytes: ArrayBuffer, name: string): Promise<void> {
   }
   if (run !== generation) return;
 
-  mountViewer(created);
+  mountViewer();
   pending = { bytes, name };
   // `pending` is consumed either by the registry callback (the usual path) or
   // here, if the embedding tree was already up from a previous file.
@@ -418,16 +723,23 @@ function ensureEngine(): Promise<EmbedEngine> {
   return enginePromise;
 }
 
-/** Mount the EmbedPDF tree once; it is reused for every document. */
-function mountViewer(created: EmbedEngine): void {
-  if (viewerMounted) return;
-  viewerMounted = true;
+/** Mount (or update) the EmbedPDF tree; it is reused for every document. */
+function mountViewer(): void {
+  drawViewer();
+}
+
+function drawViewer(): void {
+  if (!engine) return;
   render(
     <PdfViewer
-      engine={created}
+      engine={engine}
+      sidebarOpen={chrome.sidebar}
+      sidebarLabels={PDF_LABELS[uiLang].sidebar}
       onRegistry={handleRegistry}
       onApi={handleViewerApi}
       onScale={handleScale}
+      onPage={handlePageState}
+      onSearch={handleSearchState}
       onPageBlocks={handlePageBlocks}
     />,
     pagesEl
@@ -450,6 +762,37 @@ function handleScale(scale: number): void {
   if (Math.abs(chrome.zoom - scale) < 0.001) return;
   chrome = { ...chrome, zoom: scale };
   drawChrome();
+}
+
+function handlePageState(page: number, total: number): void {
+  if (chrome.page === page && chrome.total === total) return;
+  chrome = { ...chrome, page, total };
+  drawChrome();
+}
+
+function handleSearchState(next: ViewerSearchState): void {
+  // Results keep arriving after the bar is closed (the plugin finishes a scan
+  // in flight); the closed bar must not be reopened by them.
+  if (!chrome.search.open) return;
+  const search = chrome.search;
+  if (
+    search.active === next.active &&
+    search.total === next.total &&
+    search.loading === next.loading
+  ) {
+    return;
+  }
+  chrome = { ...chrome, search: { ...search, ...next } };
+  drawChrome();
+}
+
+/** Update the interface language when the settings load or change. */
+function applyUiLang(preference: UiLang): void {
+  const next = resolveLang(preference, navigator.language);
+  if (next === uiLang) return;
+  uiLang = next;
+  drawChrome();
+  drawViewer();
 }
 
 /**
@@ -511,11 +854,13 @@ async function openPending(run: number): Promise<void> {
   }
 
   currentDocumentId = result.documentId;
+  documentBytes = file.bytes;
+  documentName = file.name;
   pageCount = result.document.pages.length;
   pageResults = new Array<EmbedBlock[] | null>(pageCount).fill(null);
   pageDone = new Array<boolean>(pageCount).fill(false);
   commitCursor = 0;
-  chrome = { ...chrome, open: true };
+  chrome = { ...chrome, open: true, page: 1, total: pageCount };
 
   if (pageCount === 0) {
     show('empty');
@@ -716,6 +1061,165 @@ function zoomBy(direction: 1 | -1): void {
   else viewerApi.zoomOut();
 }
 
+function fitWidth(): void {
+  viewerApi?.fitWidth();
+}
+
+function goToPage(page: number): void {
+  viewerApi?.goToPage(page);
+}
+
+function nextPage(): void {
+  if (!chrome.open) return;
+  viewerApi?.nextPage();
+}
+
+function previousPage(): void {
+  if (!chrome.open) return;
+  viewerApi?.previousPage();
+}
+
+/** Open the search bar (or just put the caret back in it). */
+function openSearch(): void {
+  if (!chrome.open) return;
+  if (!chrome.search.open) {
+    chrome = { ...chrome, search: { ...chrome.search, open: true } };
+    drawChrome();
+  }
+  const input = chromeEl.querySelector<HTMLInputElement>('.pdf-search input');
+  input?.focus();
+  input?.select();
+}
+
+function closeSearch(): void {
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer);
+    searchTimer = null;
+  }
+  viewerApi?.stopSearch();
+  chrome = {
+    ...chrome,
+    search: { open: false, query: '', active: -1, total: 0, loading: false },
+  };
+  drawChrome();
+}
+
+/**
+ * The reader typed: show the query at once and scan after a short pause.
+ *
+ * The plugin aborts an older scan when a new one starts, but each keystroke
+ * would still cross the worker; the debounce keeps a fast typist to one scan.
+ */
+function setSearchQuery(query: string): void {
+  const loading = query.trim().length > 0;
+  chrome = {
+    ...chrome,
+    search: { ...chrome.search, query, active: -1, total: 0, loading },
+  };
+  drawChrome();
+
+  if (searchTimer !== null) window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => {
+    searchTimer = null;
+    if (!chrome.search.open) return;
+    viewerApi?.search(chrome.search.query);
+  }, SEARCH_DEBOUNCE_MS);
+}
+
+function nextMatch(): void {
+  if (!chrome.search.open || chrome.search.total === 0) return;
+  viewerApi?.nextMatch();
+}
+
+function previousMatch(): void {
+  if (!chrome.search.open || chrome.search.total === 0) return;
+  viewerApi?.previousMatch();
+}
+
+function toggleSidebar(): void {
+  chrome = { ...chrome, sidebar: !chrome.sidebar };
+  drawChrome();
+  drawViewer();
+}
+
+/** Save the open document through the browser's download machinery. */
+function downloadDocument(): void {
+  if (!documentBytes) return;
+  const blob = new Blob([documentBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = documentName || 'document.pdf';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // The download reads the URL asynchronously; revoking it in the same turn
+  // would race the fetch.
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Whether a shortcut key should type into the focused control instead. */
+function isEditable(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  if (!element) return false;
+  if (element.isContentEditable) return true;
+  return (
+    element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.tagName === 'SELECT'
+  );
+}
+
+function handleKeydown(event: KeyboardEvent): void {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+    if (!chrome.open) return;
+    event.preventDefault();
+    openSearch();
+    return;
+  }
+
+  if (event.key === 'Escape' && chrome.search.open) {
+    event.preventDefault();
+    closeSearch();
+    return;
+  }
+
+  if (isEditable(event.target)) return;
+  if (!chrome.open) return;
+
+  switch (event.key) {
+    case 'PageDown':
+    case 'ArrowRight':
+      event.preventDefault();
+      nextPage();
+      break;
+    case 'PageUp':
+    case 'ArrowLeft':
+      event.preventDefault();
+      previousPage();
+      break;
+    case '+':
+    case '=':
+      event.preventDefault();
+      zoomBy(1);
+      break;
+    case '-':
+      event.preventDefault();
+      zoomBy(-1);
+      break;
+    case '0':
+      event.preventDefault();
+      fitWidth();
+      break;
+    case 'Enter':
+      if (chrome.search.open) {
+        event.preventDefault();
+        nextMatch();
+      }
+      break;
+    default:
+      break;
+  }
+}
+
 /** Ask for a password, and remember where the answer goes. */
 function askPassword(): Promise<string | null> {
   return new Promise((resolve) => {
@@ -762,11 +1266,24 @@ function resetDocument(): void {
   pageDone = [];
   commitCursor = 0;
   pageCount = 0;
+  documentBytes = null;
+  documentName = 'document.pdf';
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer);
+    searchTimer = null;
+  }
   highlightLayers.clear();
   passwordAttempts = 0;
   render(null, host);
   void closePdfDocuments(registry);
-  chrome = { ...chrome, open: false, password: null };
+  chrome = {
+    ...chrome,
+    open: false,
+    password: null,
+    page: 1,
+    total: 0,
+    search: { open: false, query: '', active: -1, total: 0, loading: false },
+  };
 }
 
 function element(id: string): HTMLElement {

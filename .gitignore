@@ -42,3 +42,10 @@ lib/models/phonemize-wasm/
 
 # EmbedPDF POC wasm (4.4 MB); copied from node_modules by the build:done hook.
 public/pdfium.wasm
+tests/fixtures/pdf/large-120p.pdf
+tests/fixtures/pdf/wiki-zh.pdf
+tests/fixtures/pdf/wiki-ja.pdf
+tests/fixtures/pdf/attention.pdf
+tests/fixtures/pdf/cjk-*.pdf
+tests/fixtures/pdf/two-column.pdf
+tests/fixtures/pdf/generate_fixtures.py

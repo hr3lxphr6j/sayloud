@@ -173,7 +173,11 @@ pub struct Phonemized {
 ///    comma: lindera swallows whitespace the way MeCab does.
 /// 4. **Then read each run out as katakana** and map that to IPA, a `Latin` run
 ///    through the English backend, and anything else through
-///    [`keep_punctuation`].
+///    [`keep_punctuation`]. A kanji the dictionary does not know survives this
+///    step as itself — the segmenter falls back to the surface form — and the
+///    vocabulary would then refuse the whole sentence. It is dropped here
+///    instead, with a warning naming the characters, so one unread name does
+///    not silence the sentence around it.
 ///
 /// Steps 1 and 3 were first checked against the OpenJTalk chain, which is the
 /// one Kokoro's Japanese voices were trained with. UniDic does not reproduce it
@@ -237,7 +241,13 @@ pub fn phonemize_ja(
                 // for — `segment_japanese` merges the two kinds, so this arm is
                 // only reached by what `segment_text` would have called Han.
                 let katakana = segmenter.read_as_katakana(run_text)?;
-                parts.push(kana_to_ipa(&fix_numeral_sound_changes(&katakana)));
+                let (readable, unread) = split_unread_kanji(&katakana);
+                if !unread.is_empty() {
+                    warnings.push(unread_kanji(&unread));
+                }
+                if !readable.is_empty() {
+                    parts.push(kana_to_ipa(&fix_numeral_sound_changes(&readable)));
+                }
             }
             ScriptRun::Latin(run_text) => {
                 let phonemes = match english {
@@ -257,7 +267,7 @@ pub fn phonemize_ja(
 
     Ok(Phonemized {
         phonemes: collapse_whitespace(&parts.concat()),
-        warnings,
+        warnings: dedupe_warnings(warnings),
     })
 }
 
@@ -609,4 +619,61 @@ pub fn phonemize_zh(
 /// detail, and the user is looking at an English word in a sentence.
 fn no_pronunciation(run: &str) -> String {
     format!("no English pronunciation for {run:?}")
+}
+
+/// Kanji the dictionary left in a reading, and the reading without them.
+///
+/// The segmenter copies an unknown word's surface through, and for a word it
+/// does not know that surface is the kanji themselves (kana is shifted to
+/// katakana before it gets here). Those characters have no IPA entry, so they
+/// would reach the vocabulary gate and fail the sentence. Stripping them is
+/// the whole of the recovery: the rest of the reading is unchanged, including
+/// the kana that belonged to the same word.
+fn split_unread_kanji(reading: &str) -> (String, String) {
+    let mut readable = String::new();
+    let mut unread = String::new();
+    for ch in reading.chars() {
+        if is_han(ch) {
+            if !unread.contains(ch) {
+                unread.push(ch);
+            }
+        } else {
+            readable.push(ch);
+        }
+    }
+    (readable, unread)
+}
+
+/// A kanji, by the same ranges [`text::classify`] calls Han.
+///
+/// Extension B is deliberately absent: `char` here is a real code point, so a
+/// range check would catch it, but the segmenter never sees one —
+/// [`text::classify`] files it as `other` first, matching the JavaScript
+/// `charCodeAt` that cannot reach the astral range either.
+fn is_han(ch: char) -> bool {
+    let code = ch as u32;
+    (0x4e00..=0x9fff).contains(&code) || (0x3400..=0x4dbf).contains(&code)
+}
+
+/// What the caller is told about kanji the dictionary could not read.
+///
+/// Deduplicated and in order, because the same character twice is one gap in
+/// the dictionary, not two. The wording is stable so a test can look for it.
+fn unread_kanji(kanji: &str) -> String {
+    format!("no Japanese reading for {kanji:?}")
+}
+
+/// Collapse identical warnings, keeping the first occurrence.
+///
+/// A sentence splits into several runs, and the same unknown kanji in two of
+/// them is still one gap in the dictionary. Deduplicating per run would report
+/// it once per run.
+fn dedupe_warnings(warnings: Vec<String>) -> Vec<String> {
+    let mut seen = Vec::new();
+    for warning in warnings {
+        if !seen.contains(&warning) {
+            seen.push(warning);
+        }
+    }
+    seen
 }

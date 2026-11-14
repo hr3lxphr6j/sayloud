@@ -558,3 +558,46 @@ fn the_numeral_step_reads_these_entities() {
         assert_eq!(actual, *expected, "{input:?} through the numeral step");
     }
 }
+
+#[test]
+fn an_unknown_kanji_is_dropped_with_a_warning_instead_of_failing_the_sentence() {
+    // UniDic has no entry for 犇, so the segmenter keeps the surface and the
+    // vocabulary gate used to refuse the whole sentence. The sentence around
+    // the character is still readable, so the kanji is dropped and named in a
+    // warning rather than costing the caller everything else.
+    let Some(phonemizer) = japanese_phonemizer() else {
+        return;
+    };
+    let options = japanese_options();
+
+    let result = phonemizer
+        .phonemize_with("犇の像を見た", &options)
+        .expect("an unknown character does not fail the sentence");
+
+    assert_eq!(result.phonemes, "nozoːomita");
+    assert_eq!(
+        result.warnings,
+        vec!["no Japanese reading for \"犇\"".to_string()]
+    );
+
+    // A sentence that is nothing but the unknown character comes out empty,
+    // and still warns: silence with no explanation is the failure this
+    // replaces.
+    let only = phonemizer
+        .phonemize_with("犇", &options)
+        .expect("the warning is the answer, not an error");
+    assert_eq!(only.phonemes, "");
+    assert_eq!(
+        only.warnings,
+        vec!["no Japanese reading for \"犇\"".to_string()]
+    );
+
+    // The same character twice in one run is one gap in the dictionary,
+    // not two warnings. The comma keeps the two runs apart, which is what
+    // stops the dictionary reading the pair as one word.
+    let repeated = phonemizer
+        .phonemize_with("犇、犇", &options)
+        .expect("phonemizes");
+    assert_eq!(repeated.phonemes, ",");
+    assert_eq!(repeated.warnings.len(), 1, "{:?}", repeated.warnings);
+}

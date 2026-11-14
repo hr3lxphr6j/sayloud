@@ -602,19 +602,28 @@ mod tests {
     /// How [`is_word`] differs from the regex crate's `\w`, over U+0000–U+2FFF.
     ///
     /// - `\w` also includes combining marks and join controls: 432 characters,
-    ///   starting at U+0300.
-    /// - `is_word` also includes the `No` and `Nl` number categories: 235
-    ///   characters, including `²`, `½`, `①` and `Ⅷ`.
+    ///   starting at U+0300. The count is pinned, because both sides of it are
+    ///   fixed by the lockfile: the `regex` crate's own tables.
+    /// - `is_word` also includes the `No` and `Nl` number categories (`²`, `½`,
+    ///   `①`, `Ⅷ`), and — because it asks the *toolchain's* tables rather than
+    ///   the crate's — every character Rust knows and `regex 1.13.1` does not.
+    ///   That second half is **not** pinned to an exact count: it moves with
+    ///   the Rust version. 235 at Unicode 16 (rustc 1.99.1), 244 at Unicode 17
+    ///   (rustc 1.100.0), which assigned nine more letters below U+2FFF
+    ///   (U+0558, U+058B, U+058C, U+05C8, U+05C9, U+208F, U+209D–U+209F).
     ///
     /// None of them is ASCII, which is what matters, because the keys are
     /// (apart from `’`). Six of them are in Latin-1 (`²³¹¼½¾`), so those are
-    /// listed by name. The counts are pinned so that a change on either side
-    /// shows up here.
+    /// listed by name. What *is* pinned is the shape of the difference: a
+    /// character may only be accepted here if it is a letter or a number, so
+    /// `is_word` cannot quietly grow to accept punctuation. If a toolchain bump
+    /// raises the floor, update the number above with it — that is the signal
+    /// this test is here to give, not a failure to work around.
     #[test]
     fn is_word_agrees_with_the_regex_word_class_over_these_code_points() {
         let theirs = regex::Regex::new(r"^\w$").expect("the pattern compiles");
-        let (mut only_mine, mut only_theirs, mut ascii_differing, mut latin1) =
-            (0, 0, 0, Vec::new());
+        let (mut only_theirs, mut ascii_differing, mut latin1) = (0, 0, Vec::new());
+        let mut only_mine: Vec<char> = Vec::new();
 
         for code in 0u32..=0x2FFF {
             let Some(character) = char::from_u32(code) else {
@@ -631,7 +640,7 @@ mod tests {
                 latin1.push(character);
             }
             if mine {
-                only_mine += 1;
+                only_mine.push(character);
             } else {
                 only_theirs += 1;
             }
@@ -643,7 +652,19 @@ mod tests {
             ['²', '³', '¹', '¼', '½', '¾'],
             "the Latin-1 exceptions"
         );
-        assert_eq!(only_mine, 235, "`No`/`Nl`, which \\p{{Word}} excludes");
+        assert!(
+            only_mine.len() >= 235,
+            "only {} characters, fewer than Unicode 16's 235",
+            only_mine.len()
+        );
+        assert_eq!(
+            only_mine
+                .iter()
+                .filter(|character| !character.is_alphanumeric())
+                .collect::<Vec<_>>(),
+            Vec::<&char>::new(),
+            "`is_word` accepts punctuation as well as letters and numbers"
+        );
         assert_eq!(
             only_theirs, 432,
             "marks and join controls, which \\w includes"

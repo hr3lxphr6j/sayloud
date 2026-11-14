@@ -74,8 +74,7 @@ export function pdfiumWasmUrl(): string {
  * keeps a heavy page from stalling the reader's UI. It is created
  * synchronously; a worker that cannot start fails on its first task. The
  * direct engine is the fallback for exactly that case — it is verified to work
- * in this extension (see docs/research/embedpdf-poc-report.md) — at the cost
- * of rendering on the main thread.
+ * in this extension — at the cost of rendering on the main thread.
  *
  * `fontFallback: null` keeps PDFium from fetching fonts over the network: an
  * extension page has no business making that request, and pages without

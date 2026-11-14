@@ -8,6 +8,11 @@ coverage/
 .wxt/
 node_modules/
 docs/superpowers/
+
+# Research notes, POC reports and screenshots (PDF viewer surveys, EmbedPDF
+# stress reports, ~8 MB of PNGs). Kept on disk for reference; they are notes
+# rather than code and are deliberately not tracked or published.
+docs/research/
 .idea/
 .DS_Store
 

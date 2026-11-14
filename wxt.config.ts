@@ -158,7 +158,7 @@ export default defineConfig({
     // whole extension — silently, with no manifest warning in the browser log.
     // The EmbedPDF worker engine therefore has to be tested against this CSP
     // as-is, and falls back to `pdfium-direct-engine` if blob workers are
-    // blocked at runtime (see docs/research/embedpdf-poc-report.md).
+    // blocked at runtime (measured during the EmbedPDF POC).
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },

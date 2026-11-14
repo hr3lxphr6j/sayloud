@@ -324,10 +324,26 @@ function requestBytes(id: string): Promise<ArrayBuffer | null> {
 
 function toArrayBuffer(value: unknown): ArrayBuffer | null {
   if (value instanceof ArrayBuffer) return value;
+  // The worker cannot send an `ArrayBuffer`: `runtime.sendMessage` is JSON-only,
+  // so the bytes arrive as base64 and are rebuilt here.
+  if (typeof value === 'string') return fromBase64(value);
   if (ArrayBuffer.isView(value)) {
     return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
   }
   return null;
+}
+
+function fromBase64(encoded: string): ArrayBuffer | null {
+  try {
+    const binary = atob(encoded);
+    const octets = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      octets[index] = binary.charCodeAt(index);
+    }
+    return octets.buffer;
+  } catch {
+    return null;
+  }
 }
 
 async function pickFile(file: File): Promise<void> {

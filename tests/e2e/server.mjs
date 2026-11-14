@@ -19,6 +19,8 @@ import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('./pages/', import.meta.url));
+/** Real PDFs, served so a test can navigate to a `…​.pdf` URL. */
+const PDF_FIXTURES = fileURLToPath(new URL('../fixtures/pdf/', import.meta.url));
 const PORT = Number(process.env.SAYLOUD_E2E_PORT ?? 8787);
 
 const CONTENT_TYPES = {
@@ -164,6 +166,30 @@ const server = createServer(async (request, response) => {
   }
 
   const name = pathname.replace(/^\/+/, '') || 'index.html';
+
+  // A document, not a page from `pages/`: the toolbar path keys on the tab's
+  // URL ending in `.pdf`, and `inline` is what makes Chrome render it built-in
+  // viewer instead of downloading it.
+  if (pathname.startsWith('/pdf/')) {
+    const pdf = resolve(PDF_FIXTURES, pathname.slice('/pdf/'.length));
+    if (!pdf.startsWith(PDF_FIXTURES)) {
+      response.writeHead(403).end('forbidden');
+      return;
+    }
+    try {
+      const body = await readFile(pdf);
+      response
+        .writeHead(200, {
+          'content-type': 'application/pdf',
+          'content-disposition': 'inline',
+        })
+        .end(body);
+    } catch {
+      response.writeHead(404).end('not found');
+    }
+    return;
+  }
+
   const file = resolve(ROOT, name);
 
   // Refuse anything that escapes the pages directory.

@@ -5,18 +5,22 @@
     "`input`    — what a caller passes to phonemize_with.",
     "`reading`  — what the dictionary is handed, when the punctuation map and the",
     "             text normalizer changed it; absent means `input` itself.",
-    "`kana`     — the reading pyopenjtalk gives that text (the OpenJTalk chain: the",
-    "             pronunciation field the first-generation misaki used when Kokoro's",
-    "             Japanese voices were trained).",
+    "`kana`     — the reading this crate's dictionary gives that text: UniDic's",
+    "             phonological_surface_form, the spoken form (originally recorded from",
+    "             pyopenjtalk's pron, which agrees with UniDic on most of the corpus).",
     "`expected` — the phonemes: `kana` through this crate's own M2P table and",
     "             punctuation filter.",
-    "`gap`      — present when the reference and this dictionary disagree: `expected` is\n             then what this crate produces today, `kana` is still the reference's\n             reading, and the note says what the two differ about.\n`source`   — where the expectation comes from, and what changed when the",
-    "             reading moved from `reading` to `pronunciation`.",
+    "`gap`      — present when the reference and this dictionary disagree: `expected` is",
+    "             then what this crate produces today, `kana` is still the reference's",
+    "             reading, and the note says what the two differ about.",
+    "`source`   — where the expectation comes from, and what changed when the",
+    "             reading moved from `reading` to `pronunciation`, and then to UniDic.",
     "",
     "`scripts/check/check-ja-reference.py` recomputes `kana` and `expected` from",
-    "pyopenjtalk, so a hand-edited wrong value fails there rather than being frozen",
-    "in. The values were generated, not written by hand: run that script with",
-    "--write after changing a sample.",
+    "pyopenjtalk, whose OpenJTalk dictionary is not UniDic: it agrees on most samples",
+    "and disagrees on the ones marked `gap`. The values here are what THIS crate",
+    "produces, so a hand-edited wrong value still fails the pipeline test even where",
+    "the script would disagree on purpose.",
     "",
     "A sample marked check='skip' has a Latin run, which this crate reads with its",
     "own English backend rather than with the Japanese reference; its value is",
@@ -50,9 +54,8 @@
     {
       "input": "経営",
       "kana": "ケーエー",
-      "expected": "keiei",
-      "source": "openjtalk pron ケーエー（我们只能到 ケイエイ，见 gap）",
-      "gap": "IPADic 的 pronunciation 字段收合ウ段长音（チョウサ → チョーサ）但不收合エ段（ケイエイ 而参考词典是 ケーエー）；先生/学生/英語/平成/経験 同此"
+      "expected": "keːeː",
+      "source": "UniDic phonological_surface_form ケーエー（IPADic 只能到 ケイエイ，gap 已在 UniDic 下闭合）"
     },
     {
       "input": "学校",
@@ -74,9 +77,9 @@
     },
     {
       "input": "日本語",
-      "kana": "ニホンゴ",
-      "expected": "nihoɴɡo",
-      "source": "openjtalk pron ニホンゴ（不変）"
+      "kana": "ニッポンゴ",
+      "expected": "niʔpoɴɡo",
+      "source": "UniDic phonological_surface_form ニッポンゴ（openjtalk 为 ニホンゴ）"
     },
     {
       "input": "日本",
@@ -284,8 +287,9 @@
       "input": "会期は2026年9月25日・10月12日です。",
       "reading": "会期は二千二十六年九月二十五日, 十月十二日です.",
       "kana": "カイキワニセンニジューロクネンクガツニジューゴニチ，　ジューガツジューニニチデス．",
-      "expected": "kaikiwaniseɴniʥuːrokuneɴkuɡaʦuniʥuːɡoniʨi, ʥuːɡaʦuʥuːniniʨidesu.",
-      "source": "・→停顿（逗号）→ WeText TN → openjtalk pron；P0 前 vocabulary-mismatch（・ 不在词表）。日期避开 二日（参考走 NFE 读 フツカ，我们读 ニニチ）"
+      "expected": "kaikiwaniseɴniʥuːrokuneɴkjuːɡaʦuniʥuːɡoniʨi, ʥuːɡaʦuʥuːniniʨidesu.",
+      "source": "整句解析：openjtalk 读 九月 为 クガツ；UniDic 下 九=キュー + 月=ガツ",
+      "gap": "UniDic 把 九 读作 キュー（九時/九人/九月 同），参考链读 九月 为 クガツ；数字读法是 TN 阶段的事，本次字典切换不处理"
     },
     {
       "input": "春・夏の二季に分けて行われる。",
@@ -296,21 +300,21 @@
     },
     {
       "input": "その被害は予想を超えて広い範囲に及んでいる。",
-      "kana": "ソノヒガイワヨソーヲコエテヒロイハンイニオヨンデイル．",
+      "kana": "ソノヒガイワヨソーオコエテヒロイハンイニオヨンデイル．",
       "expected": "sonohiɡaiwajosoːokoetehiroihaɴiniojoɴdeiru.",
       "source": "整句解析：及ん 是 オヨン；P0 前 vocabulary-mismatch（及 无独立词条，表面形残留）。原样本的 影響 落在エ段长音 gap 上，换成没有该问题的词",
       "reading": "その被害は予想を超えて広い範囲に及んでいる."
     },
     {
       "input": "彼は機械の仕組みに詳しい。",
-      "kana": "カレワキカイノシクミニクワシイ．",
-      "expected": "karewakikainoɕikuminikuwaɕii.",
-      "source": "整句解析：詳しい 是 クワシイ；P0 前 vocabulary-mismatch（詳 残留）",
+      "kana": "カレワキカイノシクミニクワシー．",
+      "expected": "karewakikainoɕikuminikuwaɕiː.",
+      "source": "整句解析：UniDic 把 詳しい 读作 クワシー；整句作为一个 run 查询，避免拆成 詳 + シー（詳 单独是 ツマビラカ）",
       "reading": "彼は機械の仕組みに詳しい."
     },
     {
       "input": "彼は当時の思い出を語る。",
-      "kana": "カレワトージノオモイデヲカタル．",
+      "kana": "カレワトージノオモイデオカタル．",
       "expected": "karewatoːʥinoomoideokataru.",
       "source": "整句解析：語る 是 カタル；P0 前为 カタリル（语る 静默错读）",
       "reading": "彼は当時の思い出を語る."
@@ -331,9 +335,9 @@
     },
     {
       "input": "詳しい",
-      "kana": "クワシイ",
-      "expected": "kuwaɕii",
-      "source": "整句解析：openjtalk pron；詳 单独无词条（表面形残留 → vocabulary-mismatch）；P0 前 詳シイ"
+      "kana": "クワシー",
+      "expected": "kuwaɕiː",
+      "source": "UniDic phonological_surface_form クワシー（详 单独有词条，读 ツマビラカ，所以整词查询很重要）"
     },
     {
       "input": "及ぶ",
@@ -373,15 +377,15 @@
     },
     {
       "input": "新しい",
-      "kana": "アタラシイ",
-      "expected": "ataraɕii",
-      "source": "整句解析：openjtalk pron；P0 前为 シン + シイ → シンシイ"
+      "kana": "アタラシー",
+      "expected": "ataraɕiː",
+      "source": "UniDic phonological_surface_form アタラシー（P0 前为 シン + シイ → シンシイ）"
     },
     {
       "input": "美しい",
-      "kana": "ウツクシイ",
-      "expected": "uʦukuɕii",
-      "source": "整句解析：openjtalk pron；P0 前为 ヨシ + シイ → ヨシシイ"
+      "kana": "ウツクシー",
+      "expected": "uʦukuɕiː",
+      "source": "UniDic phonological_surface_form ウツクシー（P0 前为 ヨシ + シイ → ヨシシイ）"
     },
     {
       "input": "薄い",

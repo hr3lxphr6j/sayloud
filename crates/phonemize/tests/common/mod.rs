@@ -21,7 +21,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use phonemize::dictionary::{
-    IPADIC_JA, JIEBA_ZH, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER,
+    JIEBA_ZH, UNIDIC_JA, WETEXT_EN_TN_TAGGER, WETEXT_EN_TN_VERBALIZER, WETEXT_JA_TN_TAGGER,
     WETEXT_JA_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF, WETEXT_ZH_TN_TAGGER,
     WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE, WETEXT_ZH_TN_VERBALIZER,
 };
@@ -33,7 +33,7 @@ use phonemize::{PhonemizeOptions, Phonemizer};
 /// cwd — `cargo test` runs with the package directory as the working directory.
 pub fn dictionary_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../public/dictionaries/lindera-ipadic-ja.bin.zst")
+        .join("../../public/dictionaries/lindera-unidic-ja.bin.zst")
 }
 
 /// Where the Chinese dictionary asset lives.
@@ -91,7 +91,7 @@ pub fn jieba_dictionary_bytes() -> Option<Vec<u8>> {
 /// includes the two text-normalization grammars, which is also the only way the
 /// shipped numerals are exercised.
 pub fn japanese_phonemizer() -> Option<Phonemizer> {
-    prepared("ja-JP", [(IPADIC_JA, dictionary_bytes()?)], WETEXT_JA_NAMES)
+    prepared("ja-JP", [(UNIDIC_JA, dictionary_bytes()?)], WETEXT_JA_NAMES)
 }
 
 /// A phonemizer that has been through the whole `prepare` flow for Chinese.
@@ -107,14 +107,14 @@ pub fn chinese_phonemizer() -> Option<Phonemizer> {
 ///
 /// That is not a no-op: English's *phonemes* still need no
 /// dictionary, but its numerals go through the WeText grammars, and they arrive
-/// the same way IPADic and jieba's word list do.
+/// the same way UniDic and jieba's word list do.
 pub fn english_phonemizer() -> Option<Phonemizer> {
     prepared("en-US", [], WETEXT_EN_NAMES)
 }
 
 /// The `prepare` flow: declare, load everything declared, finish.
 ///
-/// `language_assets` are the language's own dictionaries — IPADic, jieba's word
+/// `language_assets` are the language's own dictionaries — UniDic, jieba's word
 /// list — and `tn_names` are the FSTs that language declares, tagger first. All of
 /// them, because `required_dictionaries` lists all of them and `finish` refuses a
 /// partial load — which is what makes this helper the one place the declaration

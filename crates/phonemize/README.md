@@ -26,7 +26,7 @@ Supporting modules at the top level:
 | Language | Steps | Dictionaries |
 |---|---|---|
 | **Chinese** (`zh-CN`) | traditional→simplified → WeText numerals → punctuation map → full-width fold → jieba → pinyin → tone sandhi & erhua → IPA | `jieba-zh-dict.bin.zst` (1.63 MB), `wetext-zh-tn-{tagger,verbalizer}.bin.zst` (160 KB), `wetext-zh-tn-traditional-to-simple.bin.zst` (25 KB) |
-| **Japanese** (`ja-JP`) | punctuation map → full-width fold → WeText numerals → lindera → katakana → IPA table | `lindera-ipadic-ja.bin.zst` (8.51 MB), `wetext-ja-tn-{tagger,verbalizer}.bin.zst` (63 KB), `wetext-tn-full-to-half.bin.zst` (956 B) |
+| **Japanese** (`ja-JP`) | punctuation map → full-width fold → WeText numerals → lindera → katakana → IPA table | `lindera-unidic-ja.bin.zst` (34.16 MB), `wetext-ja-tn-{tagger,verbalizer}.bin.zst` (63 KB), `wetext-tn-full-to-half.bin.zst` (956 B) |
 | **English** (`en-US`) | contractions → punctuation map → full-width fold → WeText numerals → CMU Dict → NRL 7948 rules → ARPAbet→IPA | `wetext-en-tn-{tagger,verbalizer}.bin.zst` (707 KB), `wetext-tn-full-to-half.bin.zst` (956 B) — dictionary and rules compiled in (3.75 MB + 17 KB) |
 
 All three languages reach the Kokoro model through `generate_from_ids()` with IPA tokens. en-GB voices have no variant of their own, and the English path has not had a listening test.
@@ -80,7 +80,7 @@ use phonemize::{PhonemizeOptions, Phonemizer};
 
 let mut phonemizer = Phonemizer::new();
 phonemizer
-    .load_dictionary("lindera-ipadic-ja", &compressed)
+    .load_dictionary("lindera-unidic-ja", &compressed)
     .unwrap();
 phonemizer.finish_loading().unwrap();
 
@@ -139,7 +139,7 @@ Chinese tone sandhi word lists live in `src/g2p/zh/tone_sandhi/tables.rs` (verba
 ## Test Corpora
 
 - `tests/fixtures/{zh-parity,zh-frontend-parity}.json` — Frozen golden files (JavaScript pipeline output before deletion)
-- `tests/fixtures/ja-reference.json` — Reference corpus from pyopenjtalk; regenerated via `scripts/check/check-ja-reference.py` (`pip install pyopenjtalk`)
+- `tests/fixtures/ja-reference.json` — Reference corpus first recorded from pyopenjtalk; `kana`/`expected` are what this crate's UniDic dictionary produces. `scripts/check/check-ja-reference.py` compares the two and reports where they differ.
 - `tests/fixtures/headtts-en-parity.json` — HeadTTS reference output; regenerated via `scripts/generate/headtts-parity.mjs`
 
-Each Japanese sample records both the reference reading (`kana`) and this crate's output (`expected`). Samples where they disagree carry a `gap` note.
+Each Japanese sample records the dictionary reading (`kana`) and this crate's phonemes (`expected`). A `gap` note marks a sample where that reading disagrees with OpenJTalk.

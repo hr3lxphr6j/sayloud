@@ -12,7 +12,7 @@
 # **Why the FSTs are not inside the wasm.** A dictionary is fetched on
 # `prepare` and decompressed inside the module. Raw, the six frames
 # are 14.4 MB — five times the size of the rest of the phonemizer wasm if they
-# were `include_bytes!`'d. They arrive through the same registry IPADic and
+# were `include_bytes!`'d. They arrive through the same registry UniDic and
 # jieba's word list do.
 #
 # `{en,zh,ja}/tn/{tagger,verbalizer}` are needed, plus two of the wheel's shared

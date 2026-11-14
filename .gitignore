@@ -21,7 +21,7 @@ __pycache__/
 
 # The Japanese and Chinese dictionaries for the Rust phonemizer, built by
 # scripts/setup/setup-lindera-dict.sh, scripts/setup/setup-jieba-dict.sh and
-# scripts/setup/setup-wetext-fsts.sh on install. 8.5 MB of IPADic, 1.6 MB of jieba's
+# scripts/setup/setup-wetext-fsts.sh on install. 34 MB of UniDic, 1.6 MB of jieba's
 # word list and 707 KB of English text-normalization grammars, regenerated rather
 # than tracked.
 #

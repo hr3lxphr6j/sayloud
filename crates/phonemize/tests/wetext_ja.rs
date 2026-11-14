@@ -18,7 +18,7 @@
 mod common;
 
 use phonemize::dictionary::{
-    DictionaryRegistry, IPADIC_JA, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER,
+    DictionaryRegistry, UNIDIC_JA, WETEXT_JA_TN_TAGGER, WETEXT_JA_TN_VERBALIZER,
     WETEXT_TN_FULL_TO_HALF,
 };
 use phonemize::tn::wetext::Normalizer;
@@ -205,7 +205,7 @@ fn reads_full_width_text_the_way_the_reference_does() {
 
 /// Every FST Japanese declares has to arrive.
 ///
-/// IPADic first, then the FSTs: the order `required_dictionaries` lists them in,
+/// UniDic first, then the FSTs: the order `required_dictionaries` lists them in,
 /// which the JavaScript wrapper fetches them in. The third FST is the shared
 /// full-width preprocessor; Japanese has no fourth, which is the half of this that
 /// says `traditional_to_simple` did not leak out of Chinese's list.
@@ -216,7 +216,7 @@ fn every_fst_japanese_declares_has_to_arrive() {
     assert_eq!(
         declared,
         vec![
-            IPADIC_JA,
+            UNIDIC_JA,
             WETEXT_JA_TN_TAGGER,
             WETEXT_JA_TN_VERBALIZER,
             WETEXT_TN_FULL_TO_HALF,
@@ -232,7 +232,7 @@ fn every_fst_japanese_declares_has_to_arrive() {
         .finish()
         .expect_err("neither of the other two arrived");
     assert_eq!(error.code(), "missing-dictionaries");
-    for name in [IPADIC_JA, WETEXT_JA_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF] {
+    for name in [UNIDIC_JA, WETEXT_JA_TN_VERBALIZER, WETEXT_TN_FULL_TO_HALF] {
         assert!(
             error.to_string().contains(name),
             "the message names {name}, which is still missing: {error}"

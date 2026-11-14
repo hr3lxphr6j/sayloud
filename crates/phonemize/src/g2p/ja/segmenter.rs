@@ -1,4 +1,4 @@
-//! Japanese segmentation, on lindera with IPADic.
+//! Japanese segmentation, on lindera with UniDic.
 //!
 //! # Why this builds a `Dictionary` by hand
 //!
@@ -27,16 +27,16 @@
 //!
 //! The nine files arrive as one zstd frame holding a tar archive, because the
 //! extension ships one asset per dictionary rather than nine
-//! (`public/dictionaries/lindera-ipadic-ja.bin.zst`, built by
+//! (`public/dictionaries/lindera-unidic-ja.bin.zst`, built by
 //! `scripts/setup/setup-lindera-dict.sh`). The inner format is lindera's own,
 //! untouched — the tar is a transport wrapper, and `tar tzf` after `zstd -d` is
 //! a complete description of what is inside.
 //!
 //! # What it costs in memory
 //!
-//! The registry keeps the decompressed tar (45.4 MB), and the `Dictionary` built
-//! from it holds a second copy of the same nine files. That is ~91 MB for
-//! Japanese, against the 45.3 MB the dictionary itself needs. It is a known cost,
+//! The registry keeps the decompressed tar (199 MB), and the `Dictionary` built
+//! from it holds a second copy of the same nine files. That is ~399 MB for
+//! Japanese, against the 199 MB the dictionary itself needs. It is a known cost,
 //! not an oversight: the fix is either to release the container once the
 //! dictionary is built, or to leak one aligned buffer and hand lindera
 //! `Data::Static` slices of it, and both change the registry contract or
@@ -76,23 +76,28 @@ const METADATA: &str = "metadata.json";
 
 /// The schema field the katakana reading lives in.
 ///
-/// **`pronunciation`, not `reading`.** IPADic carries both, and they differ
-/// exactly where Japanese is written one way and said another: the topic particle
-/// `は` is ハ as a reading and **ワ** as a pronunciation, `学校` is ガッコウ and
-/// **ガッコー**, `調査` is チョウサ and **チョーサ**. Every front end that reads
-/// Japanese for a speech model uses the pronunciation — `pron` in OpenJTalk, which
-/// is what the first-generation misaki used when Kokoro's Japanese voices were
-/// trained, and `pron` in UniDic, which is what the versions after it use.
+/// **`phonological_surface_form`, not `reading`.** UniDic carries both, and they
+/// differ exactly where Japanese is written one way and said another: the topic
+/// particle `は` is ハ as a reading and **ワ** as a phonological surface form,
+/// `学校` is ガッコウ and **ガッコー**, `経営` is ケイエイ and **ケーエー**. Every
+/// front end that reads Japanese for a speech model uses the spoken form — `pron`
+/// in OpenJTalk, which is what the first-generation misaki used when Kokoro's
+/// Japanese voices were trained, and `phonological_surface_form` in UniDic, which
+/// is what the versions after it use.
 ///
-/// Looked up by name rather than as the index it happens to be in IPADic's
+/// UniDic has no `pronunciation` column at all; `phonological_surface_form` is
+/// the column that corresponds to it (the IPADic dictionary this replaced called
+/// it `pronunciation`).
+///
+/// Looked up by name rather than as the index it happens to be in UniDic's
 /// detail array: the index is lindera's business and follows its schema, and
 /// `Token::get` is the accessor that knows that.
-const PRONUNCIATION_FIELD: &str = "pronunciation";
+const PRONUNCIATION_FIELD: &str = "phonological_surface_form";
 
 /// One dictionary word: its text, and how it is said.
 ///
-/// `pronunciation` is `None` for a word IPADic has no pronunciation for — an
-/// unknown word, a run of digits, a symbol. The caller decides what that means;
+/// `pronunciation` is `None` for a word the dictionary has no pronunciation for —
+/// an unknown word, a symbol. The caller decides what that means;
 /// kuroshiro falls back to the surface form, and `read_as_katakana` below does
 /// the same.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,22 +150,22 @@ impl std::fmt::Display for SegmenterError {
 
 impl std::error::Error for SegmenterError {}
 
-/// Japanese tokenization, backed by one loaded IPADic dictionary.
+/// Japanese tokenization, backed by one loaded UniDic dictionary.
 pub struct SegmenterJa {
     segmenter: Segmenter,
     /// The dictionary's placeholder for a detail field it does not have.
     ///
-    /// IPADic writes `*` into every field it has no value for, and lindera keeps
+    /// UniDic writes `*` into every field it has no value for, and lindera keeps
     /// that placeholder rather than leaving the field out — so `Token::get`
     /// returns `Some("*")` for the reading of a word the dictionary does not
     /// know. kuromoji, which is what the JavaScript pipeline runs, reports no
     /// reading at all for the same word, and kuroshiro then falls back to the
     /// surface form.
     ///
-    /// Reading the placeholder as a value is not a cosmetic difference: キャンプ
-    /// has no IPADic entry, so its "reading" is `*`, and a pipeline that believed
-    /// it produced `*` where the JavaScript produces `キャンプ` — one character of
-    /// output where there were four.
+    /// Reading the placeholder as a value is not a cosmetic difference: ゔぁ
+    /// has no UniDic entry, so its "reading" is `*`, and a pipeline that believed
+    /// it produced `*` where the surface is `ゔぁ` — one character of output where
+    /// there were two.
     ///
     /// Taken from the dictionary's own metadata rather than hard-coded, because
     /// the placeholder is a property of the dictionary file and a differently
@@ -234,7 +239,7 @@ impl SegmenterJa {
         })
     }
 
-    /// Split `text` into words, with the pronunciation IPADic gives each one.
+    /// Split `text` into words, with the pronunciation UniDic gives each one.
     pub fn tokenize(&self, text: &str) -> Result<Vec<JaToken>, SegmenterError> {
         let mut tokens = self
             .segmenter
@@ -262,7 +267,8 @@ impl SegmenterJa {
     /// **`text` should be a run of Japanese, not a run of one script.** The
     /// dictionary is what decides where the words are, and a kana run is not a
     /// word: 「詳しい」 is a Han character followed by a kana run, and reading those
-    /// two separately leaves 「詳」 with no pronunciation of its own — the same split
+    /// two separately reads 「詳」 as its own word (ツマビラカ) instead of as the
+    /// start of クワシー — the same split
     /// reads 「語る」 as カタリ + ル, which is a different word.
     /// `pipeline::phonemize_ja` therefore hands this one
     /// [run](crate::text::segment_japanese) at a time: a clause at most, split by
@@ -273,12 +279,12 @@ impl SegmenterJa {
     /// it has no answer, and that is copied from kuroshiro's `patchTokens`
     /// because the JavaScript pipeline's output depends on it:
     ///
-    /// - A word IPADic has no reading for — digits, a symbol, a name it does not
+    /// - A word UniDic has no reading for — digits, a symbol, a name it does not
     ///   know — falls back to its surface form, **except** when the surface is
     ///   entirely kana, which is shifted to katakana. So an unknown かな word
     ///   still becomes カナ and is phonemized, while an unknown 漢字 word stays
     ///   as itself and its characters are dropped by the vocabulary gate.
-    /// - A reading that contains hiragana is shifted to katakana. IPADic readings
+    /// - A reading that contains hiragana is shifted to katakana. UniDic readings
     ///   are katakana already, so this only fires on the fallback above.
     /// - A surface with no Japanese in it is used as-is, which is how Latin text
     ///   inside a Japanese sentence reaches the pipeline as its own characters.

@@ -146,7 +146,7 @@ pub fn segment_text(text: &str) -> Vec<ScriptRun> {
 /// [`segment_text`]'s Han/Kana split is a *rendering* distinction and not a word
 /// boundary, so it must not be a boundary for the dictionary either: 詳しい is a
 /// Han character followed by a kana run, and asking the dictionary about 「詳」 on
-/// its own gets no answer at all — it has no entry as a word — while the same
+/// its own gets a different word — ツマビラカ, not クワシー — while the same
 /// split reads 「語る」 as カタリ + ル, which is a different word. Japanese passes
 /// these runs to `SegmenterJa::read_as_katakana` one at a time, which is what
 /// makes them whole words again; the Latin runs and the marks that separate them
@@ -186,22 +186,23 @@ const KANA: u8 = 1;
 const LATIN: u8 = 2;
 const OTHER: u8 = 3;
 
-/// The script a character belongs to, by the same ranges `segmentText` uses.
+/// The script a character belongs to.
 ///
-/// Note what is *not* here: a CJK Extension B branch. `segmentText` has one,
-/// testing `char.charCodeAt(0)` against `0x20000..=0x2ebef` — but `charCodeAt(0)`
-/// on a character outside the BMP returns a surrogate (`0xd800..=0xdfff`), never
-/// a code point, so that branch cannot be taken and an Extension B kanji falls
-/// through to `other` and is then dropped by [`keep_punctuation`].
-///
-/// Reproducing the reachable behaviour is what parity requires, so an astral
-/// character matches none of the ranges below and lands in `other` on its own —
-/// no special case needed. `classifies_an_astral_kanji_as_other` is the test that
-/// keeps it that way, and it is the one that would fail if someone added the
-/// branch back.
+/// Ranges cover:
+/// - CJK unified (U+4E00–U+9FFF) and extension A (U+3400–U+4DBF)
+/// - CJK symbols and punctuation marks (々, 〇, 〆 at U+3005–U+3007)
+/// - CJK compatibility ideographs (U+F900–U+FAFF)
+/// - Astral CJK (U+20000–U+2EBEF), which this crate can now classify thanks to
+///   `char` being a real code point; the JavaScript `charCodeAt(0)` on astral
+///   characters returns a surrogate and cannot reach this range.
 fn classify(ch: char) -> u8 {
     let code = ch as u32;
-    if (0x4e00..=0x9fff).contains(&code) || (0x3400..=0x4dbf).contains(&code) {
+    if (0x4e00..=0x9fff).contains(&code)
+        || (0x3400..=0x4dbf).contains(&code)
+        || (0x3005..=0x3007).contains(&code)
+        || (0xf900..=0xfaff).contains(&code)
+        || (0x20000..=0x2ebef).contains(&code)
+    {
         HAN
     } else if is_hiragana(ch) || is_katakana(ch) || (0x31f0..=0x31ff).contains(&code) {
         KANA

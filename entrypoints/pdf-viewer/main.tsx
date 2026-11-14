@@ -594,6 +594,10 @@ function setScale(next: number): void {
       }
       return renderTextLayer(slot.page, pageScale, container);
     });
+    for (const slot of slots) if (slot.layer) slot.scale = scale;
+
+    syncDoc();
+    scheduleVisiblePages();
   });
 }
 

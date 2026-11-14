@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { cp, mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import preact from '@preact/preset-vite';
 import { defineConfig } from 'wxt';
@@ -12,6 +15,40 @@ import { defineConfig } from 'wxt';
  */
 function e2eHostPermissions(): string[] {
   return ['http://127.0.0.1/*'];
+}
+
+/**
+ * pdf.js runtime files that the bundler cannot see.
+ *
+ * pdf.js fetches its worker as a separate module and its cMaps and standard
+ * fonts as data files, so none of them is reachable through the import graph
+ * and none of them ends up in `.output`. They are copied verbatim instead, and
+ * the layout must match what `lib/pdf/assets.ts` points at.
+ */
+const PDFJS_SOURCE = join('node_modules', 'pdfjs-dist');
+const PDFJS_ASSETS = [
+  { from: 'build/pdf.worker.min.mjs', to: 'pdfjs/pdf.worker.min.mjs' },
+  { from: 'cmaps', to: 'pdfjs/cmaps' },
+  { from: 'standard_fonts', to: 'pdfjs/standard_fonts' },
+] as const;
+
+/**
+ * Copy the pdf.js assets into a built extension.
+ *
+ * Existing files are skipped: in dev, `build:done` runs on every rebuild and
+ * the ~3.4 MB of tables only change when the pdfjs-dist version does. A new
+ * version therefore needs a clean `.output` (which `wxt build` does anyway).
+ */
+async function copyPdfJsAssets(root: string, outDir: string): Promise<void> {
+  for (const asset of PDFJS_ASSETS) {
+    const target = join(outDir, asset.to);
+    await mkdir(dirname(target), { recursive: true });
+    await cp(join(root, PDFJS_SOURCE, asset.from), target, {
+      recursive: true,
+      force: false,
+      errorOnExist: false,
+    });
+  }
 }
 
 export default defineConfig({
@@ -108,6 +145,16 @@ export default defineConfig({
     // lets the service worker own an audio document, which is the only place
     // cloud audio can be decoded and played.
     permissions: ['activeTab', 'scripting', 'storage', 'tts', 'offscreen'],
+    // The reader is a content script, so pdf.js runs under the *page's* origin
+    // and every file it fetches has to be web-accessible. Three patterns
+    // instead of `pdfjs/*`: a Chrome match pattern's `*` does not cross `/`, so
+    // `pdfjs/*` would admit the worker but not `pdfjs/cmaps/…`.
+    web_accessible_resources: [
+      {
+        resources: ['pdfjs/pdf.worker.min.mjs', 'pdfjs/cmaps/*', 'pdfjs/standard_fonts/*'],
+        matches: ['<all_urls>'],
+      },
+    ],
     // Declared, never granted on install. Volcengine is the one service whose
     // CORS preflight rejects the extension (its `X-Api-Key` header is missing
     // from `Access-Control-Allow-Headers`), so it is the only host a user may
@@ -137,6 +184,28 @@ export default defineConfig({
   ...(process.env.SAYLOUD_E2E && { outDirTemplate: '{{browser}}-mv{{manifestVersion}}' }),
 
   hooks: {
+    /**
+     * Put the pdf.js runtime files into the package.
+     *
+     * The target comes from `wxt.config.outDir`, not a literal path: it is
+     * `.output/chrome-mv3` for a build, `.output-e2e/chrome-mv3` for the e2e
+     * build (config above) and `.output/chrome-mv3-dev` under `pnpm dev`.
+     *
+     * The other outputs are refreshed only when they already exist: a dev
+     * session or an e2e run started after `pnpm build` reuses that bundle, and
+     * a bundle without the assets fails at document-open time rather than at
+     * build time.
+     */
+    'build:done': async (wxt) => {
+      const targetOutDirs = new Set([wxt.config.outDir]);
+      for (const sibling of ['.output/chrome-mv3', '.output-e2e/chrome-mv3']) {
+        const dir = join(wxt.config.root, sibling);
+        if (existsSync(dir)) targetOutDirs.add(dir);
+      }
+      for (const outDir of targetOutDirs) {
+        await copyPdfJsAssets(wxt.config.root, outDir);
+      }
+    },
     /**
      * Drop the host permission WXT derives from the reader's `matches`.
      *

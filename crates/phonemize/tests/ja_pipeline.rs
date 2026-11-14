@@ -69,9 +69,8 @@ fn reads_kanji_through_the_dictionary() {
     // UniDic closes it.
     for (text, expected) in [
         ("経営", "ケーエー"),
-        // 日本 reads ニッポン both on its own and inside 日本語 (ニッポンゴ), and
-        // both pipelines agree — the reading depends on how the sentence
-        // segments, which is why 日本語 is in the reference corpus as well.
+        // 日本 reads ニッポン on its own. Inside 日本語 UniDic reads ニッポンゴ, where
+        // the OpenJTalk reference reads ニホンゴ; the corpus records the UniDic one.
         ("日本", "ニッポン"),
         ("学校", "ガッコー"),
         ("新聞", "シンブン"),

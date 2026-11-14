@@ -175,11 +175,13 @@ pub struct Phonemized {
 ///    through the English backend, and anything else through
 ///    [`keep_punctuation`].
 ///
-/// Steps 1 and 3 are checked against the OpenJTalk chain, which is the one
-/// Kokoro's Japanese voices were trained with — the same sentences through
-/// `pyopenjtalk` read 詳しい as クワシイ and 語る as カタル.
-/// `tests/fixtures/ja-reference.json` records those readings, and
-/// `scripts/check/check-ja-reference.py` recomputes them from the reference.
+/// Steps 1 and 3 were first checked against the OpenJTalk chain, which is the
+/// one Kokoro's Japanese voices were trained with. UniDic does not reproduce it
+/// everywhere: the same sentences through `pyopenjtalk` read 詳しい as クワシイ
+/// and 語る as カタル, while this dictionary reads 詳しい as クワシー.
+/// `tests/fixtures/ja-reference.json` records what this crate produces, and
+/// `scripts/check/check-ja-reference.py` reports where that disagrees with
+/// OpenJTalk.
 ///
 /// # Latin runs go to the English dictionary
 ///

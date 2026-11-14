@@ -142,4 +142,4 @@ Chinese tone sandhi word lists live in `src/g2p/zh/tone_sandhi/tables.rs` (verba
 - `tests/fixtures/ja-reference.json` — Reference corpus first recorded from pyopenjtalk; `kana`/`expected` are what this crate's UniDic dictionary produces. `scripts/check/check-ja-reference.py` compares the two and reports where they differ.
 - `tests/fixtures/headtts-en-parity.json` — HeadTTS reference output; regenerated via `scripts/generate/headtts-parity.mjs`
 
-Each Japanese sample records both the reference reading (`kana`) and this crate's output (`expected`). Samples where they disagree carry a `gap` note.
+Each Japanese sample records the dictionary reading (`kana`) and this crate's phonemes (`expected`). A `gap` note marks a sample where that reading disagrees with OpenJTalk.

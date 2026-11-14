@@ -241,6 +241,7 @@ pub fn phonemize_ja(
                 // for — `segment_japanese` merges the two kinds, so this arm is
                 // only reached by what `segment_text` would have called Han.
                 let katakana = segmenter.read_as_katakana(run_text)?;
+
                 let (readable, unread) = split_unread_kanji(&katakana);
                 if !unread.is_empty() {
                     warnings.push(unread_kanji(&unread));
@@ -644,15 +645,17 @@ fn split_unread_kanji(reading: &str) -> (String, String) {
     (readable, unread)
 }
 
-/// A kanji, by the same ranges [`text::classify`] calls Han.
-///
-/// Extension B is deliberately absent: `char` here is a real code point, so a
-/// range check would catch it, but the segmenter never sees one —
-/// [`text::classify`] files it as `other` first, matching the JavaScript
-/// `charCodeAt` that cannot reach the astral range either.
+/// A kanji, by the same ranges [`text::classify`] calls Han. This includes CJK
+/// compatibility ideographs, CJK symbols (〇, 々, 〆), and astral CJK, which are
+/// now classified as Han so an unread version degrades to a warning instead of a
+/// silent drop.
 fn is_han(ch: char) -> bool {
     let code = ch as u32;
-    (0x4e00..=0x9fff).contains(&code) || (0x3400..=0x4dbf).contains(&code)
+    (0x4e00..=0x9fff).contains(&code)
+        || (0x3400..=0x4dbf).contains(&code)
+        || (0x3005..=0x3007).contains(&code)
+        || (0xf900..=0xfaff).contains(&code)
+        || (0x20000..=0x2ebef).contains(&code)
 }
 
 /// What the caller is told about kanji the dictionary could not read.

@@ -330,15 +330,13 @@ fn splits_latin_and_kanji_apart() {
 }
 
 #[test]
-fn classifies_an_astral_kanji_as_other() {
-    // `segmentText` tests `char.charCodeAt(0)` against `0x20000..=0x2ebef`, but
-    // `charCodeAt(0)` on a character outside the BMP returns a surrogate — so
-    // that branch is unreachable and an Extension B kanji falls through to
-    // `other`. This pins the reachable behaviour: the JavaScript side this was
-    // ported from no longer exists, so it is what the crate does, and adding the
-    // branch back is what this test would catch.
+fn classifies_an_astral_kanji_as_han() {
+    // Unlike JavaScript, which cannot classify astral characters because charCodeAt
+    // returns surrogates on characters outside the BMP, Rust's `char` is a real code
+    // point. We classify astral CJK (U+20000..=U+2EBEF) as Han so they are not
+    // silently dropped by [`keep_punctuation`] when they appear in text.
     let runs = segment_text("\u{20000}");
-    assert_eq!(runs, vec![ScriptRun::Other("\u{20000}".to_string())]);
+    assert_eq!(runs, vec![ScriptRun::Han("\u{20000}".to_string())]);
 }
 
 #[test]

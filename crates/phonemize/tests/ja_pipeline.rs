@@ -601,3 +601,29 @@ fn an_unknown_kanji_is_dropped_with_a_warning_instead_of_failing_the_sentence() 
     assert_eq!(repeated.phonemes, ",");
     assert_eq!(repeated.warnings.len(), 1, "{:?}", repeated.warnings);
 }
+
+#[test]
+fn probe_how_segmenter_handles_rare_marks() {
+    let Some(segmenter) = segmenter() else {
+        return;
+    };
+
+    for input in ["人々", "々", "〇", "〆"] {
+        println!("INPUT {:?}", input);
+        match segmenter.tokenize(input) {
+            Ok(tokens) => {
+                for token in &tokens {
+                    println!(
+                        "  token surface {:?} pron {:?}",
+                        token.surface, token.pronunciation
+                    );
+                }
+            }
+            Err(e) => println!("  error: {:?}", e),
+        }
+        match segmenter.read_as_katakana(input) {
+            Ok(kana) => println!("  katakana: {:?}", kana),
+            Err(e) => println!("  error: {:?}", e),
+        }
+    }
+}

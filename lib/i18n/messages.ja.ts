@@ -324,6 +324,8 @@ export const ja: Record<MessageKey, string> = {
   'pdf.order.hint':
     'PDFのテキスト順に読み上げます。段組みのページでは順序が前後することがあります。',
   'pdf.pick': 'PDFファイルを選択',
+  'pdf.zoom.in': '拡大',
+  'pdf.zoom.out': '縮小',
 
   // --- the caption window ---------------------------------------------------
   'caption.counter': '文{index}/{total}',

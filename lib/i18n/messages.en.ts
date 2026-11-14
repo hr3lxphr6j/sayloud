@@ -315,6 +315,8 @@ export const en = {
   'pdf.order.hint':
     'Reading follows the PDF text order. Multi-column pages may be read out of order.',
   'pdf.pick': 'Choose a PDF file',
+  'pdf.zoom.in': 'Zoom in',
+  'pdf.zoom.out': 'Zoom out',
 
   // --- the caption window ---------------------------------------------------
   'caption.counter': 'Sentence {index} of {total}',

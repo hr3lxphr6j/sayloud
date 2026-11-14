@@ -3,87 +3,120 @@
  *
  * A page of its own rather than a content script: the extension already has a
  * reading bar that talks to the engine, and this page only has to hand it a
- * document. The PDF itself is drawn into the page — a canvas per page with a
- * text layer on top — and the text layer is what the reader highlights.
+ * document. Rendering is EmbedPDF/PDFium (`viewer.tsx`), and this file is the
+ * shell around it: the toolbar, the file picker, the password prompt, and the
+ * reader that reads the page's text aloud.
  *
  * Reading a whole PDF up front would make the first sentence wait for the last
- * page, so the first page is read before the bar appears and the rest arrive in
- * the background. Because the engine has already been given the first page, an
- * append is followed by another `load` with `resume: true`: the growing list
- * replaces the one the engine has, at the sentence being read, without starting
- * to speak. Sentence texts never change; if a rebuild would change one, the
- * append is abandoned and the old document is kept.
+ * page, so each page's text is handed over as soon as PDFium has extracted it,
+ * and the reading document grows in page order. Because the engine has already
+ * been given the first pages, an append is followed by another `load` with
+ * `resume: true`: the growing list replaces the one the engine has, at the
+ * sentence being read, without starting to speak. Sentence texts never change;
+ * if a rebuild would change one, the append is abandoned and the old document
+ * is kept.
  */
 
-import type { PDFPageProxy } from 'pdfjs-dist';
+import type { PluginRegistry } from '@embedpdf/core';
 import { render } from 'preact';
 import { useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { ReaderController } from '~/entrypoints/reader.content/ReaderController';
 import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import type { Block } from '~/lib/extractor';
-import { SENTENCE_HIGHLIGHT } from '~/lib/highlighter';
 import { I18nProvider, useT, useUiLanguage } from '~/lib/i18n';
-import { pdfAssetUrls } from '~/lib/pdf/assets';
-import { openPdf, type PdfDocument } from '~/lib/pdf/document';
-import { pageBlock } from '~/lib/pdf/text-blocks';
+import type { EmbedBlock } from '~/lib/pdf/embed/blocks';
+import {
+  closePdfDocuments,
+  createPdfEngine,
+  type EmbedEngine,
+  EmbedOpenError,
+  isPasswordError,
+  MAX_PASSWORD_ATTEMPTS,
+  type OpenedDocument,
+  openPdfDocument,
+  retryPdfDocument,
+} from '~/lib/pdf/embed/document';
+import { EmbedHighlightLayer } from '~/lib/pdf/embed/highlight';
 import { buildReadingDoc, type ReadingDoc, type ReadingSentence } from '~/lib/reading-doc';
 import { SettingsStore } from '~/lib/settings-store';
 import '~/entrypoints/reader.content/styles.css';
-import { renderCanvas, renderTextLayer } from './page-view';
-import { appendSync, type PageLayer, rescaleTextLayers } from './sync';
-
-/** The only zoom levels offered, as a readable choice instead of a slider. */
-const SCALES = [1, 1.5] as const;
+import { appendSync } from './sync';
+import { PdfViewer, type ViewerApi } from './viewer';
 
 /** How long a hash id gets to be answered before it is called missing. */
 const MISSING_TIMEOUT_MS = 2_000;
 
 /** The page's root elements, all of which the HTML provides. */
-const pagesEl = element('pdf-pages');
 const chromeEl = element('pdf-chrome');
+const pagesEl = element('pdf-pages');
 const host = element('sayloud-host');
 
 const settings = new SettingsStore(browser.storage.local, browser.storage.onChanged);
-const assets = pdfAssetUrls(browser.runtime.getURL(''));
 
 /** What the strip above the pages is saying right now. */
 type Notice = 'opening' | 'pick' | 'missing' | 'empty' | 'ready';
 
 interface ChromeState {
   notice: Notice;
-  scale: number;
+  /** Current zoom factor, from EmbedPDF's zoom plugin. */
+  zoom: number;
   /** Non-null while a password is being asked for; `wrong` after a rejection. */
   password: { wrong: boolean } | null;
   /** Whether a document is open, which is what the zoom control needs to know. */
   open: boolean;
 }
 
-let chrome: ChromeState = { notice: 'pick', scale: 1, password: null, open: false };
+let chrome: ChromeState = {
+  notice: 'pick',
+  zoom: 1,
+  password: null,
+  open: false,
+};
+
+/** The zoom controls, once the embedding tree has a document to zoom. */
+let viewerApi: ViewerApi | null = null;
+
 let passwordResolve: ((value: string | null) => void) | null = null;
 let passwordAttempts = 0;
 
-/**
- * One page's DOM and its place in the reading document.
- *
- * `layer` and `block` are the `PageLayer` the zoom rebuilds; the rest is what
- * the viewer needs to draw the page and to know whether that drawing is stale.
- */
-interface Slot extends PageLayer {
-  page: PDFPageProxy | null;
-  /** The scale its layer was built at; a zoom makes every other layer stale. */
-  scale: number;
-  canvas: HTMLCanvasElement | null;
-}
+let engine: EmbedEngine | null = null;
+let enginePromise: Promise<EmbedEngine> | null = null;
+let viewerMounted = false;
 
-let pdf: PdfDocument | null = null;
-let slots: Slot[] = [];
+let registry: PluginRegistry | null = null;
+let pending: { bytes: ArrayBuffer; name: string } | null = null;
+/**
+ * The document whose pages are allowed to report text.
+ *
+ * Closing a document and opening another one are asynchronous, and a page's
+ * text extraction can resolve in between; the id is what keeps the previous
+ * document's blocks from being committed into the new one.
+ */
+let currentDocumentId: string | null = null;
+
+/**
+ * Page text, in page order.
+ *
+ * `results[i]` is page `i`'s blocks (null while PDFium has not reported yet,
+ * and `[]` for a page without text). `done` says whether the page has
+ * reported, so an empty page still advances the commit cursor: a scanned page
+ * must not hold back every page after it.
+ */
+let pageResults: Array<EmbedBlock[] | null> = [];
+let pageDone: boolean[] = [];
+let commitCursor = 0;
+let pageCount = 0;
+
+/** The highlight layer per page, recreated only when the page's DOM is. */
+const highlightLayers = new Map<number, EmbedHighlightLayer>();
+
 let current: ReadingDoc | null = null;
 let controller: ReaderController | null = null;
 /** The controller's own state subscription, dropped when the controller is. */
 let unsubscribeController: (() => void) | null = null;
 let announced = false;
-let scale: number = SCALES[0];
+let starting = false;
 let initialRate = 1;
 let appendStopped = false;
 /**
@@ -97,30 +130,7 @@ let appendPending = false;
 /** Bumped for every document opened, so a slow open cannot overwrite a newer one. */
 let generation = 0;
 
-/**
- * All page DOM work runs through one queue.
- *
- * Rendering, appending and zooming all mutate the same slots, and pdf.js will
- * refuse a second render on a page that is already painting. One chain makes
- * the order observable: whatever the reader asked for last runs last.
- */
-let queue: Promise<void> = Promise.resolve();
-
-function enqueue(task: () => Promise<void>): Promise<void> {
-  queue = queue.then(task).catch((error: unknown) => {
-    console.error('[SayLoud] the pdf viewer could not finish a page', error);
-  });
-  return queue;
-}
-
-/**
- * A doc whose contents can be swapped under the controller.
- *
- * `ReaderController` takes its document once, at construction, and the viewer
- * appends pages long after that. Redirecting through getters is what lets the
- * sentence list grow without rebuilding the controller (and without it ever
- * holding a document that has been replaced).
- */
+/** A doc whose contents can be swapped under the controller. */
 const redirect: ReadingDoc = {
   get blocks() {
     return current?.blocks ?? [];
@@ -139,7 +149,8 @@ function drawChrome(): void {
     <Chrome
       settings={settings}
       state={chrome}
-      onScale={setScale}
+      api={viewerApi}
+      onZoom={zoomBy}
       onPick={pickFile}
       onPassword={answerPassword}
     />,
@@ -156,7 +167,8 @@ function show(notice: Notice): void {
 interface ChromeProps {
   settings: SettingsStore;
   state: ChromeState;
-  onScale: (scale: number) => void;
+  api: ViewerApi | null;
+  onZoom: (direction: 1 | -1) => void;
   onPick: (file: File) => void;
   onPassword: (value: string | null) => void;
 }
@@ -170,7 +182,7 @@ function Chrome(props: ChromeProps) {
   );
 }
 
-function ChromeBody({ state, onScale, onPick, onPassword }: ChromeProps) {
+function ChromeBody({ state, api, onZoom, onPick, onPassword }: ChromeProps) {
   const t = useT();
   const canPick = state.notice === 'pick' || state.notice === 'missing' || state.notice === 'empty';
 
@@ -182,16 +194,25 @@ function ChromeBody({ state, onScale, onPick, onPassword }: ChromeProps) {
         <p class="pdf-order-hint">{t('pdf.order.hint')}</p>
         {state.open && (
           <fieldset class="pdf-zoom">
-            {SCALES.map((value) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={state.scale === value}
-                onClick={() => onScale(value)}
-              >
-                {value}×
-              </button>
-            ))}
+            <button
+              type="button"
+              aria-label={t('pdf.zoom.out')}
+              disabled={!api}
+              onClick={() => onZoom(-1)}
+            >
+              −
+            </button>
+            <span class="pdf-zoom-level" aria-live="polite">
+              {Math.round(state.zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              aria-label={t('pdf.zoom.in')}
+              disabled={!api}
+              onClick={() => onZoom(1)}
+            >
+              +
+            </button>
           </fieldset>
         )}
       </div>
@@ -286,7 +307,7 @@ function start(): void {
       show('missing');
       return;
     }
-    await openBytes(bytes);
+    await openBytes(bytes, 'document.pdf');
   })();
 }
 
@@ -348,59 +369,245 @@ function fromBase64(encoded: string): ArrayBuffer | null {
 
 async function pickFile(file: File): Promise<void> {
   try {
-    await openBytes(await file.arrayBuffer());
+    await openBytes(await file.arrayBuffer(), file.name);
   } catch (error) {
     console.error('[SayLoud] cannot read the chosen file', error);
     show('missing');
   }
 }
 
-async function openBytes(bytes: ArrayBuffer): Promise<void> {
+async function openBytes(bytes: ArrayBuffer, name: string): Promise<void> {
   const run = ++generation;
-  resetViewer();
+  resetDocument();
   show('opening');
 
-  let opened: PdfDocument;
-  try {
-    opened = await openPdf(bytes, assets, askPassword);
-  } catch (error) {
-    // A cancelled prompt is the reader's own choice; the rest are failures.
-    if (run === generation) show(error === 'cancelled' ? 'pick' : 'missing');
-    return;
-  } finally {
-    if (run === generation) {
-      passwordAttempts = 0;
-      chrome = { ...chrome, password: null };
-    }
-  }
-
-  // Another file was chosen while this one was opening. Its own run owns the
-  // page now; this document's worker would otherwise stay alive for nothing.
-  if (run !== generation) {
-    void opened.destroy().catch(() => undefined);
-    return;
-  }
-  pdf = opened;
-
-  if (pdf.pageCount === 0) {
+  if (bytes.byteLength === 0) {
     show('empty');
     return;
   }
 
-  for (let number = 1; number <= pdf.pageCount; number++) {
-    const container = document.createElement('div');
-    container.className = 'pdf-page';
-    container.dataset.page = String(number);
-    pagesEl.appendChild(container);
-    slots.push({ container, page: null, layer: null, block: null, scale, canvas: null });
+  let created: EmbedEngine;
+  try {
+    created = await ensureEngine();
+  } catch (error) {
+    console.error('[SayLoud] cannot start the pdf engine', error);
+    if (run === generation) show('missing');
+    return;
   }
+  if (run !== generation) return;
+
+  mountViewer(created);
+  pending = { bytes, name };
+  // `pending` is consumed either by the registry callback (the usual path) or
+  // here, if the embedding tree was already up from a previous file.
+  await openPending(run);
+}
+
+/** Create the engine once; a failure leaves the promise unset so picking retries. */
+function ensureEngine(): Promise<EmbedEngine> {
+  if (engine) return Promise.resolve(engine);
+  enginePromise ??= createPdfEngine()
+    .then((created) => {
+      engine = created;
+      return created;
+    })
+    .catch((error: unknown) => {
+      enginePromise = null;
+      throw error;
+    });
+  return enginePromise;
+}
+
+/** Mount the EmbedPDF tree once; it is reused for every document. */
+function mountViewer(created: EmbedEngine): void {
+  if (viewerMounted) return;
+  viewerMounted = true;
+  render(
+    <PdfViewer
+      engine={created}
+      onRegistry={handleRegistry}
+      onApi={handleViewerApi}
+      onScale={handleScale}
+      onPageBlocks={handlePageBlocks}
+    />,
+    pagesEl
+  );
+}
+
+function handleRegistry(next: PluginRegistry | null): void {
+  registry = next;
+  if (next) void openPending(generation);
+}
+
+function handleViewerApi(api: ViewerApi | null): void {
+  viewerApi = api;
+  drawChrome();
+}
+
+function handleScale(scale: number): void {
+  // The zoom plugin reports on every document change; only a real move is
+  // worth a re-render of the toolbar.
+  if (Math.abs(chrome.zoom - scale) < 0.001) return;
+  chrome = { ...chrome, zoom: scale };
+  drawChrome();
+}
+
+/**
+ * One page's text is ready.
+ *
+ * Reported in whatever order PDFium finishes, so the reading document only
+ * advances over a contiguous prefix of pages. That keeps every `load` an
+ * append: a document that gained page 5 before page 3 would otherwise be
+ * rewritten in the middle, and the engine would be reading offsets of a list
+ * that no longer matches.
+ */
+function handlePageBlocks(
+  documentId: string,
+  pageIndex: number,
+  blocks: EmbedBlock[],
+  layer: HTMLElement
+): void {
+  if (documentId !== currentDocumentId) return;
+
+  const existing = highlightLayers.get(pageIndex);
+  if (!existing || existing.container !== layer) {
+    highlightLayers.set(pageIndex, new EmbedHighlightLayer(layer));
+  }
+
+  pageResults[pageIndex] = blocks;
+  pageDone[pageIndex] = true;
+
+  while (commitCursor < pageDone.length && pageDone[commitCursor]) commitCursor += 1;
+  syncDoc();
+}
+
+/** Open the file that was just chosen, asking for a password when PDFium does. */
+async function openPending(run: number): Promise<void> {
+  if (run !== generation || !pending || !registry) return;
+  const file = pending;
+  pending = null;
+
+  let result: OpenedDocument;
+  try {
+    result = await openWithPassword(file, run);
+  } catch (error) {
+    if (run !== generation) return;
+    await closePdfDocuments(registry);
+    if (error === 'cancelled') show('pick');
+    else {
+      console.error('[SayLoud] cannot open the pdf', error);
+      show('missing');
+    }
+    return;
+  } finally {
+    passwordAttempts = 0;
+    chrome = { ...chrome, password: null };
+    drawChrome();
+  }
+
+  if (run !== generation) {
+    await closePdfDocuments(registry);
+    return;
+  }
+
+  currentDocumentId = result.documentId;
+  pageCount = result.document.pages.length;
+  pageResults = new Array<EmbedBlock[] | null>(pageCount).fill(null);
+  pageDone = new Array<boolean>(pageCount).fill(false);
+  commitCursor = 0;
   chrome = { ...chrome, open: true };
 
-  // The first page must be readable before the bar appears; everything else can
-  // arrive while the reader is already listening.
-  await enqueue(() => ensureText(1, run));
-  if (run !== generation) return;
-  show(current && current.sentences.length > 0 ? 'ready' : 'empty');
+  if (pageCount === 0) {
+    show('empty');
+    return;
+  }
+  drawChrome();
+}
+
+/**
+ * Open (or retry) a document until PDFium stops asking for a password.
+ *
+ * A wrong password is reported as a failed open, and `retryDocument` re-runs
+ * only the authentication step: the bytes are already in PDFium, so a typo
+ * does not re-parse the file. A cancel is the reader's own choice and must not
+ * look like a broken file.
+ */
+async function openWithPassword(
+  file: { bytes: ArrayBuffer; name: string },
+  run: number
+): Promise<OpenedDocument> {
+  let password: string | null = null;
+  let documentId: string | null = null;
+
+  for (;;) {
+    try {
+      if (documentId === null) {
+        return await openPdfDocument(registry, file.bytes, file.name);
+      }
+      return await retryPdfDocument(registry, documentId, password ?? '');
+    } catch (error) {
+      const failure = error instanceof EmbedOpenError ? error : null;
+      documentId = failure?.documentId ?? documentId;
+      const reason = failure?.reason ?? null;
+
+      if (!isPasswordError(reason) || !documentId) throw error;
+      if (passwordAttempts >= MAX_PASSWORD_ATTEMPTS) throw error;
+
+      password = await askPassword();
+      if (run !== generation) throw 'cancelled';
+      if (password === null) throw 'cancelled';
+      passwordAttempts += 1;
+    }
+  }
+}
+
+/** Fold the committed pages into a document, appending only. */
+function syncDoc(): void {
+  if (appendStopped) return;
+
+  const blocks: Block[] = [];
+  for (let index = 0; index < commitCursor; index++) {
+    const page = pageResults[index];
+    if (page) blocks.push(...page);
+  }
+
+  const next = buildReadingDoc(blocks);
+  const previous = current?.sentences ?? [];
+
+  if (!isAppendOnly(previous, next.sentences)) {
+    appendStopped = true;
+    console.warn('[SayLoud] the pdf text order changed; keeping the sentences already read');
+    return;
+  }
+
+  const grew = next.sentences.length > previous.length;
+  current = next;
+
+  if (grew && announced) resend();
+  syncHighlight();
+
+  if (!announced && !starting) {
+    if (next.sentences.length > 0) {
+      show('ready');
+      void startReader();
+    } else if (commitCursor >= pageCount && pageCount > 0) {
+      show('empty');
+    }
+  }
+}
+
+function isAppendOnly(
+  previous: readonly ReadingSentence[],
+  next: readonly ReadingSentence[]
+): boolean {
+  if (next.length < previous.length) return false;
+  return previous.every((sentence, index) => next[index]?.text === sentence.text);
+}
+
+/** Build the reader once the first page's sentences exist. */
+async function startReader(): Promise<void> {
+  if (controller || starting || !current) return;
+  starting = true;
 
   initialRate = await settings
     .load()
@@ -410,14 +617,21 @@ async function openBytes(bytes: ArrayBuffer): Promise<void> {
       return 1;
     });
 
+  if (!current || controller) {
+    starting = false;
+    return;
+  }
+
   controller = new ReaderController(host, { initialRate, settings, doc: redirect });
   controller.connect();
   announced = true;
+  starting = false;
   // A page appended while the engine was speaking is held back; this is what
   // sends it once the engine goes quiet, which is the only moment a `load`
   // cannot cut the audio off.
   unsubscribeController = controller.subscribe(() => {
     if (appendPending) resend();
+    syncHighlight();
   });
   render(
     <ReaderPanel
@@ -429,86 +643,6 @@ async function openBytes(bytes: ArrayBuffer): Promise<void> {
     />,
     host
   );
-
-  scheduleVisiblePages();
-  for (let number = 2; number <= pdf.pageCount && !appendStopped; number++) {
-    void enqueue(() => ensureText(number, run));
-  }
-}
-
-/** Read one page's text layer, build its block and fold it into the document. */
-async function ensureText(number: number, run = generation): Promise<void> {
-  if (run !== generation) return;
-  const slot = slots[number - 1];
-  if (!slot) return;
-  if (slot.layer && slot.scale === scale) return;
-
-  if (slot.layer) {
-    // A layer at another scale is stale geometry; its text nodes would move
-    // nowhere when the page is redrawn.
-    slot.container.replaceChildren();
-    slot.layer = null;
-    slot.canvas = null;
-  }
-
-  if (!slot.page) {
-    if (!pdf) return;
-    slot.page = await pdf.getPage(number);
-  }
-  const page = slot.page;
-  const built = await renderTextLayer(page, scale, slot.container);
-  slot.layer = built.layer;
-  slot.scale = scale;
-  slot.block = pageBlock(built.items, built.layer);
-  syncDoc();
-}
-
-/** Paint a page that already has its text layer. */
-async function paint(number: number, run = generation): Promise<void> {
-  if (run !== generation) return;
-  const slot = slots[number - 1];
-  if (!slot || slot.canvas || !slot.page || !slot.layer) return;
-  slot.canvas = await renderCanvas(slot.page, scale, slot.container);
-}
-
-/**
- * Fold the blocks into a document, appending only.
- *
- * If a rebuild would change the text of a sentence the engine already has, the
- * append is abandoned: a changed sentence is a different document, and the
- * engine would be reading offsets from the old one.
- */
-function syncDoc(): void {
-  if (appendStopped) return;
-
-  const blocks = slots.map((slot) => slot.block).filter((block): block is Block => block !== null);
-  const next = buildReadingDoc(blocks);
-  const previous = current?.sentences ?? [];
-
-  if (!isAppendOnly(previous, next.sentences)) {
-    appendStopped = true;
-    console.warn('[SayLoud] the pdf text order changed; keeping the sentences already read');
-    return;
-  }
-
-  const grew = next.sentences.length > previous.length;
-  const hadText = previous.length > 0;
-  current = next;
-
-  if (!hadText && next.sentences.length > 0 && chrome.notice === 'empty') show('ready');
-  if ((grew || appendPending) && announced) resend();
-
-  // A later page arrived with the same block order but a new layer, which is
-  // what a zoom looks like. The highlight has to point into the new nodes.
-  if (!grew && hadText) refreshHighlight();
-}
-
-function isAppendOnly(
-  previous: readonly ReadingSentence[],
-  next: readonly ReadingSentence[]
-): boolean {
-  if (next.length < previous.length) return false;
-  return previous.every((sentence, index) => next[index]?.text === sentence.text);
 }
 
 /**
@@ -543,102 +677,43 @@ function resend(): void {
   });
 }
 
-/** How many pages around the viewport are drawn: one before, one after. */
-function visibleRange(): { first: number; last: number } {
-  const viewport = pagesEl.clientHeight || window.innerHeight;
-  const top = pagesEl.scrollTop - viewport;
-  const bottom = pagesEl.scrollTop + viewport * 2;
-
-  let first = -1;
-  let last = -1;
-  slots.forEach((slot, index) => {
-    const start = slot.container.offsetTop;
-    const end = start + slot.container.offsetHeight;
-    if (end < top || start > bottom) return;
-    if (first === -1) first = index;
-    last = index;
-  });
-
-  // Before layout has run there is no page on screen yet; the first one is the
-  // only sensible guess and the scroll listener corrects it.
-  if (first === -1) return { first: 0, last: 0 };
-  return { first, last };
-}
-
-function scheduleVisiblePages(): void {
-  if (slots.length === 0) return;
-  const { first, last } = visibleRange();
-
-  slots.forEach((slot, index) => {
-    if (index < first || index > last) {
-      // The canvas is the expensive part; the text layer stays so the DOM
-      // ranges the reader highlights remain attached.
-      slot.canvas?.remove();
-      slot.canvas = null;
-      return;
-    }
-
-    void enqueue(async () => {
-      await ensureText(index + 1);
-      await paint(index + 1);
-    });
-  });
-}
-
-function setScale(next: number): void {
-  if (next === scale || !pdf) return;
-  scale = next;
-  chrome = { ...chrome, scale: next };
-  drawChrome();
-
-  // The text layer of every page, not just the visible ones: the blocks the
-  // reader holds point at those nodes, and a page left pointing at detached
-  // ones is a page the reader can neither highlight nor scroll to. The canvas
-  // is the expensive part, so only the pages near the viewport get one back.
-  void enqueue(async () => {
-    for (const slot of slots) {
-      slot.canvas?.remove();
-      slot.canvas = null;
-    }
-
-    await rescaleTextLayers(slots, scale, async (pageScale, container) => {
-      const slot = slots.find((candidate) => candidate.container === container);
-      if (!slot?.page) {
-        // Page not opened yet; clear the container and skip it.
-        container.replaceChildren();
-        return { layer: document.createElement('div'), items: [] };
-      }
-      return renderTextLayer(slot.page, pageScale, container);
-    });
-    for (const slot of slots) if (slot.layer) slot.scale = scale;
-
-    syncDoc();
-    scheduleVisiblePages();
-  });
-}
-
 /**
- * Re-place the sentence highlight after its text nodes were replaced.
+ * Paint the sentence being read onto its page.
  *
- * Reached through the registry rather than a second `Highlighter`: constructing
- * one would register its own objects under the same keys, and the controller's
- * later updates would then go to an instance nobody is drawing.
+ * The reader controller still registers its own `CSS.highlights` range — that
+ * is what the word highlight and the e2e assertions read — but the sentence's
+ * visible paint is these rectangles: they are PDFium's own text boxes, so they
+ * stay on the glyphs even when the invisible text layer's font metrics do not.
+ * The page's CSS makes the sentence highlight transparent for that reason (see
+ * `index.html`).
  */
-function refreshHighlight(): void {
-  const registry = (
-    globalThis as {
-      CSS?: { highlights?: Map<string, { clear(): void; add(range: Range): void }> };
-    }
-  ).CSS?.highlights;
-  const highlight = registry?.get(SENTENCE_HIGHLIGHT);
-  if (!highlight) return;
+function syncHighlight(): void {
+  for (const layer of highlightLayers.values()) layer.clear();
 
-  const index = controller?.getState().status?.index;
-  highlight.clear();
+  const status = controller?.getState().status;
+  const index = status?.index;
   if (index === undefined) return;
+  if (status?.phase === 'idle' || status?.phase === 'ended') return;
 
-  const range = current?.rangeForSentence(index) ?? null;
-  if (range) highlight.add(range);
+  const sentence = current?.getSentence(index);
+  if (!sentence) return;
+  const block = current?.blocks[sentence.blockIndex];
+  if (!block) return;
+  const embed = block as EmbedBlock;
+  const layer = highlightLayers.get(embed.pageIndex);
+  if (!layer) return;
+
+  const rects = embed.run
+    .filter((run) => run.end > sentence.start && run.start < sentence.end)
+    .map((run) => run.rect);
+  layer.setRects(rects, index);
+}
+
+/** Zoom through the embedding tree's own plugin. */
+function zoomBy(direction: 1 | -1): void {
+  if (!viewerApi) return;
+  if (direction === 1) viewerApi.zoomIn();
+  else viewerApi.zoomOut();
 }
 
 /** Ask for a password, and remember where the answer goes. */
@@ -646,7 +721,6 @@ function askPassword(): Promise<string | null> {
   return new Promise((resolve) => {
     passwordResolve = resolve;
     chrome = { ...chrome, password: { wrong: passwordAttempts > 0 } };
-    passwordAttempts += 1;
     drawChrome();
   });
 }
@@ -671,21 +745,27 @@ function closeReader(): void {
 }
 
 /** Tear down the previous document, if there was one. */
-function resetViewer(): void {
+function resetDocument(): void {
   answerPassword(null);
   unsubscribeController?.();
   unsubscribeController = null;
   controller?.dispose();
   controller = null;
   announced = false;
+  starting = false;
   appendStopped = false;
   appendPending = false;
   current = null;
-  slots = [];
-  pagesEl.replaceChildren();
+  currentDocumentId = null;
+  pending = null;
+  pageResults = [];
+  pageDone = [];
+  commitCursor = 0;
+  pageCount = 0;
+  highlightLayers.clear();
+  passwordAttempts = 0;
   render(null, host);
-  void pdf?.destroy().catch(() => undefined);
-  pdf = null;
+  void closePdfDocuments(registry);
   chrome = { ...chrome, open: false, password: null };
 }
 
@@ -694,8 +774,5 @@ function element(id: string): HTMLElement {
   if (!found) throw new Error(`the pdf viewer is missing #${id}`);
   return found;
 }
-
-pagesEl.addEventListener('scroll', scheduleVisiblePages, { passive: true });
-window.addEventListener('resize', scheduleVisiblePages);
 
 start();

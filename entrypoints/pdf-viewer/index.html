@@ -36,6 +36,7 @@
       }
       .pdf-zoom {
         display: flex;
+        align-items: center;
         gap: 4px;
         margin: 0;
         padding: 0;
@@ -52,9 +53,16 @@
         font-size: 12px;
         cursor: pointer;
       }
-      .pdf-zoom button[aria-pressed='true'] {
-        background: #fff;
-        color: #1c1c1e;
+      .pdf-zoom button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .pdf-zoom-level {
+        min-width: 44px;
+        text-align: center;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        opacity: 0.9;
       }
 
       .pdf-notice {
@@ -112,45 +120,67 @@
         cursor: pointer;
       }
 
+      /* The EmbedPDF tree fills this box; the viewport inside it scrolls. */
       #pdf-pages {
         position: relative;
         flex: 1;
-        overflow: auto;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 16px;
-        padding: 16px;
+        min-height: 0;
       }
-      .pdf-page {
-        position: relative;
-        flex: none;
-        background: #fff;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-        overflow: hidden;
+      #pdf-viewport {
+        background: #525659;
       }
-      .pdf-page-canvas {
+      .pdf-page-raster {
         display: block;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
       }
 
-      /* The text layer sits exactly over the canvas. Its glyphs are invisible
-         because the canvas already drew them; the nodes are there for selection,
-         highlighting and click-to-seek. */
-      .pdf-text-layer {
+      /* One page's transparent text over the raster. The element is sized to
+         the *unrotated* page and rotated as a whole, so the span coordinates
+         are always PDFium's own (top-left, y down). */
+      .pdf-page-layer {
         position: absolute;
         inset: 0;
-        overflow: hidden;
-        line-height: 1;
       }
-      .pdf-text-item {
+      .pdf-text-layer {
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform-origin: 0 0;
+        line-height: 1;
+        z-index: 1;
+      }
+      .pdf-text-block {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 0;
+        height: 0;
+      }
+      .pdf-text-run {
         position: absolute;
         white-space: pre;
         transform-origin: 0 0;
         color: transparent;
         cursor: text;
+        overflow: visible;
       }
       .pdf-text-layer ::selection {
         background: rgba(76, 154, 255, 0.35);
+      }
+
+      /* The sentence is painted by `EmbedHighlightLayer`, not by
+         `::highlight()`: PDFium's rectangles are the glyph boxes, while the
+         invisible text layer's metrics are approximate. `CSS.highlights` still
+         carries the range (the word highlight and the e2e assertions read it),
+         so its own paint is switched off here. */
+      ::highlight(sayloud-sentence) {
+        background-color: transparent !important;
+      }
+      .pdf-highlight-rect {
+        position: absolute;
+        background: rgba(255, 214, 0, 0.34);
+        border-radius: 2px;
+        pointer-events: none;
       }
     </style>
   </head>

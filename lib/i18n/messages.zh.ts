@@ -243,6 +243,8 @@ export const zh: Record<MessageKey, string> = {
   // 阅读器顶部常驻的一行，不是可关闭的提示：文字顺序是文本层的已知限制。
   'pdf.order.hint': '按 PDF 的文字顺序朗读，双栏论文可能读串。',
   'pdf.pick': '选择 PDF 文件',
+  'pdf.zoom.in': '放大',
+  'pdf.zoom.out': '缩小',
 
   // --- the caption window ---------------------------------------------------
   'caption.counter': '第 {index} / {total} 句',

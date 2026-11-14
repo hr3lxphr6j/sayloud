@@ -1,6 +1,3 @@
-import { existsSync } from 'node:fs';
-import { cp, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import preact from '@preact/preset-vite';
 import { defineConfig } from 'wxt';
@@ -17,55 +14,15 @@ function e2eHostPermissions(): string[] {
   return ['http://127.0.0.1/*'];
 }
 
-/**
- * pdf.js runtime files that the bundler cannot see.
+/*
+ * No runtime assets are copied into the package any more.
  *
- * pdf.js fetches its worker as a separate module and its cMaps and standard
- * fonts as data files, so none of them is reachable through the import graph
- * and none of them ends up in `.output`. They are copied verbatim instead, and
- * the layout must match what `lib/pdf/assets.ts` points at.
+ * pdf.js needed its worker, cMaps and standard fonts copied and declared
+ * web-accessible. EmbedPDF's PDFium wasm goes through `?url` (one hashed file
+ * in `assets/`, see `lib/pdf/embed/document.ts`), and the viewer is an
+ * extension page rather than a content script, so nothing has to be readable
+ * from a web page.
  */
-const PDFJS_SOURCE = join('node_modules', 'pdfjs-dist');
-const PDFJS_ASSETS = [
-  { from: 'build/pdf.worker.min.mjs', to: 'pdfjs/pdf.worker.min.mjs' },
-  { from: 'cmaps', to: 'pdfjs/cmaps' },
-  { from: 'standard_fonts', to: 'pdfjs/standard_fonts' },
-] as const;
-
-/**
- * POC only: the EmbedPDF v2 PDFium wasm binary.
- *
- * 4.4 MB, so it is not checked in (`public/pdfium.wasm` is gitignored). The
- * copy lives in `build:done` next to the pdf.js assets so a fresh clone builds
- * without a manual `cp`. Remove together with `entrypoints/pdf-poc/` if the
- * POC is rejected.
- */
-const PDFIUM_WASM_SOURCE = join('node_modules', '@embedpdf', 'pdfium', 'dist', 'pdfium.wasm');
-
-async function copyPdfiumWasm(root: string, outDir: string): Promise<void> {
-  const source = join(root, PDFIUM_WASM_SOURCE);
-  if (!existsSync(source)) return;
-  await cp(source, join(outDir, 'pdfium.wasm'), { force: false, errorOnExist: false });
-}
-
-/**
- * Copy the pdf.js assets into a built extension.
- *
- * Existing files are skipped: in dev, `build:done` runs on every rebuild and
- * the ~3.4 MB of tables only change when the pdfjs-dist version does. A new
- * version therefore needs a clean `.output` (which `wxt build` does anyway).
- */
-async function copyPdfJsAssets(root: string, outDir: string): Promise<void> {
-  for (const asset of PDFJS_ASSETS) {
-    const target = join(outDir, asset.to);
-    await mkdir(dirname(target), { recursive: true });
-    await cp(join(root, PDFJS_SOURCE, asset.from), target, {
-      recursive: true,
-      force: false,
-      errorOnExist: false,
-    });
-  }
-}
 
 export default defineConfig({
   vite: () => ({
@@ -161,25 +118,13 @@ export default defineConfig({
     // lets the service worker own an audio document, which is the only place
     // cloud audio can be decoded and played.
     permissions: ['activeTab', 'scripting', 'storage', 'tts', 'offscreen'],
-    // The reader is a content script, so pdf.js runs under the *page's* origin
-    // and every file it fetches has to be web-accessible. Three patterns
-    // instead of `pdfjs/*`: a Chrome match pattern's `*` does not cross `/`, so
-    // `pdfjs/*` would admit the worker but not `pdfjs/cmaps/…`.
-    web_accessible_resources: [
-      {
-        resources: [
-          'pdfjs/pdf.worker.min.mjs',
-          'pdfjs/cmaps/*',
-          'pdfjs/standard_fonts/*',
-          // POC only, and not actually required: `pdf-poc.html` is an extension
-          // page, so `chrome-extension://…/pdfium.wasm` is same-origin there.
-          // Listed because the planned integration may render PDFs inside the
-          // reader content script, where the wasm does need to be accessible.
-          'pdfium.wasm',
-        ],
-        matches: ['<all_urls>'],
-      },
-    ],
+    // No `web_accessible_resources`.
+    //
+    // They existed for pdf.js, whose worker and data tables were fetched from
+    // a content script running under the *page's* origin. The PDF viewer is an
+    // extension page and PDFium is loaded by the page itself, so nothing in the
+    // package needs to be readable from a web page. `pdfium.wasm` in particular
+    // must not be exposed: it is 4.4 MB that no site has a reason to read.
     // Declared, never granted on install. Volcengine is the one service whose
     // CORS preflight rejects the extension (its `X-Api-Key` header is missing
     // from `Access-Control-Allow-Headers`), so it is the only host a user may
@@ -228,17 +173,6 @@ export default defineConfig({
      * a bundle without the assets fails at document-open time rather than at
      * build time.
      */
-    'build:done': async (wxt) => {
-      const targetOutDirs = new Set([wxt.config.outDir]);
-      for (const sibling of ['.output/chrome-mv3', '.output-e2e/chrome-mv3']) {
-        const dir = join(wxt.config.root, sibling);
-        if (existsSync(dir)) targetOutDirs.add(dir);
-      }
-      for (const outDir of targetOutDirs) {
-        await copyPdfJsAssets(wxt.config.root, outDir);
-        await copyPdfiumWasm(wxt.config.root, outDir);
-      }
-    },
     /**
      * Drop the host permission WXT derives from the reader's `matches`.
      *

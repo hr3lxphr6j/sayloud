@@ -7,7 +7,8 @@
  * them fall back to.
  */
 import path from 'node:path';
-import { BASE_URL, expect, test } from './fixtures';
+import { BASE_URL, control, expect, test } from './fixtures';
+import { sentenceHighlight } from './helpers';
 
 const HELLO = path.resolve(process.cwd(), 'tests/fixtures/pdf/hello.pdf');
 
@@ -71,5 +72,21 @@ test.describe('the pdf viewer', () => {
 
     // The PDF tab is kept, not replaced by the viewer.
     expect(page.isClosed()).toBe(false);
+  });
+
+  test('starts reading a pdf and highlights the sentence', async ({ page, extensionId }) => {
+    await page.goto(`chrome-extension://${extensionId}/pdf-viewer.html`);
+    await page.locator('input[type=file]').setInputFiles(HELLO);
+
+    // Wait for the text layer to be built.
+    await expect(page.locator('.pdf-text-layer')).toContainText('Hello', { timeout: 15_000 });
+
+    // The bar starts paused on a freshly opened document.
+    await expect(page.locator('.side-player')).toBeVisible();
+    await expect(control(page, 'Play')).toBeVisible();
+
+    // Click play and verify the first sentence is highlighted.
+    await control(page, 'Play').click();
+    await expect.poll(() => sentenceHighlight(page), { timeout: 10_000 }).toContain('Hello');
   });
 });

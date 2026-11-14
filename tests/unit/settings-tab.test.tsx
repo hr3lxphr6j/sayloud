@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SettingsTab } from '~/entrypoints/sidepanel/SettingsTab';
 import type { CacheUsage } from '~/lib/cache-admin';
 import { ConfigStore, type LocalStorageArea } from '~/lib/config-store';
+import type { PermissionsApi } from '~/lib/provider-origins';
 import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider } from '~/lib/providers/types';
 import { SETTINGS_KEY, SettingsStore } from '~/lib/settings-store';
@@ -58,10 +59,12 @@ function renderTab({
   cache,
   initial = {},
   version,
+  permissions,
 }: {
   cache?: ReturnType<typeof fakeCache>['admin'];
   initial?: Record<string, unknown>;
   version?: string;
+  permissions?: PermissionsApi;
 } = {}) {
   const area = memoryArea(initial);
   const store = new SettingsStore(area);
@@ -79,6 +82,7 @@ function renderTab({
       onChanged={() => {}}
       {...(cache ? { cache } : {})}
       {...(version ? { version } : {})}
+      {...(permissions ? { permissions } : {})}
     />
   );
   return { store };
@@ -190,6 +194,57 @@ describe('the cache settings', () => {
     fireEvent.change(limit, { target: { value: String(500 * 1024 * 1024) } });
 
     await waitFor(async () => expect((await store.load()).cache.maxBytes).toBe(500 * 1024 * 1024));
+  });
+});
+
+describe('the pdf card', () => {
+  it('writes the interception switch to the settings', async () => {
+    const { store } = renderTab();
+
+    const control = await screen.findByRole('switch', { name: 'Open PDFs in SayLoud' });
+    expect(control.getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(control);
+
+    // No permissions double in this render, so the switch has nobody to ask;
+    // the preference is still stored, which is what the worker reads.
+    await waitFor(async () => expect((await store.load()).interceptPdf).toBe(true));
+  });
+
+  it('asks for the http and https hosts, and only writes the choice once granted', async () => {
+    const request = vi.fn(async () => true);
+    const { store } = renderTab({ permissions: { request } });
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Open PDFs in SayLoud' }));
+
+    expect(request).toHaveBeenCalledWith({ origins: ['http://*/*', 'https://*/*'] });
+    await waitFor(async () => expect((await store.load()).interceptPdf).toBe(true));
+  });
+
+  it('leaves interception off when the host access is refused', async () => {
+    const request = vi.fn(async () => false);
+    const { store } = renderTab({ permissions: { request } });
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Open PDFs in SayLoud' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('needs permission');
+    expect((await store.load()).interceptPdf).toBe(false);
+  });
+
+  it('gives the host grant back when switched off', async () => {
+    const remove = vi.fn(async () => true);
+    const { store } = renderTab({
+      initial: { [SETTINGS_KEY]: { interceptPdf: true } },
+      permissions: { request: vi.fn(async () => true), remove },
+    });
+
+    const control = screen.getByRole('switch', { name: 'Open PDFs in SayLoud' });
+    // The saved value arrives asynchronously; the default is off.
+    await waitFor(() => expect(control.getAttribute('aria-checked')).toBe('true'));
+    fireEvent.click(control);
+
+    expect(remove).toHaveBeenCalledWith({ origins: ['http://*/*', 'https://*/*'] });
+    await waitFor(async () => expect((await store.load()).interceptPdf).toBe(false));
   });
 });
 

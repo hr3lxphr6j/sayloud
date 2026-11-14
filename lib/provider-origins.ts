@@ -36,6 +36,13 @@ export interface PermissionsApi {
    * have `request`; without it the caller assumes the grant is missing.
    */
   contains?(permissions: { origins: string[] }): Promise<boolean>;
+  /**
+   * Give a grant back.
+   *
+   * Optional for the same reason. Used by the PDF interception switch, whose
+   * broad host access exists only for that one feature.
+   */
+  remove?(permissions: { origins: string[] }): Promise<boolean>;
 }
 
 /**

@@ -90,6 +90,14 @@ export const en = {
   'settings.cache.cancel': 'Cancel',
   'settings.cache.cleared': 'Cache cleared.',
 
+  // --- the pdf card ---------------------------------------------------------
+  'settings.pdf.title': 'PDF',
+  'settings.interceptPdf': 'Open PDFs in SayLoud',
+  'settings.interceptPdf.desc':
+    "Automatically open PDFs in the SayLoud viewer instead of Chrome's built-in viewer. Needs access to the sites you visit.",
+  'settings.interceptPdf.denied':
+    'SayLoud needs permission to access websites before it can open PDFs automatically.',
+
   // --- the about line -------------------------------------------------------
   'settings.about.line': 'SayLoud {version} · MIT · Audio goes only to the service you configure.',
   // For the tests, which have no manifest to read a version from.

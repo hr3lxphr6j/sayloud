@@ -11,6 +11,7 @@ import type { CacheUsage } from '~/lib/cache-admin';
 import type { ConfigStore, SavedConfigs, VoiceNames } from '~/lib/config-store';
 import { formatBytes } from '~/lib/format-bytes';
 import { useT } from '~/lib/i18n';
+import { PDF_INTERCEPT_ORIGINS } from '~/lib/pdf/dnr';
 import type { PermissionsApi } from '~/lib/provider-origins';
 import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig } from '~/lib/providers/types';
@@ -81,6 +82,8 @@ export function SettingsTab({
 
       <CacheCard cache={cache} preferences={preferences} update={update} />
 
+      <PdfCard preferences={preferences} update={update} permissions={permissions} />
+
       <Card title={t('settings.language.label')}>
         <select
           id="ui-lang"
@@ -106,6 +109,76 @@ interface CacheCardProps {
   cache?: CacheAdmin;
   preferences: Settings;
   update: (patch: Partial<Settings>) => void;
+}
+
+interface PdfCardProps {
+  preferences: Settings;
+  update: (patch: Partial<Settings>) => void;
+  permissions?: PermissionsApi;
+}
+
+/**
+ * PDF interception: send every `.pdf` navigation to this viewer.
+ *
+ * Not a plain preference write. Opening a PDF automatically needs host access
+ * to the PDF's own site, and `permissions.request` only answers while the
+ * click's user gesture is still live — so the request is started here, before
+ * the first `await`, and the preference is written only after Chrome says yes.
+ * Turning the switch off gives the grant back: this feature is the only reason
+ * the extension ever asks for it.
+ */
+function PdfCard({ preferences, update, permissions }: PdfCardProps) {
+  const t = useT();
+  const [denied, setDenied] = useState(false);
+
+  const change = (checked: boolean): void => {
+    setDenied(false);
+
+    if (!checked) {
+      update({ interceptPdf: false });
+      void permissions
+        ?.remove?.({ origins: [...PDF_INTERCEPT_ORIGINS] })
+        .catch((error: unknown) => {
+          console.error('[SayLoud] cannot give back the pdf interception access', error);
+        });
+      return;
+    }
+
+    if (!permissions) {
+      // A test double or a browser without the API: there is nobody to ask.
+      update({ interceptPdf: true });
+      return;
+    }
+
+    void permissions
+      .request({ origins: [...PDF_INTERCEPT_ORIGINS] })
+      .then((granted) => {
+        if (granted) update({ interceptPdf: true });
+        else setDenied(true);
+      })
+      .catch((error: unknown) => {
+        console.error('[SayLoud] cannot ask for the pdf interception access', error);
+        setDenied(true);
+      });
+  };
+
+  return (
+    <Card title={t('settings.pdf.title')}>
+      <Row label={t('settings.interceptPdf')} help={t('settings.interceptPdf.desc')}>
+        <Switch
+          id="intercept-pdf"
+          label={t('settings.interceptPdf')}
+          checked={preferences.interceptPdf}
+          onChange={change}
+        />
+      </Row>
+      {denied && (
+        <p class="muted small" role="alert">
+          {t('settings.interceptPdf.denied')}
+        </p>
+      )}
+    </Card>
+  );
 }
 
 /**

@@ -117,21 +117,31 @@ export default defineConfig({
     // extension asks for no standing access to any site. `offscreen` is what
     // lets the service worker own an audio document, which is the only place
     // cloud audio can be decoded and played.
-    permissions: ['activeTab', 'scripting', 'storage', 'tts', 'offscreen'],
-    // No `web_accessible_resources`.
-    //
-    // They existed for pdf.js, whose worker and data tables were fetched from
-    // a content script running under the *page's* origin. The PDF viewer is an
-    // extension page and PDFium is loaded by the page itself, so nothing in the
-    // package needs to be readable from a web page. `pdfium.wasm` in particular
-    // must not be exposed: it is 4.4 MB that no site has a reason to read.
+    // `declarativeNetRequest` lets the worker install the PDF redirect rule.
+    // The permission itself grants no access to any site; redirect rules also
+    // need host access, which is optional below and asked for by the settings
+    // toggle that turns the rule on.
+    permissions: ['activeTab', 'scripting', 'storage', 'tts', 'offscreen', 'declarativeNetRequest'],
+    // Only the viewer's HTML shell, and only because the DNR redirect lands
+    // there: a navigation from a web page cannot reach an extension page that
+    // is not declared here. Scripts, the PDFium worker and `pdfium.wasm` are
+    // loaded by the page itself and stay unreachable from the web — the wasm
+    // in particular is 4.4 MB no site has a reason to read.
+    web_accessible_resources: [
+      {
+        resources: ['pdf-viewer.html'],
+        matches: ['http://*/*', 'https://*/*'],
+      },
+    ],
     // Declared, never granted on install. Volcengine is the one service whose
     // CORS preflight rejects the extension (its `X-Api-Key` header is missing
-    // from `Access-Control-Allow-Headers`), so it is the only host a user may
-    // be asked for. Every other provider answers the preflight itself, and a
-    // custom Volcengine `baseUrl` on another host has to answer it too (see
-    // provider-origins.ts).
-    optional_host_permissions: ['https://openspeech.bytedance.com/*'],
+    // from `Access-Control-Allow-Headers`), so it is the only host a provider
+    // needs. Every other provider answers the preflight itself, and a custom
+    // Volcengine `baseUrl` on another host has to answer it too (see
+    // provider-origins.ts). The http(s) patterns belong to the PDF interception
+    // toggle: it asks for them when switched on, and drops them when switched
+    // off, so a user who never wants PDFs redirected is never asked.
+    optional_host_permissions: ['https://openspeech.bytedance.com/*', 'http://*/*', 'https://*/*'],
     action: {},
     // `wasm-unsafe-eval` is what lets ONNX Runtime compile its wasm module.
     // Measured: without it the wasm backend does not start at all.
@@ -181,7 +191,8 @@ export default defineConfig({
      * SayLoud never calls that API: the reader is injected with
      * `scripting.executeScript`, which `activeTab` already covers for the tab
      * the reader clicked. Shipping `<all_urls>` would ask every user for access
-     * to every site on install, for no benefit.
+     * to every site on install, for no benefit. PDF interception asks for the
+     * http(s) hosts at runtime instead, and only when its toggle is on.
      *
      * Only `<all_urls>` is removed, because the same mechanism also adds the
      * dev server's permission in `wxt dev` and the e2e build's 127.0.0.1 grant,

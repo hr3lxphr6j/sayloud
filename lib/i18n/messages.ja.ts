@@ -94,6 +94,13 @@ export const ja: Record<MessageKey, string> = {
   'settings.cache.cancel': 'キャンセル',
   'settings.cache.cleared': 'キャッシュをクリアしました。',
 
+  // --- the pdf card ---------------------------------------------------------
+  'settings.pdf.title': 'PDF',
+  'settings.interceptPdf': 'PDF を SayLoud で開く',
+  'settings.interceptPdf.desc':
+    'PDF を Chrome の組み込みビューアではなく SayLoud ビューアで自動的に開きます。閲覧するサイトへのアクセス権が必要です。',
+  'settings.interceptPdf.denied': 'PDF を自動的に開くには、サイトへのアクセス許可が必要です。',
+
   // --- the about line -------------------------------------------------------
   'settings.about.line': 'SayLoud {version} · MIT · 音声は設定したサービスにのみ送信されます。',
   // For the tests, which have no manifest to read a version from.

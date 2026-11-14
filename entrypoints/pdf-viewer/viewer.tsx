@@ -509,7 +509,7 @@ export function PdfViewer({
         defaultBufferSize: Number.MAX_SAFE_INTEGER,
       }),
       createPluginRegistration(InteractionManagerPluginPackage),
-      createPluginRegistration(RenderPluginPackage),
+      createPluginRegistration(RenderPluginPackage, { withAnnotations: true }),
       createPluginRegistration(SearchPluginPackage, { showAllResults: true }),
       createPluginRegistration(ThumbnailPluginPackage, {
         width: 120,

@@ -7,6 +7,7 @@ import { modelSourceMessage } from '~/lib/models/source-channel';
 import { ModelStore } from '~/lib/models/store';
 import { isCachePolicyRequest, isModelSourceRequest } from '~/lib/offscreen-protocol';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
+import { isPdfTab, stagePdfBytes, takePdfBytes } from '~/lib/pdf/tab';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
 import { applyPlaybackSettings } from '~/lib/settings-effects';
@@ -14,6 +15,9 @@ import { DEFAULT_SETTINGS, type Settings } from '~/lib/settings-store';
 
 /** Emitted by WXT from `entrypoints/reader.content.tsx`. */
 const CONTENT_SCRIPT = '/content-scripts/reader.js';
+
+/** The viewer's hash when the document could not be fetched at all. */
+const MISSING_PDF = 'missing';
 
 declare global {
   /** Test hook, only defined in `--mode e2e` builds. See `tests/e2e/fixtures.ts`. */
@@ -106,6 +110,21 @@ export default defineBackground(() => {
     const tabId = sender.tab?.id;
     if (tabId === undefined) return;
     openSettingsFor(tabId, { sidePanel: browser.sidePanel, options: browser.runtime });
+  });
+
+  // The viewer's one-shot request for the document the toolbar handed it.
+  //
+  // The bytes reached this worker from the PDF's own tab (see `activate`), and
+  // this is the only context that can hold them while the new tab boots. The
+  // reply goes through `sendResponse` and the listener keeps the channel open
+  // for it — the viewer's 2 s timeout assumes an answer, not a dropped message.
+  browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!isPdfBytesRequest(message)) return;
+    const bytes = takePdfBytes(message.id);
+    sendResponse(
+      bytes ? { type: 'pdf-bytes', bytes: encodeBase64(bytes) } : { type: 'pdf-missing' }
+    );
+    return true;
   });
 
   // The cache policy for an offscreen document that is starting up.
@@ -201,6 +220,19 @@ export default defineBackground(() => {
     const id = tabId ?? (await activeTabId());
     if (id === undefined) return;
 
+    // A PDF has no prose to inject a reader into, and Chrome's viewer rejects
+    // the injection anyway. It gets the viewer page instead, before anything
+    // is injected into a page that has nothing to read.
+    const tab = await browser.tabs.get(id).catch((error: unknown) => {
+      console.warn('[SayLoud] cannot look at this tab', error);
+      return undefined;
+    });
+    if (!tab) return;
+    if (isPdfTab(tab)) {
+      await openInViewer(id);
+      return;
+    }
+
     // If the tab already has an active port, the content script is running.
     if (activeTabs.has(id)) {
       console.log('[SayLoud] content script already active in tab', id);
@@ -224,11 +256,103 @@ export default defineBackground(() => {
     }
   }
 
+  /**
+   * Fetch the PDF in its own tab and open the viewer on the result.
+   *
+   * The original tab is left alone: the user can read the PDF itself while the
+   * sayloud bar reads it from the copy in the viewer. A fetch that fails is not
+   * a dead end — the viewer says the document could not be read and offers the
+   * file picker, which is the failure the user can act on.
+   */
+  async function openInViewer(id: number): Promise<void> {
+    let bytes: ArrayBuffer | null = null;
+    try {
+      bytes = await readPdfInTab(id);
+    } catch (error) {
+      console.warn('[SayLoud] cannot fetch the pdf from this tab', error);
+    }
+
+    const hash = bytes ? stagePdfBytes(bytes) : MISSING_PDF;
+    await browser.tabs.create({ url: `${browser.runtime.getURL('/pdf-viewer.html')}#${hash}` });
+  }
+
+  /**
+   * Ask the document for its own bytes.
+   *
+   * It has to be the page that fetches: the document is same-origin there, the
+   * session cookies are already sent, and `file:` is reachable at all only
+   * through the tab's own access. The result is base64 because an
+   * `executeScript` result is JSON-serialised and an `ArrayBuffer` is not.
+   */
+  async function readPdfInTab(id: number): Promise<ArrayBuffer> {
+    const [injection] = await browser.scripting.executeScript({
+      target: { tabId: id },
+      func: readDocumentInPage,
+    });
+    const encoded = injection?.result;
+    if (typeof encoded !== 'string' || encoded.length === 0) {
+      throw new Error('the tab returned no pdf bytes');
+    }
+    return decodeBase64(encoded);
+  }
+
   async function activeTabId(): Promise<number | undefined> {
     const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
     return tab?.id;
   }
 });
+
+/**
+ * Runs in the PDF tab, not in the worker.
+ *
+ * `credentials: 'include'` keeps the request identical to the one that loaded
+ * the document, so a PDF behind a session cookie is readable too. Chunked
+ * `fromCharCode` avoids spreading a multi-megabyte array into an argument list.
+ */
+async function readDocumentInPage(): Promise<string> {
+  const response = await fetch(location.href, { credentials: 'include' });
+  if (!response.ok) throw new Error(`the pdf answered ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength === 0) throw new Error('the pdf is empty');
+
+  let binary = '';
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.byteLength; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
+/**
+ * `runtime.sendMessage` is JSON-only, so the bytes travel as base64.
+ *
+ * The viewer decodes this back into the `ArrayBuffer` it opens.
+ */
+function encodeBase64(bytes: ArrayBuffer): string {
+  const octets = new Uint8Array(bytes);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let index = 0; index < octets.byteLength; index += chunk) {
+    binary += String.fromCharCode(...octets.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
+function decodeBase64(encoded: string): ArrayBuffer {
+  const binary = atob(encoded);
+  const octets = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    octets[index] = binary.charCodeAt(index);
+  }
+  return octets.buffer;
+}
+
+/** The viewer asking for the bytes under a hash id. */
+function isPdfBytesRequest(message: unknown): message is { type: 'pdf-bytes'; id: string } {
+  if (typeof message !== 'object' || message === null) return false;
+  const candidate = message as { type?: unknown; id?: unknown };
+  return candidate.type === 'pdf-bytes' && typeof candidate.id === 'string';
+}
 
 /** `SessionRouter` takes a narrow port interface so it stays testable. */
 function toRouterPort(port: Browser.runtime.Port): RouterPort {

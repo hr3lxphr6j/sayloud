@@ -60,6 +60,7 @@
     "async": "^3.2.6",
     "kokoro-js": "1.2.1",
     "microsoft-cognitiveservices-speech-sdk": "^1.51.0",
-    "path-browserify": "^1.0.1"
+    "path-browserify": "^1.0.1",
+    "pdfjs-dist": "5.4.296"
   }
 }

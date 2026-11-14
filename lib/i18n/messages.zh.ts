@@ -235,6 +235,15 @@ export const zh: Record<MessageKey, string> = {
   'sideplayer.hint.orphaned.title': 'SayLoud 已重新加载',
   'sideplayer.hint.orphaned.message': '扩展在页面打开期间更新了，刷新本页即可继续朗读。',
 
+  // --- the pdf viewer -------------------------------------------------------
+  'pdf.missing': '无法读取这份 PDF',
+  'pdf.empty': '这份 PDF 没有可朗读的文字',
+  'pdf.password.title': '这份 PDF 需要密码',
+  'pdf.password.wrong': '密码不正确',
+  // 阅读器顶部常驻的一行，不是可关闭的提示：文字顺序是文本层的已知限制。
+  'pdf.order.hint': '按 PDF 的文字顺序朗读，双栏论文可能读串。',
+  'pdf.pick': '选择 PDF 文件',
+
   // --- the caption window ---------------------------------------------------
   'caption.counter': '第 {index} / {total} 句',
 

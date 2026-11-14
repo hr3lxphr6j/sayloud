@@ -304,6 +304,18 @@ export const en = {
   'sideplayer.hint.orphaned.message':
     'Refresh this page to keep reading — the extension was updated underneath it.',
 
+  // --- the pdf viewer -------------------------------------------------------
+  'pdf.missing': 'This PDF could not be read',
+  'pdf.empty': 'This PDF has no text to read',
+  'pdf.password.title': 'This PDF needs a password',
+  'pdf.password.wrong': 'Wrong password',
+  // A line at the top of the viewer, not a dismissible hint: reading order is
+  // a known limit of the text layer, and saying so keeps it from looking like
+  // a broken reader.
+  'pdf.order.hint':
+    'Reading follows the PDF text order. Multi-column pages may be read out of order.',
+  'pdf.pick': 'Choose a PDF file',
+
   // --- the caption window ---------------------------------------------------
   'caption.counter': 'Sentence {index} of {total}',
 

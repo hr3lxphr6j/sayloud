@@ -585,14 +585,15 @@ function setScale(next: number): void {
       slot.canvas = null;
     }
 
-    await rescaleTextLayers(slots, scale, (pageScale, container) => {
+    await rescaleTextLayers(slots, scale, async (pageScale, container) => {
       const slot = slots.find((candidate) => candidate.container === container);
-      if (!slot?.page) throw new Error('pdf viewer is redrawing a page it has not opened');
+      if (!slot?.page) {
+        // Page not opened yet; clear the container and skip it.
+        container.replaceChildren();
+        return { layer: document.createElement('div'), items: [] };
+      }
       return renderTextLayer(slot.page, pageScale, container);
     });
-    for (const slot of slots) if (slot.layer) slot.scale = scale;
-
-    scheduleVisiblePages();
   });
 }
 

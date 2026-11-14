@@ -89,4 +89,32 @@ test.describe('the pdf viewer', () => {
     await control(page, 'Play').click();
     await expect.poll(() => sentenceHighlight(page), { timeout: 10_000 }).toContain('Hello');
   });
+
+  test('paints the sentence over the page and zooms the text layer with it', async ({
+    page,
+    extensionId,
+  }) => {
+    await page.goto(`chrome-extension://${extensionId}/pdf-viewer.html`);
+    await page.locator('input[type=file]').setInputFiles(HELLO);
+    await expect(page.locator('.pdf-text-layer')).toContainText('Hello', { timeout: 15_000 });
+
+    // PDFium paints the page as an image, so the visible highlight is the
+    // rectangle layer the viewer draws from PDFium's own text boxes. The
+    // `CSS.highlights` range above is what the reader registers; this is what
+    // is actually on screen.
+    if (await control(page, 'Pause').count()) await control(page, 'Pause').click();
+    await control(page, 'Play').click();
+    await expect
+      .poll(() => page.locator('.pdf-highlight-rect').count(), { timeout: 10_000 })
+      .toBeGreaterThan(0);
+
+    // Zooming is EmbedPDF's own plugin: the percentage moves and the text
+    // layer is rebuilt at the new scale with the highlight still on it.
+    const zoom = page.locator('.pdf-zoom-level');
+    const before = await zoom.innerText();
+    await page.getByRole('button', { name: 'Zoom in' }).click();
+    await expect.poll(() => zoom.innerText(), { timeout: 10_000 }).not.toBe(before);
+    await expect(page.locator('.pdf-text-layer')).toContainText('Hello');
+    expect(await page.locator('.pdf-highlight-rect').count()).toBeGreaterThan(0);
+  });
 });

@@ -182,6 +182,10 @@ const server = createServer(async (request, response) => {
         .writeHead(200, {
           'content-type': 'application/pdf',
           'content-disposition': 'inline',
+          // The EmbedPDF POC page fetches these bytes from an extension page,
+          // which is a cross-origin request. Host permissions would bypass CORS,
+          // but a plain `pnpm build` has none for 127.0.0.1.
+          'access-control-allow-origin': '*',
         })
         .end(body);
     } catch {

@@ -35,6 +35,18 @@
   "devDependencies": {
     "@babel/core": "^8.0.6",
     "@biomejs/biome": "2.5.14",
+    "@embedpdf/core": "2.15.1",
+    "@embedpdf/engines": "2.15.1",
+    "@embedpdf/models": "2.15.1",
+    "@embedpdf/pdfium": "2.15.1",
+    "@embedpdf/plugin-document-manager": "2.15.1",
+    "@embedpdf/plugin-interaction-manager": "2.15.1",
+    "@embedpdf/plugin-render": "2.15.1",
+    "@embedpdf/plugin-scroll": "2.15.1",
+    "@embedpdf/plugin-tiling": "2.15.1",
+    "@embedpdf/plugin-viewport": "2.15.1",
+    "@embedpdf/plugin-zoom": "2.15.1",
+    "@embedpdf/utils": "2.15.1",
     "@mozilla/readability": "0.6.0",
     "@playwright/test": "1.63.0",
     "@preact/preset-vite": "2.10.6",
@@ -60,7 +72,6 @@
     "async": "^3.2.6",
     "kokoro-js": "1.2.1",
     "microsoft-cognitiveservices-speech-sdk": "^1.51.0",
-    "path-browserify": "^1.0.1",
-    "pdfjs-dist": "5.4.296"
+    "path-browserify": "^1.0.1"
   }
 }

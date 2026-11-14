@@ -39,3 +39,13 @@ poc/
 # `pnpm build:wasm` to have run first.
 /target/
 lib/models/phonemize-wasm/
+
+# EmbedPDF stress-test fixtures (up to 26 MB). The wasm is no longer copied
+# into public/: `lib/pdf/embed/document.ts` imports it through Vite instead.
+tests/fixtures/pdf/large-120p.pdf
+tests/fixtures/pdf/wiki-zh.pdf
+tests/fixtures/pdf/wiki-ja.pdf
+tests/fixtures/pdf/attention.pdf
+tests/fixtures/pdf/cjk-*.pdf
+tests/fixtures/pdf/two-column.pdf
+tests/fixtures/pdf/generate_fixtures.py

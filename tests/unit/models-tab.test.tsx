@@ -473,7 +473,7 @@ describe('the download source', () => {
     expect(select.value).toBe('auto');
   });
 
-  it('shows a URL box only for a custom mirror, and rejects anything not https', async () => {
+  it('shows a URL box only for a custom mirror, and rejects anything not http(s)', async () => {
     const built = renderTab();
     const select = (await screen.findByLabelText('Download source')) as HTMLSelectElement;
 
@@ -483,13 +483,23 @@ describe('the download source', () => {
     expect(input.placeholder).toBe('https://example.com/models');
     // Nothing is stored for a custom source with no URL: it would only fail
     // later, at fetch time, with nothing to explain it.
-    expect(screen.getByText('Enter a complete https:// URL.')).toBeTruthy();
+    expect(screen.getByText('Enter a complete http:// or https:// URL.')).toBeTruthy();
     expect(built.storage.data.get(MODEL_SOURCE_KEY)).toBeUndefined();
 
-    fireEvent.input(input, { target: { value: 'http://mirror.test/models' } });
-    fireEvent.change(input, { target: { value: 'http://mirror.test/models' } });
-    expect(screen.getByText('Enter a complete https:// URL.')).toBeTruthy();
+    fireEvent.input(input, { target: { value: 'ftp://mirror.test/models' } });
+    fireEvent.change(input, { target: { value: 'ftp://mirror.test/models' } });
+    expect(screen.getByText('Enter a complete http:// or https:// URL.')).toBeTruthy();
     expect(built.storage.data.get(MODEL_SOURCE_KEY)).toBeUndefined();
+
+    // A self-hosted mirror on this machine has no certificate to offer.
+    fireEvent.input(input, { target: { value: 'http://localhost:8080/models' } });
+    fireEvent.change(input, { target: { value: 'http://localhost:8080/models' } });
+    await waitFor(() =>
+      expect(built.storage.data.get(MODEL_SOURCE_KEY)).toEqual({
+        host: 'custom',
+        customHostUrl: 'http://localhost:8080/models',
+      })
+    );
   });
 
   it('keeps a choice made before the saved source has been read', async () => {

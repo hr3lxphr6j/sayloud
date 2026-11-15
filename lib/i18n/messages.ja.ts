@@ -361,7 +361,7 @@ export const ja: Record<MessageKey, string> = {
   'model.source.modelscope': 'ModelScope',
   'model.source.custom': 'カスタムミラー',
   'model.source.custom-label': 'ミラーURL',
-  'model.source.custom-invalid': '完全なhttps:// URLを入力してください。',
+  'model.source.custom-invalid': '完全なhttp://またはhttps:// URLを入力してください。',
   'model.source.saved': 'ソースを保存しました。',
   'model.source.save-failed': 'ソースを保存できませんでした：{detail}',
 

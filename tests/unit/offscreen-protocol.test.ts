@@ -152,10 +152,13 @@ describe('isModelSourceMessage', () => {
     expect(
       isModelSourceMessage(reply({ host: 'custom', customHostUrl: 'https://mirror.test' }))
     ).toBe(true);
+    expect(
+      isModelSourceMessage(reply({ host: 'custom', customHostUrl: 'http://localhost:8080' }))
+    ).toBe(true);
   });
 
   it.each([
-    ['an http mirror', { host: 'custom', customHostUrl: 'http://mirror.test' }],
+    ['a mirror that is not http(s)', { host: 'custom', customHostUrl: 'file:///models' }],
     ['a custom source without a url', { host: 'custom' }],
     [
       'a revision that is not a string',

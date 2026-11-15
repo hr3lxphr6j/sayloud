@@ -185,12 +185,14 @@ describe('isModelSource', () => {
     expect(isModelSource({ host: 'modelscope' })).toBe(true);
   });
 
-  it('accepts a custom source only over https', () => {
-    // The source is handed straight to `fetch` on the other side of the
-    // message, so an http mirror would download the model in the clear. This
-    // stricter rule is the one both protocols use.
+  it('accepts a custom source over http or https', () => {
+    // A self-hosted mirror is often a local server without a certificate, so
+    // http is allowed; other schemes never reach `fetch`. Both protocols use
+    // this one rule.
     expect(isModelSource({ host: 'custom', customHostUrl: 'https://mirror.test' })).toBe(true);
-    expect(isModelSource({ host: 'custom', customHostUrl: 'http://mirror.test' })).toBe(false);
+    expect(isModelSource({ host: 'custom', customHostUrl: 'http://localhost:8080' })).toBe(true);
+    expect(isModelSource({ host: 'custom', customHostUrl: 'file:///models' })).toBe(false);
+    expect(isModelSource({ host: 'custom', customHostUrl: 'http://' })).toBe(false);
     expect(isModelSource({ host: 'custom' })).toBe(false);
     expect(isModelSource({ host: 'custom', customHostUrl: 7 })).toBe(false);
   });

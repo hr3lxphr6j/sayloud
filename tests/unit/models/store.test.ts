@@ -96,9 +96,13 @@ describe('the download source setting', () => {
     // A custom mirror without a usable URL can only fail at fetch time, so it
     // falls back rather than being kept and then blamed on the network.
     expect(normalizeModelSource({ host: 'custom' })).toEqual({ host: 'auto' });
-    expect(normalizeModelSource({ host: 'custom', customHostUrl: 'http://mirror.test' })).toEqual({
+    expect(normalizeModelSource({ host: 'custom', customHostUrl: 'ftp://mirror.test' })).toEqual({
       host: 'auto',
     });
+    // A self-hosted mirror without a certificate is a real setup, not a typo.
+    expect(
+      normalizeModelSource({ host: 'custom', customHostUrl: 'http://localhost:8080' })
+    ).toEqual({ host: 'custom', customHostUrl: 'http://localhost:8080' });
     expect(normalizeModelSource({ host: 'custom', customHostUrl: 'https://' })).toEqual({
       host: 'auto',
     });

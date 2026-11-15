@@ -40,7 +40,7 @@ import {
   type OnDeviceModel,
 } from '~/lib/models/registry';
 import type { ModelSourceSetting } from '~/lib/models/store';
-import { MODEL_HOSTS, type ModelHostId } from '~/lib/models/urls';
+import { isMirrorUrl, MODEL_HOSTS, type ModelHostId } from '~/lib/models/urls';
 import { errorMessage } from '~/lib/providers/errors';
 import type { ProviderConfig } from '~/lib/providers/types';
 import { Card } from './ui/Card';
@@ -164,7 +164,7 @@ function SourceCard({ models }: SourceCardProps) {
     touched.current = true;
     setHost(next.host);
 
-    if (next.host === 'custom' && !isHttpsUrl(customUrl)) {
+    if (next.host === 'custom' && !isMirrorUrl(customUrl)) {
       setInvalid(true);
       setSaved(false);
       setFailure(null);
@@ -657,16 +657,4 @@ function percentOf(status: Extract<TierStatus, { kind: 'downloading' }>): number
 function tierSize(tier: ModelTier): string {
   const total = tier.files.reduce((sum, file) => sum + fileBytes(tier, file), 0);
   return formatDecimalBytes(total);
-}
-
-/** A custom mirror must be an absolute `https://` URL. */
-function isHttpsUrl(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('https://')) return false;
-  try {
-    new URL(trimmed);
-    return true;
-  } catch {
-    return false;
-  }
 }

@@ -30,6 +30,7 @@ import { MODELS, type ModelTier, type OnDeviceModel } from './registry';
 import {
   type ConcreteModelHost,
   canonicalModelUrl,
+  isMirrorUrl,
   isVoiceUrl,
   KOKORO_VOICES_CACHE,
   MODEL_HOSTS,
@@ -462,7 +463,7 @@ export class ModelStore {
 export function normalizeModelSource(value: unknown): ModelSourceSetting {
   const raw = asRecord(value);
   const host = isModelHostId(raw.host) ? raw.host : DEFAULT_MODEL_SOURCE.host;
-  const customHostUrl = isHttpsUrl(raw.customHostUrl) ? raw.customHostUrl.trim() : undefined;
+  const customHostUrl = isMirrorUrl(raw.customHostUrl) ? raw.customHostUrl.trim() : undefined;
 
   if (host === 'custom' && !customHostUrl) return DEFAULT_MODEL_SOURCE;
   return customHostUrl ? { host, customHostUrl } : { host };
@@ -475,19 +476,6 @@ export function normalizeLastGood(value: unknown): ConcreteModelHost | null {
 
 function isModelHostId(value: unknown): value is ModelHostId {
   return typeof value === 'string' && MODEL_HOSTS.some((host) => host === value);
-}
-
-/** An absolute `https://` URL. A custom mirror must be `https`. */
-function isHttpsUrl(value: unknown): value is string {
-  if (typeof value !== 'string') return false;
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('https://')) return false;
-  try {
-    new URL(trimmed);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** Every file of the tier is in the cache. */

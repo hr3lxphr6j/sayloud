@@ -353,7 +353,7 @@ export const en = {
   'model.source.modelscope': 'ModelScope',
   'model.source.custom': 'Custom mirror',
   'model.source.custom-label': 'Mirror URL',
-  'model.source.custom-invalid': 'Enter a complete https:// URL.',
+  'model.source.custom-invalid': 'Enter a complete http:// or https:// URL.',
   'model.source.saved': 'Source saved.',
   'model.source.save-failed': 'Could not save the source: {detail}',
 

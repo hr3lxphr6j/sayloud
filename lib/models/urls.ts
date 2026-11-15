@@ -69,27 +69,43 @@ export interface ModelSource {
 }
 
 /**
+ * True for a URL a custom mirror can be fetched from: absolute, `http` or
+ * `https`.
+ *
+ * `http` is allowed on purpose. A self-hosted mirror is often a local server
+ * (`http://localhost:8080`) or a box on the LAN with no certificate, and
+ * refusing it would leave those users no way to point the download at it. The
+ * scheme check still keeps `file:`, `data:` and relative paths out of `fetch`.
+ */
+export function isMirrorUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  try {
+    new URL(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * True for a well-formed source, at either boundary it can cross.
  *
  * A source is not trusted just because it has the right field names: it can
  * arrive from another extension context, and a `custom` source is handed
- * straight to `fetch`. So `custom` requires an `https://` URL — an `http://`
- * mirror would send the model download in the clear — and a `revision` that is
- * absent or a string. Checked in one place because the worker and the offscreen
- * document both accept it, and a source one of them accepts and the other
- * refuses fails in the direction that is hardest to see: a message that is
- * sent, delivered, and silently ignored.
+ * straight to `fetch`. So `custom` requires a mirror URL (`isMirrorUrl`) and a
+ * `revision` that is absent or a string. Checked in one place because the
+ * worker and the offscreen document both accept it, and a source one of them
+ * accepts and the other refuses fails in the direction that is hardest to see:
+ * a message that is sent, delivered, and silently ignored.
  */
 export function isModelSource(value: unknown): value is ModelSource {
   if (typeof value !== 'object' || value === null) return false;
   const { host, customHostUrl, revision } = value as Record<string, unknown>;
   if (host === 'huggingface' || host === 'modelscope') return true;
   if (host !== 'custom') return false;
-  return (
-    typeof customHostUrl === 'string' &&
-    customHostUrl.startsWith('https://') &&
-    (revision === undefined || typeof revision === 'string')
-  );
+  return isMirrorUrl(customHostUrl) && (revision === undefined || typeof revision === 'string');
 }
 
 /** The pieces of a canonical URL, once split apart. */

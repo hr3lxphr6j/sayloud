@@ -87,12 +87,13 @@ describe('isWorkerRequest', () => {
     expect(isWorkerRequest(init({ host: 'custom', customHostUrl: 'https://mirror.test' }))).toBe(
       true
     );
-    // The offscreen document refuses an http mirror because it would be
-    // fetched in the clear. Accepting it here would deliver a message whose
-    // only reader silently drops it.
-    expect(isWorkerRequest(init({ host: 'custom', customHostUrl: 'http://mirror.test' }))).toBe(
-      false
+    // Same rule as the offscreen document: a local http mirror is fine, a
+    // scheme `fetch` should never see is not. A rule that differed would
+    // deliver a message whose only reader silently drops it.
+    expect(isWorkerRequest(init({ host: 'custom', customHostUrl: 'http://localhost:8080' }))).toBe(
+      true
     );
+    expect(isWorkerRequest(init({ host: 'custom', customHostUrl: 'file:///models' }))).toBe(false);
     expect(
       isWorkerRequest(init({ host: 'custom', customHostUrl: 'https://mirror.test', revision: 1 }))
     ).toBe(false);

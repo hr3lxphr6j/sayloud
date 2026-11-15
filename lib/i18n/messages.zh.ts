@@ -276,7 +276,7 @@ export const zh: Record<MessageKey, string> = {
   'model.source.modelscope': 'ModelScope',
   'model.source.custom': '自定义镜像',
   'model.source.custom-label': '镜像 URL',
-  'model.source.custom-invalid': '请输入完整的 https:// URL。',
+  'model.source.custom-invalid': '请输入完整的 http:// 或 https:// URL。',
   'model.source.saved': '下载源已保存。',
   'model.source.save-failed': '保存下载源失败：{detail}',
 

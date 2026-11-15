@@ -100,6 +100,7 @@
 //! that is not a grammar — is 401 KB. Both are dwarfed by the grammars beside
 //! them, and the fold's own work is a character map: one pass, no composition.
 
+use super::wetext::fst_names::*;
 use super::wetext::{warm_contractions, Language, Normalizer, NormalizerConfig, WeTextError};
 
 /// `(language, the relative name its tagger is keyed under, the name its
@@ -111,19 +112,9 @@ use super::wetext::{warm_contractions, Language, Normalizer, NormalizerConfig, W
 /// which pair of those names the configuration looks up.
 type Grammar<'a> = (Language, &'a str, &'a str);
 
-const EN: Grammar<'static> = (Language::En, "en/tn/tagger.fst", "en/tn/verbalizer.fst");
-const ZH: Grammar<'static> = (Language::Zh, "zh/tn/tagger.fst", "zh/tn/verbalizer.fst");
-const JA: Grammar<'static> = (Language::Ja, "ja/tn/tagger.fst", "ja/tn/verbalizer.fst");
-
-/// The relative name the shared full-width preprocessor is keyed under.
-///
-/// Not per language, which is why it has no entry in [`Grammar`]: the FST lives at
-/// the top of the wheel's `fsts/` directory rather than under a language.
-const FULL_TO_HALF: &str = "full_to_half.fst";
-
-/// The relative name Chinese's traditional-to-simplified preprocessor is keyed
-/// under.
-const TRADITIONAL_TO_SIMPLE: &str = "traditional_to_simple.fst";
+const EN: Grammar<'static> = (Language::En, EN_TN_TAGGER, EN_TN_VERBALIZER);
+const ZH: Grammar<'static> = (Language::Zh, ZH_TN_TAGGER, ZH_TN_VERBALIZER);
+const JA: Grammar<'static> = (Language::Ja, JA_TN_TAGGER, JA_TN_VERBALIZER);
 
 /// Build a normalizer from the FSTs the registry delivered.
 ///

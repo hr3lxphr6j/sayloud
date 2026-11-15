@@ -37,6 +37,7 @@
 mod config;
 mod contractions;
 mod error;
+pub mod fst_names;
 mod normalizer;
 mod text_normalizer;
 mod token_parser;

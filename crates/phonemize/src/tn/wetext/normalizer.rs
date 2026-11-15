@@ -19,6 +19,7 @@ use crate::unicode::{CJK_UNIFIED, HIRAGANA_KATAKANA};
 use super::config::{Language, NormalizerConfig, Operator};
 use super::contractions::{fix_contractions, has_apostrophe};
 use super::error::{Result, WeTextError};
+use super::fst_names::*;
 use super::text_normalizer::FstTextNormalizer;
 use super::token_parser::TokenParser;
 
@@ -272,7 +273,7 @@ impl Normalizer {
         let mut result = text.trim().to_string();
 
         if config.traditional_to_simple {
-            let fst = self.fst("traditional_to_simple.fst")?;
+            let fst = self.fst(TRADITIONAL_TO_SIMPLE)?;
             result = fst.normalize(&result)?;
         }
 
@@ -284,7 +285,7 @@ impl Normalizer {
         // plausible. Japanese and Chinese text is full of them. Measured on 11
         // Japanese inputs: 6/11 normalized upstream, 10/11 with this move.
         if config.full_to_half {
-            let fst = self.fst("full_to_half.fst")?;
+            let fst = self.fst(FULL_TO_HALF)?;
             result = fst.normalize(&result)?;
         }
 
@@ -296,17 +297,17 @@ impl Normalizer {
         let mut result = text.to_string();
 
         if config.remove_interjections {
-            let fst = self.fst("remove_interjections.fst")?;
+            let fst = self.fst(REMOVE_INTERJECTIONS)?;
             result = fst.normalize(&result)?;
         }
 
         if config.remove_puncts {
-            let fst = self.fst("remove_puncts.fst")?;
+            let fst = self.fst(REMOVE_PUNCTS)?;
             result = fst.normalize(&result)?;
         }
 
         if config.tag_oov {
-            let fst = self.fst("tag_oov.fst")?;
+            let fst = self.fst(TAG_OOV)?;
             result = fst.normalize(&result)?;
         }
 
@@ -316,21 +317,21 @@ impl Normalizer {
     /// Tag entities using tagger FST
     fn tag(&self, text: &str, lang: Language, config: &NormalizerConfig) -> Result<String> {
         let fst_path = match (lang, config.operator) {
-            (Language::En, Operator::Tn) => "en/tn/tagger.fst",
-            (Language::Zh, Operator::Tn) => "zh/tn/tagger.fst",
+            (Language::En, Operator::Tn) => EN_TN_TAGGER,
+            (Language::Zh, Operator::Tn) => ZH_TN_TAGGER,
             (Language::Zh, Operator::Itn) => {
                 if config.enable_0_to_9 {
-                    "zh/itn/tagger_enable_0_to_9.fst"
+                    ZH_ITN_TAGGER_ENABLE_0_TO_9
                 } else {
-                    "zh/itn/tagger.fst"
+                    ZH_ITN_TAGGER
                 }
             }
-            (Language::Ja, Operator::Tn) => "ja/tn/tagger.fst",
+            (Language::Ja, Operator::Tn) => JA_TN_TAGGER,
             (Language::Ja, Operator::Itn) => {
                 if config.enable_0_to_9 {
-                    "ja/itn/tagger_enable_0_to_9.fst"
+                    JA_ITN_TAGGER_ENABLE_0_TO_9
                 } else {
-                    "ja/itn/tagger.fst"
+                    JA_ITN_TAGGER
                 }
             }
             _ => return Err(WeTextError::InvalidLanguage(format!("{:?}", lang))),
@@ -350,17 +351,17 @@ impl Normalizer {
     /// Verbalize using verbalizer FST
     fn verbalize(&self, text: &str, lang: Language, config: &NormalizerConfig) -> Result<String> {
         let fst_path = match (lang, config.operator) {
-            (Language::En, Operator::Tn) => "en/tn/verbalizer.fst",
+            (Language::En, Operator::Tn) => EN_TN_VERBALIZER,
             (Language::Zh, Operator::Tn) => {
                 if config.remove_erhua {
-                    "zh/tn/verbalizer_remove_erhua.fst"
+                    ZH_TN_VERBALIZER_REMOVE_ERHUA
                 } else {
-                    "zh/tn/verbalizer.fst"
+                    ZH_TN_VERBALIZER
                 }
             }
-            (Language::Zh, Operator::Itn) => "zh/itn/verbalizer.fst",
-            (Language::Ja, Operator::Tn) => "ja/tn/verbalizer.fst",
-            (Language::Ja, Operator::Itn) => "ja/itn/verbalizer.fst",
+            (Language::Zh, Operator::Itn) => ZH_ITN_VERBALIZER,
+            (Language::Ja, Operator::Tn) => JA_TN_VERBALIZER,
+            (Language::Ja, Operator::Itn) => JA_ITN_VERBALIZER,
             _ => return Err(WeTextError::InvalidLanguage(format!("{:?}", lang))),
         };
 

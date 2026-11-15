@@ -9,10 +9,10 @@
 //!   extensions as kana, and that is not an inconsistency: it is a different
 //!   layer, and kuroshiro's predicate is the one that decides how a token's
 //!   reading is filled in.
-//! - [`to_raw_katakana`] and [`to_raw_hiragana`] are strict at both ends
-//!   (`> U+3040 && < U+3097`), which is *not* the same set as `is_hiragana`.
-//!   The two differ at `U+3097`-`U+309F` and at `U+3040`, and text containing
-//!   those is text where the two conversions disagree.
+//! - [`to_raw_katakana`] is strict at both ends (`> U+3040 && < U+3097`), which
+//!   is *not* the same set as `is_hiragana`. The two differ at `U+3097`-`U+309F`
+//!   and at `U+3040`, and text containing those is text where the conversion and
+//!   the predicate disagree.
 
 /// `HIRAGANA_KATAKANA_SHIFT` in kuroshiro: `U+30A1 - U+3041`.
 const HIRAGANA_KATAKANA_SHIFT: u32 = 0x60;

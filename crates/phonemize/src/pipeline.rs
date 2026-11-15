@@ -135,8 +135,67 @@ fn read_numerals<'a>(
 pub struct Phonemized {
     /// Exactly what goes into the tokenizer.
     pub phonemes: String,
-    /// One entry per run that produced no phonemes.
+    /// One entry per distinct warning: the same gap named twice is one entry.
     pub warnings: Vec<String>,
+}
+
+/// What a pipeline has read so far, and what it had to leave out.
+///
+/// All three pipelines accumulate the same two things in the same way, and the
+/// Latin arm and the final two steps used to be written out three times. The
+/// arm is here because a run that produces nothing is warned about rather than
+/// dropped silently, and [`Self::finish`] is here because every pipeline has to
+/// end the same way — including the warning deduplication, which the English and
+/// Chinese pipelines used to skip.
+#[derive(Default)]
+struct Accumulator {
+    parts: Vec<String>,
+    warnings: Vec<String>,
+}
+
+impl Accumulator {
+    /// Keep a run's phonemes, in the order the runs came in.
+    fn push(&mut self, phonemes: String) {
+        self.parts.push(phonemes);
+    }
+
+    /// Record something the sentence had to leave out.
+    fn warn(&mut self, warning: String) {
+        self.warnings.push(warning);
+    }
+
+    /// Read a Latin run through the English backend, or warn that it produced
+    /// nothing.
+    ///
+    /// `english` is `None` when the backend could not be built at all; the run
+    /// then contributes nothing and the warning is the honest answer, because
+    /// one unusable word must not cost the caller the sentence around it.
+    fn push_latin(
+        &mut self,
+        run_text: &str,
+        english: Option<&EnglishG2p>,
+    ) -> Result<(), PipelineError> {
+        let phonemes = match english {
+            Some(english) => english.phonemize(run_text)?,
+            None => String::new(),
+        };
+
+        if phonemes.is_empty() {
+            self.warnings.push(no_pronunciation(run_text));
+        } else {
+            self.parts.push(phonemes);
+        }
+
+        Ok(())
+    }
+
+    /// The sentence, with the steps every pipeline ends with.
+    fn finish(self) -> Phonemized {
+        Phonemized {
+            phonemes: collapse_whitespace(&self.parts.concat()),
+            warnings: dedupe_warnings(self.warnings),
+        }
+    }
 }
 
 /// Japanese text to IPA, for the v1.0 frontend.
@@ -226,8 +285,7 @@ pub fn phonemize_ja(
     let with_numerals = read_numerals(&punctuated, tn::Lang::Ja, engine)?;
     let runs = segment_japanese(&with_numerals);
 
-    let mut parts: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
+    let mut accumulator = Accumulator::default();
 
     for run in &runs {
         match run {
@@ -244,32 +302,18 @@ pub fn phonemize_ja(
 
                 let (readable, unread) = split_unread_kanji(&katakana);
                 if !unread.is_empty() {
-                    warnings.push(unread_kanji(&unread));
+                    accumulator.warn(unread_kanji(&unread));
                 }
                 if !readable.is_empty() {
-                    parts.push(kana_to_ipa(&fix_numeral_sound_changes(&readable)));
+                    accumulator.push(kana_to_ipa(&fix_numeral_sound_changes(&readable)));
                 }
             }
-            ScriptRun::Latin(run_text) => {
-                let phonemes = match english {
-                    Some(english) => english.phonemize(run_text)?,
-                    None => String::new(),
-                };
-
-                if phonemes.is_empty() {
-                    warnings.push(no_pronunciation(run_text));
-                } else {
-                    parts.push(phonemes);
-                }
-            }
-            ScriptRun::Other(run_text) => parts.push(keep_punctuation(run_text)),
+            ScriptRun::Latin(run_text) => accumulator.push_latin(run_text, english)?,
+            ScriptRun::Other(run_text) => accumulator.push(keep_punctuation(run_text)),
         }
     }
 
-    Ok(Phonemized {
-        phonemes: collapse_whitespace(&parts.concat()),
-        warnings: dedupe_warnings(warnings),
-    })
+    Ok(accumulator.finish())
 }
 
 /// English text to IPA, for the v1.0 frontend.
@@ -383,32 +427,17 @@ pub fn phonemize_en(
     let with_numerals = read_numerals(&normalized, tn::Lang::En, engine)?;
     let runs = segment_text(&with_numerals);
 
-    let mut parts: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
+    let mut accumulator = Accumulator::default();
 
     for run in &runs {
         match run {
-            ScriptRun::Latin(run_text) => {
-                let phonemes = match english {
-                    Some(english) => english.phonemize(run_text)?,
-                    None => String::new(),
-                };
-
-                if phonemes.is_empty() {
-                    warnings.push(no_pronunciation(run_text));
-                } else {
-                    parts.push(phonemes);
-                }
-            }
-            ScriptRun::Other(run_text) => parts.push(keep_punctuation(run_text)),
+            ScriptRun::Latin(run_text) => accumulator.push_latin(run_text, english)?,
+            ScriptRun::Other(run_text) => accumulator.push(keep_punctuation(run_text)),
             ScriptRun::Han(_) | ScriptRun::Kana(_) => {}
         }
     }
 
-    Ok(Phonemized {
-        phonemes: collapse_whitespace(&parts.concat()),
-        warnings,
-    })
+    Ok(accumulator.finish())
 }
 
 /// Whether the Mandarin tone rules run, for [`phonemize_zh`].
@@ -533,9 +562,11 @@ impl ToneRules {
 /// `english` is `None` when the backend could not be built at all, which is a
 /// broken build rather than a normal state; see [`phonemize_ja`] for why that is a
 /// warning and not a failure. `tn` is the vendored WeText engine
-/// ([`crate::tn::chinese`]), optional for the reason that module gives — and
-/// `None` is what makes this function the frozen pre-tone-rules pipeline that the
-/// JavaScript parity corpus in `tests/zh_pipeline.rs` is asserted against.
+/// ([`crate::tn::chinese`]), optional for the reason that module gives: a
+/// sentence that needs it is declined rather than read without it. The frozen
+/// pre-tone-rules pipeline that the JavaScript parity corpus in
+/// `tests/zh_pipeline.rs` is asserted against is [`ToneRules::Off`], not the
+/// absence of an engine.
 pub fn phonemize_zh(
     text: &str,
     segmenter: &SegmenterZh,
@@ -555,8 +586,7 @@ pub fn phonemize_zh(
     let runs = zh_text::split_runs(&folded);
 
     let chinese = ChinesePinyin::new();
-    let mut parts: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
+    let mut accumulator = Accumulator::default();
 
     for run in &runs {
         match run {
@@ -587,28 +617,14 @@ pub fn phonemize_zh(
                     let lengths = segmenter.word_lengths(run_text)?;
                     chinese.han_to_ipa_by_words(run_text, &lengths)?
                 };
-                parts.push(phonemes);
+                accumulator.push(phonemes);
             }
-            ZhRun::Latin(run_text) => {
-                let phonemes = match english {
-                    Some(english) => english.phonemize(run_text)?,
-                    None => String::new(),
-                };
-
-                if phonemes.is_empty() {
-                    warnings.push(no_pronunciation(run_text));
-                } else {
-                    parts.push(phonemes);
-                }
-            }
-            ZhRun::Other(run_text) => parts.push(zh_text::keep_punctuation(run_text)),
+            ZhRun::Latin(run_text) => accumulator.push_latin(run_text, english)?,
+            ZhRun::Other(run_text) => accumulator.push(zh_text::keep_punctuation(run_text)),
         }
     }
 
-    Ok(Phonemized {
-        phonemes: collapse_whitespace(&parts.concat()),
-        warnings,
-    })
+    Ok(accumulator.finish())
 }
 
 /// What the caller is told about a run that produced nothing.
@@ -679,4 +695,24 @@ fn dedupe_warnings(warnings: Vec<String>) -> Vec<String> {
         }
     }
     seen
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repeated_latin_runs_are_one_warning() {
+        // No backend, so every Latin run produces nothing and is warned about.
+        // The same word twice is one gap in the dictionary, not two — the rule
+        // the Japanese pipeline already applied, and the one `finish` now applies
+        // here too.
+        let result = phonemize_en("hello, hello", None, None).expect("phonemizes");
+
+        assert_eq!(result.phonemes, ",");
+        assert_eq!(
+            result.warnings,
+            vec!["no English pronunciation for \"hello\"".to_string()]
+        );
+    }
 }

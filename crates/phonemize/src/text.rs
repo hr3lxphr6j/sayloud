@@ -127,16 +127,15 @@ pub fn to_half_width(text: &str) -> String {
 
 /// Split text into runs of one script each.
 ///
-/// The astral-plane branch is deliberate and mirrors a JavaScript bug rather
-/// than the intent behind it. `segmentText` tests `char.charCodeAt(0)` against
+/// The astral CJK range is a deliberate departure from the JavaScript, which
+/// could not reach it: `segmentText` tests `char.charCodeAt(0)` against
 /// `0x20000..=0x2ebef`, but `charCodeAt(0)` on a character outside the BMP
-/// returns a *surrogate* (`0xd800..=0xdfff`), never a code point — so that
-/// branch cannot be taken, and an Extension B kanji is classified `other` and
-/// then dropped by [`keep_punctuation`]. Reproducing the reachable behaviour was
-/// what parity required while the JavaScript side existed; it is gone, so this is
-/// simply what the crate does now — pinned by
-/// `classifies_an_astral_kanji_as_other`, which is the test that would fail if
-/// someone added the branch back.
+/// returns a *surrogate* (`0xd800..=0xdfff`), never a code point, so an
+/// Extension B kanji was classified `other` and then dropped by
+/// [`keep_punctuation`]. Rust's `char` is a code point, so this crate classifies
+/// those characters as Han instead — pinned by
+/// `classifies_an_astral_kanji_as_han` in `tests/ja_g2p.rs`, which is the test
+/// that would fail if the range were removed.
 pub fn segment_text(text: &str) -> Vec<ScriptRun> {
     segment_by(text, false)
 }

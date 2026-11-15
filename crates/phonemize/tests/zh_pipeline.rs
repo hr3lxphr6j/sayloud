@@ -649,6 +649,32 @@ fn a_latin_run_leaves_the_han_around_it_alone() {
 }
 
 #[test]
+fn a_repeated_latin_run_is_one_warning() {
+    let Some(legacy) = legacy() else {
+        return;
+    };
+
+    // No English backend, so every Latin run produces nothing and is warned
+    // about. The same word twice is one gap in the dictionary, not two, which is
+    // the rule the Japanese pipeline already applied and `Accumulator::finish`
+    // now applies here as well.
+    let result = pipeline::phonemize_zh(
+        "hello，hello",
+        &legacy.segmenter,
+        None,
+        ToneRules::Off,
+        Some(&legacy.engine),
+    )
+    .expect("phonemizes");
+
+    assert_eq!(result.phonemes, ".");
+    assert_eq!(
+        result.warnings,
+        vec!["no English pronunciation for \"hello\"".to_string()]
+    );
+}
+
+#[test]
 fn a_numerals_reading_is_not_a_separate_run() {
     let Some(phonemizer) = chinese_phonemizer() else {
         return;

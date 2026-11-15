@@ -50,7 +50,7 @@ impl FstTextNormalizer {
     /// Implementation flow:
     /// 1. Convert input string to linear FST (acceptor) using UTF-8 bytes
     /// 2. Compose with the loaded FST
-    /// 3. Find the cheapest path with [`cheapest_path_labels`]
+    /// 3. Find the cheapest path with `cheapest_path_labels`
     /// 4. Extract output string from the path
     ///
     /// # Arguments
@@ -276,5 +276,43 @@ mod tests {
         let labels: Vec<Label> = "hello".chars().map(|c| c as Label).collect();
         let fst: VectorFst<TropicalWeight> = acceptor(&labels, TropicalWeight::one());
         assert_eq!(fst.num_states(), 6); // 5 chars + 1 (start state)
+    }
+
+    /// The negative arc is on the second leg, and it improves a state that was
+    /// already visited in the same round — so the answer needs more than one
+    /// relaxation round, which is what the `|V|` loop is for.
+    ///
+    /// States are visited in index order. `0 -> 1` at `3.0` is relaxed first,
+    /// then `0 -> 2` at `0.5`, and only then the `2 -> 1` arc at `-1.0` lowers
+    /// state 1 to `-0.5`; state 1's outgoing arc is relaxed with the new cost on
+    /// the second round. The cheapest route is `b c d` at `-0.5`, where the
+    /// direct `a d` route costs `3.0` — the negative arc is what makes going
+    /// through state 2 and back to state 1 worth it.
+    #[test]
+    fn cheapest_path_labels_uses_the_negative_arc_that_pays_for_the_detour() {
+        let mut fst = VectorFst::<TropicalWeight>::new();
+        let start = fst.add_state();
+        let one = fst.add_state();
+        let two = fst.add_state();
+        let last = fst.add_state();
+        fst.set_start(start).unwrap();
+
+        // Labels are `'a'`, `'b'`, `'c'` and `'d'`; the transducer is an
+        // acceptor, so each arc's input and output labels are the same.
+        fst.add_tr(start, Tr::new(97, 97, TropicalWeight::new(3.0), one))
+            .unwrap();
+        fst.add_tr(start, Tr::new(98, 98, TropicalWeight::new(0.5), two))
+            .unwrap();
+        fst.add_tr(two, Tr::new(99, 99, TropicalWeight::new(-1.0), one))
+            .unwrap();
+        fst.add_tr(one, Tr::new(100, 100, TropicalWeight::new(0.0), last))
+            .unwrap();
+        fst.set_final(last, TropicalWeight::one()).unwrap();
+
+        assert_eq!(
+            cheapest_path_labels(&fst),
+            Some(vec![98, 99, 100]),
+            "b (0.5) + c (-1.0) + d (0.0) costs -0.5; a (3.0) + d (0.0) costs 3.0"
+        );
     }
 }

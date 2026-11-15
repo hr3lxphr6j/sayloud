@@ -52,13 +52,11 @@
 //! declined ([`NoReader`](crate::tn::NoReader)), which is a failure rather than a
 //! sentence read with the digits missing.
 //!
-//! That is not a hedge. The three readers are what the pipelines did before this
-//! engine arrived, they are pinned by tests of their own, and the JavaScript
-//! frontends that Kokoro's v1.0 voices were trained against read numerals that
-//! way. Keeping them reachable is what makes this switch reversible and what lets
-//! `tests/zh_pipeline.rs` still assert the frozen pipeline's output
-//! character-for-character — see [`crate::pipeline::ToneRules`] for the same
-//! argument made about the tone rules.
+//! The JavaScript frontends that Kokoro's v1.0 voices were trained against read
+//! numerals with those deleted readers, so `tests/zh_pipeline.rs` records every
+//! sample where the engine's reading differs rather than pretending the two agree. See
+//! [`crate::pipeline::ToneRules`] for the same kind of record kept about the tone
+//! rules.
 //!
 //! # Why per instance rather than a global cache
 //!
@@ -102,6 +100,7 @@
 //! that is not a grammar — is 401 KB. Both are dwarfed by the grammars beside
 //! them, and the fold's own work is a character map: one pass, no composition.
 
+use super::wetext::fst_names::*;
 use super::wetext::{warm_contractions, Language, Normalizer, NormalizerConfig, WeTextError};
 
 /// `(language, the relative name its tagger is keyed under, the name its
@@ -113,19 +112,9 @@ use super::wetext::{warm_contractions, Language, Normalizer, NormalizerConfig, W
 /// which pair of those names the configuration looks up.
 type Grammar<'a> = (Language, &'a str, &'a str);
 
-const EN: Grammar<'static> = (Language::En, "en/tn/tagger.fst", "en/tn/verbalizer.fst");
-const ZH: Grammar<'static> = (Language::Zh, "zh/tn/tagger.fst", "zh/tn/verbalizer.fst");
-const JA: Grammar<'static> = (Language::Ja, "ja/tn/tagger.fst", "ja/tn/verbalizer.fst");
-
-/// The relative name the shared full-width preprocessor is keyed under.
-///
-/// Not per language, which is why it has no entry in [`Grammar`]: the FST lives at
-/// the top of the wheel's `fsts/` directory rather than under a language.
-const FULL_TO_HALF: &str = "full_to_half.fst";
-
-/// The relative name Chinese's traditional-to-simplified preprocessor is keyed
-/// under.
-const TRADITIONAL_TO_SIMPLE: &str = "traditional_to_simple.fst";
+const EN: Grammar<'static> = (Language::En, EN_TN_TAGGER, EN_TN_VERBALIZER);
+const ZH: Grammar<'static> = (Language::Zh, ZH_TN_TAGGER, ZH_TN_VERBALIZER);
+const JA: Grammar<'static> = (Language::Ja, JA_TN_TAGGER, JA_TN_VERBALIZER);
 
 /// Build a normalizer from the FSTs the registry delivered.
 ///
@@ -134,10 +123,8 @@ const TRADITIONAL_TO_SIMPLE: &str = "traditional_to_simple.fst";
 /// which switches are on and why each of the others is off. Every FST a
 /// configuration *will* ask for has to be here, because
 /// [`Normalizer::from_bytes`] reports a missing one only when a sentence reaches
-/// it — and what happens to that sentence depends on the language. Chinese and
-/// Japanese fall back to their hand-written reader, a silently worse answer rather
-/// than a failure; English has none to fall back to, so it fails
-/// ([`crate::tn::NoReader`]).
+/// it, and that sentence is then declined ([`crate::tn::NoReader`]) for every
+/// language: there is no hand-written reader behind the engine to fall back to.
 fn build<'a>(
     language: Language,
     config: NormalizerConfig,

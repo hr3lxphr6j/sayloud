@@ -57,8 +57,10 @@
 //! ordinary title-cased or all-caps words. They come from
 //! `tn/english/data/whitelist/alternatives.tsv`, which the tagger reads as a
 //! string map, and the only way to see them without running the tagger is to
-//! know the words. [`SHAPE_LESS_ABBREVIATIONS`] is that list; the part of the same
+//! know the words. `SHAPE_LESS_ABBREVIATIONS` is that list; the part of the same
 //! class it cannot cover is quantified on it below.
+
+use crate::tn::wetext::APOSTROPHES;
 
 /// Characters upstream's `tn/english/data/whitelist/symbol.tsv` maps to a spoken
 /// word, plus the `/` that only ever appears next to one of them.
@@ -186,11 +188,11 @@ pub fn drops_without_engine(text: &str) -> bool {
 /// An apostrophe the `fix_contractions` step will expand.
 ///
 /// Not a shape to be recognised but a fact about the shipped tables: they are
-/// keyed under both spellings of the apostrophe (`tn::wetext::contractions`), so
-/// either one makes `We'll` / `We’ll` a rewrite — `we will`. It is the same
-/// question the normalizer's own guard asks, and it has to be, or the gate and the
-/// step disagree and the disagreeing direction is a contraction that silently does
-/// not expand.
+/// keyed under both spellings of the apostrophe ([`APOSTROPHES`], from
+/// `tn::wetext::contractions`), so either one makes `We'll` / `We’ll` a rewrite —
+/// `we will`. It is the same question the normalizer's own guard asks, and it has
+/// to be, or the gate and the step disagree and the disagreeing direction is a
+/// contraction that silently does not expand.
 ///
 /// **Counting apostrophes as a reason to run the tagger is the cost of this
 /// criterion.** English prose uses them constantly, so sentences that used to be
@@ -198,7 +200,7 @@ pub fn drops_without_engine(text: &str) -> bool {
 /// right, and the reason `We'll go` was `wiːˈɛl ˈɛl ɡˈoʊ` instead of
 /// `wiː wɪl ɡˈoʊ`.
 fn step_rewrites_an_apostrophe(character: char) -> bool {
-    character == '\'' || character == '\u{2019}'
+    APOSTROPHES.contains(&character)
 }
 
 /// A character the `full_to_half` step will fold to its ASCII form.

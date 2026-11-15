@@ -10,6 +10,7 @@
 //!   text, because each run takes a different route to phonemes.
 
 use crate::kana::{is_hiragana, is_katakana};
+use crate::unicode::{self, KATAKANA_PHONETIC_EXTENSIONS};
 
 /// One run of text that will be phonemized the same way.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,40 +27,43 @@ pub enum ScriptRun {
     Other(String),
 }
 
-/// Full-width punctuation to ASCII.
+/// Full-width punctuation to ASCII, in one pass.
 ///
-/// Each replacement is a single distinct character, so applying them in sequence
-/// is the same operation as the chained `replaceAll` calls it mirrors — no
-/// ordering hazard, even though `、` becomes `, ` while `，` becomes `. `.
+/// Every key is a single character and no replacement contains another key, so
+/// the mapping can be applied character by character: a mark that comes out of
+/// the table can never be a mark that goes back into it. Every replacement is
+/// also at most as long as the mark it replaces, so a string allocated with the
+/// input's byte length never has to grow. The replacement strings carry the
+/// spaces the marks imply, which is why the result is trimmed.
 ///
 /// This is the map Japanese and English share. The one mark that only Japanese
 /// text has is [`normalize_ja_punctuation`]'s, applied after it.
 pub fn normalize_punctuation(text: &str) -> String {
-    let mut out = text.to_string();
-    for (from, to) in [
-        ("、", ", "),
-        // Comma → period: force the pause Kokoro gives a period. See the module
-        // comment; this is the listening-tested choice, not an accident.
-        ("，", ". "),
-        ("。", ". "),
-        ("．", ". "),
-        ("！", "! "),
-        ("：", ": "),
-        ("；", "; "),
-        ("？", "? "),
-        ("«", " \""),
-        ("»", "\" "),
-        ("《", " \""),
-        ("》", "\" "),
-        ("「", " \""),
-        ("」", "\" "),
-        ("【", " \""),
-        ("】", "\" "),
-        ("（", " ("),
-        ("）", ") "),
-    ] {
-        if out.contains(from) {
-            out = out.replace(from, to);
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '、' => out.push_str(", "),
+            // Comma → period: force the pause Kokoro gives a period. See the
+            // module comment; this is the listening-tested choice, not an
+            // accident.
+            '，' => out.push_str(". "),
+            '。' => out.push_str(". "),
+            '．' => out.push_str(". "),
+            '！' => out.push_str("! "),
+            '：' => out.push_str(": "),
+            '；' => out.push_str("; "),
+            '？' => out.push_str("? "),
+            '«' => out.push_str(" \""),
+            '»' => out.push_str("\" "),
+            '《' => out.push_str(" \""),
+            '》' => out.push_str("\" "),
+            '「' => out.push_str(" \""),
+            '」' => out.push_str("\" "),
+            '【' => out.push_str(" \""),
+            '】' => out.push_str("\" "),
+            '（' => out.push_str(" ("),
+            '）' => out.push_str(") "),
+            other => out.push(other),
         }
     }
     out.trim().to_string()
@@ -114,10 +118,9 @@ pub fn normalize_ja_punctuation(text: &str) -> String {
 pub fn to_half_width(text: &str) -> String {
     text.chars()
         .map(|ch| match ch {
-            // Full-width digits U+FF10..U+FF19.
-            '\u{ff10}'..='\u{ff19}' => char::from_u32(ch as u32 - 0xfee0).unwrap_or(ch),
-            // Full-width capitals U+FF21..U+FF3A and lower case U+FF41..U+FF5A.
-            '\u{ff21}'..='\u{ff3a}' | '\u{ff41}'..='\u{ff5a}' => {
+            // Full-width digits U+FF10..U+FF19, capitals U+FF21..U+FF3A and
+            // lower case U+FF41..U+FF5A.
+            '\u{ff10}'..='\u{ff19}' | '\u{ff21}'..='\u{ff3a}' | '\u{ff41}'..='\u{ff5a}' => {
                 char::from_u32(ch as u32 - 0xfee0).unwrap_or(ch)
             }
             _ => ch,
@@ -127,16 +130,16 @@ pub fn to_half_width(text: &str) -> String {
 
 /// Split text into runs of one script each.
 ///
-/// The astral-plane branch is deliberate and mirrors a JavaScript bug rather
-/// than the intent behind it. `segmentText` tests `char.charCodeAt(0)` against
+/// The astral CJK range is a deliberate departure from the JavaScript, which
+/// could not reach it: `segmentText` tests `char.charCodeAt(0)` against
 /// `0x20000..=0x2ebef`, but `charCodeAt(0)` on a character outside the BMP
-/// returns a *surrogate* (`0xd800..=0xdfff`), never a code point — so that
-/// branch cannot be taken, and an Extension B kanji is classified `other` and
-/// then dropped by [`keep_punctuation`]. Reproducing the reachable behaviour was
-/// what parity required while the JavaScript side existed; it is gone, so this is
-/// simply what the crate does now — pinned by
-/// `classifies_an_astral_kanji_as_other`, which is the test that would fail if
-/// someone added the branch back.
+/// returns a *surrogate* (`0xd800..=0xdfff`), never a code point, so an
+/// Extension B kanji was classified `other` and then dropped by
+/// [`keep_punctuation`]. Rust's `char` is a code point, so this crate classifies
+/// those characters as Han instead — pinned by
+/// `classifies_an_astral_kanji_as_han` in `tests/ja_g2p.rs`, which is the test
+/// that would fail if the range were removed. The range itself is
+/// `unicode::CJK_EXT_B`.
 pub fn segment_text(text: &str) -> Vec<ScriptRun> {
     segment_by(text, false)
 }
@@ -164,16 +167,12 @@ fn segment_by(text: &str, merge_kanji_into_kana: bool) -> Vec<ScriptRun> {
 
     for ch in text.chars() {
         let mut kind = classify(ch);
-        if merge_kanji_into_kana && kind == HAN {
-            kind = KANA;
+        if merge_kanji_into_kana && kind == Kind::Han {
+            kind = Kind::Kana;
         }
         match runs.last_mut() {
-            Some(run) if same_kind(run, kind) => run_push(run, ch),
-            _ => {
-                let mut run = new_run(kind);
-                run_push(&mut run, ch);
-                runs.push(run);
-            }
+            Some(run) if run.kind() == kind => run.push(ch),
+            _ => runs.push(kind.run(ch)),
         }
     }
 
@@ -181,63 +180,71 @@ fn segment_by(text: &str, merge_kanji_into_kana: bool) -> Vec<ScriptRun> {
 }
 
 /// The four script kinds [`classify`] sorts a character into.
-const HAN: u8 = 0;
-const KANA: u8 = 1;
-const LATIN: u8 = 2;
-const OTHER: u8 = 3;
+
+#[derive(Copy, Clone, PartialEq)]
+enum Kind {
+    Han,
+    Kana,
+    Latin,
+    Other,
+}
+
+impl Kind {
+    /// A new run of this kind, holding `ch` already.
+    fn run(self, ch: char) -> ScriptRun {
+        match self {
+            Self::Han => ScriptRun::Han(ch.to_string()),
+            Self::Kana => ScriptRun::Kana(ch.to_string()),
+            Self::Latin => ScriptRun::Latin(ch.to_string()),
+            Self::Other => ScriptRun::Other(ch.to_string()),
+        }
+    }
+}
+
+impl ScriptRun {
+    /// Which kind of run this is.
+    fn kind(&self) -> Kind {
+        match self {
+            Self::Han(_) => Kind::Han,
+            Self::Kana(_) => Kind::Kana,
+            Self::Latin(_) => Kind::Latin,
+            Self::Other(_) => Kind::Other,
+        }
+    }
+
+    /// Append one character to the run.
+    fn push(&mut self, ch: char) {
+        let text = match self {
+            Self::Han(text) | Self::Kana(text) | Self::Latin(text) | Self::Other(text) => text,
+        };
+        text.push(ch);
+    }
+}
 
 /// The script a character belongs to.
 ///
-/// Ranges cover:
-/// - CJK unified (U+4E00–U+9FFF) and extension A (U+3400–U+4DBF)
-/// - CJK symbols and punctuation marks (々, 〇, 〆 at U+3005–U+3007)
-/// - CJK compatibility ideographs (U+F900–U+FAFF)
-/// - Astral CJK (U+20000–U+2EBEF), which this crate can now classify thanks to
-///   `char` being a real code point; the JavaScript `charCodeAt(0)` on astral
-///   characters returns a surrogate and cannot reach this range.
-fn classify(ch: char) -> u8 {
+/// Han is [`unicode::is_han`] and nothing of its own, so the word layer's question
+/// — "is this a kanji the dictionary could not read?" — is the same set by
+/// construction.
+///
+/// Kana is hiragana, katakana and the katakana phonetic extensions
+/// (`U+31F0..=U+31FF`). The extensions are not in [`crate::kana::is_katakana`],
+/// which is a different layer: that one decides how a token's reading is filled
+/// in and has to agree with kuroshiro, while this one decides where a run ends.
+///
+/// Latin is `A-Z` and `a-z` only, so a full-width `Ａ` is `Other` and would be
+/// dropped by [`keep_punctuation`]; the front ends fold it before segmentation —
+/// [`to_half_width`] for Chinese, the `full_to_half` FST for the other two.
+fn classify(ch: char) -> Kind {
     let code = ch as u32;
-    if (0x4e00..=0x9fff).contains(&code)
-        || (0x3400..=0x4dbf).contains(&code)
-        || (0x3005..=0x3007).contains(&code)
-        || (0xf900..=0xfaff).contains(&code)
-        || (0x20000..=0x2ebef).contains(&code)
-    {
-        HAN
-    } else if is_hiragana(ch) || is_katakana(ch) || (0x31f0..=0x31ff).contains(&code) {
-        KANA
+    if unicode::is_han(ch) {
+        Kind::Han
+    } else if is_hiragana(ch) || is_katakana(ch) || KATAKANA_PHONETIC_EXTENSIONS.contains(&code) {
+        Kind::Kana
     } else if (65..=90).contains(&code) || (97..=122).contains(&code) {
-        LATIN
+        Kind::Latin
     } else {
-        OTHER
-    }
-}
-
-fn same_kind(run: &ScriptRun, kind: u8) -> bool {
-    matches!(
-        (run, kind),
-        (ScriptRun::Han(_), 0)
-            | (ScriptRun::Kana(_), 1)
-            | (ScriptRun::Latin(_), 2)
-            | (ScriptRun::Other(_), 3)
-    )
-}
-
-fn new_run(kind: u8) -> ScriptRun {
-    match kind {
-        0 => ScriptRun::Han(String::new()),
-        1 => ScriptRun::Kana(String::new()),
-        2 => ScriptRun::Latin(String::new()),
-        _ => ScriptRun::Other(String::new()),
-    }
-}
-
-fn run_push(run: &mut ScriptRun, ch: char) {
-    match run {
-        ScriptRun::Han(text)
-        | ScriptRun::Kana(text)
-        | ScriptRun::Latin(text)
-        | ScriptRun::Other(text) => text.push(ch),
+        Kind::Other
     }
 }
 
@@ -317,4 +324,24 @@ pub fn is_js_whitespace(ch: char) -> bool {
                 | '\u{3000}'
                 | '\u{feff}'
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every mark [`normalize_punctuation`] maps, once each, on one line.
+    ///
+    /// The marks are separated by `|` so that each replacement can be read on
+    /// its own: most of them begin or end with a space, and the separator shows
+    /// which side of the mark it belongs to. The expected string is written out
+    /// rather than recomputed from a second copy of the table, because a test
+    /// that shares the table with the function cannot catch a wrong entry in
+    /// it.
+    #[test]
+    fn maps_every_full_width_mark() {
+        let input = "、|，|。|．|！|：|；|？|«|»|《|》|「|」|【|】|（|）";
+        let expected = ", |. |. |. |! |: |; |? | \"|\" | \"|\" | \"|\" | \"|\" | (|)";
+        assert_eq!(normalize_punctuation(input), expected);
+    }
 }

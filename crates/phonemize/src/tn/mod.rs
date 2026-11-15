@@ -172,6 +172,40 @@ fn unread(text: &str, error: Option<WeTextError>) -> Result<Cow<'_, str>, NoRead
     })
 }
 
+/// The words that already count a following ` thousand`, so
+/// [`fix_one_thousand_bug`] must not add `one` in front of them.
+const NUMBER_WORDS: &[&str] = &[
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+    "hundred",
+    "a",
+];
+
 /// Fix WeText 0.1.8's bug where 1,000-1,999 lose the leading "one".
 ///
 /// WeText's English verbalizer has a bug in the 1,000-1,999 range: it produces
@@ -202,45 +236,14 @@ fn fix_one_thousand_bug(text: &str) -> String {
         return format!("one {}", text);
     }
 
-    // Case 3: "thousand " or " thousand" appears in the middle
+    // Case 3: " thousand" appears later in the text. Only the first occurrence
+    // is examined, and `split_at` keeps the space with `after`.
     if let Some(idx) = text.find(" thousand") {
         let (before, after) = text.split_at(idx);
         let prev_word = before.split_whitespace().last().unwrap_or("");
 
         // Don't fix if preceded by a number word or "a"
-        let number_words = [
-            "one",
-            "two",
-            "three",
-            "four",
-            "five",
-            "six",
-            "seven",
-            "eight",
-            "nine",
-            "ten",
-            "eleven",
-            "twelve",
-            "thirteen",
-            "fourteen",
-            "fifteen",
-            "sixteen",
-            "seventeen",
-            "eighteen",
-            "nineteen",
-            "twenty",
-            "thirty",
-            "forty",
-            "fifty",
-            "sixty",
-            "seventy",
-            "eighty",
-            "ninety",
-            "hundred",
-            "a",
-        ];
-
-        if !number_words.contains(&prev_word) {
+        if !NUMBER_WORDS.contains(&prev_word) {
             return format!("{} one{}", before, after);
         }
     }

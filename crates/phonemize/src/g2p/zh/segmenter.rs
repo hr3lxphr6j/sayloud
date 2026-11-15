@@ -162,25 +162,16 @@ impl SegmenterZh {
     /// The *boundaries* are not guessed either way: `cut` and `tag` are one walk
     /// over one dictionary, and `agrees_with_word_lengths` asserts that on a
     /// corpus rather than assuming it.
+    ///
+    /// Refuses when the words do not cover every character of `text`, for the
+    /// same reason and in the same shape as [`SegmenterZh::word_lengths`].
     pub fn tagged_words<'a>(
         &'a self,
         text: &'a str,
     ) -> Result<Vec<TaggedWord<'a>>, SegmenterZhError> {
         let words = self.jieba.tag(text, true);
         let lengths: Vec<usize> = words.iter().map(|word| word.word.chars().count()).collect();
-
-        // The same check `word_lengths` makes, for the same reason: a segmenter
-        // that dropped or invented a character would shift every following
-        // syllable onto the wrong word.
-        let covered: usize = lengths.iter().sum();
-        let expected = text.chars().count();
-        if covered != expected {
-            return Err(SegmenterZhError::Coverage {
-                covered,
-                expected,
-                text: text.to_string(),
-            });
-        }
+        check_coverage(&lengths, text)?;
 
         Ok(words
             .iter()
@@ -259,21 +250,33 @@ impl SegmenterZh {
     pub fn word_lengths(&self, text: &str) -> Result<Vec<usize>, SegmenterZhError> {
         let words = self.jieba.cut(text, true);
         let lengths: Vec<usize> = words.iter().map(|word| word.word.chars().count()).collect();
-
-        // Counted in characters, not bytes and not UTF-16 units: `chinese.ts`
-        // writes `[...word].length`, which spreads a string into code points.
-        let covered: usize = lengths.iter().sum();
-        let expected = text.chars().count();
-        if covered != expected {
-            return Err(SegmenterZhError::Coverage {
-                covered,
-                expected,
-                text: text.to_string(),
-            });
-        }
+        check_coverage(&lengths, text)?;
 
         Ok(lengths)
     }
+}
+
+/// Refuse a segmentation whose word lengths do not add up to the text.
+///
+/// The lengths are counted in characters, not bytes and not UTF-16 units:
+/// `chinese.ts` writes `[...word].length`, which spreads a string into code
+/// points.
+///
+/// A mismatch means the segmenter dropped or invented characters, which would
+/// move every following syllable into the neighbouring word — audible, and
+/// otherwise silent. Both entry points that read a segmentation check it, and
+/// both report it as [`SegmenterZhError::Coverage`].
+fn check_coverage(lengths: &[usize], text: &str) -> Result<(), SegmenterZhError> {
+    let covered: usize = lengths.iter().sum();
+    let expected = text.chars().count();
+    if covered != expected {
+        return Err(SegmenterZhError::Coverage {
+            covered,
+            expected,
+            text: text.to_string(),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]

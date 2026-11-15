@@ -101,7 +101,11 @@ touched.
 Additionally, `error.rs` no longer has upstream's
 `IoError(#[from] std::io::Error)` variant: it existed for the `std::fs`
 constructors that modification 1 and 2 removed, and an unused `From<io::Error>`
-is a way for an I/O error to arrive in a module that has no I/O.
+is a way for an I/O error to arrive in a module that has no I/O. Its
+`InvalidOperator(String)` variant is gone for the same reason — nothing here
+constructs it — and `contractions.rs` no longer has
+`fix_contractions_with_options`, whose `include_slang` argument was ignored and
+which nothing called.
 
 7. `normalizer.rs`: `should_normalize` tests digits with
    [`char::is_numeric`](char::is_numeric) rather than `is_ascii_digit`. Upstream's

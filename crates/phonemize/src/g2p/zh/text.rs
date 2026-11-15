@@ -32,6 +32,7 @@
 //! pass introduces Han characters that then belong to a Han run.
 
 use crate::text::is_js_whitespace;
+use crate::unicode::{self, CJK_COMPAT, CJK_EXT_A, CJK_UNIFIED};
 
 /// One run of text that will be phonemized the same way.
 ///
@@ -93,29 +94,64 @@ pub fn map_punctuation(text: &str) -> String {
     out.trim().to_string()
 }
 
+/// The three run kinds [`classify`] sorts a character into.
+#[derive(Copy, Clone, PartialEq)]
+enum Kind {
+    Han,
+    Latin,
+    Other,
+}
+
+impl Kind {
+    /// A new run of this kind, holding `character` already.
+    fn run(self, character: char) -> ZhRun {
+        match self {
+            Self::Han => ZhRun::Han(character.to_string()),
+            Self::Latin => ZhRun::Latin(character.to_string()),
+            Self::Other => ZhRun::Other(character.to_string()),
+        }
+    }
+}
+
+impl ZhRun {
+    /// Which kind of run this is.
+    fn kind(&self) -> Kind {
+        match self {
+            Self::Han(_) => Kind::Han,
+            Self::Latin(_) => Kind::Latin,
+            Self::Other(_) => Kind::Other,
+        }
+    }
+
+    /// Append a character to the run.
+    fn push(&mut self, character: char) {
+        let text = match self {
+            Self::Han(text) | Self::Latin(text) | Self::Other(text) => text,
+        };
+        text.push(character);
+    }
+}
+
 /// The script a character belongs to, by the ranges `runPattern` uses.
 ///
-/// Written as the ranges rather than as a name lookup so that a reader comparing
-/// the two files can see they are the same set. Note what is deliberately absent:
-/// a CJK Extension B branch. `chinese.ts` has none either — its comment says
-/// those characters are dropped silently, and that a run boundary is the wrong
-/// place to discover it.
-fn classify(character: char) -> u8 {
-    const HAN: u8 = 0;
-    const LATIN: u8 = 1;
-    const OTHER: u8 = 2;
-
+/// The Han set is deliberately a **subset** of [`unicode::is_han`], and the
+/// difference is `chinese.ts`'s rather than an oversight: no astral range (those
+/// characters are dropped silently there, and that file's comment says a run
+/// boundary is the wrong place to discover it) and not `々`/`〆`, which
+/// `chinese.ts` does not count either. What is shared is the bounds; unifying the
+/// predicates would change where a Chinese run breaks.
+fn classify(character: char) -> Kind {
     let code = character as u32;
-    if code == 0x3007
-        || (0x3400..=0x4dbf).contains(&code)
-        || (0x4e00..=0x9fff).contains(&code)
-        || (0xf900..=0xfaff).contains(&code)
+    if code == unicode::IDEOGRAPHIC_ZERO
+        || CJK_EXT_A.contains(&code)
+        || CJK_UNIFIED.contains(&code)
+        || CJK_COMPAT.contains(&code)
     {
-        HAN
+        Kind::Han
     } else if character.is_ascii_alphabetic() {
-        LATIN
+        Kind::Latin
     } else {
-        OTHER
+        Kind::Other
     }
 }
 
@@ -131,22 +167,8 @@ pub fn split_runs(text: &str) -> Vec<ZhRun> {
     for character in text.chars() {
         let kind = classify(character);
         match runs.last_mut() {
-            Some(ZhRun::Han(run)) if kind == 0 => run.push(character),
-            Some(ZhRun::Latin(run)) if kind == 1 => run.push(character),
-            Some(ZhRun::Other(run)) if kind == 2 => run.push(character),
-            _ => {
-                let mut run = match kind {
-                    0 => ZhRun::Han(String::new()),
-                    1 => ZhRun::Latin(String::new()),
-                    _ => ZhRun::Other(String::new()),
-                };
-                match &mut run {
-                    ZhRun::Han(text) | ZhRun::Latin(text) | ZhRun::Other(text) => {
-                        text.push(character)
-                    }
-                }
-                runs.push(run);
-            }
+            Some(run) if run.kind() == kind => run.push(character),
+            _ => runs.push(kind.run(character)),
         }
     }
 

@@ -16,6 +16,8 @@ use std::io::Read;
 
 use ruzstd::decoding::StreamingDecoder;
 
+use crate::vocab::{KOKORO_V1, KOKORO_V11_ZH};
+
 /// The zstd frame magic number (RFC 8878 §3.1.1), as it appears on the wire.
 pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
@@ -120,61 +122,92 @@ pub const WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE: &str = "wetext-zh-tn-traditional-t
 
 /// What each vocabulary can speak.
 ///
-/// The name is the model's (`kokoro-v1`, `kokoro-v11-zh`) and the two do not
-/// cover the same languages: v1.1-zh has no Japanese pipeline at all, so a
-/// Japanese voice on that model has to fail loudly rather than phonemize into
-/// characters its tokenizer drops.
+/// The name is the model's ([`KOKORO_V1`], [`KOKORO_V11_ZH`], owned by
+/// [`crate::vocab`]) and the two do not cover the same languages: v1.1-zh has no
+/// Japanese pipeline at all, so a Japanese voice on that model has to fail loudly
+/// rather than phonemize into characters its tokenizer drops.
 pub fn supported_languages(vocab: &str) -> Option<&'static [&'static str]> {
     match vocab {
-        "kokoro-v1" => Some(&["zh", "ja", "en"]),
-        "kokoro-v11-zh" => Some(&["zh", "en"]),
+        KOKORO_V1 => Some(&["zh", "ja", "en"]),
+        KOKORO_V11_ZH => Some(&["zh", "en"]),
         _ => None,
     }
 }
 
-/// The dictionaries one language needs, by primary subtag.
+/// Which pipeline a language tag selects.
 ///
-/// `None` means "not a language this pipeline knows", which is different from
-/// "needs nothing" — the caller checks the frontend's language list first.
+/// One variant per pipeline this build has, which is not the same set as the
+/// languages a vocabulary can speak — [`supported_languages`] answers that, and
+/// v1.1-zh answers it without Japanese. The dictionary tables and the phonemize
+/// entry point both key on this enum rather than on a string, so a vocabulary's
+/// asset list and its phonemize dispatch cannot disagree about a tag.
 ///
-/// Empty is still a real answer, though no language gives it today: the English
-/// CMU dictionary and the Chinese pinyin tables are compiled into the wasm
-///, and only the parts that cannot be are fetched.
+/// Deliberately not [`crate::tn::Lang`]: that enum names which language's
+/// *numerals* are being read, and its behaviour is numeral policy. Which pipeline
+/// exists, and which assets it needs, is the dictionary protocol's question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Language {
+    Ja,
+    Zh,
+    En,
+}
+
+impl Language {
+    /// The primary subtag this language is spelled with in a BCP-47 tag.
+    fn tag(self) -> &'static str {
+        match self {
+            Self::Ja => "ja",
+            Self::Zh => "zh",
+            Self::En => "en",
+        }
+    }
+
+    /// The pipeline a primary subtag names, if it names one of these.
+    fn from_tag(tag: &str) -> Option<Self> {
+        [Self::Ja, Self::Zh, Self::En]
+            .into_iter()
+            .find(|language| language.tag().eq_ignore_ascii_case(tag))
+    }
+}
+
+/// The dictionaries one language's pipeline needs.
 ///
-/// **Every language now fetches the WeText grammars, and two of them fetch a
+/// The English CMU dictionary and the Chinese pinyin tables are compiled into the
+/// wasm, so only the parts that cannot be are fetched.
+///
+/// **Every language fetches the WeText grammars, and two of them fetch a
 /// preprocessor besides.** These are the *numeral*, *script* and *script-folding*
 /// steps rather than the phoneme step, which is why a non-empty list here does not
 /// contradict the rule that the phoneme data is compiled in. Chinese is the
-/// language whose fold is *not* an asset — see [`dictionaries_for`]'s own entry and
+/// language whose fold is *not* an asset — see [`Language::Zh`]'s entry and
 /// [`crate::tn::engine::chinese`].
-fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
+fn dictionaries_for(language: Language) -> &'static [&'static str] {
     match language {
         // UniDic: prebuilt trie + connection matrix, 34 MB compressed and
         // 199 MB in memory.
-        "ja" => Some(&[
+        Language::Ja => &[
             UNIDIC_JA,
             WETEXT_JA_TN_TAGGER,
             WETEXT_JA_TN_VERBALIZER,
             WETEXT_TN_FULL_TO_HALF,
-        ]),
+        ],
         // jieba's word list: plain text, 1.6 MB compressed and 4.8 MB in memory,
         // read by `jieba-rs` rather than by a dictionary builder. It is the one
         // part of Chinese that is not compiled in, because the only way
         // `jieba-rs` can embed it cannot link for wasm (see [`JIEBA_ZH`]).
-        "zh" => Some(&[
+        Language::Zh => &[
             JIEBA_ZH,
             WETEXT_ZH_TN_TAGGER,
             WETEXT_ZH_TN_VERBALIZER,
             WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE,
-        ]),
+        ],
         // English's *phonemes* need no dictionary at all — the CMU dictionary is
         // compiled in — so this list is entirely numerals and script folding.
-        "en" => Some(&[
+        Language::En => &[
             WETEXT_EN_TN_TAGGER,
             WETEXT_EN_TN_VERBALIZER,
             WETEXT_TN_FULL_TO_HALF,
-        ]),
-        _ => None,
+        ],
     }
 }
 
@@ -185,33 +218,45 @@ fn dictionaries_for(language: &str) -> Option<&'static [&'static str]> {
 /// the dictionary's. Underscores are accepted because tags that came through
 /// some other system's locale formatting use them.
 pub fn primary_language(lang: &str) -> String {
-    lang.split(['-', '_'])
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase()
+    primary_subtag(lang).to_ascii_lowercase()
 }
 
-/// The names one `(frontend, lang)` pair needs, or why it cannot be prepared.
-pub fn dictionary_names(vocab: &str, lang: &str) -> Result<Vec<String>, DictionaryError> {
+/// The primary subtag of a BCP-47 tag, as the caller spelled it.
+///
+/// Shared with [`primary_language`] so that the borrowing internal form and the
+/// allocating public one cannot disagree about where a tag's language ends.
+fn primary_subtag(lang: &str) -> &str {
+    lang.split(['-', '_']).next().unwrap_or("").trim()
+}
+
+/// Which pipeline `(vocab, lang)` selects, or why the pair cannot be prepared.
+///
+/// The single answer to "can this vocabulary speak this language": both
+/// [`dictionary_names`] and `crate::Phonemizer::phonemize_with` ask it, so a
+/// pair that `prepare` accepted cannot be refused at the first sentence, and a
+/// pair it rejected cannot phonemize.
+///
+/// Allocates only on the error path. A supported pair is answered by inspection:
+/// the language tag is compared without a lowercase copy, which is what keeps this
+/// off the heap on every phonemize request.
+pub fn check_supported(vocab: &str, lang: &str) -> Result<Language, DictionaryError> {
     let languages = supported_languages(vocab).ok_or_else(|| DictionaryError::UnknownVocab {
         vocab: vocab.to_string(),
     })?;
 
-    let primary = primary_language(lang);
-    if !languages.contains(&primary.as_str()) {
-        return Err(DictionaryError::UnsupportedLanguage {
+    Language::from_tag(primary_subtag(lang))
+        .filter(|language| languages.contains(&language.tag()))
+        .ok_or_else(|| DictionaryError::UnsupportedLanguage {
             vocab: vocab.to_string(),
             lang: lang.to_string(),
-        });
-    }
+        })
+}
 
-    // `unwrap_or` rather than `unreachable!`: a panic inside the wasm takes the
-    // whole worker with it, and the two tables disagreeing is exactly the kind
-    // of edit that happens. An empty list degrades to "no dictionary", which is
-    // the same failure the language would have had before this table grew.
-    Ok(dictionaries_for(&primary)
-        .unwrap_or(&[])
+/// The names one `(frontend, lang)` pair needs, or why it cannot be prepared.
+pub fn dictionary_names(vocab: &str, lang: &str) -> Result<Vec<String>, DictionaryError> {
+    let language = check_supported(vocab, lang)?;
+
+    Ok(dictionaries_for(language)
         .iter()
         .map(|name| (*name).to_string())
         .collect())

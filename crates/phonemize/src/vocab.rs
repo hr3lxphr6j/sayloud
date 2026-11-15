@@ -51,11 +51,18 @@ const VOCABULARY_V11_ZH: &str = include_str!("../data/vocab-v11-zh.txt");
 /// "in the vocabulary, or one of these two" rather than "in the vocabulary".
 const STRIPPED_BY_THE_NORMALIZER: [char; 2] = ['\u{032F}', '\u{0329}'];
 
+/// v1.0's model id, as the JavaScript side spells it (`VocabId` in
+/// `lib/models/vocab.ts`).
+pub const KOKORO_V1: &str = "kokoro-v1";
+
+/// v1.1-zh's model id.
+pub const KOKORO_V11_ZH: &str = "kokoro-v11-zh";
+
 /// Which phoneme inventory the output has to belong to.
 ///
 /// The names are the ids the JavaScript side uses (`VocabId` in
 /// `lib/models/vocab.ts`), spelled as the model versions they are:
-/// `V1_0` is `kokoro-v1` and `V1_1_ZH` is `kokoro-v11-zh`. The underscores are
+/// `V1_0` is [`KOKORO_V1`] and `V1_1_ZH` is [`KOKORO_V11_ZH`]. The underscores are
 /// deliberate — `V1_1Zh` would read as a different model name — which is why the
 /// usual casing lint is off for this enum.
 #[allow(non_camel_case_types)]
@@ -67,12 +74,12 @@ pub enum Vocab {
 
 impl Vocab {
     /// The vocabulary behind one id, or `None` for an id this build does not
-    /// know. The id names the *model* (`kokoro-v1`, `kokoro-v11-zh`); that a
+    /// know. The id names the *model* ([`KOKORO_V1`], [`KOKORO_V11_ZH`]); that a
     /// model has exactly one inventory is what makes one lookup enough.
     pub fn for_id(vocab: &str) -> Option<Self> {
         match vocab {
-            "kokoro-v1" => Some(Self::V1_0),
-            "kokoro-v11-zh" => Some(Self::V1_1_ZH),
+            KOKORO_V1 => Some(Self::V1_0),
+            KOKORO_V11_ZH => Some(Self::V1_1_ZH),
             _ => None,
         }
     }
@@ -80,8 +87,8 @@ impl Vocab {
     /// The vocabulary's id, for a message a reader can act on.
     pub fn name(self) -> &'static str {
         match self {
-            Self::V1_0 => "kokoro-v1",
-            Self::V1_1_ZH => "kokoro-v11-zh",
+            Self::V1_0 => KOKORO_V1,
+            Self::V1_1_ZH => KOKORO_V11_ZH,
         }
     }
 

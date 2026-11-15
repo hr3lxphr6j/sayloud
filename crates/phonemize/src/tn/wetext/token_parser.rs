@@ -8,6 +8,29 @@ use std::collections::HashMap;
 use super::config::{Language, Operator};
 use super::error::{Result, WeTextError};
 
+// Const arrays for token field orders
+// These are used to build the HashMap on-demand rather than recreating them each time
+
+pub const TN_ORDERS_DATE: &[&str] = &["year", "month", "day"];
+pub const TN_ORDERS_FRACTION: &[&str] = &["denominator", "numerator"];
+pub const TN_ORDERS_MEASURE: &[&str] = &["denominator", "numerator", "value"];
+pub const TN_ORDERS_MONEY: &[&str] = &["value", "currency"];
+pub const TN_ORDERS_TIME: &[&str] = &["noon", "hour", "minute", "second"];
+
+pub const EN_TN_ORDERS_DATE: &[&str] = &["preserve_order", "text", "day", "month", "year"];
+pub const EN_TN_ORDERS_MONEY: &[&str] = &[
+    "integer_part",
+    "fractional_part",
+    "quantity",
+    "currency_maj",
+];
+
+pub const ITN_ORDERS_DATE: &[&str] = &["year", "month", "day"];
+pub const ITN_ORDERS_FRACTION: &[&str] = &["sign", "numerator", "denominator"];
+pub const ITN_ORDERS_MEASURE: &[&str] = &["numerator", "denominator", "value"];
+pub const ITN_ORDERS_MONEY: &[&str] = &["currency", "value", "decimal"];
+pub const ITN_ORDERS_TIME: &[&str] = &["hour", "minute", "second", "noon"];
+
 /// Token structure representing a tagged entity
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -93,38 +116,23 @@ impl TokenParser {
         let mut m = HashMap::new();
         m.insert(
             "date".to_string(),
-            vec!["year", "month", "day"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            TN_ORDERS_DATE.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "fraction".to_string(),
-            vec!["denominator", "numerator"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            TN_ORDERS_FRACTION.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "measure".to_string(),
-            vec!["denominator", "numerator", "value"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            TN_ORDERS_MEASURE.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "money".to_string(),
-            vec!["value", "currency"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            TN_ORDERS_MONEY.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "time".to_string(),
-            vec!["noon", "hour", "minute", "second"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            TN_ORDERS_TIME.iter().map(|s| s.to_string()).collect(),
         );
         m
     }
@@ -134,22 +142,11 @@ impl TokenParser {
         let mut m = HashMap::new();
         m.insert(
             "date".to_string(),
-            vec!["preserve_order", "text", "day", "month", "year"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            EN_TN_ORDERS_DATE.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "money".to_string(),
-            vec![
-                "integer_part",
-                "fractional_part",
-                "quantity",
-                "currency_maj",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
+            EN_TN_ORDERS_MONEY.iter().map(|s| s.to_string()).collect(),
         );
         m
     }
@@ -159,38 +156,23 @@ impl TokenParser {
         let mut m = HashMap::new();
         m.insert(
             "date".to_string(),
-            vec!["year", "month", "day"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            ITN_ORDERS_DATE.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "fraction".to_string(),
-            vec!["sign", "numerator", "denominator"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            ITN_ORDERS_FRACTION.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "measure".to_string(),
-            vec!["numerator", "denominator", "value"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            ITN_ORDERS_MEASURE.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "money".to_string(),
-            vec!["currency", "value", "decimal"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            ITN_ORDERS_MONEY.iter().map(|s| s.to_string()).collect(),
         );
         m.insert(
             "time".to_string(),
-            vec!["hour", "minute", "second", "noon"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            ITN_ORDERS_TIME.iter().map(|s| s.to_string()).collect(),
         );
         m
     }
@@ -229,6 +211,13 @@ impl TokenParser {
         }
     }
 
+    /// Helper to skip characters while a predicate is true
+    fn skip_while(chars: &[char], index: &mut usize, predicate: impl Fn(char) -> bool) {
+        while *index < chars.len() && predicate(chars[*index]) {
+            *index += 1;
+        }
+    }
+
     /// Parse token string into structured tokens
     ///
     /// Expected format: `token_name { key1: "value1" key2: "value2" }`
@@ -239,9 +228,7 @@ impl TokenParser {
 
         while index < chars.len() {
             // Skip whitespace
-            while index < chars.len() && chars[index].is_whitespace() {
-                index += 1;
-            }
+            Self::skip_while(&chars, &mut index, |c| c.is_whitespace());
 
             if index >= chars.len() {
                 break;
@@ -249,10 +236,7 @@ impl TokenParser {
 
             // Parse token name (must be alphabetic or underscore)
             let name_start = index;
-            while index < chars.len() && (chars[index].is_ascii_alphabetic() || chars[index] == '_')
-            {
-                index += 1;
-            }
+            Self::skip_while(&chars, &mut index, |c| c.is_ascii_alphabetic() || c == '_');
             let name: String = chars[name_start..index].iter().collect();
 
             // If no valid name found, check if we're at an unexpected character
@@ -268,18 +252,14 @@ impl TokenParser {
             }
 
             // Skip whitespace and opening brace '{'
-            while index < chars.len() && (chars[index].is_whitespace() || chars[index] == '{') {
-                index += 1;
-            }
+            Self::skip_while(&chars, &mut index, |c| c.is_whitespace() || c == '{');
 
             let mut token = Token::new(&name);
 
             // Parse key-value pairs
             loop {
                 // Skip whitespace
-                while index < chars.len() && chars[index].is_whitespace() {
-                    index += 1;
-                }
+                Self::skip_while(&chars, &mut index, |c| c.is_whitespace());
 
                 // Check for end of token or end of input
                 if index >= chars.len() || chars[index] == '}' {
@@ -291,11 +271,7 @@ impl TokenParser {
 
                 // Parse key
                 let key_start = index;
-                while index < chars.len()
-                    && (chars[index].is_ascii_alphabetic() || chars[index] == '_')
-                {
-                    index += 1;
-                }
+                Self::skip_while(&chars, &mut index, |c| c.is_ascii_alphabetic() || c == '_');
                 let key: String = chars[key_start..index].iter().collect();
 
                 // Skip empty keys (can happen with malformed input)
@@ -308,9 +284,7 @@ impl TokenParser {
                 }
 
                 // Skip ':' and spaces
-                while index < chars.len() && (chars[index] == ':' || chars[index] == ' ') {
-                    index += 1;
-                }
+                Self::skip_while(&chars, &mut index, |c| c == ':' || c == ' ');
 
                 // Skip opening quote '"'
                 if index < chars.len() && chars[index] == '"' {

@@ -150,6 +150,22 @@ impl std::fmt::Display for SegmenterError {
 
 impl std::error::Error for SegmenterError {}
 
+/// Map a component loader's error to [`SegmenterError::Component`], naming the
+/// file whose bytes were rejected.
+fn component<E: std::fmt::Display>(file: &'static str) -> impl FnOnce(E) -> SegmenterError {
+    move |error| SegmenterError::Component {
+        file: file.to_string(),
+        detail: error.to_string(),
+    }
+}
+
+/// Map a tar error to [`SegmenterError::Container`].
+fn container_error<E: std::fmt::Display>(error: E) -> SegmenterError {
+    SegmenterError::Container {
+        detail: error.to_string(),
+    }
+}
+
 /// Japanese tokenization, backed by one loaded UniDic dictionary.
 pub struct SegmenterJa {
     segmenter: Segmenter,
@@ -188,37 +204,18 @@ impl SegmenterJa {
             take(&mut files, WORDS_IDX)?,
             take(&mut files, WORDS)?,
         )
-        .map_err(|error| SegmenterError::Component {
-            file: TRIE.to_string(),
-            detail: error.to_string(),
-        })?;
+        .map_err(component(TRIE))?;
 
-        let connection_cost_matrix = ConnectionCostMatrix::load(take(&mut files, MATRIX)?)
-            .map_err(|error| SegmenterError::Component {
-                file: MATRIX.to_string(),
-                detail: error.to_string(),
-            })?;
+        let connection_cost_matrix =
+            ConnectionCostMatrix::load(take(&mut files, MATRIX)?).map_err(component(MATRIX))?;
 
-        let character_definition = CharacterDefinition::load(&take(&mut files, CHAR_DEF)?)
-            .map_err(|error| SegmenterError::Component {
-                file: CHAR_DEF.to_string(),
-                detail: error.to_string(),
-            })?;
+        let character_definition =
+            CharacterDefinition::load(&take(&mut files, CHAR_DEF)?).map_err(component(CHAR_DEF))?;
 
         let unknown_dictionary =
-            UnknownDictionary::load(&take(&mut files, UNK)?).map_err(|error| {
-                SegmenterError::Component {
-                    file: UNK.to_string(),
-                    detail: error.to_string(),
-                }
-            })?;
+            UnknownDictionary::load(&take(&mut files, UNK)?).map_err(component(UNK))?;
 
-        let metadata = Metadata::load(&take(&mut files, METADATA)?).map_err(|error| {
-            SegmenterError::Component {
-                file: METADATA.to_string(),
-                detail: error.to_string(),
-            }
-        })?;
+        let metadata = Metadata::load(&take(&mut files, METADATA)?).map_err(component(METADATA))?;
 
         let absent_field = metadata.default_field_value.clone();
 
@@ -340,24 +337,13 @@ fn take(files: &mut Vec<(String, Vec<u8>)>, name: &str) -> Result<Vec<u8>, Segme
 /// packer's business and not a second thing that has to agree.
 fn unpack(container: &[u8]) -> Result<Vec<(String, Vec<u8>)>, SegmenterError> {
     let mut archive = tar::Archive::new(container);
-    let entries = archive
-        .entries()
-        .map_err(|error| SegmenterError::Container {
-            detail: error.to_string(),
-        })?;
+    let entries = archive.entries().map_err(container_error)?;
 
     let mut files = Vec::new();
     for entry in entries {
-        let mut entry = entry.map_err(|error| SegmenterError::Container {
-            detail: error.to_string(),
-        })?;
+        let mut entry = entry.map_err(container_error)?;
 
-        let path = entry
-            .path()
-            .map_err(|error| SegmenterError::Container {
-                detail: error.to_string(),
-            })?
-            .to_path_buf();
+        let path = entry.path().map_err(container_error)?.to_path_buf();
 
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             // A directory entry, or a name that is not UTF-8. Neither is a file

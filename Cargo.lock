@@ -615,7 +615,6 @@ dependencies = [
  "js-sys",
  "lindera",
  "lindera-dictionary",
- "once_cell",
  "piper-plus-g2p",
  "regex",
  "rustfst",

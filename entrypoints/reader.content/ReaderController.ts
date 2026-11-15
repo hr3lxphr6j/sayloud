@@ -162,6 +162,15 @@ export class ReaderController {
   private lastScrollTop = 0;
   private resizeTimer: number | null = null;
   private disposed = false;
+  /**
+   * Owns the page listeners, so teardown is one call.
+   *
+   * Aborting removes every listener registered with the signal, which is what
+   * makes the nine registrations and the nine removals impossible to drift
+   * apart. It is created per attach rather than once: an aborted controller is
+   * dead, and re-attaching has to start from a live one.
+   */
+  private pageListeners: AbortController | null = null;
   /** Whether the sentence list was already handed to the engine. */
   private loaded = false;
   /** Sentence whose highlight is on screen, so scrolling only follows changes. */
@@ -197,17 +206,36 @@ export class ReaderController {
       this.unsubscribeSettings = settings.subscribe((loaded) => this.applySettings(loaded));
     }
 
-    window.addEventListener('scroll', this.onScroll, { passive: true });
+    this.attachPageListeners();
+  }
+
+  /**
+   * Listen to the page.
+   *
+   * The options are part of each listener, not of the helper: a scroll or a
+   * wheel handler must not force a layout pass (`passive`), and the click that
+   * dismisses the player has to see the event before the page does (`capture`),
+   * so both flags travel with their own registration.
+   */
+  private attachPageListeners(): void {
+    // An attach after a teardown must not inherit a dead controller, and an
+    // attach without a teardown must not double every listener.
+    this.pageListeners?.abort();
+    const controller = new AbortController();
+    this.pageListeners = controller;
+    const { signal } = controller;
+
+    window.addEventListener('scroll', this.onScroll, { passive: true, signal });
     // User intent comes from the input itself: a scroll event cannot tell the
     // reader from a lazy image, a reflow, or our own smooth scroll.
-    window.addEventListener('wheel', this.onWheel, { passive: true });
-    window.addEventListener('touchmove', this.onTouchMove, { passive: true });
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('pointerdown', this.onPointerDown, { passive: true });
-    window.addEventListener('resize', this.onResize);
-    window.visualViewport?.addEventListener('resize', this.onResize);
-    document.addEventListener('scrollend', this.onScrollEnd);
-    document.addEventListener('click', this.onClick, true);
+    window.addEventListener('wheel', this.onWheel, { passive: true, signal });
+    window.addEventListener('touchmove', this.onTouchMove, { passive: true, signal });
+    window.addEventListener('keydown', this.onKeyDown, { signal });
+    window.addEventListener('pointerdown', this.onPointerDown, { passive: true, signal });
+    window.addEventListener('resize', this.onResize, { signal });
+    window.visualViewport?.addEventListener('resize', this.onResize, { signal });
+    document.addEventListener('scrollend', this.onScrollEnd, { signal });
+    document.addEventListener('click', this.onClick, { capture: true, signal });
   }
 
   getState(): ReaderState {
@@ -336,15 +364,8 @@ export class ReaderController {
     this.caption.close();
     this.unsubscribeSettings?.();
     this.unsubscribeSettings = null;
-    window.removeEventListener('scroll', this.onScroll);
-    window.removeEventListener('wheel', this.onWheel);
-    window.removeEventListener('touchmove', this.onTouchMove);
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('pointerdown', this.onPointerDown);
-    window.removeEventListener('resize', this.onResize);
-    window.visualViewport?.removeEventListener('resize', this.onResize);
-    document.removeEventListener('scrollend', this.onScrollEnd);
-    document.removeEventListener('click', this.onClick, true);
+    this.pageListeners?.abort();
+    this.pageListeners = null;
     this.trackScroller(null);
     this.clearScrollTimer();
     if (this.resizeTimer !== null) window.clearTimeout(this.resizeTimer);

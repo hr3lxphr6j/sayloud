@@ -23,6 +23,7 @@ import {
 import { errorMessage } from './providers/errors';
 import type { ProviderConfig } from './providers/types';
 import type { PrefetchRequest, Speaker, SpeakerEvents, SpeakRequest, WordSpan } from './speaker';
+import { SpeakerEmitter } from './speaker-emitter';
 
 /** The slice of `chrome.runtime.onMessage` this module uses. */
 export interface RuntimeEventSource {
@@ -46,13 +47,11 @@ export interface OffscreenSpeakerDeps {
   events: RuntimeEventSource;
 }
 
-type Handler = (payload: never) => void;
-
 export class OffscreenSpeaker implements Speaker {
   private readonly manager: CommandChannel;
   private readonly config: ProviderConfig;
   private readonly events: RuntimeEventSource;
-  private readonly listeners = new Map<keyof SpeakerEvents, Set<Handler>>();
+  private readonly emitter = new SpeakerEmitter();
 
   /** Invalidates replies and events from utterances that were replaced. */
   private generation = 0;
@@ -103,11 +102,7 @@ export class OffscreenSpeaker implements Speaker {
    */
   setRate(rate: number): boolean {
     this.rate = rate;
-    void this.manager
-      .sendCommand({ type: 'setRate', rate }, { create: false })
-      .catch((error: unknown) => {
-        console.warn('[SayLoud] could not change the cloud voice rate', error);
-      });
+    this.fireAndForget({ type: 'setRate', rate }, 'change the cloud voice rate');
     return true;
   }
 
@@ -119,19 +114,13 @@ export class OffscreenSpeaker implements Speaker {
    * offscreen document into existence.
    */
   setVolume(volume: number): void {
-    void this.manager
-      .sendCommand({ type: 'setVolume', volume }, { create: false })
-      .catch((error: unknown) => {
-        console.warn('[SayLoud] could not change the cloud voice volume', error);
-      });
+    this.fireAndForget({ type: 'setVolume', volume }, 'change the cloud voice volume');
   }
 
   stop(): void {
     this.generation++;
     this.activeId = null;
-    void this.manager.sendCommand({ type: 'stop' }, { create: false }).catch((error: unknown) => {
-      console.warn('[SayLoud] could not stop the cloud voice', error);
-    });
+    this.fireAndForget({ type: 'stop' }, 'stop the cloud voice');
   }
 
   /**
@@ -149,9 +138,7 @@ export class OffscreenSpeaker implements Speaker {
   pause(): void {
     // A synthesis that is still preparing must never start after this pause.
     this.generation++;
-    void this.manager.sendCommand({ type: 'pause' }, { create: false }).catch((error: unknown) => {
-      console.warn('[SayLoud] could not pause the cloud voice', error);
-    });
+    this.fireAndForget({ type: 'pause' }, 'pause the cloud voice');
   }
 
   /**
@@ -164,42 +151,44 @@ export class OffscreenSpeaker implements Speaker {
    */
   prefetch(requests: readonly PrefetchRequest[]): void {
     if (requests.length === 0) return;
-    void this.manager
-      .sendCommand(
-        {
-          type: 'prefetch',
-          items: requests.map((request) => ({
-            text: request.text,
-            voiceId: request.voice ?? '',
-          })),
-          config: this.config,
-        },
-        { create: false }
-      )
-      .catch((error: unknown) => {
-        console.warn('[SayLoud] could not prefetch audio', error);
-      });
+    this.fireAndForget(
+      {
+        type: 'prefetch',
+        items: requests.map((request) => ({
+          text: request.text,
+          voiceId: request.voice ?? '',
+        })),
+        config: this.config,
+      },
+      'prefetch audio'
+    );
   }
 
   on<K extends keyof SpeakerEvents>(
     event: K,
     handler: (payload: SpeakerEvents[K]) => void
   ): () => void {
-    let handlers = this.listeners.get(event);
-    if (!handlers) {
-      handlers = new Set();
-      this.listeners.set(event, handlers);
-    }
-    handlers.add(handler as Handler);
-    return () => {
-      handlers.delete(handler as Handler);
-    };
+    return this.emitter.on(event, handler);
   }
 
   dispose(): void {
     this.stop();
     this.events.removeListener(this.onMessage);
-    this.listeners.clear();
+    this.emitter.clear();
+  }
+
+  /**
+   * Send a command whose result nobody waits for.
+   *
+   * Every one of these is a change to audio that is already playing or about to
+   * be, so none of them may create the offscreen document, and none of them may
+   * fail loudly: a document that was reclaimed mid-sentence is a lost command,
+   * not a playback error. `what` names the command so the log says which one.
+   */
+  private fireAndForget(command: OffscreenCommand, what: string): void {
+    void this.manager.sendCommand(command, { create: false }).catch((error: unknown) => {
+      console.warn(`[SayLoud] could not ${what}`, error);
+    });
   }
 
   /** Synthesize, then play; report anything that fails as a speaker error. */
@@ -245,41 +234,41 @@ export class OffscreenSpeaker implements Speaker {
       await this.manager.sendCommand({ type: 'play', id, startTimeMs: resumeTimeMs ?? 0 });
       if (this.stale(generation)) return;
 
-      this.emit('start', undefined);
+      this.emitter.emit('start', undefined);
     } catch (error) {
       if (this.stale(generation)) return;
-      this.emit('error', errorMessage(error));
+      this.emitter.emit('error', errorMessage(error));
     }
   }
 
   private readonly onMessage = (message: unknown): void => {
-    // Handle paused events only for the active sentence; a delayed pause from
-    // an earlier utterance must not overwrite the current resume position.
-    if (isOffscreenEvent(message) && message.type === 'paused' && message.id === this.activeId) {
-      this.lastPausedTimeMs = message.currentTimeMs;
-      // Emit to PlaybackEngine so it can update resumeTimeMs
-      this.emit('paused', message.currentTimeMs);
-      return;
-    }
-
-    // Two filters, for two different mistakes: a message that is not an audio
-    // event at all, and an event from a sentence the engine has moved on from.
-    // Type assertion is safe here because we've already filtered out paused events.
+    // `runtime.sendMessage` reaches every extension context, and what arrives
+    // here is only trustworthy if it is one of our own audio events.
     if (!isOffscreenEvent(message)) return;
-    if (message.type === 'paused') return; // Already handled above
+
+    // An event from an utterance the engine has moved on from. The engine stops
+    // and re-speaks freely (a seek, a rate change, a pause), and a late word or
+    // end from the replaced one would drag the new cursor with it — including a
+    // late `paused`, which would overwrite the resume position with the old
+    // sentence's.
     if (message.id !== this.activeId) return;
 
     switch (message.type) {
+      case 'paused':
+        this.lastPausedTimeMs = message.currentTimeMs;
+        // The engine keeps its own copy so it can resume from this position.
+        this.emitter.emit('paused', message.currentTimeMs);
+        return;
       case 'word': {
         const span: WordSpan = { charStart: message.charStart, charEnd: message.charEnd };
-        this.emit('word', span);
+        this.emitter.emit('word', span);
         return;
       }
       case 'sentence-end':
-        this.emit('end', undefined);
+        this.emitter.emit('end', undefined);
         return;
       case 'error':
-        this.emit('error', message.message);
+        this.emitter.emit('error', message.message);
         return;
       default:
         // `ready` is the reply to `synthesize`, which `run` is already awaiting.
@@ -289,11 +278,5 @@ export class OffscreenSpeaker implements Speaker {
 
   private stale(generation: number): boolean {
     return generation !== this.generation;
-  }
-
-  private emit<K extends keyof SpeakerEvents>(event: K, payload: SpeakerEvents[K]): void {
-    for (const handler of this.listeners.get(event) ?? []) {
-      (handler as (value: SpeakerEvents[K]) => void)(payload);
-    }
   }
 }

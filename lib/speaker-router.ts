@@ -18,8 +18,7 @@
  */
 import type { ProviderConfig, ProviderId } from './providers/types';
 import type { PrefetchRequest, Speaker, SpeakerEvents, SpeakRequest } from './speaker';
-
-type Handler = (payload: never) => void;
+import { SpeakerEmitter } from './speaker-emitter';
 
 /** The saved configuration, as the router needs it. `ConfigStore` fits. */
 export interface ConfigSource {
@@ -48,7 +47,7 @@ export class SpeakerRouter implements Speaker {
   private readonly config: ConfigSource;
   private readonly createCloud: (config: ProviderConfig) => Speaker | null;
   private readonly resolveBrowserVoice: (lang: string) => string | undefined;
-  private readonly listeners = new Map<keyof SpeakerEvents, Set<Handler>>();
+  private readonly emitter = new SpeakerEmitter();
 
   private cloud: CloudSelection | null = null;
   private active: Speaker;
@@ -189,15 +188,7 @@ export class SpeakerRouter implements Speaker {
     event: K,
     handler: (payload: SpeakerEvents[K]) => void
   ): () => void {
-    let handlers = this.listeners.get(event);
-    if (!handlers) {
-      handlers = new Set();
-      this.listeners.set(event, handlers);
-    }
-    handlers.add(handler as Handler);
-    return () => {
-      handlers.delete(handler as Handler);
-    };
+    return this.emitter.on(event, handler);
   }
 
   dispose(): void {
@@ -211,7 +202,7 @@ export class SpeakerRouter implements Speaker {
 
     this.unbind?.();
     this.unbind = null;
-    this.listeners.clear();
+    this.emitter.clear();
 
     cloud?.speaker.dispose();
     this.browser.dispose();
@@ -256,34 +247,28 @@ export class SpeakerRouter implements Speaker {
     this.active = next;
     this.bind();
 
-    if (wasSpeaking) this.emit('end', undefined);
+    if (wasSpeaking) this.emitter.emit('end', undefined);
   }
 
   private bind(): void {
     const subscriptions = [
       this.active.on('start', (payload) => {
         this.speaking = true;
-        this.emit('start', payload);
+        this.emitter.emit('start', payload);
       }),
-      this.active.on('word', (payload) => this.emit('word', payload)),
+      this.active.on('word', (payload) => this.emitter.emit('word', payload)),
       this.active.on('end', () => {
         this.speaking = false;
-        this.emit('end', undefined);
+        this.emitter.emit('end', undefined);
       }),
       this.active.on('error', (payload) => {
         this.speaking = false;
-        this.emit('error', payload);
+        this.emitter.emit('error', payload);
       }),
-      this.active.on('paused', (payload) => this.emit('paused', payload)),
+      this.active.on('paused', (payload) => this.emitter.emit('paused', payload)),
     ];
     this.unbind = () => {
       for (const unsubscribe of subscriptions) unsubscribe();
     };
-  }
-
-  private emit<K extends keyof SpeakerEvents>(event: K, payload: SpeakerEvents[K]): void {
-    for (const handler of this.listeners.get(event) ?? []) {
-      (handler as (value: SpeakerEvents[K]) => void)(payload);
-    }
   }
 }

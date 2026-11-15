@@ -94,7 +94,17 @@ const LOCAL_SYNTHESIZE_TIMEOUT_MS = 180_000;
  */
 const MAX_PREFETCH_QUEUE = 8;
 
-/** Legacy helper retained for callers that do not have a provider instance. */
+/**
+ * How many prefetches may run at once for a config.
+ *
+ * Cloud services accept two in parallel; an `openai-compat` endpoint on
+ * loopback is one local process, and saturating it would slow down the sentence
+ * that is actually being played.
+ *
+ * A ceiling on top of the provider's own declared concurrency, not a substitute
+ * for it: the provider knows what its service tolerates, and this only keeps a
+ * service that declares more from taking the reader's bandwidth.
+ */
 export function prefetchConcurrency(config: ProviderConfig): number {
   if (config.provider === 'openai-compat') {
     try {
@@ -114,13 +124,7 @@ interface PrefetchItem {
   voiceId: string;
 }
 
-/**
- * How many prefetches may run at once for a config.
- *
- * Cloud services accept two in parallel; an `openai-compat` endpoint on
- * loopback is one local process, and saturating it would slow down the sentence
- * that is actually being played.
- */
+/** The offscreen document's audio pipeline: cache, player, timeouts. */
 export class AudioWorker {
   private readonly providers: ReadonlyMap<ProviderId, Provider>;
   private readonly cache: AudioCache;
@@ -205,14 +209,17 @@ export class AudioWorker {
     }
   }
 
-  /** Abandon whatever is in flight and silence the player. */
+  /**
+   * Abandon whatever is in flight and silence the player.
+   *
+   * A stop is a supersede plus forgetting the sentence that was playing: the
+   * next `synthesize` has nothing to report a pause for, so `currentId` goes
+   * too. Everything else is shared, and synchronous, so the order the two
+   * halves happen in cannot be observed.
+   */
   stop(): void {
-    this.generation++;
-    this.inFlight?.abort();
-    this.inFlight = null;
-    this.player.stop();
+    this.supersede();
     this.currentId = null;
-    this.cancelPrefetches();
   }
 
   private async synthesize(
@@ -221,36 +228,18 @@ export class AudioWorker {
     const generation = this.supersede();
     const controller = new AbortController();
     this.inFlight = controller;
-
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, this.timeoutFor(command.config.provider));
-
-    const identity: CacheIdentity = {
-      text: command.text,
-      voiceId: command.voiceId,
-      config: command.config,
-    };
+    const timeout = this.withTimeout(controller, command.config.provider);
 
     try {
-      const key = await this.cacheKey(identity);
-      let result = key === null ? undefined : await this.readCache(key);
-
-      if (!result) {
-        result = await this.raceAbort(
-          this.providerFor(command.config.provider).synthesize(
-            { text: command.text, voiceId: command.voiceId, signal: controller.signal },
-            command.config
-          ),
-          controller.signal
-        );
-        if (this.stale(generation)) return undefined;
-        if (key !== null) await this.writeCache(key, result);
-      }
-
-      if (this.stale(generation)) return undefined;
+      const result = await this.fetchOrSynthesize(
+        { text: command.text, voiceId: command.voiceId, config: command.config },
+        controller,
+        () => this.stale(generation),
+        { requireKey: false }
+      );
+      // The cache write is the last await inside, so a seek that landed during
+      // it still has to win over this result.
+      if (!result || this.stale(generation)) return undefined;
 
       const info = await this.load(command.id, result);
       if (!info) return undefined;
@@ -263,16 +252,87 @@ export class AudioWorker {
       // A superseded request fails with an abort; that is the point of
       // superseding it, not something to report.
       if (this.stale(generation)) return undefined;
-      if (timedOut) {
+      if (timeout.timedOut()) {
         this.emitError(command.id, 'network-error', 'the provider did not answer in time');
         return undefined;
       }
       this.emitError(command.id, errorCode(error), errorMessage(error));
       return undefined;
     } finally {
-      clearTimeout(timer);
+      timeout.clear();
       if (this.inFlight === controller) this.inFlight = null;
     }
+  }
+
+  /**
+   * The cache path shared by playback and prefetching: key, read, synthesize on
+   * a miss, write.
+   *
+   * The read comes first so a sentence heard a second time costs nothing, and
+   * the write happens only after `stale()` says the result is still wanted — a
+   * seek during a slow provider call must not leave its audio in the cache as
+   * if it belonged to the sentence now playing.
+   *
+   * Returns null when the caller's work is no longer wanted. `requireKey` is
+   * the one difference between the two callers: caching is an optimisation
+   * during playback, so a synthesis runs even when no key can be computed,
+   * while a prefetch exists only to fill the cache and gives up.
+   */
+  private async fetchOrSynthesize(
+    request: { text: string; voiceId: string; config: ProviderConfig },
+    controller: AbortController,
+    stale: () => boolean,
+    options: { requireKey: boolean }
+  ): Promise<SynthesisResult | null> {
+    const { text, voiceId, config } = request;
+    const identity: CacheIdentity = { text, voiceId, config };
+
+    const key = await this.cacheKey(identity);
+    if (key === null && options.requireKey) return null;
+    if (stale()) return null;
+
+    if (key !== null) {
+      const cached = await this.readCache(key);
+      if (cached) return cached;
+      if (stale()) return null;
+    }
+
+    const result = await this.raceAbort(
+      this.providerFor(config.provider).synthesize(
+        { text, voiceId, signal: controller.signal },
+        config
+      ),
+      controller.signal
+    );
+    if (stale()) return null;
+
+    if (key !== null) await this.writeCache(key, result);
+    return result;
+  }
+
+  /**
+   * Abandon `controller` when the provider's budget runs out.
+   *
+   * A timeout is an abort, so the caller cannot tell it from a supersede by
+   * looking at the error: `timedOut()` is the only thing that separates "the
+   * provider never answered" from "the reader moved on", and the two are
+   * reported differently. `clear()` must run on every path, or the timer keeps
+   * the worker's event loop alive long after the request settled.
+   */
+  private withTimeout(
+    controller: AbortController,
+    provider: ProviderId
+  ): { timedOut: () => boolean; clear: () => void } {
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.timeoutFor(provider));
+
+    return {
+      timedOut: () => timedOut,
+      clear: () => clearTimeout(timer),
+    };
   }
 
   private async play(id: string, startTimeMs: number): Promise<void> {
@@ -344,40 +404,23 @@ export class AudioWorker {
     item: PrefetchItem,
     config: ProviderConfig
   ): Promise<void> {
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, this.timeoutFor(config.provider));
+    const timeout = this.withTimeout(controller, config.provider);
 
     try {
-      const identity: CacheIdentity = { text: item.text, voiceId: item.voiceId, config };
-      const key = await this.cacheKey(identity);
-      if (key === null || this.prefetchStale(batch)) return;
-
-      // Already warm: synthesizing again would spend a provider call to store
-      // the same bytes, which is what makes a second read of an article cheap.
-      if (await this.readCache(key)) return;
-      if (this.prefetchStale(batch)) return;
-
-      const result = await this.raceAbort(
-        this.providerFor(config.provider).synthesize(
-          { text: item.text, voiceId: item.voiceId, signal: controller.signal },
-          config
-        ),
-        controller.signal
+      await this.fetchOrSynthesize(
+        { text: item.text, voiceId: item.voiceId, config },
+        controller,
+        () => this.prefetchStale(batch),
+        { requireKey: true }
       );
-      if (this.prefetchStale(batch)) return;
-
-      await this.writeCache(key, result);
     } catch (error) {
       // A cancelled prefetch is the point of cancelling it, and a failure is
       // silent: this must never surface as a playback error.
       if (this.prefetchStale(batch)) return;
-      if (timedOut) console.warn('[SayLoud] a prefetch did not answer in time');
+      if (timeout.timedOut()) console.warn('[SayLoud] a prefetch did not answer in time');
       else if (!isAbortError(error)) console.warn('[SayLoud] a prefetch failed', error);
     } finally {
-      clearTimeout(timer);
+      timeout.clear();
     }
   }
 
@@ -419,7 +462,13 @@ export class AudioWorker {
     });
   }
 
-  /** Abort the request in flight and return the new generation. */
+  /**
+   * Abort the request in flight, silence the player, and return the new
+   * generation.
+   *
+   * `stop()` is this plus forgetting `currentId`; every other caller has work
+   * of its own to install and only needs the counter.
+   */
   private supersede(): number {
     this.generation++;
     this.inFlight?.abort();

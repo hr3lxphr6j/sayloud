@@ -60,31 +60,15 @@ export class SnapshotStore {
     try {
       // Try session storage first (fast path)
       const stored = await this.session.get(SNAPSHOT_KEY);
-      const hasKey = SNAPSHOT_KEY in stored;
-      console.log('[SayLoud] snapshot session storage query', {
-        hasKey,
-        valueType: hasKey ? typeof stored[SNAPSHOT_KEY] : 'undefined',
-      });
-
       let snapshot = parseSnapshot(stored[SNAPSHOT_KEY], 'session');
 
       // Fallback to local storage if session is empty
       if (!snapshot) {
-        console.log('[SayLoud] session storage empty, trying local backup');
         const backup = await this.local.get(SNAPSHOT_BACKUP_KEY);
-        const hasBackup = SNAPSHOT_BACKUP_KEY in backup;
-        console.log('[SayLoud] snapshot local storage query', {
-          hasKey: hasBackup,
-          valueType: hasBackup ? typeof backup[SNAPSHOT_BACKUP_KEY] : 'undefined',
-        });
-
         snapshot = parseSnapshot(backup[SNAPSHOT_BACKUP_KEY], 'local');
 
         // Restore to session storage for future fast access
-        if (snapshot) {
-          console.log('[SayLoud] restored snapshot from local backup to session');
-          await this.session.set({ [SNAPSHOT_KEY]: snapshot });
-        }
+        if (snapshot) await this.session.set({ [SNAPSHOT_KEY]: snapshot });
       }
 
       return snapshot;
@@ -107,9 +91,9 @@ function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnap
   const raw = value;
 
   // Backward compatibility: if the old format (with sentences array) is found,
-  // convert it to the new format.
+  // convert it to the new format. The sentences exist only here: what is stored
+  // is their statistics, so the counts are computed rather than read.
   if (Array.isArray(raw.sentences)) {
-    console.log(`[SayLoud] migrating old snapshot format from ${source}`);
     const sentences: EngineSentence[] = [];
     let skipped = 0;
     for (const item of raw.sentences) {
@@ -133,29 +117,10 @@ function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnap
       return null;
     }
 
-    // Convert to new format
-    const charsTotal = sentences.reduce((sum, s) => sum + s.text.length, 0);
-    const snapshot = {
-      tabId: readNumber(raw.tabId, -1),
-      docId: readString(raw.docId, ''),
+    return readSnapshot(raw, {
       sentenceCount: sentences.length,
-      charsTotal,
-      index: readNumber(raw.index, 0),
-      resumeOffset: readNumber(raw.resumeOffset, 0),
-      voice: readString(raw.voice, ''),
-      rate: readNumber(raw.rate, 1),
-      charsRead: readNumber(raw.charsRead, 0),
-      resumeTimeMs: readNumber(raw.resumeTimeMs, 0),
-    };
-
-    console.log(`[SayLoud] migrated snapshot from ${source}`, {
-      tabId: snapshot.tabId,
-      docId: snapshot.docId,
-      sentenceCount: snapshot.sentenceCount,
-      charsTotal: snapshot.charsTotal,
+      charsTotal: sentences.reduce((sum, s) => sum + s.text.length, 0),
     });
-
-    return snapshot;
   }
 
   // New format: just statistics, no sentences
@@ -168,11 +133,25 @@ function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnap
     return null;
   }
 
-  const snapshot = {
+  return readSnapshot(raw, { sentenceCount, charsTotal });
+}
+
+/**
+ * Build the snapshot both formats end up as.
+ *
+ * Everything but the two counts is stored the same way in both, so the counts
+ * are the only thing a caller has to supply: the old format had to count the
+ * sentences it was given, the new one reads what was written.
+ */
+function readSnapshot(
+  raw: Record<string, unknown>,
+  counts: { sentenceCount: number; charsTotal: number }
+): SessionSnapshot {
+  return {
     tabId: readNumber(raw.tabId, -1),
     docId: readString(raw.docId, ''),
-    sentenceCount,
-    charsTotal,
+    sentenceCount: counts.sentenceCount,
+    charsTotal: counts.charsTotal,
     index: readNumber(raw.index, 0),
     resumeOffset: readNumber(raw.resumeOffset, 0),
     voice: readString(raw.voice, ''),
@@ -180,16 +159,6 @@ function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnap
     charsRead: readNumber(raw.charsRead, 0),
     resumeTimeMs: readNumber(raw.resumeTimeMs, 0),
   };
-
-  console.log(`[SayLoud] snapshot loaded successfully from ${source}`, {
-    tabId: snapshot.tabId,
-    docId: snapshot.docId,
-    sentenceCount: snapshot.sentenceCount,
-    index: snapshot.index,
-    resumeTimeMs: snapshot.resumeTimeMs,
-  });
-
-  return snapshot;
 }
 
 function readNumber(value: unknown, fallback: number): number {

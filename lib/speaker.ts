@@ -1,3 +1,5 @@
+import { SpeakerEmitter } from './speaker-emitter';
+
 /** Structural view of the parts of `chrome.tts` this module uses. */
 export interface TtsEventLike {
   type: string;
@@ -109,8 +111,6 @@ export interface Speaker {
   dispose(): void;
 }
 
-type Handler = (payload: never) => void;
-
 /**
  * Wraps `chrome.tts`.
  *
@@ -121,7 +121,7 @@ type Handler = (payload: never) => void;
  */
 export class BrowserSpeaker implements Speaker {
   private generation = 0;
-  private readonly listeners = new Map<keyof SpeakerEvents, Set<Handler>>();
+  private readonly emitter = new SpeakerEmitter();
 
   constructor(private readonly tts: TtsApi) {}
 
@@ -154,49 +154,35 @@ export class BrowserSpeaker implements Speaker {
     event: K,
     handler: (payload: SpeakerEvents[K]) => void
   ): () => void {
-    let handlers = this.listeners.get(event);
-    if (!handlers) {
-      handlers = new Set();
-      this.listeners.set(event, handlers);
-    }
-    handlers.add(handler as Handler);
-    return () => {
-      handlers.delete(handler as Handler);
-    };
+    return this.emitter.on(event, handler);
   }
 
   dispose(): void {
     this.stop();
-    this.listeners.clear();
+    this.emitter.clear();
   }
 
   private handleEvent(event: TtsEventLike, textLength: number): void {
     switch (event.type) {
       case 'start':
-        this.emit('start', undefined);
+        this.emitter.emit('start', undefined);
         return;
       case 'end':
-        this.emit('end', undefined);
+        this.emitter.emit('end', undefined);
         return;
       case 'error':
-        this.emit('error', event.errorMessage ?? 'browser voice failed');
+        this.emitter.emit('error', event.errorMessage ?? 'browser voice failed');
         return;
       case 'word': {
         const span = wordSpan(event, textLength);
         // No usable length means we cannot place the word without guessing,
         // and a timing is never estimated. Sentence highlight carries on.
-        if (span) this.emit('word', span);
+        if (span) this.emitter.emit('word', span);
         return;
       }
       default:
         // interrupted / cancelled / sentence / marker / pause / resume
         return;
-    }
-  }
-
-  private emit<K extends keyof SpeakerEvents>(event: K, payload: SpeakerEvents[K]): void {
-    for (const handler of this.listeners.get(event) ?? []) {
-      (handler as (value: SpeakerEvents[K]) => void)(payload);
     }
   }
 }

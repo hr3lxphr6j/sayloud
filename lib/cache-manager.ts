@@ -294,23 +294,7 @@ export class L2Cache {
     const db = await this.ready();
     const tx = db.transaction(STORE, 'readwrite');
     const done = transactionDone(tx);
-    const cursor = tx.objectStore(STORE).index(TIMESTAMP_INDEX).openCursor();
-
-    await new Promise<void>((resolve, reject) => {
-      cursor.onsuccess = () => {
-        const row = cursor.result;
-        if (!row || timestampOf(row.value) >= cutoff) {
-          resolve();
-          return;
-        }
-        this.bytes -= storedBytes(row.value);
-        const key = storedKey(row.value);
-        if (key !== null) this.keys.delete(key);
-        row.delete();
-        row.continue();
-      };
-      cursor.onerror = () => reject(cursor.error ?? new Error('the audio cache is unreadable'));
-    });
+    await this.deleteOldestWhile(tx, (value) => timestampOf(value) >= cutoff);
     await done;
   }
 
@@ -385,12 +369,29 @@ export class L2Cache {
     const db = await this.ready();
     const tx = db.transaction(STORE, 'readwrite');
     const done = transactionDone(tx);
+    await this.deleteOldestWhile(tx, () => this.bytes <= this.maxBytes);
+    await done;
+  }
+
+  /**
+   * Delete entries from the oldest end until `stop` is satisfied.
+   *
+   * Both eviction paths walk the timestamp index from the same end and do the
+   * same bookkeeping, and differ only in when to stop — a cut-off age for
+   * `expire()`, the size budget for `prune()` — so only that lives with the
+   * caller. `stop` is asked before every row, including the first, which is what
+   * makes an entry that is already recent enough end the scan where it stands.
+   */
+  private async deleteOldestWhile(
+    tx: IDBTransaction,
+    stop: (value: unknown) => boolean
+  ): Promise<void> {
     const cursor = tx.objectStore(STORE).index(TIMESTAMP_INDEX).openCursor();
 
     await new Promise<void>((resolve, reject) => {
       cursor.onsuccess = () => {
         const row = cursor.result;
-        if (!row || this.bytes <= this.maxBytes) {
+        if (!row || stop(row.value)) {
           resolve();
           return;
         }
@@ -402,7 +403,6 @@ export class L2Cache {
       };
       cursor.onerror = () => reject(cursor.error ?? new Error('the audio cache is unreadable'));
     });
-    await done;
   }
 }
 

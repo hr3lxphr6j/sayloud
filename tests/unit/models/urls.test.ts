@@ -6,6 +6,7 @@ import {
   customBase,
   HUGGINGFACE_HOST,
   isCanonicalModelUrl,
+  isModelSource,
   isOurs,
   isVoiceUrl,
   KOKORO_VOICES_CACHE,
@@ -175,5 +176,41 @@ describe('the predicates', () => {
   it('knows the shape of the host enum the UI offers', () => {
     expect([...MODEL_HOSTS]).toEqual(['auto', 'huggingface', 'modelscope', 'custom']);
     expect(MODELSCOPE_HOST).toBe('https://modelscope.cn/models/');
+  });
+});
+
+describe('isModelSource', () => {
+  it('accepts both mirrors without a custom url', () => {
+    expect(isModelSource({ host: 'huggingface' })).toBe(true);
+    expect(isModelSource({ host: 'modelscope' })).toBe(true);
+  });
+
+  it('accepts a custom source only over https', () => {
+    // The source is handed straight to `fetch` on the other side of the
+    // message, so an http mirror would download the model in the clear. This
+    // stricter rule is the one both protocols use.
+    expect(isModelSource({ host: 'custom', customHostUrl: 'https://mirror.test' })).toBe(true);
+    expect(isModelSource({ host: 'custom', customHostUrl: 'http://mirror.test' })).toBe(false);
+    expect(isModelSource({ host: 'custom' })).toBe(false);
+    expect(isModelSource({ host: 'custom', customHostUrl: 7 })).toBe(false);
+  });
+
+  it('accepts a revision only when it is a string or absent', () => {
+    expect(
+      isModelSource({ host: 'custom', customHostUrl: 'https://mirror.test', revision: 'dev' })
+    ).toBe(true);
+    expect(
+      isModelSource({ host: 'custom', customHostUrl: 'https://mirror.test', revision: undefined })
+    ).toBe(true);
+    expect(
+      isModelSource({ host: 'custom', customHostUrl: 'https://mirror.test', revision: 1 })
+    ).toBe(false);
+  });
+
+  it('refuses an unknown host or a value that is not an object', () => {
+    expect(isModelSource({ host: 'auto' })).toBe(false);
+    expect(isModelSource({ host: 'elsewhere' })).toBe(false);
+    expect(isModelSource(null)).toBe(false);
+    expect(isModelSource('huggingface')).toBe(false);
   });
 });

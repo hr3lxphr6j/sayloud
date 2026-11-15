@@ -19,7 +19,7 @@
 import type { ProviderErrorCode } from '../providers/errors';
 import type { Device } from './device';
 import type { DeviceInfo } from './engine';
-import type { ModelSource } from './urls';
+import { isModelSource, type ModelSource } from './urls';
 import { isMessageId, messageTypeOf } from './worker-message';
 
 /**
@@ -144,15 +144,6 @@ export function isWorkerRequest(value: unknown): value is WorkerRequest {
     default:
       return true;
   }
-}
-
-/** A resolved source, as it can arrive from another context. */
-function isModelSource(value: unknown): value is ModelSource {
-  if (typeof value !== 'object' || value === null) return false;
-  const host = (value as { host?: unknown }).host;
-  if (host === 'huggingface' || host === 'modelscope') return true;
-  if (host !== 'custom') return false;
-  return typeof (value as { customHostUrl?: unknown }).customHostUrl === 'string';
 }
 
 /** True for a well-formed reply. */

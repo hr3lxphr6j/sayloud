@@ -12,7 +12,8 @@
  * boundary: a stale document from a previous version, or any code that can post
  * to the extension's runtime, can put anything on this channel.
  */
-import type { ModelSource } from './models/urls';
+import { isModelSource, type ModelSource } from './models/urls';
+import { messageTypeOf } from './models/worker-message';
 import type { ProviderErrorCode } from './providers/errors';
 import type { ProviderConfig } from './providers/types';
 import type { CacheSettings } from './settings-store';
@@ -87,7 +88,7 @@ export type CacheClearedMessage = typeof CACHE_CLEARED;
 
 /** True for the cache-cleared broadcast. */
 export function isCacheCleared(value: unknown): value is CacheClearedMessage {
-  return typeOf(value) === CACHE_CLEARED.type;
+  return messageTypeOf(value) === CACHE_CLEARED.type;
 }
 
 /**
@@ -112,7 +113,7 @@ const CACHE_POLICY = 'cache-policy';
 
 /** True for the offscreen document's request for the current cache policy. */
 export function isCachePolicyRequest(value: unknown): value is CachePolicyRequest {
-  return typeOf(value) === CACHE_POLICY_REQUEST.type;
+  return messageTypeOf(value) === CACHE_POLICY_REQUEST.type;
 }
 
 /**
@@ -139,7 +140,7 @@ const MODEL_SOURCE = 'model-source';
 
 /** True for the offscreen document's request for a download source. */
 export function isModelSourceRequest(value: unknown): value is ModelSourceRequest {
-  return typeOf(value) === MODEL_SOURCE_REQUEST.type;
+  return messageTypeOf(value) === MODEL_SOURCE_REQUEST.type;
 }
 
 /**
@@ -149,20 +150,9 @@ export function isModelSourceRequest(value: unknown): value is ModelSourceReques
  * malformed source would be handed straight to `fetch`.
  */
 export function isModelSourceMessage(value: unknown): value is ModelSourceMessage {
-  if (typeOf(value) !== MODEL_SOURCE) return false;
+  if (messageTypeOf(value) !== MODEL_SOURCE) return false;
   const message = value as { source?: unknown; allowFallback?: unknown };
-  if (typeof message.allowFallback !== 'boolean') return false;
-
-  const source = message.source;
-  if (typeof source !== 'object' || source === null) return false;
-  const { host, customHostUrl, revision } = source as Record<string, unknown>;
-  if (host === 'huggingface' || host === 'modelscope') return true;
-  if (host !== 'custom') return false;
-  return (
-    typeof customHostUrl === 'string' &&
-    customHostUrl.startsWith('https://') &&
-    (revision === undefined || typeof revision === 'string')
-  );
+  return typeof message.allowFallback === 'boolean' && isModelSource(message.source);
 }
 
 /**
@@ -174,7 +164,7 @@ export function isModelSourceMessage(value: unknown): value is ModelSourceMessag
  * number.
  */
 export function isCachePolicyMessage(value: unknown): value is CachePolicyMessage {
-  if (typeOf(value) !== CACHE_POLICY) return false;
+  if (messageTypeOf(value) !== CACHE_POLICY) return false;
   const cache = (value as { cache?: unknown }).cache;
   if (typeof cache !== 'object' || cache === null) return false;
   const { persist, maxBytes } = cache as { persist?: unknown; maxBytes?: unknown };
@@ -218,7 +208,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set([
  * provider config here would duplicate that schema.
  */
 export function isOffscreenCommand(value: unknown): value is OffscreenCommand {
-  const type = typeOf(value);
+  const type = messageTypeOf(value);
   if (type === null || !COMMAND_TYPES.has(type)) return false;
   const message = value as Record<string, unknown>;
 
@@ -252,7 +242,7 @@ export function isOffscreenCommand(value: unknown): value is OffscreenCommand {
 
 /** True for a well-formed event. */
 export function isOffscreenEvent(value: unknown): value is OffscreenEvent {
-  const type = typeOf(value);
+  const type = messageTypeOf(value);
   if (type === null || !EVENT_TYPES.has(type)) return false;
   const message = value as Record<string, unknown>;
 
@@ -272,13 +262,6 @@ export function isOffscreenEvent(value: unknown): value is OffscreenEvent {
     default:
       return true;
   }
-}
-
-/** The `type` field, when the value is an object that has one. */
-function typeOf(value: unknown): string | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const type = (value as { type?: unknown }).type;
-  return typeof type === 'string' ? type : null;
 }
 
 function isPrefetchItem(value: unknown): boolean {

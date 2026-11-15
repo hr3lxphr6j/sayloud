@@ -7,7 +7,8 @@ import { modelSourceMessage } from '~/lib/models/source-channel';
 import { ModelStore } from '~/lib/models/store';
 import { isCachePolicyRequest, isModelSourceRequest } from '~/lib/offscreen-protocol';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
-import { syncPdfIntercept } from '~/lib/pdf/dnr';
+import { PDF_VIEWER_PATH, syncPdfIntercept } from '~/lib/pdf/dnr';
+import { isPdfBytesRequest, PDF_BYTES, PDF_MISSING } from '~/lib/pdf/protocol';
 import { isOwnViewerUrl, isPdfTab, stagePdfBytes, takePdfBytes } from '~/lib/pdf/tab';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
@@ -145,9 +146,7 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!isPdfBytesRequest(message)) return;
     const bytes = takePdfBytes(message.id);
-    sendResponse(
-      bytes ? { type: 'pdf-bytes', bytes: encodeBase64(bytes) } : { type: 'pdf-missing' }
-    );
+    sendResponse(bytes ? { type: PDF_BYTES, bytes: encodeBase64(bytes) } : { type: PDF_MISSING });
     return true;
   });
 
@@ -339,7 +338,7 @@ export default defineBackground(() => {
     }
 
     const hash = bytes ? stagePdfBytes(bytes) : MISSING_PDF;
-    await browser.tabs.create({ url: `${browser.runtime.getURL('/pdf-viewer.html')}#${hash}` });
+    await browser.tabs.create({ url: `${browser.runtime.getURL(PDF_VIEWER_PATH)}#${hash}` });
   }
 
   /**
@@ -423,13 +422,6 @@ function decodeBase64(encoded: string): ArrayBuffer {
     octets[index] = binary.charCodeAt(index);
   }
   return octets.buffer;
-}
-
-/** The viewer asking for the bytes under a hash id. */
-function isPdfBytesRequest(message: unknown): message is { type: 'pdf-bytes'; id: string } {
-  if (typeof message !== 'object' || message === null) return false;
-  const candidate = message as { type?: unknown; id?: unknown };
-  return candidate.type === 'pdf-bytes' && typeof candidate.id === 'string';
 }
 
 /** `SessionRouter` takes a narrow port interface so it stays testable. */

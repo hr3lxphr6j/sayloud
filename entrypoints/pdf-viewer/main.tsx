@@ -41,6 +41,7 @@ import {
   retryPdfDocument,
 } from '~/lib/pdf/embed/document';
 import { EmbedHighlightLayer } from '~/lib/pdf/embed/highlight';
+import { isPdfBytesResponse, PDF_BYTES } from '~/lib/pdf/protocol';
 import { buildReadingDoc, type ReadingDoc, type ReadingSentence } from '~/lib/reading-doc';
 import { DEFAULT_SETTINGS, SettingsStore, type UiLang } from '~/lib/settings-store';
 import '~/entrypoints/reader.content/styles.css';
@@ -702,10 +703,13 @@ function requestBytes(id: string): Promise<ArrayBuffer | null> {
 
     try {
       void browser.runtime
-        .sendMessage({ type: 'pdf-bytes', id })
+        .sendMessage({ type: PDF_BYTES, id })
         .then((reply: unknown) => {
-          const message = reply as { type?: string; bytes?: unknown } | undefined;
-          finish(message?.type === 'pdf-bytes' ? toArrayBuffer(message.bytes) : null);
+          finish(
+            isPdfBytesResponse(reply) && reply.type === PDF_BYTES
+              ? toArrayBuffer(reply.bytes)
+              : null
+          );
         })
         .catch(() => finish(null));
     } catch {

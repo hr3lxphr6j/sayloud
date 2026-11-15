@@ -14,6 +14,20 @@ export interface EngineSentence {
  */
 export type EngineError = 'no-content' | 'no-voice' | 'tts-error' | `no-voice-selected:${string}`;
 
+/**
+ * True for the one engine error that is produced outside the engine.
+ *
+ * `SpeakerRouter.refresh()` runs at startup, before any sentence exists, and is
+ * where a cloud provider with no voice chosen is discovered — it names the
+ * provider so the panel can link to that provider's settings. Every other
+ * `EngineError` is raised inside the engine, where its cause is already known.
+ * The reader also asks this of a status it received rather than of a thrown
+ * error, so the predicate lives next to the type it narrows.
+ */
+export function isVoiceSelectionError(message: string): message is `no-voice-selected:${string}` {
+  return message.startsWith('no-voice-selected:');
+}
+
 export interface EngineStatus {
   phase: EnginePhase;
   index: number;

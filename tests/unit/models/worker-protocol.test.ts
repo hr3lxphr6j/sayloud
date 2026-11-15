@@ -76,6 +76,27 @@ describe('isWorkerRequest', () => {
     expect(isWorkerRequest({ type: 'count', id: 1 })).toBe(false);
     expect(isWorkerRequest({ type: 'count', id: 1, phonemes: 7 })).toBe(false);
   });
+
+  it('applies the same strict source rule as the offscreen document', () => {
+    const init = (source: unknown): unknown => ({
+      type: 'init',
+      id: 1,
+      source,
+      allowFallback: false,
+    });
+    expect(isWorkerRequest(init({ host: 'custom', customHostUrl: 'https://mirror.test' }))).toBe(
+      true
+    );
+    // The offscreen document refuses an http mirror because it would be
+    // fetched in the clear. Accepting it here would deliver a message whose
+    // only reader silently drops it.
+    expect(isWorkerRequest(init({ host: 'custom', customHostUrl: 'http://mirror.test' }))).toBe(
+      false
+    );
+    expect(
+      isWorkerRequest(init({ host: 'custom', customHostUrl: 'https://mirror.test', revision: 1 }))
+    ).toBe(false);
+  });
 });
 
 describe('isWorkerReply', () => {

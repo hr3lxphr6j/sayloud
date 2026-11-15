@@ -5,6 +5,7 @@ import {
   isCacheCleared,
   isCachePolicyMessage,
   isCachePolicyRequest,
+  isModelSourceMessage,
   isOffscreenCommand,
   isOffscreenEvent,
   type OffscreenCommand,
@@ -135,6 +136,43 @@ describe('CACHE_CLEARED', () => {
 
   it('is not a command, so the executor never handles it', () => {
     expect(isOffscreenCommand(CACHE_CLEARED)).toBe(false);
+  });
+});
+
+describe('isModelSourceMessage', () => {
+  const reply = (source: unknown): unknown => ({
+    type: 'model-source',
+    source,
+    allowFallback: false,
+  });
+
+  it('accepts the sources the worker resolves', () => {
+    expect(isModelSourceMessage(reply({ host: 'huggingface' }))).toBe(true);
+    expect(isModelSourceMessage(reply({ host: 'modelscope' }))).toBe(true);
+    expect(
+      isModelSourceMessage(reply({ host: 'custom', customHostUrl: 'https://mirror.test' }))
+    ).toBe(true);
+  });
+
+  it.each([
+    ['an http mirror', { host: 'custom', customHostUrl: 'http://mirror.test' }],
+    ['a custom source without a url', { host: 'custom' }],
+    [
+      'a revision that is not a string',
+      { host: 'custom', customHostUrl: 'https://m', revision: 1 },
+    ],
+    ['an unresolved host', { host: 'auto' }],
+    ['a source that is not an object', 'https://mirror.test'],
+  ])('refuses %s', (_label, source) => {
+    // These reach `fetch` in the document, so the message is checked here
+    // rather than trusted.
+    expect(isModelSourceMessage(reply(source))).toBe(false);
+  });
+
+  it('refuses a reply without the fallback flag', () => {
+    expect(isModelSourceMessage({ type: 'model-source', source: { host: 'huggingface' } })).toBe(
+      false
+    );
   });
 });
 

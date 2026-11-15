@@ -1,26 +1,15 @@
-import type {
-  EngineCommand,
-  EngineEvent,
-  EnginePhase,
-  EngineSentence,
-  EngineStatus,
-  SessionSnapshot,
+import {
+  type EngineCommand,
+  type EngineError,
+  type EngineEvent,
+  type EnginePhase,
+  type EngineSentence,
+  type EngineStatus,
+  isVoiceSelectionError,
+  type SessionSnapshot,
 } from './protocol';
+import { MAX_RATE, MAX_VOLUME, MIN_RATE, MIN_VOLUME } from './settings-store';
 import type { PrefetchRequest, Speaker } from './speaker';
-
-export type EngineError = NonNullable<EngineStatus['error']>;
-
-/**
- * True for the one engine error that is produced outside the engine.
- *
- * `SpeakerRouter.refresh()` runs at startup, before any sentence exists, and is
- * where a cloud provider with no voice chosen is discovered — it names the
- * provider so the panel can link to that provider's settings. Every other
- * `EngineError` is raised in here, where its cause is already known.
- */
-export function isVoiceSelectionError(message: string): message is `no-voice-selected:${string}` {
-  return message.startsWith('no-voice-selected:');
-}
 
 /** Resolve the voice name to use for a language, or undefined when none fits. */
 export type VoiceResolver = (lang: string) => string | undefined;
@@ -34,11 +23,6 @@ export interface EngineDeps {
   now?: () => number;
 }
 
-const MIN_RATE = 0.5;
-const MAX_RATE = 3;
-/** The engine's own range; the settings store offers the same one. */
-const MIN_VOLUME = 0;
-const MAX_VOLUME = 1.5;
 /** Below this, a rate sample is too noisy to publish. */
 const RATE_SAMPLE_MS = 250;
 
@@ -129,7 +113,7 @@ export class PlaybackEngine {
 
   /** Clear a configuration error after the selected voice/provider is ready. */
   clearConfigurationError(): void {
-    if (this.error?.startsWith('no-voice-selected:')) {
+    if (this.error !== undefined && isVoiceSelectionError(this.error)) {
       this.clearError();
       this.setPhase(this.sentences.length > 0 ? 'paused' : 'idle');
     }
@@ -262,7 +246,7 @@ export class PlaybackEngine {
   }
 
   load(sentences: EngineSentence[], startIndex = 0, rate = 1, resume = false): void {
-    if (this.error?.startsWith('no-voice-selected:')) return;
+    if (this.error !== undefined && isVoiceSelectionError(this.error)) return;
     this.speaker.stop();
     this.resetTiming();
     this.sentences = [...sentences];

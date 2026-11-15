@@ -7,7 +7,13 @@
  * service worker. That handoff is a module-level map rather than storage: the
  * bytes are worth nothing after the viewer has them, and `storage` would keep a
  * copy of every PDF on disk.
+ *
+ * The path comes from `dnr.ts`: the rule's redirect target and this check have
+ * to agree, and a viewer renamed in one place but not the other would make the
+ * extension treat its own page as a readable document.
  */
+
+import { PDF_VIEWER_PATH } from './dnr';
 
 /** How long staged bytes wait for the viewer before they are dropped. */
 export const PDF_BYTES_TTL_MS = 60_000;
@@ -44,7 +50,7 @@ export function isPdfTab(tab: { url?: string; title?: string }): boolean {
 
 /** Whether the tab is already SayLoud's own PDF viewer. */
 export function isOwnViewerUrl(url: string): boolean {
-  return url.startsWith('chrome-extension://') && url.includes('pdf-viewer.html');
+  return url.startsWith('chrome-extension://') && url.includes(PDF_VIEWER_PATH);
 }
 
 /** Stage bytes for the viewer and return the id that claims them. */

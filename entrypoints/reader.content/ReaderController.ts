@@ -12,7 +12,12 @@ import { extractBlocks } from '~/lib/extractor';
 import { Highlighter, installHighlightStyles } from '~/lib/highlighter';
 import { createTranslator, resolveLang, type Translator } from '~/lib/i18n';
 import { PORT_NAME } from '~/lib/port';
-import type { EngineCommand, EngineEvent, EngineStatus } from '~/lib/protocol';
+import {
+  type EngineCommand,
+  type EngineEvent,
+  type EngineStatus,
+  isVoiceSelectionError,
+} from '~/lib/protocol';
 import { buildReadingDoc, type ReadingDoc } from '~/lib/reading-doc';
 import type { Settings, SettingsStore } from '~/lib/settings-store';
 import { type CaptionState, CaptionWindow } from './CaptionWindow';
@@ -780,7 +785,7 @@ function errorFor(status: EngineStatus): ReaderError | null {
   if (error === 'no-content') return 'no-content';
   // The provider name has nowhere to go at this tier, and does not need to:
   // the hint tells the user to pick a voice, not which service to pick it in.
-  if (error.startsWith('no-voice-selected:')) return 'no-voice-selected';
+  if (isVoiceSelectionError(error)) return 'no-voice-selected';
   return null;
 }
 

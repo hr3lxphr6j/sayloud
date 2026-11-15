@@ -276,6 +276,11 @@ pub fn plan<'a>(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Span<'a> {
     start: usize,
+    /// How many characters the span has, which is at least one.
+    ///
+    /// The rules read a word's last character as `length - 1`, so a span of no
+    /// characters would underflow rather than read nothing; `pre_merge` asserts
+    /// the invariant it builds spans against.
     length: usize,
     tag: &'a str,
 }
@@ -292,6 +297,19 @@ impl Span<'_> {
     }
 }
 
+/// Where jieba's search mode breaks a word, and what it calls the two halves.
+///
+/// [`SegmenterZh::split_word`](crate::g2p::zh::segmenter::SegmenterZh::split_word)'s
+/// answer in one value, so the rules for one word ask the segmenter once between
+/// them.
+#[derive(Debug, Clone, Copy)]
+struct Split<'a> {
+    /// How many characters the first half has; the second half starts after it.
+    first: usize,
+    /// The names `_split_word` calls the two halves by, in order.
+    names: [&'a str; 2],
+}
+
 /// `tone_sandhi.py`'s `pre_merge_for_modify`, in its order.
 ///
 /// Six passes, and the order matters: 不 and 一 are glued on first so that the
@@ -301,6 +319,7 @@ fn pre_merge<'a>(characters: &[char], words: &[TaggedWord<'a>], tones: &[u8]) ->
     let mut spans: Vec<Span<'a>> = Vec::with_capacity(words.len());
     let mut start = 0;
     for word in words {
+        debug_assert!(word.length > 0, "a word of no characters cannot be a span");
         spans.push(Span {
             start,
             length: word.length,
@@ -314,7 +333,14 @@ fn pre_merge<'a>(characters: &[char], words: &[TaggedWord<'a>], tones: &[u8]) ->
     let spans = merge_reduplication(characters, &spans);
     let spans = merge_all_third_tones(characters, &spans, tones);
     let spans = merge_boundary_third_tones(characters, &spans, tones);
-    merge_er(characters, &spans)
+    let spans = merge_er(characters, &spans);
+
+    // The merges above only ever add lengths, so a span is empty only if a word
+    // was; every span is checked because the rules read a word's last character
+    // as `length - 1`.
+    debug_assert!(spans.iter().all(|span| span.length > 0), "an empty span");
+
+    spans
 }
 
 /// `_merge_bu`: 不 belongs to whatever follows it.
@@ -502,10 +528,16 @@ fn modified_tone(characters: &[char], span: &Span<'_>, tones: &mut [u8], segment
     let word = span.word(characters);
     let tones = &mut tones[span.start..span.start + span.length];
 
+    // The word as text, and where jieba's search mode breaks it: the neutral-tone
+    // rule and the three-character rule both ask, so the answer is computed here
+    // once and handed to them.
+    let text: String = word.iter().collect();
+    let (first, names) = segmenter.split_word(&text);
+
     bu_sandhi(word, tones);
     yi_sandhi(word, tones);
-    neural_sandhi(word, span.tag, tones, segmenter);
-    three_sandhi(word, tones, segmenter);
+    neural_sandhi(word, &text, Split { first, names }, span.tag, tones);
+    three_sandhi(word, tones, first);
 }
 
 /// `_bu_sandhi`.
@@ -574,14 +606,13 @@ fn yi_sandhi(word: &[char], tones: &mut [u8]) {
 /// [`MUST_NOT_NEURAL_TONE_WORDS`] is left entirely alone — that list is the
 /// exceptions to the reduplication and suffix rules below, and it is why this is
 /// not simply "a repeated character is neutral".
-fn neural_sandhi(word: &[char], tag: &str, tones: &mut [u8], segmenter: &SegmenterZh) {
-    let text: String = word.iter().collect();
-    if has(&MUST_NOT_NEURAL_TONE_WORDS, &text) {
+fn neural_sandhi(word: &[char], text: &str, split: Split<'_>, tag: &str, tones: &mut [u8]) {
+    if has(&MUST_NOT_NEURAL_TONE_WORDS, text) {
         return;
     }
 
-    // The two halves jieba's search mode finds in the word, used twice below.
-    let (first, names) = segmenter.split_word(&text);
+    // The two halves jieba's search mode found in the word, used twice below.
+    let Split { first, names } = split;
 
     // 妈妈, 看看, 好好: the second of two identical syllables is neutral, on a
     // noun, verb or adjective (渐渐 as an adverb is not).
@@ -642,7 +673,7 @@ fn neural_sandhi(word: &[char], tag: &str, tones: &mut [u8], segmenter: &Segment
         tones[last] = NEUTRAL;
     } else if measure || text == "个" {
         tones[ge.expect("个 is in the word")] = NEUTRAL;
-    } else if listed(&MUST_NEURAL_TONE_WORDS, &text) {
+    } else if listed(&MUST_NEURAL_TONE_WORDS, text) {
         tones[last] = NEUTRAL;
     }
 
@@ -681,10 +712,13 @@ fn neural_sandhi(word: &[char], tag: &str, tones: &mut [u8], segmenter: &Segment
 /// behaviour and not an omission to fix here: the rules it has are for two
 /// adjacent syllables, a syllable plus a word, and two words, and a longer word
 /// has no rule that applies.
-fn three_sandhi(word: &[char], tones: &mut [u8], segmenter: &SegmenterZh) {
+///
+/// `first` is where jieba's search mode splits the word, which only the
+/// three-character case reads.
+fn three_sandhi(word: &[char], tones: &mut [u8], first: usize) {
     match word.len() {
         2 if all_third_tones(tones) => tones[0] = 2,
-        3 => three_sandhi_word_of_three(word, tones, segmenter),
+        3 => three_sandhi_word_of_three(word, tones, first),
         4 => {
             // 美好/理想: two words of two, and either half that is all third tone
             // loses its first tone.
@@ -700,10 +734,7 @@ fn three_sandhi(word: &[char], tones: &mut [u8], segmenter: &SegmenterZh) {
 
 /// The three-character case of `_three_sandhi`, which is two cases: all three
 /// tones, or a split into a syllable and a word.
-fn three_sandhi_word_of_three(word: &[char], tones: &mut [u8], segmenter: &SegmenterZh) {
-    let text: String = word.iter().collect();
-    let (first, _names) = segmenter.split_word(&text);
-
+fn three_sandhi_word_of_three(word: &[char], tones: &mut [u8], first: usize) {
     if all_third_tones(tones) {
         if first == 2 {
             // 蒙古/包: both of the first two change.
@@ -756,6 +787,9 @@ fn merge_erhua(
         tones[last] = 2;
     }
 
+    // The word's text is built here rather than handed in from the tone pass:
+    // erhua is decided by a second walk over the spans, after every word's tones
+    // are final, and it is the only rule in that walk that needs the text.
     let word: String = span.word(characters).iter().collect();
     if !has(&MUST_ERHUA, &word) && (has(&NOT_ERHUA, &word) || matches!(span.tag, "a" | "j" | "nr"))
     {

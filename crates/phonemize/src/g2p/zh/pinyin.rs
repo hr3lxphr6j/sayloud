@@ -123,6 +123,14 @@ impl Syllable {
     }
 }
 
+/// The syllable as [`Syllable::as_str`] gives it, for a caller that only needs
+/// something that reads as text.
+impl AsRef<str> for Syllable {
+    fn as_ref(&self) -> &str {
+        self.0
+    }
+}
+
 /// Split a *reading* into its toneless part and its tone.
 ///
 /// The tone is the last character **if it is a digit**: `pinyin-pro` appends one
@@ -457,12 +465,7 @@ impl ChinesePinyin {
     /// missing a word sounds like a sentence.
     pub fn han_to_ipa(&self, text: &str) -> Result<String, PinyinError> {
         let readings = self.complete_readings(text)?;
-
-        let mut syllables = Vec::with_capacity(readings.len());
-        for reading in readings {
-            syllables.push(self.syllable_to_ipa(reading.as_str(), text)?);
-        }
-        Ok(syllables.join(" "))
+        Ok(self.ipa_of(&readings, text)?.join(" "))
     }
 
     /// A run of Chinese characters to IPA, grouped into words.
@@ -487,11 +490,7 @@ impl ChinesePinyin {
         lengths: &[usize],
     ) -> Result<String, PinyinError> {
         let readings = self.complete_readings(text)?;
-
-        let mut syllables = Vec::with_capacity(readings.len());
-        for reading in readings {
-            syllables.push(self.syllable_to_ipa(reading.as_str(), text)?);
-        }
+        let syllables = self.ipa_of(&readings, text)?;
 
         join_by_words(&syllables, lengths, text)
     }
@@ -512,14 +511,28 @@ impl ChinesePinyin {
         lengths: &[usize],
         text: &str,
     ) -> Result<String, PinyinError> {
-        let mut ipa = Vec::with_capacity(syllables.len());
-        for syllable in syllables {
-            ipa.push(self.syllable_to_ipa(syllable, text)?);
-        }
+        let ipa = self.ipa_of(syllables, text)?;
         join_by_words(&ipa, lengths, text)
     }
 
     // ------------------------------------------------------------- internals
+
+    /// The IPA for every syllable given, in order.
+    ///
+    /// The three public forms above differ in where the syllables come from and
+    /// in how they join the result — one space per syllable, or one per word;
+    /// looking a syllable up, and naming it and the text when the table does not
+    /// have it, is the same work in all three.
+    fn ipa_of(
+        &self,
+        syllables: &[impl AsRef<str>],
+        text: &str,
+    ) -> Result<Vec<String>, PinyinError> {
+        syllables
+            .iter()
+            .map(|syllable| self.syllable_to_ipa(syllable.as_ref(), text))
+            .collect()
+    }
 
     /// The tables, parsed on first use.
     fn tables(&self) -> &'static Tables {

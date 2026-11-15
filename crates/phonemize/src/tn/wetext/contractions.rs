@@ -299,14 +299,21 @@ impl Tables {
     }
 }
 
-/// Whether `text` contains `'` (U+0027) or `’` (U+2019), the two apostrophes the
-/// keys are spelled with.
+/// The two apostrophes the contraction keys are spelled with: `'` (U+0027) and
+/// `’` (U+2019).
+///
+/// One list rather than the same pair of comparisons in two modules: `tn::gate`
+/// counts an apostrophe as a reason to run the normalizer for exactly the reason
+/// this module expands it, so the two answers have to be the same set.
+pub const APOSTROPHES: [char; 2] = ['\'', '\u{2019}'];
+
+/// Whether `text` contains one of [`APOSTROPHES`].
 ///
 /// `Normalizer::normalize_with_config` only calls [`fix_contractions`] when this
 /// is true. Python's WeText checks only for `'`, so a sentence that uses only `’`
 /// is never expanded there, even though the tables contain `’` keys.
 pub fn has_apostrophe(text: &str) -> bool {
-    text.contains('\'') || text.contains('\u{2019}')
+    text.chars().any(|ch| APOSTROPHES.contains(&ch))
 }
 
 /// Build the automaton now instead of on the first sentence that needs it.
@@ -426,29 +433,39 @@ pub fn fix_contractions(text: &str) -> String {
     TABLES.expand(text)
 }
 
+/// The slang keys the fast path in [`fix_contractions`] looks for.
+///
+/// Only the apostrophe-less ones: an apostrophe is the other reason to expand, and
+/// [`has_apostrophe`] has already answered that question by the time this list is
+/// read. Not every apostrophe-less key is listed — see [`needs_expansion`].
+const SLANG_KEYS: &[&str] = &["gonna", "wanna", "gotta", "dunno", "gimme", "lemme"];
+
 /// The apostrophe-less keys the fast path in [`fix_contractions`] looks for:
-/// common slang and the month keys. Not every apostrophe-less key is listed.
+/// common slang and the month keys.
+///
+/// The month half is derived from [`MONTH_ABBREVS`], so a month added to the
+/// tables is one the fast path looks for without a second edit. Not every apostrophe-less key is
+/// listed: `whats` and the like expand only when the text also contains an
+/// apostrophe, which is the trade the fast path makes.
 fn needs_expansion(text: &str) -> bool {
-    let lower = text.to_lowercase();
-    // Slang without an apostrophe
-    lower.contains("gonna")
-        || lower.contains("wanna")
-        || lower.contains("gotta")
-        || lower.contains("dunno")
-        || lower.contains("gimme")
-        || lower.contains("lemme")
-        // Month abbreviations
-        || lower.contains("jan.")
-        || lower.contains("feb.")
-        || lower.contains("mar.")
-        || lower.contains("apr.")
-        || lower.contains("jun.")
-        || lower.contains("jul.")
-        || lower.contains("aug.")
-        || lower.contains("sep.")
-        || lower.contains("oct.")
-        || lower.contains("nov.")
-        || lower.contains("dec.")
+    SLANG_KEYS
+        .iter()
+        .copied()
+        .chain(MONTH_ABBREVS.iter().map(|(abbrev, _)| *abbrev))
+        .any(|key| contains_ignore_ascii_case(text, key))
+}
+
+/// Whether `haystack` contains `needle`, ignoring ASCII case, without allocating.
+///
+/// Every key is ASCII, so this matches what `to_lowercase().contains(key)` would,
+/// and it runs on every English sentence the normalizer is offered, including the
+/// ones it then declines to touch. `needle` must not be empty.
+fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
+    let needle = needle.as_bytes();
+    haystack
+        .as_bytes()
+        .windows(needle.len())
+        .any(|window| window.eq_ignore_ascii_case(needle))
 }
 
 /// Unused. `_include_slang` is ignored: slang is always expanded.

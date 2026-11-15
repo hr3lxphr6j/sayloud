@@ -43,6 +43,7 @@ mod token_parser;
 
 pub use config::{Language, NormalizerConfig, Operator};
 pub use contractions::warm_up as warm_contractions;
+pub use contractions::APOSTROPHES;
 pub use error::{Result, WeTextError};
 pub use normalizer::Normalizer;
 pub use text_normalizer::FstTextNormalizer;

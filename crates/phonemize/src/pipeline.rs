@@ -141,12 +141,10 @@ pub struct Phonemized {
 
 /// What a pipeline has read so far, and what it had to leave out.
 ///
-/// All three pipelines accumulate the same two things in the same way, and the
-/// Latin arm and the final two steps used to be written out three times. The
-/// arm is here because a run that produces nothing is warned about rather than
-/// dropped silently, and [`Self::finish`] is here because every pipeline has to
-/// end the same way — including the warning deduplication, which the English and
-/// Chinese pipelines used to skip.
+/// All three pipelines accumulate the same two things in the same way. A Latin run
+/// that produces nothing is warned about rather than dropped silently, and
+/// [`Self::finish`] is the one place every pipeline ends, warning deduplication
+/// included.
 #[derive(Default)]
 struct Accumulator {
     parts: Vec<String>,
@@ -661,17 +659,17 @@ fn split_unread_kanji(reading: &str) -> (String, String) {
     (readable, unread)
 }
 
-/// A kanji, by the same ranges [`text::classify`] calls Han. This includes CJK
-/// compatibility ideographs, CJK symbols (〇, 々, 〆), and astral CJK, which are
-/// now classified as Han so an unread version degrades to a warning instead of a
-/// silent drop.
+/// A kanji, by the same ranges [`text::classify`] calls Han, and by the same
+/// function that answers for it ([`crate::unicode::is_han`]).
+///
+/// This question is asked at the *word* layer rather than the run layer: a reading
+/// the dictionary returned can still carry the characters of a word it did not
+/// know, and those have no IPA entry. Asking with a second range list is what would
+/// let the two answers drift, so there is one list and one function. The ranges
+/// include CJK compatibility ideographs, the ideographic marks (〇, 々, 〆) and
+/// astral CJK, so an unread version degrades to a warning instead of a silent drop.
 fn is_han(ch: char) -> bool {
-    let code = ch as u32;
-    (0x4e00..=0x9fff).contains(&code)
-        || (0x3400..=0x4dbf).contains(&code)
-        || (0x3005..=0x3007).contains(&code)
-        || (0xf900..=0xfaff).contains(&code)
-        || (0x20000..=0x2ebef).contains(&code)
+    crate::unicode::is_han(ch)
 }
 
 /// What the caller is told about kanji the dictionary could not read.

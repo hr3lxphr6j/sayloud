@@ -16,6 +16,8 @@ use std::io::Read;
 
 use ruzstd::decoding::StreamingDecoder;
 
+use crate::vocab::{KOKORO_V1, KOKORO_V11_ZH};
+
 /// The zstd frame magic number (RFC 8878 §3.1.1), as it appears on the wire.
 pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
@@ -120,14 +122,14 @@ pub const WETEXT_ZH_TN_TRADITIONAL_TO_SIMPLE: &str = "wetext-zh-tn-traditional-t
 
 /// What each vocabulary can speak.
 ///
-/// The name is the model's (`kokoro-v1`, `kokoro-v11-zh`) and the two do not
-/// cover the same languages: v1.1-zh has no Japanese pipeline at all, so a
-/// Japanese voice on that model has to fail loudly rather than phonemize into
-/// characters its tokenizer drops.
+/// The name is the model's ([`KOKORO_V1`], [`KOKORO_V11_ZH`], owned by
+/// [`crate::vocab`]) and the two do not cover the same languages: v1.1-zh has no
+/// Japanese pipeline at all, so a Japanese voice on that model has to fail loudly
+/// rather than phonemize into characters its tokenizer drops.
 pub fn supported_languages(vocab: &str) -> Option<&'static [&'static str]> {
     match vocab {
-        "kokoro-v1" => Some(&["zh", "ja", "en"]),
-        "kokoro-v11-zh" => Some(&["zh", "en"]),
+        KOKORO_V1 => Some(&["zh", "ja", "en"]),
+        KOKORO_V11_ZH => Some(&["zh", "en"]),
         _ => None,
     }
 }

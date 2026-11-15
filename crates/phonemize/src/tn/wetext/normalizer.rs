@@ -14,6 +14,8 @@
 
 use std::collections::HashMap;
 
+use crate::unicode::{CJK_UNIFIED, HIRAGANA_KATAKANA};
+
 use super::config::{Language, NormalizerConfig, Operator};
 use super::contractions::{fix_contractions, has_apostrophe};
 use super::error::{Result, WeTextError};
@@ -162,18 +164,18 @@ impl Normalizer {
         let mut has_alpha = false;
 
         for ch in text.chars() {
-            // [Rust Extension] Japanese detection via Hiragana/Katakana
-            // Japanese Hiragana: U+3040 - U+309F
-            // Japanese Katakana: U+30A0 - U+30FF
+            // [Rust Extension] Japanese detection via Hiragana/Katakana.
+            // The bounds are `crate::unicode`'s, which is also where the shared
+            // CJK ranges live; upstream hard-codes them here.
             // Note: Python wetext does NOT have this detection - it would return "zh" for Japanese text
-            if ('\u{3040}'..='\u{309f}').contains(&ch) || ('\u{30a0}'..='\u{30ff}').contains(&ch) {
+            if HIRAGANA_KATAKANA.contains(&(ch as u32)) {
                 return Language::Ja;
             }
 
-            // CJK Unified Ideographs: U+4E00 - U+9FFF
+            // CJK Unified Ideographs.
             // Note: These are shared between Chinese and Japanese
             // If we find hiragana/katakana, it's Japanese; otherwise treat as Chinese
-            if ('\u{4e00}'..='\u{9fff}').contains(&ch) {
+            if CJK_UNIFIED.contains(&(ch as u32)) {
                 has_cjk = true;
             }
 

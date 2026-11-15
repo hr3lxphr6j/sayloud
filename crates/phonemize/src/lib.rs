@@ -42,6 +42,7 @@ pub mod pipeline;
 pub mod text;
 pub mod tn;
 mod types;
+pub(crate) mod unicode;
 pub mod vocab;
 
 use dictionary::{

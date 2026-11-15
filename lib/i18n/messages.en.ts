@@ -317,6 +317,7 @@ export const en = {
   'pdf.empty': 'This PDF has no text to read',
   'pdf.password.title': 'This PDF needs a password',
   'pdf.password.wrong': 'Wrong password',
+  'pdf.password.cancel': 'Cancel',
   // A line at the top of the viewer, not a dismissible hint: reading order is
   // a known limit of the text layer, and saying so keeps it from looking like
   // a broken reader.
@@ -325,6 +326,24 @@ export const en = {
   'pdf.pick': 'Choose a PDF file',
   'pdf.zoom.in': 'Zoom in',
   'pdf.zoom.out': 'Zoom out',
+  'pdf.search': 'Search…',
+  'pdf.search.close': 'Close search',
+  'pdf.search.previous': 'Previous match',
+  'pdf.search.next': 'Next match',
+  'pdf.search.no-matches': 'No matches',
+  'pdf.sidebar.pages': 'Pages',
+  'pdf.sidebar.contents': 'Contents',
+  'pdf.sidebar.empty': 'No table of contents',
+  'pdf.sidebar.toggle': 'Toggle the thumbnail panel',
+  'pdf.download': 'Download the PDF',
+  'pdf.fit-width': 'Fit the page width',
+  'pdf.page.previous': 'Previous page',
+  'pdf.page.next': 'Next page',
+  // One message with the number in it, not a prefix and a suffix: Japanese
+  // puts the number first and Chinese wraps it, and neither can be built by
+  // gluing "Page" onto the front. The field splits the message around
+  // `{page}` and puts the editable input where the number goes.
+  'pdf.page.label': 'Page {page} of {total}',
 
   // --- the caption window ---------------------------------------------------
   'caption.counter': 'Sentence {index} of {total}',

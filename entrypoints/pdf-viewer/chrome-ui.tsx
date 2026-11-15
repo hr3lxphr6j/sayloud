@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from 'preact/hooks';
-import { I18nProvider, type Lang, useT, useUiLanguage } from '~/lib/i18n';
+import { I18nProvider, type Translator, useT, useUiLanguage } from '~/lib/i18n';
 import type { SettingsStore } from '~/lib/settings-store';
 import type { SidebarLabels, ViewerApi } from './viewer';
 
@@ -41,70 +41,20 @@ export interface ChromeState {
   search: SearchUiState;
 }
 
-/** The labels this page adds on top of the shared catalogue. */
-interface PdfUiLabels {
-  search: string;
-  closeSearch: string;
-  previousMatch: string;
-  nextMatch: string;
-  noMatches: string;
-  sidebar: SidebarLabels;
-  toggleSidebar: string;
-  download: string;
-  fitWidth: string;
-  previousPage: string;
-  nextPage: string;
-  pageBefore: string;
-  pageAfter: (total: number) => string;
+/**
+ * The sidebar's labels, for the part of the viewer `Chrome` does not render.
+ *
+ * `viewer.tsx` is mounted straight into EmbedPDF's tree, outside the
+ * `I18nProvider` above, and it stays text-free so it has no translator of its
+ * own. This is where its three words come from.
+ */
+export function sidebarLabels(t: Translator): SidebarLabels {
+  return {
+    pages: t('pdf.sidebar.pages'),
+    contents: t('pdf.sidebar.contents'),
+    empty: t('pdf.sidebar.empty'),
+  };
 }
-
-export const PDF_LABELS: Record<Lang, PdfUiLabels> = {
-  en: {
-    search: 'Search…',
-    closeSearch: 'Close search',
-    previousMatch: 'Previous match',
-    nextMatch: 'Next match',
-    noMatches: 'No matches',
-    sidebar: { pages: 'Pages', contents: 'Contents', empty: 'No table of contents' },
-    toggleSidebar: 'Toggle the thumbnail panel',
-    download: 'Download the PDF',
-    fitWidth: 'Fit the page width',
-    previousPage: 'Previous page',
-    nextPage: 'Next page',
-    pageBefore: 'Page ',
-    pageAfter: (total) => ` of ${total}`,
-  },
-  ja: {
-    search: '検索…',
-    closeSearch: '検索を閉じる',
-    previousMatch: '前の一致',
-    nextMatch: '次の一致',
-    noMatches: '一致なし',
-    sidebar: { pages: 'ページ', contents: '目次', empty: '目次はありません' },
-    toggleSidebar: 'サムネイルを表示',
-    download: 'PDF をダウンロード',
-    fitWidth: '幅に合わせる',
-    previousPage: '前のページ',
-    nextPage: '次のページ',
-    pageBefore: '',
-    pageAfter: (total) => ` / ${total} ページ`,
-  },
-  'zh-CN': {
-    search: '搜索…',
-    closeSearch: '关闭搜索',
-    previousMatch: '上一个匹配',
-    nextMatch: '下一个匹配',
-    noMatches: '没有匹配',
-    sidebar: { pages: '页面', contents: '目录', empty: '这份 PDF 没有目录' },
-    toggleSidebar: '切换缩略图侧边栏',
-    download: '下载 PDF',
-    fitWidth: '适合页面宽度',
-    previousPage: '上一页',
-    nextPage: '下一页',
-    pageBefore: '第 ',
-    pageAfter: (total) => ` 页 / 共 ${total} 页`,
-  },
-};
 
 /** The toolbar, the search bar, and whatever is blocking the view. */
 interface ChromeProps {
@@ -129,7 +79,7 @@ export function Chrome(props: ChromeProps) {
   const { lang } = useUiLanguage(props.settings);
   return (
     <I18nProvider lang={lang}>
-      <ChromeBody {...props} labels={PDF_LABELS[lang]} />
+      <ChromeBody {...props} />
     </I18nProvider>
   );
 }
@@ -137,7 +87,6 @@ export function Chrome(props: ChromeProps) {
 function ChromeBody({
   state,
   api,
-  labels,
   onZoom,
   onFitWidth,
   onPick,
@@ -150,7 +99,7 @@ function ChromeBody({
   onSearchClose,
   onToggleSidebar,
   onDownload,
-}: ChromeProps & { labels: PdfUiLabels }) {
+}: ChromeProps) {
   const t = useT();
   const canPick = state.notice === 'pick' || state.notice === 'missing' || state.notice === 'empty';
   const controls = state.open && api !== null;
@@ -161,7 +110,7 @@ function ChromeBody({
         <button
           type="button"
           class="pdf-icon-button"
-          aria-label={labels.toggleSidebar}
+          aria-label={t('pdf.sidebar.toggle')}
           aria-pressed={state.sidebar}
           disabled={!controls}
           onClick={onToggleSidebar}
@@ -175,22 +124,16 @@ function ChromeBody({
           <div class="pdf-page-nav">
             <button
               type="button"
-              aria-label={labels.previousPage}
+              aria-label={t('pdf.page.previous')}
               disabled={!controls || state.page <= 1}
               onClick={() => onPage(state.page - 1)}
             >
               ←
             </button>
-            <PageField
-              page={state.page}
-              total={state.total}
-              before={labels.pageBefore}
-              after={labels.pageAfter(state.total)}
-              onGo={onPage}
-            />
+            <PageField page={state.page} total={state.total} onGo={onPage} />
             <button
               type="button"
-              aria-label={labels.nextPage}
+              aria-label={t('pdf.page.next')}
               disabled={!controls || state.page >= state.total}
               onClick={() => onPage(state.page + 1)}
             >
@@ -221,7 +164,7 @@ function ChromeBody({
             </button>
             <button
               type="button"
-              aria-label={labels.fitWidth}
+              aria-label={t('pdf.fit-width')}
               disabled={!controls}
               onClick={onFitWidth}
             >
@@ -233,19 +176,20 @@ function ChromeBody({
           <button
             type="button"
             class="pdf-text-button"
-            aria-label={labels.search}
+            aria-label={t('pdf.search')}
             aria-expanded={state.search.open}
             disabled={!controls}
             onClick={onOpenSearch}
           >
-            {labels.search.replace('…', '')}
+            {/* The button's word, without the ellipsis its placeholder has. */}
+            {t('pdf.search').replace('…', '')}
           </button>
         )}
         {state.open && (
           <button
             type="button"
             class="pdf-icon-button"
-            aria-label={labels.download}
+            aria-label={t('pdf.download')}
             disabled={!controls}
             onClick={onDownload}
           >
@@ -258,8 +202,8 @@ function ChromeBody({
         <div class="pdf-search">
           <input
             type="text"
-            aria-label={labels.search}
-            placeholder={labels.search}
+            aria-label={t('pdf.search')}
+            placeholder={t('pdf.search')}
             value={state.search.query}
             autofocus
             onInput={(event) => onSearchQuery(event.currentTarget.value)}
@@ -271,11 +215,11 @@ function ChromeBody({
             }}
           />
           <span class="pdf-search-count" aria-live="polite">
-            {searchCount(state.search, labels)}
+            {searchCount(state.search, t)}
           </span>
           <button
             type="button"
-            aria-label={labels.previousMatch}
+            aria-label={t('pdf.search.previous')}
             disabled={state.search.total === 0}
             onClick={onSearchPrevious}
           >
@@ -283,13 +227,13 @@ function ChromeBody({
           </button>
           <button
             type="button"
-            aria-label={labels.nextMatch}
+            aria-label={t('pdf.search.next')}
             disabled={state.search.total === 0}
             onClick={onSearchNext}
           >
             ↓
           </button>
-          <button type="button" aria-label={labels.closeSearch} onClick={onSearchClose}>
+          <button type="button" aria-label={t('pdf.search.close')} onClick={onSearchClose}>
             ×
           </button>
         </div>
@@ -331,10 +275,10 @@ function ChromeBody({
 }
 
 /** The "3/12" counter, or a state label when there is nothing to count. */
-function searchCount(search: SearchUiState, labels: PdfUiLabels): string {
+function searchCount(search: SearchUiState, t: Translator): string {
   if (search.query.trim() === '') return '';
   if (search.loading && search.total === 0) return '…';
-  if (search.total === 0) return labels.noMatches;
+  if (search.total === 0) return t('pdf.search.no-matches');
   return `${search.active + 1}/${search.total}`;
 }
 
@@ -342,16 +286,13 @@ function searchCount(search: SearchUiState, labels: PdfUiLabels): string {
 function PageField({
   page,
   total,
-  before,
-  after,
   onGo,
 }: {
   page: number;
   total: number;
-  before: string;
-  after: string;
   onGo: (page: number) => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState(String(page));
   const [editing, setEditing] = useState(false);
 
@@ -360,6 +301,11 @@ function PageField({
   useEffect(() => {
     if (!editing) setValue(String(page));
   }, [page, editing]);
+
+  // The label is one message with the number in it, split around `{page}` so
+  // the input can take the number's place. That is what lets Japanese put the
+  // number first, where gluing a translated "Page" onto the front cannot.
+  const [before = '', after = ''] = t('pdf.page.label', { total }).split('{page}');
 
   return (
     <form
@@ -378,7 +324,7 @@ function PageField({
       <input
         type="text"
         inputMode="numeric"
-        aria-label="Page"
+        aria-label={t('pdf.page.label', { page, total })}
         value={value}
         onFocus={() => setEditing(true)}
         onInput={(event) => setValue(event.currentTarget.value)}
@@ -422,7 +368,7 @@ function PasswordCard({ wrong, onAnswer }: PasswordCardProps) {
         →
       </button>
       <button type="button" onClick={() => onAnswer(null)}>
-        {t('settings.cache.cancel')}
+        {t('pdf.password.cancel')}
       </button>
     </form>
   );

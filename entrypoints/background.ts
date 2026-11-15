@@ -8,8 +8,9 @@ import { ModelStore } from '~/lib/models/store';
 import { isCachePolicyRequest, isModelSourceRequest } from '~/lib/offscreen-protocol';
 import { isOpenSettingsMessage, openSettingsFor } from '~/lib/open-settings';
 import { PDF_VIEWER_PATH, syncPdfIntercept } from '~/lib/pdf/dnr';
+import { createPdfHandoff, decideActivation, encodeBase64 } from '~/lib/pdf/handoff';
 import { isPdfBytesRequest, PDF_BYTES, PDF_MISSING } from '~/lib/pdf/protocol';
-import { isOwnViewerUrl, isPdfTab, stagePdfBytes, takePdfBytes } from '~/lib/pdf/tab';
+import { takePdfBytes } from '~/lib/pdf/tab';
 import { PORT_NAME } from '~/lib/port';
 import type { RouterPort } from '~/lib/router';
 import { applyPlaybackSettings } from '~/lib/settings-effects';
@@ -17,9 +18,6 @@ import { DEFAULT_SETTINGS, type Settings } from '~/lib/settings-store';
 
 /** Emitted by WXT from `entrypoints/reader.content.tsx`. */
 const CONTENT_SCRIPT = '/content-scripts/reader.js';
-
-/** The viewer's hash when the document could not be fetched at all. */
-const MISSING_PDF = 'missing';
 
 declare global {
   /** Test hook, only defined in `--mode e2e` builds. See `tests/e2e/fixtures.ts`. */
@@ -228,6 +226,17 @@ export default defineBackground(() => {
   }
 
   /**
+   * The PDF path: recognising a PDF tab and getting its bytes to the viewer.
+   * The branch order lives in `decideActivation`, which is pure and unit-tested;
+   * what stays here is the one probe that decision may ask for.
+   */
+  const pdf = createPdfHandoff({
+    scripting: browser.scripting,
+    tabs: browser.tabs,
+    viewerUrl: browser.runtime.getURL(PDF_VIEWER_PATH),
+  });
+
+  /**
    * The content script is registered at runtime rather than declared in the
    * manifest, so nothing is injected until the reader asks for it. `activeTab`
    * grants access to the clicked tab only.
@@ -241,7 +250,7 @@ export default defineBackground(() => {
    *
    * A PDF is the one kind of tab this cannot read in place, so it is handed to
    * the viewer page instead. The URL recognises the common shape; the rest is
-   * decided by the document's own `Content-Type` (see `contentTypeOf`).
+   * decided by the document's own `Content-Type`.
    */
   async function activate(tabId?: number): Promise<void> {
     const id = tabId ?? (await activeTabId());
@@ -253,31 +262,25 @@ export default defineBackground(() => {
     });
     if (!tab) return;
 
-    // Already the reader: a second viewer would nest inside this one, and the
-    // document it shows is the one the click was aimed at.
-    if (tab.url && isOwnViewerUrl(tab.url)) return;
+    // The probe is the only IO the decision cannot do for itself, and it is
+    // asked for exactly once: every branch that can answer without it returns
+    // before this line.
+    const hasPort = activeTabs.has(id);
+    const first = decideActivation({ url: tab.url, hasPort });
+    const decision =
+      first.kind === 'probe'
+        ? decideActivation({ url: tab.url, hasPort, contentType: await pdf.contentTypeOf(id) })
+        : first;
 
-    // The cheap case, and the only one a `file:` tab has: the URL ends in
-    // `.pdf`, so nothing has to be asked.
-    if (isPdfTab(tab)) {
-      await openInViewer(id);
+    if (decision.kind === 'ignore') {
+      if (decision.reason === 'already-active') {
+        console.log('[SayLoud] content script already active in tab', id);
+      }
       return;
     }
 
-    // If the tab already has an active port, the content script is running.
-    // Checked before the MIME probe: a page the reader is already in is not a
-    // PDF, and a repeat click should not pay for an injection either.
-    if (activeTabs.has(id)) {
-      console.log('[SayLoud] content script already active in tab', id);
-      return;
-    }
-
-    // A PDF with no `.pdf` in its URL (`arxiv.org/pdf/2301.12345`, a
-    // `/download?id=…` link) is only recognisable from the document's own MIME
-    // type. Chrome renders it with the built-in viewer, and the PDF page has no
-    // prose to inject a reader into, so the answer decides the whole path.
-    if ((await contentTypeOf(id)) === 'application/pdf') {
-      await openInViewer(id);
+    if (decision.kind === 'viewer') {
+      await pdf.openInViewer(id);
       return;
     }
 
@@ -299,130 +302,11 @@ export default defineBackground(() => {
     }
   }
 
-  /**
-   * The clicked tab's own MIME type, or null when it cannot be inspected.
-   *
-   * Injected under `activeTab`, granted by the click that got us here.
-   * `executeScript` rejects on pages the extension may not touch (chrome://, the
-   * Web Store, another extension's page); none of them has prose to read either,
-   * so the caller carries on and the reader injection reports it.
-   */
-  async function contentTypeOf(id: number): Promise<string | null> {
-    try {
-      const [injection] = await browser.scripting.executeScript({
-        target: { tabId: id },
-        func: contentTypeInPage,
-      });
-      const value = injection?.result;
-      return typeof value === 'string' ? value : null;
-    } catch (error) {
-      console.warn('[SayLoud] cannot inspect this tab', error);
-      return null;
-    }
-  }
-
-  /**
-   * Fetch the PDF in its own tab and open the viewer on the result.
-   *
-   * The original tab is left alone: the user can read the PDF itself while the
-   * sayloud bar reads it from the copy in the viewer. A fetch that fails is not
-   * a dead end — the viewer says the document could not be read and offers the
-   * file picker, which is the failure the user can act on.
-   */
-  async function openInViewer(id: number): Promise<void> {
-    let bytes: ArrayBuffer | null = null;
-    try {
-      bytes = await readPdfInTab(id);
-    } catch (error) {
-      console.warn('[SayLoud] cannot fetch the pdf from this tab', error);
-    }
-
-    const hash = bytes ? stagePdfBytes(bytes) : MISSING_PDF;
-    await browser.tabs.create({ url: `${browser.runtime.getURL(PDF_VIEWER_PATH)}#${hash}` });
-  }
-
-  /**
-   * Ask the document for its own bytes.
-   *
-   * It has to be the page that fetches: the document is same-origin there, the
-   * session cookies are already sent, and `file:` is reachable at all only
-   * through the tab's own access. The result is base64 because an
-   * `executeScript` result is JSON-serialised and an `ArrayBuffer` is not.
-   */
-  async function readPdfInTab(id: number): Promise<ArrayBuffer> {
-    const [injection] = await browser.scripting.executeScript({
-      target: { tabId: id },
-      func: readDocumentInPage,
-    });
-    const encoded = injection?.result;
-    if (typeof encoded !== 'string' || encoded.length === 0) {
-      throw new Error('the tab returned no pdf bytes');
-    }
-    return decodeBase64(encoded);
-  }
-
   async function activeTabId(): Promise<number | undefined> {
     const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
     return tab?.id;
   }
 });
-
-/**
- * Runs in the tab, not in the worker.
- *
- * `document.contentType` is the response's own MIME type as Chrome decided to
- * render it. It is the only thing that recognises a PDF served from an
- * extension-less URL, and it says `text/html` for a page, which is what sends
- * the click down the reader path.
- */
-function contentTypeInPage(): string {
-  return document.contentType;
-}
-
-/**
- * Runs in the PDF tab, not in the worker.
- *
- * `credentials: 'include'` keeps the request identical to the one that loaded
- * the document, so a PDF behind a session cookie is readable too. Chunked
- * `fromCharCode` avoids spreading a multi-megabyte array into an argument list.
- */
-async function readDocumentInPage(): Promise<string> {
-  const response = await fetch(location.href, { credentials: 'include' });
-  if (!response.ok) throw new Error(`the pdf answered ${response.status}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength === 0) throw new Error('the pdf is empty');
-
-  let binary = '';
-  const chunk = 0x8000;
-  for (let index = 0; index < bytes.byteLength; index += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
-  }
-  return btoa(binary);
-}
-
-/**
- * `runtime.sendMessage` is JSON-only, so the bytes travel as base64.
- *
- * The viewer decodes this back into the `ArrayBuffer` it opens.
- */
-function encodeBase64(bytes: ArrayBuffer): string {
-  const octets = new Uint8Array(bytes);
-  let binary = '';
-  const chunk = 0x8000;
-  for (let index = 0; index < octets.byteLength; index += chunk) {
-    binary += String.fromCharCode(...octets.subarray(index, index + chunk));
-  }
-  return btoa(binary);
-}
-
-function decodeBase64(encoded: string): ArrayBuffer {
-  const binary = atob(encoded);
-  const octets = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    octets[index] = binary.charCodeAt(index);
-  }
-  return octets.buffer;
-}
 
 /** `SessionRouter` takes a narrow port interface so it stays testable. */
 function toRouterPort(port: Browser.runtime.Port): RouterPort {

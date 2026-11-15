@@ -5,7 +5,17 @@
  * but the mechanics — network failures, base64 audio, SSE framing, chunked
  * JSON — are identical across services, so they live here.
  */
+import { isRecord } from '../records';
 import { isAbortError, networkError, ProviderError } from './errors';
+
+/**
+ * Re-exported for the adapters, which read records out of a JSON body.
+ *
+ * The check is the same one the `chrome.storage` reads use (`lib/records.ts`),
+ * and one definition is the point: an array is not a record on either path, and
+ * two copies are two chances to disagree about that.
+ */
+export { isRecord };
 
 /**
  * Issue a request, translating transport failures into `ProviderError`.
@@ -211,11 +221,6 @@ function findObjectEnd(text: string, start: number): number {
   }
 
   return -1;
-}
-
-/** True for a JSON object (not null, not an array). */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Read `record[key]` when it is a string. */

@@ -11,7 +11,7 @@
  * opens where the row is, so the panel never loses the user's place. The saved
  * config is passed in rather than read here, so the panel is the only place that
  * talks to storage for the config; this component owns the draft (which row is
- * open, and the values typed so far).
+ * open), and the form's own state and behaviour live in `use-provider-form.ts`.
  *
  * Each row carries two controls, which are two different jobs: the circle (a
  * radio, since one of N is in use) says which service SayLoud reads with, and
@@ -24,40 +24,24 @@
  * line saying whether the write happened, because a form that fails validation
  * writes nothing and leaves the typed key in place.
  */
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import type { ConfigStore, SavedConfigs, VoiceNames } from '~/lib/config-store';
 import { type Translator, useT } from '~/lib/i18n';
+import type { PermissionsApi } from '~/lib/provider-origins';
 import {
-  hasProviderAccess,
-  type PermissionsApi,
-  requestProviderAccess,
-} from '~/lib/provider-origins';
-import {
-  configToFormValues,
   type FieldError,
   type FieldSpec,
   type FormValue,
-  type FormValues,
-  formValuesToConfig,
   PROVIDER_IDS,
   PROVIDER_SCHEMAS,
   type ProviderSchema,
-  validateFormValues,
 } from '~/lib/providers/config-schema';
-import { errorMessage, formatProviderError, providerErrorSummary } from '~/lib/providers/errors';
 import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { Provider, ProviderConfig, ProviderId } from '~/lib/providers/types';
-import { type Deadline, startDeadline } from './deadline';
-import { type AsyncStatus, StatusLine } from './StatusLine';
+import { StatusLine } from './StatusLine';
 import { ChevronRight } from './ui/icons';
 import { StatusDot } from './ui/StatusDot';
-
-/**
- * Long enough for a slow synthesis — `validate()` really does speak two
- * characters on Dashscope and Volcengine — and short enough that a hung socket
- * stops looking like a slow one.
- */
-const VALIDATE_TIMEOUT_MS = 20_000;
+import { useProviderFormActions } from './use-provider-form';
 
 /**
  * The message for a rejected field.
@@ -276,31 +260,16 @@ function ProviderForm({
   permissions,
 }: ProviderFormProps) {
   const t = useT();
-  const [values, setValues] = useState<FormValues>(() => configToFormValues(schema, saved));
-  /**
-   * Whether the user has done something with this form.
-   *
-   * Field errors belong to a form somebody has tried to use: one that has just
-   * opened with an empty required field is not wrong yet. The form saves on the
-   * first blur, so that is exactly what "tried to use" means here.
-   */
-  const [touched, setTouched] = useState(false);
-  const [test, setTest] = useState<AsyncStatus>({ kind: 'idle' });
-  const [save, setSave] = useState<AsyncStatus>({ kind: 'idle' });
-  /**
-   * Whether the last save failed for lack of host access.
-   *
-   * That failure is the one the form can get out of, so it gets a way out: the
-   * prompt needs a user gesture, and only a click has one.
-   */
-  const [grantNeeded, setGrantNeeded] = useState(false);
-  const inFlight = useRef<Deadline | null>(null);
-
-  useEffect(() => () => inFlight.current?.cancel(), []);
-
-  const errors = validateFormValues(schema, values);
-  const valid = Object.keys(errors).length === 0;
-  const draft = valid ? formValuesToConfig(schema, values, saved) : null;
+  const form = useProviderFormActions({
+    schema,
+    provider,
+    saved,
+    active,
+    store,
+    onChanged,
+    permissions,
+  });
+  const { values, touched, test, save, grantNeeded, errors, draft, testing, update } = form;
   /**
    * The fields this form draws.
    *
@@ -309,179 +278,6 @@ function ProviderForm({
    * control for the same setting is a second thing that can disagree.
    */
   const visibleFields = schema.fields.filter((field) => !field.hidden);
-  /**
-   * A running Test Connection owns the form: its result is about what is on
-   * screen, so the fields must not change under it.
-   *
-   * A running save deliberately does not. A save starts when a field loses
-   * focus, which is the first half of the click that focuses the next control —
-   * disabling anything for its duration would swallow that click.
-   */
-  const testing = test.kind === 'running';
-  /**
-   * Bumped by every edit, so a save that finishes after one does not report on
-   * values that are no longer on screen.
-   */
-  const revision = useRef(0);
-  const writeQueue = useRef(Promise.resolve());
-  /** The saved config as form values, which is what an edit is measured against. */
-  const savedValues = configToFormValues(schema, saved);
-
-  const update = (key: string, value: FormValue) => {
-    setValues((current) => ({ ...current, [key]: value }));
-    revision.current += 1;
-    // A result from before the edit describes a config that no longer exists.
-    setTest({ kind: 'idle' });
-    setSave({ kind: 'idle' });
-    setGrantNeeded(false);
-  };
-
-  const onTest = async () => {
-    setTouched(true);
-    if (!provider || !draft) return;
-
-    // Before any await: the prompt needs the click's user gesture.
-    const access = requestProviderAccess(draft, permissions);
-
-    const deadline = startDeadline(VALIDATE_TIMEOUT_MS);
-    inFlight.current?.cancel();
-    inFlight.current = deadline;
-    setTest({ kind: 'running' });
-
-    try {
-      if (!(await access)) {
-        setTest({ kind: 'error', message: t('provider.access-declined') });
-        return;
-      }
-      await provider.validate(draft, deadline.signal);
-      setTest({ kind: 'ok', message: t('provider.test-succeeded') });
-    } catch (error) {
-      // A cancelled request is either this panel's own deadline or a request
-      // that a newer one replaced; neither is a failure to report.
-      if (deadline.timedOut()) {
-        setTest({
-          kind: 'error',
-          message: t('error.no-response', { seconds: VALIDATE_TIMEOUT_MS / 1000 }),
-        });
-      } else if (!deadline.signal.aborted) {
-        setTest({ kind: 'error', message: formatProviderError(providerErrorSummary(error), t) });
-      }
-    } finally {
-      deadline.dispose();
-      if (inFlight.current === deadline) inFlight.current = null;
-    }
-  };
-
-  /**
-   * Write `config` and report what happened.
-   *
-   * `access` is passed in rather than awaited here because the prompt needs the
-   * click's gesture and the first `await` gives it up; the caller starts it. A
-   * call whose gesture is gone must not have been made at all — see the check
-   * in `autoSave` — so a refusal here means the user declined the prompt or the
-   * host is not granted and no prompt could be raised.
-   */
-  const write = async (config: ProviderConfig, access: Promise<boolean>) => {
-    const started = revision.current;
-    const granted = access.catch(() => false);
-    const operation = async (): Promise<void> => {
-      setSave({ kind: 'running' });
-      setGrantNeeded(false);
-      try {
-        // A config the extension cannot reach would only fail later, mid-read.
-        if (!(await granted)) {
-          if (revision.current === started) {
-            setGrantNeeded(true);
-            setSave({
-              kind: 'error',
-              message: t('provider.not-saved', { detail: t('provider.access-needed') }),
-            });
-          }
-          return;
-        }
-        await store.saveConfig(config);
-        // Saving is not switching, and this row was already the one in use — so
-        // re-point the active config at what was just saved. Leaving the old
-        // values there would mean the panel shows one key while the engine reads
-        // with another until the user thinks to press the circle again.
-        if (active && (await store.getConfig())?.provider === schema.id) {
-          await store.setActiveConfig(schema.id);
-        }
-        if (revision.current === started) {
-          setSave({
-            kind: 'ok',
-            message: t(active ? 'provider.saved' : 'provider.saved-not-active'),
-          });
-        }
-        // The write happened either way, so the owner still has to re-read.
-        onChanged();
-      } catch (error) {
-        if (revision.current === started) {
-          setSave({
-            kind: 'error',
-            message: t('provider.not-saved', { detail: errorMessage(error) }),
-          });
-        }
-      }
-    };
-    writeQueue.current = writeQueue.current.catch(() => {}).then(operation);
-    await writeQueue.current;
-  };
-
-  /**
-   * Save what was typed when a field loses focus.
-   *
-   * On blur rather than on every keystroke: a half-typed key is not a config,
-   * and writing one per character would fill storage with them. The form is
-   * validated whole, so an invalid one writes nothing and the saved values stay
-   * as they were.
-   */
-  const autoSave = () => {
-    setTouched(true);
-    if (!draft) {
-      // The fields say which one is wrong; the line says that nothing was
-      // written, which is the part looking at the form cannot tell you.
-      setGrantNeeded(false);
-      setSave({ kind: 'error', message: t('provider.not-saved-invalid') });
-      return;
-    }
-    // Tabbing through a form that was not edited is not a save.
-    const edited = schema.fields.some((field) => values[field.key] !== savedValues[field.key]);
-    if (!edited) return;
-
-    // Nothing is asked for here: a blur carries no user gesture, and
-    // `permissions.request` without one never comes back — the line would sit
-    // at "Saving…" forever. The grant is only checked, and the Grant access
-    // button takes on the asking.
-    void write(draft, hasProviderAccess(draft, permissions));
-  };
-
-  /**
-   * Ask for the host grant again, now that there is a gesture to ask with, and
-   * write the config once it is there.
-   */
-  const onGrantAccess = () => {
-    if (!draft) return;
-    void write(draft, requestProviderAccess(draft, permissions));
-  };
-
-  const onDelete = async () => {
-    setSave({ kind: 'running' });
-    setGrantNeeded(false);
-    try {
-      await store.forgetConfig(schema.id);
-      setValues(configToFormValues(schema, null));
-      setTest({ kind: 'idle' });
-      setSave({ kind: 'ok', message: t('provider.deleted') });
-      // Deleting the active provider also made the browser voice active.
-      onChanged();
-    } catch (error) {
-      setSave({
-        kind: 'error',
-        message: t('provider.delete-failed', { detail: errorMessage(error) }),
-      });
-    }
-  };
 
   return (
     <div class="stack">
@@ -494,7 +290,7 @@ function ProviderForm({
           `focusout` does bubble, and it fires for every way out of a field —
           including the one that closes this form.
         */
-        <div class="form" onFocusOut={autoSave}>
+        <div class="form" onFocusOut={form.autoSave}>
           {visibleFields.map((field) => (
             <Field
               key={field.key}
@@ -525,7 +321,12 @@ function ProviderForm({
       */}
       {provider && schema.id !== 'local' && (
         <div class="actions">
-          <button type="button" class="button" disabled={testing} onClick={() => void onTest()}>
+          <button
+            type="button"
+            class="button"
+            disabled={testing}
+            onClick={() => void form.onTest()}
+          >
             {test.kind === 'running' ? t('provider.testing') : t('provider.test')}
           </button>
         </div>
@@ -547,7 +348,7 @@ function ProviderForm({
             <StatusLine status={save} />
           )}
           {grantNeeded && (
-            <button type="button" class="button" disabled={testing} onClick={onGrantAccess}>
+            <button type="button" class="button" disabled={testing} onClick={form.onGrantAccess}>
               {t('provider.grant-access')}
             </button>
           )}
@@ -573,7 +374,7 @@ function ProviderForm({
           type="button"
           class="provider-delete"
           disabled={testing}
-          onClick={() => void onDelete()}
+          onClick={() => void form.onDelete()}
         >
           {t('provider.delete')}
         </button>

@@ -25,7 +25,7 @@ import { browser } from 'wxt/browser';
 import { ReaderController } from '~/entrypoints/reader.content/ReaderController';
 import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import type { Block } from '~/lib/extractor';
-import { type Lang, resolveLang } from '~/lib/i18n';
+import { createTranslator, type Lang, resolveLang } from '~/lib/i18n';
 import { isInterceptHash, parseInterceptedUrl } from '~/lib/pdf/dnr';
 import type { EmbedBlock } from '~/lib/pdf/embed/blocks';
 import {
@@ -48,7 +48,13 @@ import {
 } from '~/lib/reading-doc';
 import { DEFAULT_SETTINGS, SettingsStore, type UiLang } from '~/lib/settings-store';
 import '~/entrypoints/reader.content/styles.css';
-import { Chrome, type ChromeState, type Notice, PDF_LABELS, type SearchUiState } from './chrome-ui';
+import {
+  Chrome,
+  type ChromeState,
+  type Notice,
+  type SearchUiState,
+  sidebarLabels,
+} from './chrome-ui';
 import { DEFAULT_DOCUMENT_NAME, documentNameFromUrl, requestBytes } from './load-bytes';
 import { appendSync } from './sync';
 import { PdfViewer, type ViewerApi, type ViewerSearchState } from './viewer';
@@ -380,7 +386,7 @@ function drawViewer(): void {
     <PdfViewer
       engine={engine}
       sidebarOpen={chrome.sidebar}
-      sidebarLabels={PDF_LABELS[uiLang].sidebar}
+      sidebarLabels={sidebarLabels(createTranslator(uiLang))}
       onRegistry={handleRegistry}
       onApi={handleViewerApi}
       onScale={handleScale}

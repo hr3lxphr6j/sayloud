@@ -24,6 +24,10 @@
  */
 import type { MessageKey } from '../i18n/messages.en';
 import { MODELS } from '../models/registry';
+// `records.ts` has no imports of its own, so sharing the record check costs the
+// service worker nothing: the point of keeping adapters out of this module is
+// to keep their transports out, not to keep a type guard in.
+import { isRecord } from '../records';
 import type { ProviderConfig, ProviderConfigMap, ProviderId } from './types';
 
 /** How a field is edited, which decides both the widget and the validation. */
@@ -493,11 +497,6 @@ export interface FieldError {
 /** Field key to what is wrong with it. */
 export type FieldErrors = Record<string, FieldError>;
 
-/** True for a non-null, non-array object. */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** True for an absolute http(s) URL, the only thing a `url` field may hold. */
 export function isHttpUrl(text: string): boolean {
   try {
@@ -510,7 +509,7 @@ export function isHttpUrl(text: string): boolean {
 
 /** Render a header map as the `Name: Value` lines the textarea shows. */
 function formatHeaders(value: unknown): string {
-  if (!isPlainObject(value)) return '';
+  if (!isRecord(value)) return '';
   return Object.entries(value)
     .map(([name, header]) => `${name}: ${String(header)}`)
     .join('\n');
@@ -694,7 +693,7 @@ function coerceStored(field: FieldSpec, raw: unknown): unknown {
       return field.retiredOptions?.[raw];
 
     case 'kv':
-      if (!isPlainObject(raw)) return undefined;
+      if (!isRecord(raw)) return undefined;
       return Object.values(raw).every((value) => typeof value === 'string') ? raw : undefined;
 
     default:
@@ -706,7 +705,7 @@ function coerceStored(field: FieldSpec, raw: unknown): unknown {
 /** Check one passthrough value: only its outer shape is ours to judge. */
 function coercePassthrough(spec: PassthroughSpec, raw: unknown): unknown {
   if (spec.kind === 'array') return Array.isArray(raw) ? raw : undefined;
-  return isPlainObject(raw) ? raw : undefined;
+  return isRecord(raw) ? raw : undefined;
 }
 
 /**
@@ -719,7 +718,7 @@ function coercePassthrough(spec: PassthroughSpec, raw: unknown): unknown {
  * their API key.
  */
 export function parseStoredConfig(value: unknown): ProviderConfig | null {
-  if (!isPlainObject(value)) return null;
+  if (!isRecord(value)) return null;
 
   const id = value.provider;
   if (typeof id !== 'string' || !Object.hasOwn(SCHEMAS, id)) return null;

@@ -326,6 +326,7 @@ export const ja: Record<MessageKey, string> = {
   'pdf.empty': 'このPDFには読み上げられるテキストがありません',
   'pdf.password.title': 'このPDFにはパスワードが必要です',
   'pdf.password.wrong': 'パスワードが正しくありません',
+  'pdf.password.cancel': 'キャンセル',
   // リーダー上部に常駐する一行で、閉じられるヒントではない。段組みの
   // 読み順はテキストレイヤーの既知の制限なので、明記しておく。
   'pdf.order.hint':
@@ -333,6 +334,21 @@ export const ja: Record<MessageKey, string> = {
   'pdf.pick': 'PDFファイルを選択',
   'pdf.zoom.in': '拡大',
   'pdf.zoom.out': '縮小',
+  'pdf.search': '検索…',
+  'pdf.search.close': '検索を閉じる',
+  'pdf.search.previous': '前の一致',
+  'pdf.search.next': '次の一致',
+  'pdf.search.no-matches': '一致なし',
+  'pdf.sidebar.pages': 'ページ',
+  'pdf.sidebar.contents': '目次',
+  'pdf.sidebar.empty': '目次はありません',
+  'pdf.sidebar.toggle': 'サムネイルを表示',
+  'pdf.download': 'PDF をダウンロード',
+  'pdf.fit-width': '幅に合わせる',
+  'pdf.page.previous': '前のページ',
+  'pdf.page.next': '次のページ',
+  // 数字の前に何も置かないので、`{page}` の手前は空になる。
+  'pdf.page.label': '{page} / {total} ページ',
 
   // --- the caption window ---------------------------------------------------
   'caption.counter': '文{index}/{total}',

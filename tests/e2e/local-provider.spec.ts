@@ -278,7 +278,7 @@ test('the panel loads with no page errors on the Models tab', async ({
   await panel.getByLabel('Download source').selectOption('custom');
   await expect(panel.getByLabel('Mirror URL')).toBeVisible();
   // Nothing usable is stored, so the panel says so instead of pretending.
-  await expect(panel.getByText('Enter a complete https:// URL.')).toBeVisible();
+  await expect(panel.getByText('Enter a complete http:// or https:// URL.')).toBeVisible();
 
   await panel.getByLabel('Mirror URL').fill('https://mirror.test/models');
   await panel.getByLabel('Mirror URL').blur();

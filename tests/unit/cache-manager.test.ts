@@ -96,6 +96,13 @@ async function writeRaw(
   db.close();
 }
 
+/** Empty the store behind a cache's back, the way the settings panel does. */
+async function emptyStore(factory: IDBFactory, dbName: string): Promise<void> {
+  const panel = new L2Cache({ factory, dbName });
+  await panel.clear();
+  panel.close();
+}
+
 describe('L1Cache', () => {
   it('returns what it stored', () => {
     const cache = new L1Cache(1024);
@@ -576,10 +583,12 @@ describe('CacheManager.computeKey', () => {
 });
 
 describe('CacheManager', () => {
+  let factory: IDBFactory;
   let cache: CacheManager;
 
   beforeEach(() => {
-    cache = new CacheManager({ factory: memoryFactory(), dbName: 'test-cache' });
+    factory = memoryFactory();
+    cache = new CacheManager({ factory, dbName: 'test-cache' });
   });
 
   afterEach(() => {
@@ -587,27 +596,29 @@ describe('CacheManager', () => {
   });
 
   it('opens the database through the manager', async () => {
-    const cache = new CacheManager({ factory: memoryFactory(), dbName: 'test-cache' });
-
     await cache.init();
-    await cache.putL2('a', result(8));
+    await cache.put('a', result(8));
 
-    expect(cache.stats()).toEqual({ l1Bytes: 0, l2Bytes: 8, l2Entries: 1 });
+    expect(await cache.usage()).toEqual({ bytes: 8, entries: 1 });
   });
 
   it('promotes an L2 hit into L1', async () => {
-    await cache.putL2('a', result(8));
+    // Written around the cache, so the first read can only be a store hit.
+    await writeRaw(factory, 'test-cache', storedRecord('a', 8, Date.now()));
 
     const found = await cache.get('a');
-
     expect(found?.audio.byteLength).toBe(8);
-    expect(cache.getL1('a')).toBe(found);
-    expect(cache.stats()).toEqual({ l1Bytes: 8, l2Bytes: 8, l2Entries: 1 });
+
+    // The promotion is what answers now that the store is gone behind us.
+    await emptyStore(factory, 'test-cache');
+    expect(await cache.get('a')).toBe(found);
   });
 
   it('prefers L1 over L2', async () => {
     const memoryOnly = result(4);
-    cache.putL1('a', memoryOnly);
+    await cache.put('a', memoryOnly);
+    // Nothing is left in the store: an answer can only come from memory.
+    await emptyStore(factory, 'test-cache');
 
     expect(await cache.get('a')).toBe(memoryOnly);
   });
@@ -616,24 +627,28 @@ describe('CacheManager', () => {
     const stored = result(8);
     await cache.put('a', stored);
 
-    expect(cache.getL1('a')).toBe(stored);
-    expect(await cache.getL2('a')).toBeDefined();
+    // A second manager has a memory layer of its own, so this hit is the store's.
+    const other = new CacheManager({ factory, dbName: 'test-cache' });
+    expect(await other.get('a')).toBeDefined();
+
+    // And the memory layer alone still answers once the store is emptied.
+    await emptyStore(factory, 'test-cache');
+    expect(await cache.get('a')).toBe(stored);
   });
 
   it('misses when neither layer has the key', async () => {
     expect(await cache.get('nope')).toBeUndefined();
   });
 
-  it('clears one layer at a time', async () => {
+  it('clears the memory layer without touching the store', async () => {
     await cache.put('a', result(8));
 
     cache.clearL1();
-    expect(cache.getL1('a')).toBeUndefined();
-    expect(await cache.getL2('a')).toBeDefined();
 
-    await cache.clearL2();
-    expect(await cache.getL2('a')).toBeUndefined();
-    expect(cache.stats()).toEqual({ l1Bytes: 0, l2Bytes: 0, l2Entries: 0 });
+    // The read falls through to the store, which still has its copy.
+    expect(await cache.get('a')).toBeDefined();
+    const other = new CacheManager({ factory, dbName: 'test-cache' });
+    expect(await other.get('a')).toBeDefined();
   });
 
   it('clears both layers at once', async () => {
@@ -641,8 +656,8 @@ describe('CacheManager', () => {
 
     await cache.clear();
 
-    expect(cache.getL1('a')).toBeUndefined();
-    expect(await cache.getL2('a')).toBeUndefined();
+    // L1 is consulted before L2, so a miss here means neither layer has it.
+    expect(await cache.get('a')).toBeUndefined();
     expect(await cache.usage()).toEqual({ bytes: 0, entries: 0 });
   });
 
@@ -667,28 +682,29 @@ describe('CacheManager', () => {
     await managed.setMaxBytes(8);
 
     expect(await managed.usage()).toEqual({ bytes: 8, entries: 1 });
-    expect(managed.stats().l2Entries).toBe(1);
   });
 
   it('stops writing to the store when persistence is turned off', async () => {
-    await cache.put('a', result(8));
+    const stored = result(8);
+    await cache.put('a', stored);
 
     await cache.setPersist(false);
 
     // What "off" clears is the durable half; the memory half is the point of
     // turning it off, so the sentence just heard is still there.
-    expect(await cache.getL2('a')).toBeUndefined();
-    expect(cache.getL1('a')).toBeDefined();
+    const other = new CacheManager({ factory, dbName: 'test-cache' });
+    expect(await other.get('a')).toBeUndefined();
+    expect(await cache.get('a')).toBe(stored);
 
     await cache.put('b', result(8));
-    expect(await cache.getL2('b')).toBeUndefined();
-    expect(cache.getL1('b')).toBeDefined();
+    expect(await other.get('b')).toBeUndefined();
+    expect(await cache.get('b')).toBeDefined();
   });
 
   it('does not read the store while persistence is off', async () => {
     await cache.setPersist(false);
     // A record an earlier version of the extension left behind.
-    await cache.putL2('stale', result(8));
+    await writeRaw(factory, 'test-cache', storedRecord('stale', 8, Date.now()));
 
     expect(await cache.get('stale')).toBeUndefined();
   });
@@ -699,6 +715,7 @@ describe('CacheManager', () => {
     await cache.setPersist(true);
     await cache.put('a', result(8));
 
-    expect(await cache.getL2('a')).toBeDefined();
+    const other = new CacheManager({ factory, dbName: 'test-cache' });
+    expect(await other.get('a')).toBeDefined();
   });
 });

@@ -1,4 +1,5 @@
 import type { EngineSentence, SessionSnapshot } from './protocol';
+import { isRecord } from './records';
 
 export const SNAPSHOT_KEY = 'sayloud-session';
 export const SNAPSHOT_BACKUP_KEY = 'sayloud-session-backup';
@@ -95,7 +96,7 @@ export class SnapshotStore {
 }
 
 function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnapshot | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isRecord(value)) {
     if (value !== undefined) {
       console.warn(`[SayLoud] snapshot parse failed (${source}): value is not an object`, {
         value,
@@ -103,7 +104,7 @@ function parseSnapshot(value: unknown, source: 'session' | 'local'): SessionSnap
     }
     return null;
   }
-  const raw = value as Record<string, unknown>;
+  const raw = value;
 
   // Backward compatibility: if the old format (with sentences array) is found,
   // convert it to the new format.

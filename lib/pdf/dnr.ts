@@ -93,7 +93,7 @@ export function pdfInterceptRule(viewerUrl: string): Browser.declarativeNetReque
  * safe to run on every service-worker start: there is never a moment with two
  * rules for the same navigation.
  */
-export async function enablePdfIntercept(
+async function enablePdfIntercept(
   api: DynamicRulesApi = browser.declarativeNetRequest,
   viewerUrl: string = browser.runtime.getURL(PDF_VIEWER_PATH)
 ): Promise<void> {
@@ -104,7 +104,7 @@ export async function enablePdfIntercept(
 }
 
 /** Take the rule away. A rule that was never added is not an error. */
-export async function disablePdfIntercept(
+async function disablePdfIntercept(
   api: DynamicRulesApi = browser.declarativeNetRequest
 ): Promise<void> {
   await api.updateDynamicRules({

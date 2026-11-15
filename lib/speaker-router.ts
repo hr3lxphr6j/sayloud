@@ -66,16 +66,6 @@ export class SpeakerRouter implements Speaker {
     this.bind();
   }
 
-  /** The provider that is speaking: a cloud id, or `browser`. */
-  get provider(): ProviderId {
-    return this.cloud?.config.provider ?? 'browser';
-  }
-
-  /** True when a cloud provider is the one speaking. */
-  get isCloud(): boolean {
-    return this.cloud !== null;
-  }
-
   /**
    * Re-read the saved configuration and switch speakers if it changed.
    *

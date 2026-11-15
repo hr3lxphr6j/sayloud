@@ -8,8 +8,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   type DynamicRulesApi,
-  disablePdfIntercept,
-  enablePdfIntercept,
   isInterceptHash,
   PDF_DNR_RULE_ID,
   PDF_URL_PATTERN,
@@ -33,7 +31,7 @@ describe('enabling the interception rule', () => {
   it('adds one main-frame redirect from http(s) pdfs to the viewer', async () => {
     const { api, calls } = fakeRules();
 
-    await enablePdfIntercept(api, VIEWER);
+    await syncPdfIntercept(true, api, VIEWER);
 
     expect(calls).toHaveLength(1);
     const [options] = calls;
@@ -78,7 +76,7 @@ describe('disabling the interception rule', () => {
   it('removes the rule by id and adds nothing', async () => {
     const { api, calls } = fakeRules();
 
-    await disablePdfIntercept(api);
+    await syncPdfIntercept(false, api, VIEWER);
 
     expect(calls).toEqual([{ addRules: [], removeRuleIds: [PDF_DNR_RULE_ID] }]);
   });

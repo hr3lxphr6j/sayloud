@@ -33,10 +33,6 @@ export class VoiceCache {
     return this.inFlight;
   }
 
-  get size(): number {
-    return this.voices.length;
-  }
-
   /** True before the first successful refresh. */
   get isEmpty(): boolean {
     return this.voices.length === 0;

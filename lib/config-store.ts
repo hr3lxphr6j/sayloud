@@ -8,6 +8,7 @@
  */
 import { parseStoredConfig } from './providers/config-schema';
 import type { ProviderConfig, ProviderId } from './providers/types';
+import { asRecord, isRecord } from './records';
 
 /** Every key this module owns. */
 const NAMESPACE = 'sayloud:';
@@ -100,8 +101,8 @@ export class ConfigStore {
     const saved: SavedConfigs = {};
 
     const raw = stored[PROVIDER_CONFIGS_KEY];
-    if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
-      for (const [provider, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (isRecord(raw)) {
+      for (const [provider, value] of Object.entries(raw)) {
         const config = parseStoredConfig(value);
         // Filed under the wrong provider is as unusable as malformed.
         if (config && config.provider === provider && provider !== 'browser') {
@@ -170,14 +171,12 @@ export class ConfigStore {
    */
   async getVoiceNames(): Promise<VoiceNames> {
     const stored = await this.area.get(VOICE_NAMES_KEY);
-    const raw = stored[VOICE_NAMES_KEY];
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
 
     const names: VoiceNames = {};
-    for (const [provider, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+    for (const [provider, value] of Object.entries(asRecord(stored[VOICE_NAMES_KEY]))) {
+      if (!isRecord(value)) continue;
       const voices: Record<string, string> = {};
-      for (const [voiceId, name] of Object.entries(value as Record<string, unknown>)) {
+      for (const [voiceId, name] of Object.entries(value)) {
         if (typeof name === 'string' && name !== '') voices[voiceId] = name;
       }
       if (Object.keys(voices).length > 0) names[provider] = voices;
@@ -197,11 +196,9 @@ export class ConfigStore {
   /** The voice map, with anything that is not a non-empty string discarded. */
   private async readSelectedVoices(): Promise<Record<string, string>> {
     const stored = await this.area.get(SELECTED_VOICES_KEY);
-    const raw = stored[SELECTED_VOICES_KEY];
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
 
     const voices: Record<string, string> = {};
-    for (const [provider, voiceId] of Object.entries(raw as Record<string, unknown>)) {
+    for (const [provider, voiceId] of Object.entries(asRecord(stored[SELECTED_VOICES_KEY]))) {
       if (typeof voiceId === 'string' && voiceId !== '') voices[provider] = voiceId;
     }
     return voices;

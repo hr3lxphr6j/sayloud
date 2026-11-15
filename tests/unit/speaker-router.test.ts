@@ -135,9 +135,6 @@ describe('SpeakerRouter', () => {
 
   describe('before the configuration is read', () => {
     it('uses the browser voice', () => {
-      expect(router.isCloud).toBe(false);
-      expect(router.provider).toBe('browser');
-
       router.speak(REQUEST);
 
       expect(browser.requests).toEqual([REQUEST]);
@@ -153,7 +150,6 @@ describe('SpeakerRouter', () => {
     it('keeps the browser voice when nothing is configured', async () => {
       await router.refresh();
 
-      expect(router.isCloud).toBe(false);
       expect(created).toEqual([]);
       expect(router.resolveVoice('zh-CN')).toBe('browser:zh-CN');
     });
@@ -168,7 +164,11 @@ describe('SpeakerRouter', () => {
 
       await router.refresh();
 
-      expect(router.isCloud).toBe(false);
+      // Nothing switched, so the browser delegate is still the one speaking.
+      router.speak(REQUEST);
+
+      expect(browser.requests).toEqual([REQUEST]);
+      expect(cloud.requests).toEqual([]);
     });
 
     it('switches to the cloud voice when a provider and a voice are configured', async () => {
@@ -184,8 +184,6 @@ describe('SpeakerRouter', () => {
 
       await router.refresh();
 
-      expect(router.isCloud).toBe(true);
-      expect(router.provider).toBe('dashscope');
       expect(created).toEqual([DASHSCOPE]);
       // The browser voice is silenced before the cloud voice takes over.
       expect(browser.stop).toHaveBeenCalled();
@@ -219,7 +217,8 @@ describe('SpeakerRouter', () => {
 
       await expect(router.refresh()).rejects.toThrow('no-voice-selected:dashscope');
 
-      expect(router.isCloud).toBe(false);
+      // A failed switch leaves the browser voice in place.
+      expect(router.resolveVoice('en-US')).toBe('browser:en-US');
     });
 
     it('throws an error when this build has no cloud speaker', async () => {
@@ -232,7 +231,7 @@ describe('SpeakerRouter', () => {
 
       await expect(router.refresh()).rejects.toThrow('provider-unavailable:dashscope');
 
-      expect(router.isCloud).toBe(false);
+      expect(router.resolveVoice('en-US')).toBe('browser:en-US');
     });
 
     it('keeps the same cloud speaker when nothing changed', async () => {
@@ -295,7 +294,6 @@ describe('SpeakerRouter', () => {
       vi.mocked(config.getConfig).mockResolvedValue({ provider: 'browser' });
       await router.refresh();
 
-      expect(router.isCloud).toBe(false);
       expect(cloud.dispose).toHaveBeenCalled();
       expect(router.resolveVoice('en-US')).toBe('browser:en-US');
     });
@@ -316,7 +314,6 @@ describe('SpeakerRouter', () => {
       vi.mocked(config.getConfig).mockResolvedValue(ELEVEN);
       await router.refresh();
 
-      expect(router.provider).toBe('elevenlabs');
       expect(router.resolveVoice('en')).toBe('b');
       expect(created).toEqual([DASHSCOPE, ELEVEN]);
     });
@@ -336,7 +333,7 @@ describe('SpeakerRouter', () => {
 
       await expect(router.refresh()).rejects.toThrow('storage is gone');
 
-      expect(router.isCloud).toBe(false);
+      expect(router.resolveVoice('en-US')).toBe('browser:en-US');
     });
 
     it('throws an error when a cloud speaker cannot be built', async () => {
@@ -351,7 +348,7 @@ describe('SpeakerRouter', () => {
 
       await expect(router.refresh()).rejects.toThrow('the offscreen API is missing');
 
-      expect(router.isCloud).toBe(false);
+      expect(router.resolveVoice('en-US')).toBe('browser:en-US');
     });
 
     it('throws an error when a voice lookup fails', async () => {
@@ -369,7 +366,7 @@ describe('SpeakerRouter', () => {
 
       await expect(router.refresh()).rejects.toThrow('storage is gone');
 
-      expect(router.isCloud).toBe(false);
+      expect(router.resolveVoice('en-US')).toBe('browser:en-US');
     });
   });
 

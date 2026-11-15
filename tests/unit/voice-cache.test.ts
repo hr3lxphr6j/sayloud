@@ -42,7 +42,6 @@ describe('VoiceCache', () => {
     await refresh;
 
     expect(cache.isEmpty).toBe(false);
-    expect(cache.size).toBe(2);
     expect(cache.resolve('en-US')).toBe('Samantha');
     expect(cache.resolve('zh-CN')).toBe('Tingting');
   });

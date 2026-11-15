@@ -27,6 +27,7 @@ import {
   type PhonemizeWorkerRequest,
   phonemizeErrorCode,
 } from '~/lib/models/phonemize-worker-protocol';
+import { errorMessage } from '~/lib/providers/errors';
 
 /** The slice of `DedicatedWorkerGlobalScope` used here. */
 interface WorkerScope {
@@ -96,7 +97,7 @@ async function handle(request: PhonemizeWorkerRequest): Promise<void> {
       type: 'error',
       id: request.id,
       code: phonemizeErrorCode(error),
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
     });
   }
 }

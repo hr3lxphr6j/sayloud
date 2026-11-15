@@ -63,6 +63,9 @@ export interface LocalWorkerEvents {
   messageerror: MessageEvent;
 }
 
+/** The failure every call gets once `dispose()` has torn the workers down. */
+const DISPOSED_MESSAGE = 'the local engine was disposed';
+
 /** The slice of `Worker` this module uses. */
 export interface WorkerLike {
   postMessage(message: unknown, transfer?: Transferable[]): void;
@@ -198,11 +201,11 @@ class WorkerClient<Request, Reply extends { readonly id: number }> {
   }
 
   dispose(): void {
-    this.disposeWith(new Error('the local engine was disposed'));
+    this.disposeWith(new Error(DISPOSED_MESSAGE));
   }
 
   private reason(): Error {
-    return this.failure ?? new Error('the local engine was disposed');
+    return this.failure ?? new Error(DISPOSED_MESSAGE);
   }
 
   private readonly onMessage = (event: MessageEvent): void => {
@@ -510,7 +513,7 @@ export class WorkerLocalEngine implements OnDeviceEngine {
 
   private ensureAlive(): void {
     if (this.dead) throw this.dead;
-    if (this.disposed) throw new Error('the local engine was disposed');
+    if (this.disposed) throw new Error(DISPOSED_MESSAGE);
   }
 
   /**

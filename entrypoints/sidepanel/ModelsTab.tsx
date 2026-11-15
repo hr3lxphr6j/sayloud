@@ -41,6 +41,7 @@ import {
 } from '~/lib/models/registry';
 import type { ModelSourceSetting } from '~/lib/models/store';
 import { MODEL_HOSTS, type ModelHostId } from '~/lib/models/urls';
+import { errorMessage } from '~/lib/providers/errors';
 import type { ProviderConfig } from '~/lib/providers/types';
 import { Card } from './ui/Card';
 import {
@@ -181,7 +182,7 @@ function SourceCard({ models }: SourceCardProps) {
       },
       (error: unknown) => {
         setSaved(false);
-        setFailure(errorText(error));
+        setFailure(errorMessage(error));
       }
     );
   };
@@ -668,8 +669,4 @@ function isHttpsUrl(text: string): boolean {
   } catch {
     return false;
   }
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

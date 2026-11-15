@@ -41,7 +41,7 @@ describe('CachePolicy', () => {
 
     await policy.apply(settings({ persist: false }).cache);
 
-    expect(cache.getL1('a')).toBeDefined();
+    expect(await cache.get('a')).toBeDefined();
     expect(await cache.usage()).toEqual({ bytes: 0, entries: 0 });
   });
 
@@ -61,7 +61,7 @@ describe('CachePolicy', () => {
     const policy = new CachePolicy(cache);
     await policy.apply(settings().cache);
     await cache.put('a', result(8));
-    expect(cache.stats().l1Bytes).toBe(8);
+    expect(await cache.get('a')).toBeDefined();
 
     // The settings panel clears through its own connection, so this document's
     // counters still describe a store that is already gone.
@@ -71,8 +71,10 @@ describe('CachePolicy', () => {
 
     await policy.onCleared();
 
-    expect(cache.getL1('a')).toBeUndefined();
-    expect(cache.stats()).toEqual({ l1Bytes: 0, l2Bytes: 0, l2Entries: 0 });
+    // A cleared cache has to forget both copies, or the stale memory layer
+    // would keep answering for the store that is gone.
+    expect(await cache.get('a')).toBeUndefined();
+    expect(await cache.usage()).toEqual({ bytes: 0, entries: 0 });
   });
 });
 

@@ -9,7 +9,7 @@
  * The keys it writes are canonical (`urls.ts`), never the URL it fetched, so
  * changing download source keeps what is already cached.
  */
-import { isAbortError } from '../providers/errors';
+import { errorMessage, isAbortError } from '../providers/errors';
 import {
   type ModelTier,
   type OnDeviceModel,
@@ -307,17 +307,22 @@ async function downloadOne(
 /** Issue the request, turning a transport failure into a `DownloadError`. */
 async function request(file: PlannedFile, context: DownloadContext): Promise<Response> {
   if (context.signal?.aborted) {
-    throw new DownloadError('cancelled', `the download of ${file.path} was cancelled`);
+    throw cancelled(file.path);
   }
 
   try {
     return await context.fetch(file.url, context.signal ? { signal: context.signal } : undefined);
   } catch (error) {
     if (isAbortError(error)) {
-      throw new DownloadError('cancelled', `the download of ${file.path} was cancelled`);
+      throw cancelled(file.path);
     }
     throw asDownloadError(error, 'network', `could not fetch ${file.path}`);
   }
+}
+
+/** The cancellation failure: a stop or a seek, not a broken download. */
+function cancelled(path: string): DownloadError {
+  return new DownloadError('cancelled', `the download of ${path} was cancelled`);
 }
 
 /** Wrap a non-download failure, keeping cancellation recognisable. */
@@ -328,7 +333,7 @@ function asDownloadError(
 ): DownloadError {
   if (error instanceof DownloadError) return error;
   if (isAbortError(error)) return new DownloadError('cancelled', message);
-  const detail = error instanceof Error ? error.message : String(error);
+  const detail = errorMessage(error);
   return new DownloadError(reason, `${message}: ${detail}`);
 }
 
@@ -379,9 +384,9 @@ function countBytes(
 /** The failure of a body read, told apart from a failure to write it. */
 function readFailure(error: unknown, path: string): DownloadError {
   if (isAbortError(error)) {
-    return new DownloadError('cancelled', `the download of ${path} was cancelled`);
+    return cancelled(path);
   }
-  const detail = error instanceof Error ? error.message : String(error);
+  const detail = errorMessage(error);
   return new DownloadError('network', `the download of ${path} broke off: ${detail}`);
 }
 

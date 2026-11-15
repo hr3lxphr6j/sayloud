@@ -1,4 +1,4 @@
-import type { EmbedBlock, EmbedRect } from './blocks';
+import type { EmbedRect } from './blocks';
 
 /**
  * Draws highlight rectangles over PDFium-rendered pages.
@@ -18,20 +18,6 @@ export class EmbedHighlightLayer {
   private readonly rects: HTMLElement[] = [];
 
   constructor(readonly container: HTMLElement) {}
-
-  /**
-   * Highlight a sentence given the blocks it covers.
-   *
-   * Draws every run of the blocks, which is exact when the caller passes only
-   * the blocks the sentence intersects (as the viewer does for one-line
-   * blocks), and deliberately coarse when it passes a whole paragraph. The
-   * viewer uses {@link setRects} with the runs a sentence actually overlaps,
-   * which is precise for multi-line paragraphs.
-   */
-  highlight(sentenceIndex: number, blocks: readonly EmbedBlock[]): void {
-    const rects = blocks.flatMap((block) => block.run.map((run) => run.rect));
-    this.setRects(rects, sentenceIndex);
-  }
 
   /** Replace every rectangle with `rects`, in page pixels. */
   setRects(rects: readonly EmbedRect[], sentenceIndex?: number): void {

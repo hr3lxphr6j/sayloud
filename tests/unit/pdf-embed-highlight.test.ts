@@ -8,7 +8,7 @@
  */
 import type { PdfTextRectObject } from '@embedpdf/models';
 import { describe, expect, it } from 'vitest';
-import { buildEmbedBlocks, type EmbedBlock } from '~/lib/pdf/embed/blocks';
+import { buildEmbedBlocks, type EmbedBlock, type EmbedRect } from '~/lib/pdf/embed/blocks';
 import { EmbedHighlightLayer } from '~/lib/pdf/embed/highlight';
 
 function textRect(content: string, x: number, y: number, height = 12): PdfTextRectObject {
@@ -35,11 +35,16 @@ function rectsIn(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>('.pdf-highlight-rect'));
 }
 
+/** The rects of every run in `blocks`, which is what a sentence covers. */
+function runRects(blocks: readonly EmbedBlock[]): EmbedRect[] {
+  return blocks.flatMap((block) => block.run.map((run) => run.rect));
+}
+
 describe('EmbedHighlightLayer', () => {
   it('draws a rectangle at the run position and size', () => {
     const { layer, container, blocks } = setup([textRect('Hello', 10, 20)]);
 
-    layer.highlight(0, blocks);
+    layer.setRects(runRects(blocks), 0);
 
     const [rect] = rectsIn(container);
     expect(rect).toBeDefined();
@@ -53,8 +58,8 @@ describe('EmbedHighlightLayer', () => {
   it('replaces the previous sentence instead of accumulating', () => {
     const { layer, container, blocks } = setup([textRect('Hello', 0, 0), textRect('World', 0, 40)]);
 
-    layer.highlight(0, [blocks[0] as EmbedBlock]);
-    layer.highlight(1, [blocks[1] as EmbedBlock]);
+    layer.setRects(runRects([blocks[0] as EmbedBlock]), 0);
+    layer.setRects(runRects([blocks[1] as EmbedBlock]), 1);
 
     const drawn = rectsIn(container);
     expect(drawn).toHaveLength(1);
@@ -65,7 +70,7 @@ describe('EmbedHighlightLayer', () => {
   it('clears everything', () => {
     const { layer, container, blocks } = setup([textRect('Hello', 0, 0)]);
 
-    layer.highlight(0, blocks);
+    layer.setRects(runRects(blocks), 0);
     layer.clear();
 
     expect(rectsIn(container)).toHaveLength(0);
@@ -101,7 +106,7 @@ describe('EmbedHighlightLayer', () => {
   it('keeps the rectangles inside the page container, not the document', () => {
     const { layer, container, blocks } = setup([textRect('Hello', 1, 2)]);
 
-    layer.highlight(0, blocks);
+    layer.setRects(runRects(blocks), 0);
 
     expect(container.lastElementChild?.className).toBe('pdf-highlight-rect');
   });

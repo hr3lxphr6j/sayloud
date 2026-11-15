@@ -10,6 +10,7 @@
  * normalize falls back to `auto` rather than being handed to `fetch`.
  */
 import type { LocalStorageArea } from '../config-store';
+import { asRecord } from '../records';
 import {
   cacheKeyUrl,
   type DownloadOptions,
@@ -577,9 +578,4 @@ function sumValues(values: Iterable<number>): number {
 
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
 }

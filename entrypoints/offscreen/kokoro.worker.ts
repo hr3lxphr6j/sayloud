@@ -39,7 +39,7 @@ import {
   type WorkerReply,
   type WorkerRequest,
 } from '~/lib/models/worker-protocol';
-import type { ProviderErrorCode } from '~/lib/providers/errors';
+import { errorMessage, isAbortError, type ProviderErrorCode } from '~/lib/providers/errors';
 // The URLs the bundle emitted for ONNX Runtime's wasm pair.
 //
 // Spelled as a path into `node_modules` because `@huggingface/transformers`
@@ -176,7 +176,7 @@ async function handle(request: WorkerRequest): Promise<void> {
       } catch (error) {
         // A cancellation is the caller's own decision and it has already
         // rejected its own promise; answering with an error would be noise.
-        if (isAbort(error)) return;
+        if (isAbortError(error)) return;
         fail(request.id, 'unknown', error);
       }
       return;
@@ -195,21 +195,7 @@ function reply(message: WorkerReply): void {
 }
 
 function fail(id: number, code: ProviderErrorCode, error: unknown): void {
-  reply({ type: 'error', id, code, message: messageOf(error) });
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/** Structural, so it also matches a rejection reason from another realm. */
-function isAbort(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'name' in error &&
-    (error as { name?: unknown }).name === 'AbortError'
-  );
+  reply({ type: 'error', id, code, message: errorMessage(error) });
 }
 
 configureRuntime();

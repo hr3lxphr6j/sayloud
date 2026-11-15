@@ -27,7 +27,7 @@
  * "it downloaded 163 MB and then re-downloads them", which no unit test on
  * either side alone would catch.
  */
-import { HUGGINGFACE_HOST, isOurs, MODELSCOPE_HOST, type ModelSource, resolveUrl } from './urls';
+import { isOurs, type ModelSource, resolveUrl } from './urls';
 
 /** The fetch this patch wraps. `typeof fetch` so it drops in for the global. */
 export type FetchLike = typeof globalThis.fetch;
@@ -118,14 +118,3 @@ function rewrite(input: RequestInfo | URL, real: string): RequestInfo | URL {
 export function installFetchPatch(options: FetchPatchOptions): void {
   globalThis.fetch = createFetchPatch(options);
 }
-
-/** The host transformers.js is pinned to; re-exported for the worker's setup. */
-export { CANONICAL_HOST } from './urls';
-
-/** True when a source is one of the two public mirrors. */
-export function isMirrorHost(host: string): boolean {
-  return host === 'huggingface' || host === 'modelscope';
-}
-
-/** The real hosts, exported so a test can assert which one a URL reached. */
-export const REAL_HOSTS = { huggingface: HUGGINGFACE_HOST, modelscope: MODELSCOPE_HOST } as const;

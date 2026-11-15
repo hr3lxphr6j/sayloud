@@ -56,6 +56,9 @@ const SEARCH_DEBOUNCE_MS = 180;
 /** How long a redirected document gets to arrive before it is called missing. */
 const INTERCEPT_TIMEOUT_MS = 30_000;
 
+/** The name a download falls back to when the document arrived without one. */
+const DEFAULT_DOCUMENT_NAME = 'document.pdf';
+
 /** The page's root elements, all of which the HTML provides. */
 const chromeEl = element('pdf-chrome');
 const pagesEl = element('pdf-pages');
@@ -107,7 +110,7 @@ let chrome: ChromeState = {
 let viewerApi: ViewerApi | null = null;
 /** The open document's own bytes, kept for the download button. */
 let documentBytes: ArrayBuffer | null = null;
-let documentName = 'document.pdf';
+let documentName = DEFAULT_DOCUMENT_NAME;
 /** The pending debounced search, so a fast typist only runs the last one. */
 let searchTimer: number | null = null;
 
@@ -639,7 +642,7 @@ function start(): void {
       show('missing');
       return;
     }
-    await openBytes(bytes, 'document.pdf');
+    await openBytes(bytes, DEFAULT_DOCUMENT_NAME);
   })();
 }
 
@@ -680,7 +683,7 @@ function documentNameFromUrl(url: string): string {
   } catch {
     // The fetch already succeeded, so this is only a label; fall through.
   }
-  return 'document.pdf';
+  return DEFAULT_DOCUMENT_NAME;
 }
 
 /**
@@ -770,7 +773,7 @@ async function openBytes(bytes: ArrayBuffer, name: string): Promise<void> {
   }
   if (run !== generation) return;
 
-  mountViewer();
+  drawViewer();
   pending = { bytes, name };
   // `pending` is consumed either by the registry callback (the usual path) or
   // here, if the embedding tree was already up from a previous file.
@@ -793,10 +796,6 @@ function ensureEngine(): Promise<EmbedEngine> {
 }
 
 /** Mount (or update) the EmbedPDF tree; it is reused for every document. */
-function mountViewer(): void {
-  drawViewer();
-}
-
 function drawViewer(): void {
   if (!engine) return;
   render(
@@ -1218,7 +1217,7 @@ function downloadDocument(): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = documentName || 'document.pdf';
+  link.download = documentName || DEFAULT_DOCUMENT_NAME;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -1336,7 +1335,7 @@ function resetDocument(): void {
   commitCursor = 0;
   pageCount = 0;
   documentBytes = null;
-  documentName = 'document.pdf';
+  documentName = DEFAULT_DOCUMENT_NAME;
   if (searchTimer !== null) {
     window.clearTimeout(searchTimer);
     searchTimer = null;

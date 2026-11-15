@@ -17,7 +17,7 @@ import { resolveDevice } from '~/lib/models/device';
 import { fileBytes, isCancellation } from '~/lib/models/downloader';
 import { MODELS, type ModelTier, type OnDeviceModel } from '~/lib/models/registry';
 import type { ModelStore, ModelUsage } from '~/lib/models/store';
-import { isProviderError } from '~/lib/providers/errors';
+import { errorMessage, isProviderError } from '~/lib/providers/errors';
 import type { AdapterProviderId } from '~/lib/providers/registry';
 import type { LocalConfig, Provider, ProviderConfig } from '~/lib/providers/types';
 
@@ -312,7 +312,7 @@ export function useModelStore(models: ModelAdmin | undefined): ModelStoreView {
             console.error('[SayLoud] the model download failed', error);
             setStatuses((current) => ({
               ...current,
-              [key]: { kind: 'failed', detail: detailOf(error) },
+              [key]: { kind: 'failed', detail: errorMessage(error) },
             }));
           }
         );
@@ -371,8 +371,4 @@ function mergedTiers(
 /** The tier's own files plus the ones every tier shares, as the downloader counts them. */
 function tierTotalBytes(tier: ModelTier): number {
   return tier.files.reduce((sum, file) => sum + fileBytes(tier, file), 0);
-}
-
-function detailOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

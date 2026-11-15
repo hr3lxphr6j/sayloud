@@ -16,6 +16,7 @@
  * its own, which is also how the models and voices are already cached
  * (`lib/models/downloader.ts`).
  */
+import { errorMessage } from '../providers/errors';
 
 /**
  * The part of the Cache API this module uses.
@@ -167,7 +168,7 @@ export async function fetchDictionary(
 export function dictionaryFailure(error: unknown): DictionaryLoadError {
   if (error instanceof DictionaryLoadError) return error;
 
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   const code = (error as { readonly code?: unknown } | null | undefined)?.code;
   const reason =
     typeof code === 'string' && FROM_WASM.has(code) ? (code as DictionaryFailureReason) : 'unknown';

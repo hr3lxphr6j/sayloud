@@ -1,7 +1,3 @@
-export function normalizeText(text: string): string {
-  return text.replace(/\s+/g, ' ').trim().normalize('NFC');
-}
-
 /** True when `Intl.Segmenter` accepts the tag, so callers can fall back safely. */
 export function isSupportedLang(lang: string): boolean {
   if (!lang) return false;
@@ -111,25 +107,7 @@ function lastNonSpace(chars: readonly string[]): string {
   return '';
 }
 
-/**
- * Join the layout lines of a paragraph.
- *
- * PDF text arrives one string per rendered line, joined with a single `\n`
- * (`lib/pdf/embed/blocks.ts`), and a paragraph break is already a separate
- * block. So a single newline is a *soft wrap*: dropping it is what keeps
- * `第一行\n第二行` as one sentence instead of two. A run of two or more
- * newlines is a real paragraph break and survives, so `Intl.Segmenter` still
- * ends the sentence there.
- *
- * Latin text keeps a space at the wrap, because `Hello\nworld` are two words.
- * The rewrite is length-changing, so callers that need source offsets use
- * {@link prepareLineBreaks} instead of this string-only view.
- */
-export function mergeLineBreaks(text: string): string {
-  return prepareLineBreaks(identityPrepared(text)).text;
-}
-
-/** One-to-one source mapping, for the string-only entry points below. */
+/** One-to-one source mapping, for the pipeline's first stage. */
 function identityPrepared(text: string): PreparedText {
   return {
     text,
@@ -286,18 +264,14 @@ const ABBREVIATIONS = new Set([
  *   decimal/version separator and a colon between two digits is a clock, so
  *   neither may end a sentence (`_DOT_`, `_TIME_`).
  * - `1. item` at the start of a line: a list number, not a sentence
- *   (`_LIST_`). Only the dot is masked, so restore stays exact and the token
- *   still stands for a single source character.
+ *   (`_LIST_`). Only the dot is masked, so a boundary still maps back to a
+ *   single source character.
  * - `Dr.`, `Fig. 3`, `U.S.`, `O. Anqiao`: the dot belongs to the word
  *   (`_ABBR_`).
  *
  * Every token is word-joining, which keeps it in one piece for rule-based
- * splitters; {@link restoreSpecialNumbers} puts the punctuation back.
+ * splitters.
  */
-export function protectSpecialNumbers(text: string): string {
-  return prepareSpecialNumbers(identityPrepared(text)).text;
-}
-
 function prepareSpecialNumbers(prepared: PreparedText): PreparedText {
   const { text } = prepared;
   const chars: string[] = [];
@@ -347,7 +321,7 @@ function dotToken(text: string, index: number): string | null {
  * `1. item` on a line of its own is a list number, not a sentence end.
  *
  * The anchor is the line, not the string, and this runs before
- * {@link mergeLineBreaks} folds soft wraps away — so a list that shares one
+ * `prepareLineBreaks` folds soft wraps away — so a list that shares one
  * block still has every item start a line. A `1.` mid-line is left alone
  * (`The answer is 1. Next…` really is two sentences), and a dot with digits on
  * both sides (`1.5`) was already masked as a decimal.
@@ -395,19 +369,6 @@ function isAbbreviationDot(text: string, index: number): boolean {
   return after >= 'A' && after <= 'Z' && text.charAt(index + 2) === '.';
 }
 
-/** Undo {@link protectSpecialNumbers}: every token is a plain `.` or `:`. */
-export function restoreSpecialNumbers(text: string): string {
-  return text
-    .split(DOT_TOKEN)
-    .join('.')
-    .split(TIME_TOKEN)
-    .join(':')
-    .split(LIST_TOKEN)
-    .join('.')
-    .split(ABBR_TOKEN)
-    .join('.');
-}
-
 /**
  * Split text into sentences, keeping offsets into the original string.
  *
@@ -448,11 +409,4 @@ export function segmentSentences(text: string, lang: string): Segment[] {
   }
 
   return segments;
-}
-
-export function segmentWords(text: string, lang: string): Segment[] {
-  const seg = new Intl.Segmenter(lang, { granularity: 'word' });
-  return Array.from(seg.segment(text))
-    .filter((s) => s.isWordLike)
-    .map((s) => ({ text: s.segment, start: s.index, end: s.index + s.segment.length }));
 }

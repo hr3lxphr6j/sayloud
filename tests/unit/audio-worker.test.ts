@@ -774,7 +774,9 @@ describe('AudioWorker over the real cache and player', () => {
       items: [{ text: 'next sentence', voiceId: 'v1' }],
       config: CONFIG,
     });
-    await until(() => cache.stats().l2Entries > 0);
+    await vi.waitFor(async () => {
+      expect((await cache.usage()).entries).toBeGreaterThan(0);
+    });
 
     const pending = worker.handleCommand(synthesize('s2', { text: 'next sentence' }));
     await until(() => audios.length > 0);

@@ -31,6 +31,7 @@ import type {
   AzureWordBoundary,
 } from './azure';
 import { mapCancellationError } from './azure';
+import { abortError } from './errors';
 import type { Voice } from './types';
 
 /**
@@ -216,15 +217,4 @@ function genderOf(gender: SynthesisVoiceGender): Voice['gender'] {
     default:
       return undefined;
   }
-}
-
-/**
- * An error shaped like the one `fetch` rejects with, so the shared
- * `isAbortError` recognizes it and callers treat cancellation as their own
- * decision rather than a provider failure.
- */
-function abortError(): Error {
-  const error = new Error('The operation was aborted.');
-  error.name = 'AbortError';
-  return error;
 }

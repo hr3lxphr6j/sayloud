@@ -14,6 +14,7 @@
  * rather than by sharing an object.
  */
 import type { LocalStorageArea } from './config-store';
+import { asRecord } from './records';
 
 export const SETTINGS_KEY = 'sayloud:settings';
 
@@ -148,11 +149,6 @@ export function normalizeSettings(value: unknown): Settings {
       maxBytes: isMaxBytes(cache.maxBytes) ? cache.maxBytes : DEFAULT_SETTINGS.cache.maxBytes,
     },
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
 }
 
 function isUiLang(value: unknown): value is UiLang {

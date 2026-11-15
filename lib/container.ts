@@ -2,6 +2,7 @@ import { ConfigStore, type LocalStorageArea } from './config-store';
 import { type OffscreenApi, OffscreenManager, type RuntimeApi } from './offscreen-manager';
 import { OffscreenSpeaker, type RuntimeEventSource } from './offscreen-speaker';
 import { PlaybackEngine } from './playback-engine';
+import { errorMessage } from './providers/errors';
 import { SessionRouter } from './router';
 import { SettingsStore, type StorageChangeApi } from './settings-store';
 import { type SessionStorageArea, SnapshotStore } from './snapshot-store';
@@ -111,7 +112,7 @@ export function createApp(deps: AppDeps): AppContainer {
       .catch((error: unknown) => {
         // If the provider has no voice selected, fail the engine immediately.
         console.error('[SayLoud] speaker refresh failed:', error);
-        engine.reportError(error instanceof Error ? error.message : String(error));
+        engine.reportError(errorMessage(error));
       }),
   ]).then(() => undefined);
 

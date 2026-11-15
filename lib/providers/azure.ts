@@ -23,7 +23,7 @@
  */
 
 import { alignTimings } from './align-timings';
-import { isProviderError, ProviderError, type ProviderErrorCode } from './errors';
+import { errorMessage, isProviderError, ProviderError, type ProviderErrorCode } from './errors';
 import type {
   Provider,
   ProviderCapabilities,
@@ -157,10 +157,6 @@ async function loadAzureSpeechSdk(): Promise<AzureSpeechSdk> {
   return module.createAzureSpeechSdk();
 }
 
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /** assumed: the per-request character cap. */
 const MAX_CHARS = 5000;
 
@@ -259,7 +255,7 @@ export class AzureProvider implements Provider {
       if (isProviderError(error)) throw error;
       throw new ProviderError(
         'service-unavailable',
-        `Azure Speech SDK could not be loaded: ${describe(error)}`,
+        `Azure Speech SDK could not be loaded: ${errorMessage(error)}`,
         error
       );
     }

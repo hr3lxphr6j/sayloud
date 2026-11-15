@@ -12,6 +12,7 @@
  * 92–325 MB model and the whole point of the seam is that it does not have to.
  */
 import { abortError } from '../providers/errors';
+import { KOKORO_SAMPLE_RATE } from './audio';
 import type { Device } from './device';
 import type { ModelTier, OnDeviceFamily, OnDeviceModel } from './registry';
 
@@ -149,8 +150,11 @@ export class FakeLocalEngine implements OnDeviceEngine {
     if (this.loaded === null) throw new Error('FakeLocalEngine.synthesize() before load()');
 
     const msPerCharacter = this.options.msPerCharacter ?? 50;
-    const samples = Math.max(1, Math.round((text.length * msPerCharacter * 24_000) / 1000));
-    return { pcm: new Float32Array(samples), sampleRate: 24_000 };
+    const samples = Math.max(
+      1,
+      Math.round((text.length * msPerCharacter * KOKORO_SAMPLE_RATE) / 1000)
+    );
+    return { pcm: new Float32Array(samples), sampleRate: KOKORO_SAMPLE_RATE };
   }
 
   dispose(): void {

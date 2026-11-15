@@ -446,28 +446,8 @@ export class CacheManager {
     return toHex(digest);
   }
 
-  getL1(key: string): SynthesisResult | undefined {
-    return this.l1.get(key);
-  }
-
-  getL2(key: string): Promise<SynthesisResult | undefined> {
-    return this.l2.get(key);
-  }
-
-  putL1(key: string, result: SynthesisResult): void {
-    this.l1.put(key, result);
-  }
-
-  putL2(key: string, result: SynthesisResult): Promise<void> {
-    return this.l2.put(key, result);
-  }
-
   clearL1(): void {
     this.l1.clear();
-  }
-
-  clearL2(): Promise<void> {
-    return this.l2.clear();
   }
 
   /**
@@ -522,11 +502,6 @@ export class CacheManager {
   async put(key: string, result: SynthesisResult): Promise<void> {
     this.l1.put(key, result);
     if (this.persist) await this.l2.put(key, result);
-  }
-
-  /** The byte counts this instance keeps; `usage()` is what a user is shown. */
-  stats(): { l1Bytes: number; l2Bytes: number; l2Entries: number } {
-    return { l1Bytes: this.l1.size, l2Bytes: this.l2.size, l2Entries: this.l2.entryCount };
   }
 }
 

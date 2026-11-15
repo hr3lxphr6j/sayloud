@@ -157,7 +157,6 @@ describe('createApp', () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.options.voiceName).toBe('Samantha');
-    expect(app.speakers.isCloud).toBe(false);
   });
 
   it('speaks through the offscreen document when a provider and voice are saved', async () => {
@@ -176,7 +175,7 @@ describe('createApp', () => {
     });
 
     await app.ready;
-    expect(app.speakers.isCloud).toBe(true);
+    expect(app.speakers.resolveVoice('en-US')).toBe('longxiaochun');
 
     const events: EngineEvent[] = [];
     app.engine.subscribe((event) => events.push(event));
@@ -325,7 +324,7 @@ describe('createApp', () => {
     await vi.waitFor(() => {
       expect(app.engine.getStatus().phase).toBe('error');
     });
-    expect(app.speakers.isCloud).toBe(false);
+    expect(app.speakers.resolveVoice('en-US')).toBe('Samantha');
     expect(calls).toHaveLength(0);
   });
 
@@ -347,7 +346,6 @@ describe('createApp', () => {
     await app.router.start();
     app.engine.load([{ text: 'hello', lang: 'en-US' }], 0, 1);
 
-    expect(app.speakers.isCloud).toBe(false);
     expect(calls).toHaveLength(1);
     warn.mockRestore();
   });
@@ -403,7 +401,6 @@ describe('createApp', () => {
     });
 
     await app.ready;
-    expect(app.speakers.isCloud).toBe(false);
 
     await local.set({
       [CONFIG_KEY]: CLOUD_CONFIG,
@@ -411,7 +408,6 @@ describe('createApp', () => {
     });
     await app.speakers.refresh();
 
-    expect(app.speakers.isCloud).toBe(true);
     expect(app.speakers.resolveVoice('en-US')).toBe('longxiaochun');
   });
 });

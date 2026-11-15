@@ -1,19 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import {
-  cleanPdfText,
-  mergeLineBreaks,
-  normalizeText,
-  protectSpecialNumbers,
-  restoreSpecialNumbers,
-  segmentSentences,
-  segmentWords,
-} from '~/lib/text-utils';
+import { cleanPdfText, segmentSentences } from '~/lib/text-utils';
+
+/** The sentences `text` splits into, as source slices. */
+function sentencesOf(text: string, lang = 'en'): string[] {
+  return segmentSentences(text, lang).map((segment) => segment.text);
+}
 
 describe('text-utils', () => {
-  it('normalizes whitespace', () => {
-    expect(normalizeText('Hello   \n  world')).toBe('Hello world');
-  });
-
   it('segments English sentences', () => {
     const sents = segmentSentences('Hello world. Goodbye!', 'en');
     expect(sents).toHaveLength(2);
@@ -26,41 +19,30 @@ describe('text-utils', () => {
     expect(sents).toHaveLength(2);
   });
 
-  it('segments words', () => {
-    const words = segmentWords('Hello world.', 'en');
-    expect(words.map((w) => w.text)).toEqual(['Hello', 'world']);
-  });
-
-  describe('mergeLineBreaks', () => {
-    it('joins a CJK soft wrap without adding a space', () => {
-      expect(mergeLineBreaks('第一行\n第二行')).toBe('第一行第二行');
+  describe('soft line wraps', () => {
+    // One string is one block of a paragraph; `\n` is where PDFium ended a
+    // rendered line. Nothing but a paragraph break may end a sentence there.
+    it('joins a CJK soft wrap into the same sentence', () => {
+      expect(sentencesOf('第一行\n第二行', 'zh')).toEqual(['第一行\n第二行']);
     });
 
     it('keeps a paragraph break', () => {
-      expect(mergeLineBreaks('第一段。\n\n第二段。')).toBe('第一段。\n\n第二段。');
+      expect(sentencesOf('第一段。\n\n第二段。', 'zh')).toEqual(['第一段。', '第二段。']);
     });
 
     it('collapses runs of three or more newlines to a paragraph break', () => {
-      expect(mergeLineBreaks('第一段。\n\n\n\n第二段。')).toBe('第一段。\n\n第二段。');
+      expect(sentencesOf('第一段。\n\n\n\n第二段。', 'zh')).toEqual(['第一段。', '第二段。']);
     });
 
-    it('turns a Latin soft wrap into a single space', () => {
-      expect(mergeLineBreaks('Hello\nworld')).toBe('Hello world');
-      // An indented wrap must not leave two spaces behind.
-      expect(mergeLineBreaks('Hello\n   world')).toBe('Hello world');
-    });
-
-    it('joins a mixed CJK/Latin wrap with a space', () => {
-      expect(mergeLineBreaks('第一行\nEnglish')).toBe('第一行 English');
+    it('keeps a Latin wrap inside one sentence', () => {
+      expect(sentencesOf('Hello\nworld')).toEqual(['Hello\nworld']);
+      // The indentation the wrapped line starts with is not a boundary either.
+      expect(sentencesOf('Hello\n   world')).toEqual(['Hello\n   world']);
     });
 
     it('handles CRLF', () => {
-      expect(mergeLineBreaks('第一行\r\n第二行')).toBe('第一行第二行');
-      expect(mergeLineBreaks('第一段。\r\n\r\n第二段。')).toBe('第一段。\n\n第二段。');
-    });
-
-    it('leaves text without newlines untouched', () => {
-      expect(mergeLineBreaks('你好。再见。')).toBe('你好。再见。');
+      expect(sentencesOf('第一行\r\n第二行', 'zh')).toEqual(['第一行\r\n第二行']);
+      expect(sentencesOf('第一段。\r\n\r\n第二段。', 'zh')).toEqual(['第一段。', '第二段。']);
     });
   });
 
@@ -103,66 +85,56 @@ describe('text-utils', () => {
   });
 
   describe('special numbers', () => {
-    it('masks version numbers', () => {
-      expect(protectSpecialNumbers('v1.2.3 发布')).toBe('v1_DOT_2_DOT_3 发布');
+    // The dot in `3.14` and the colon in `12:45` are not sentence ends, and
+    // the mask that hides them must not leak into the reported text.
+    it('does not split a version, a decimal or a time', () => {
+      expect(sentencesOf('v1.2.3 发布', 'zh')).toEqual(['v1.2.3 发布']);
+      expect(sentencesOf('价格 3.14 元', 'zh')).toEqual(['价格 3.14 元']);
+      expect(sentencesOf('12:45 开始', 'zh')).toEqual(['12:45 开始']);
     });
 
-    it('masks decimals', () => {
-      expect(protectSpecialNumbers('价格 3.14 元')).toBe('价格 3_DOT_14 元');
+    it('still splits after a sentence-final dot', () => {
+      expect(sentencesOf('It costs 3.14. Done.')).toEqual(['It costs 3.14.', 'Done.']);
     });
 
-    it('masks times', () => {
-      expect(protectSpecialNumbers('12:45 开始')).toBe('12_TIME_45 开始');
-    });
-
-    it('leaves a sentence-final dot alone', () => {
-      expect(protectSpecialNumbers('It costs 3.14. Done.')).toBe('It costs 3_DOT_14. Done.');
-    });
-
-    it('round-trips through restore', () => {
+    it('reports the source text rather than the masked text', () => {
       const source = 'v1.2.3 发布于 3.14 的 12:45';
-      expect(restoreSpecialNumbers(protectSpecialNumbers(source))).toBe(source);
+      expect(sentencesOf(source, 'zh')).toEqual([source]);
     });
   });
 
   describe('list markers and abbreviations', () => {
-    it('masks a numbered list item at the start of a line', () => {
-      const masked = protectSpecialNumbers('1. First\n2. Second');
-      expect(masked).toContain('1_LIST_');
-      expect(masked).toContain('2_LIST_');
+    it('does not split a numbered list item', () => {
+      expect(sentencesOf('1. First\n2. Second')).toEqual(['1. First\n2. Second']);
+      expect(sentencesOf('  1. First')).toEqual(['1. First']);
     });
 
-    it('masks an indented list item', () => {
-      expect(protectSpecialNumbers('  1. First')).toBe('  1_LIST_ First');
+    it('still splits at a sentence-final number', () => {
+      expect(sentencesOf('The answer is 1. Next')).toEqual(['The answer is 1.', 'Next']);
     });
 
-    it('leaves a sentence-final number alone', () => {
-      // `The answer is 1.` really does end a sentence.
-      expect(protectSpecialNumbers('The answer is 1. Next')).toBe('The answer is 1. Next');
+    it('does not split at a title, a reference or an initial', () => {
+      expect(sentencesOf('Dr. Smith and U.S. citizens')).toEqual(['Dr. Smith and U.S. citizens']);
+      expect(sentencesOf('O. Anqiao works')).toEqual(['O. Anqiao works']);
+      expect(sentencesOf('see Fig. 3 and Eq. 4')).toEqual(['see Fig. 3 and Eq. 4']);
+      expect(sentencesOf('J.R.R. Tolkien')).toEqual(['J.R.R. Tolkien']);
     });
 
-    it('masks titles, references and initials', () => {
-      expect(protectSpecialNumbers('Dr. Smith and U.S. citizens')).toBe(
-        'Dr_ABBR_ Smith and U_ABBR_S_ABBR_ citizens'
-      );
-      expect(protectSpecialNumbers('O. Anqiao works')).toBe('O_ABBR_ Anqiao works');
-      expect(protectSpecialNumbers('see Fig. 3 and Eq. 4')).toBe('see Fig_ABBR_ 3 and Eq_ABBR_ 4');
-      expect(protectSpecialNumbers('J.R.R. Tolkien')).toBe('J_ABBR_R_ABBR_R_ABBR_ Tolkien');
+    it('still splits at an abbreviation that can close a sentence', () => {
+      expect(sentencesOf('NASA. In 1969')).toEqual(['NASA.', 'In 1969']);
+      expect(sentencesOf('Apple Inc. The company grew')).toEqual([
+        'Apple Inc.',
+        'The company grew',
+      ]);
+      expect(sentencesOf('Buy milk, tea, etc. Then leave')).toEqual([
+        'Buy milk, tea, etc.',
+        'Then leave',
+      ]);
     });
 
-    it('leaves abbreviations that can end a sentence alone', () => {
-      expect(protectSpecialNumbers('NASA. In 1969')).toBe('NASA. In 1969');
-      expect(protectSpecialNumbers('Apple Inc. The company grew')).toBe(
-        'Apple Inc. The company grew'
-      );
-      expect(protectSpecialNumbers('Buy milk, tea, etc. Then leave')).toBe(
-        'Buy milk, tea, etc. Then leave'
-      );
-    });
-
-    it('round-trips every mask', () => {
+    it('reports the source punctuation for every mask', () => {
       const source = '1. 项目，U.S. 政府（见 Fig. 3），Dr. Smith';
-      expect(restoreSpecialNumbers(protectSpecialNumbers(source))).toBe(source);
+      expect(sentencesOf(source)).toEqual([source]);
     });
 
     it('keeps a list item or an abbreviation inside one sentence', () => {
@@ -374,8 +346,8 @@ describe('text-utils', () => {
       expect(segments.filter((segment) => segment.text.includes('\n'))).toHaveLength(13);
 
       // The rule P0 enforces: a boundary with Han on both sides is only legal
-      // after sentence punctuation. Without `mergeLineBreaks` a wrap leaves
-      // `的` | `基础` style splits here.
+      // after sentence punctuation. Without the wrap-joining stage a wrap
+      // leaves `的` | `基础` style splits here.
       const falseBreaks = segments.filter((segment) => {
         const before = segment.block.charAt(segment.end - 1);
         const after = segment.block.charAt(segment.end);

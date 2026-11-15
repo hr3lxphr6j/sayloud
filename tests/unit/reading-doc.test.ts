@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Block } from '~/lib/extractor';
 import { extractBlocks } from '~/lib/extractor';
-import { buildReadingDoc, detectDocumentLang } from '~/lib/reading-doc';
+import { buildReadingDoc, detectDocumentLang, toEngineSentences } from '~/lib/reading-doc';
 
 /** A PDF-style block: the viewer joins the page's text runs with `\n`. */
 function pdfBlock(text: string): Block {
@@ -38,6 +38,16 @@ describe('reading-doc', () => {
       'Second block here.',
     ]);
     expect(doc.sentences.map((s) => s.blockIndex)).toEqual([0, 0, 1]);
+  });
+
+  it('hands the engine the text and language without the highlighting offsets', () => {
+    const doc = buildReadingDoc(extractBlocks());
+
+    expect(toEngineSentences(doc.sentences)).toEqual([
+      { text: 'Hello world.', lang: 'en' },
+      { text: 'Goodbye now.', lang: 'en' },
+      { text: 'Second block here.', lang: 'en' },
+    ]);
   });
 
   it('maps a sentence index back to a DOM range', () => {

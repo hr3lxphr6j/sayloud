@@ -1,4 +1,5 @@
 import type { Block } from './extractor';
+import type { EngineSentence } from './protocol';
 import { isSupportedLang, segmentSentences } from './text-utils';
 
 export interface ReadingSentence {
@@ -19,6 +20,18 @@ export interface ReadingDoc {
   /** `charStart`/`charEnd` are offsets into the sentence's own text. */
   rangeForWord(index: number, charStart: number, charEnd: number): Range | null;
   sentenceAt(node: Node, offset: number): number | null;
+}
+
+/**
+ * The sentences in the shape the engine takes them.
+ *
+ * Only the text and its language cross the wire: the offsets are for
+ * highlighting in the page. Two senders build a `load` from a reading document
+ * — the content script's controller, and the PDF viewer, whose document grows
+ * as pages report — so the mapping lives here rather than in both.
+ */
+export function toEngineSentences(sentences: readonly ReadingSentence[]): EngineSentence[] {
+  return sentences.map((sentence) => ({ text: sentence.text, lang: sentence.lang }));
 }
 
 /** Page language, falling back to the UI language and finally to English. */

@@ -18,7 +18,7 @@ import {
   type EngineStatus,
   isVoiceSelectionError,
 } from '~/lib/protocol';
-import { buildReadingDoc, type ReadingDoc } from '~/lib/reading-doc';
+import { buildReadingDoc, type ReadingDoc, toEngineSentences } from '~/lib/reading-doc';
 import type { Settings, SettingsStore } from '~/lib/settings-store';
 import { type CaptionState, CaptionWindow } from './CaptionWindow';
 
@@ -308,16 +308,19 @@ export class ReaderController {
    * `resume` carries the other half of that difference. A fresh document should
    * start reading; a recovered one has to arrive without speaking, because the
    * user may have paused on purpose and only they can say when to go on.
+   *
+   * The rate is deliberately the one this controller was built with, not the
+   * engine's current one: this sends a document the engine has never seen. A
+   * document that grows while it is being read is reloaded through
+   * `sendCommand` for that reason — see `resend` in
+   * `entrypoints/pdf-viewer/main.tsx`.
    */
   private sendLoad(startIndex: number, resume = false): void {
     if (!this.doc) return;
     this.loaded = true;
     this.post({
       type: 'load',
-      sentences: this.doc.sentences.map((sentence) => ({
-        text: sentence.text,
-        lang: sentence.lang,
-      })),
+      sentences: toEngineSentences(this.doc.sentences),
       startIndex,
       rate: this.initialRate,
       ...(resume ? { resume: true } : {}),

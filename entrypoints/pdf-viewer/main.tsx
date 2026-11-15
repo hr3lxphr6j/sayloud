@@ -21,12 +21,11 @@
 
 import type { PluginRegistry } from '@embedpdf/core';
 import { render } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { ReaderController } from '~/entrypoints/reader.content/ReaderController';
 import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import type { Block } from '~/lib/extractor';
-import { I18nProvider, type Lang, resolveLang, useT, useUiLanguage } from '~/lib/i18n';
+import { type Lang, resolveLang } from '~/lib/i18n';
 import { isInterceptHash, parseInterceptedUrl } from '~/lib/pdf/dnr';
 import type { EmbedBlock } from '~/lib/pdf/embed/blocks';
 import {
@@ -41,23 +40,32 @@ import {
   retryPdfDocument,
 } from '~/lib/pdf/embed/document';
 import { EmbedHighlightLayer } from '~/lib/pdf/embed/highlight';
-import { isPdfBytesResponse, PDF_BYTES } from '~/lib/pdf/protocol';
-import { buildReadingDoc, type ReadingDoc, type ReadingSentence } from '~/lib/reading-doc';
+import {
+  buildReadingDoc,
+  type ReadingDoc,
+  type ReadingSentence,
+  toEngineSentences,
+} from '~/lib/reading-doc';
 import { DEFAULT_SETTINGS, SettingsStore, type UiLang } from '~/lib/settings-store';
 import '~/entrypoints/reader.content/styles.css';
+import { Chrome, type ChromeState, type Notice, PDF_LABELS, type SearchUiState } from './chrome-ui';
+import { DEFAULT_DOCUMENT_NAME, documentNameFromUrl, requestBytes } from './load-bytes';
 import { appendSync } from './sync';
-import { PdfViewer, type SidebarLabels, type ViewerApi, type ViewerSearchState } from './viewer';
+import { PdfViewer, type ViewerApi, type ViewerSearchState } from './viewer';
 
-/** How long a hash id gets to be answered before it is called missing. */
-const MISSING_TIMEOUT_MS = 2_000;
 /** Debounce between a keystroke in the search bar and the PDFium scan. */
 const SEARCH_DEBOUNCE_MS = 180;
 
 /** How long a redirected document gets to arrive before it is called missing. */
 const INTERCEPT_TIMEOUT_MS = 30_000;
 
-/** The name a download falls back to when the document arrived without one. */
-const DEFAULT_DOCUMENT_NAME = 'document.pdf';
+/**
+ * How long the download link's blob URL stays readable.
+ *
+ * The browser reads the URL asynchronously after the click; revoking it in the
+ * same turn would race the fetch.
+ */
+const REVOKE_DELAY_MS = 10_000;
 
 /** The page's root elements, all of which the HTML provides. */
 const chromeEl = element('pdf-chrome');
@@ -66,34 +74,14 @@ const host = element('sayloud-host');
 
 const settings = new SettingsStore(browser.storage.local, browser.storage.onChanged);
 
-/** What the strip above the pages is saying right now. */
-type Notice = 'opening' | 'pick' | 'missing' | 'empty' | 'ready';
-
-interface SearchUiState {
-  open: boolean;
-  /** What the reader typed; the plugin's own query lags behind the debounce. */
-  query: string;
-  /** 0-based index of the current match, or -1 when there is none. */
-  active: number;
-  total: number;
-  loading: boolean;
-}
-
-interface ChromeState {
-  notice: Notice;
-  /** Current zoom factor, from EmbedPDF's zoom plugin. */
-  zoom: number;
-  /** Non-null while a password is being asked for; `wrong` after a rejection. */
-  password: { wrong: boolean } | null;
-  /** Whether a document is open, which is what the zoom control needs to know. */
-  open: boolean;
-  /** Current page (1-based) and the page count, from the scroll plugin. */
-  page: number;
-  total: number;
-  /** Whether the thumbnail/outline rail is visible. */
-  sidebar: boolean;
-  search: SearchUiState;
-}
+/** The search bar with nothing in it; every update spreads rather than edits. */
+const EMPTY_SEARCH: SearchUiState = {
+  open: false,
+  query: '',
+  active: -1,
+  total: 0,
+  loading: false,
+};
 
 let chrome: ChromeState = {
   notice: 'pick',
@@ -103,19 +91,11 @@ let chrome: ChromeState = {
   page: 1,
   total: 0,
   sidebar: false,
-  search: { open: false, query: '', active: -1, total: 0, loading: false },
+  search: EMPTY_SEARCH,
 };
 
 /** The zoom/paging/search controls, once the embedding tree has a document. */
 let viewerApi: ViewerApi | null = null;
-/** The open document's own bytes, kept for the download button. */
-let documentBytes: ArrayBuffer | null = null;
-let documentName = DEFAULT_DOCUMENT_NAME;
-/** The pending debounced search, so a fast typist only runs the last one. */
-let searchTimer: number | null = null;
-
-let passwordResolve: ((value: string | null) => void) | null = null;
-let passwordAttempts = 0;
 
 let engine: EmbedEngine | null = null;
 let enginePromise: Promise<EmbedEngine> | null = null;
@@ -123,128 +103,115 @@ let enginePromise: Promise<EmbedEngine> | null = null;
 let uiLang: Lang = resolveLang(DEFAULT_SETTINGS.uiLang, navigator.language);
 
 let registry: PluginRegistry | null = null;
-let pending: { bytes: ArrayBuffer; name: string } | null = null;
-/**
- * The document whose pages are allowed to report text.
- *
- * Closing a document and opening another one are asynchronous, and a page's
- * text extraction can resolve in between; the id is what keeps the previous
- * document's blocks from being committed into the new one.
- */
-let currentDocumentId: string | null = null;
-
-/**
- * Page text, in page order.
- *
- * `results[i]` is page `i`'s blocks (null while PDFium has not reported yet,
- * and `[]` for a page without text). `done` says whether the page has
- * reported, so an empty page still advances the commit cursor: a scanned page
- * must not hold back every page after it.
- */
-let pageResults: Array<EmbedBlock[] | null> = [];
-let pageDone: boolean[] = [];
-let commitCursor = 0;
-let pageCount = 0;
-
-/** The highlight layer per page, recreated only when the page's DOM is. */
-const highlightLayers = new Map<number, EmbedHighlightLayer>();
-
-let current: ReadingDoc | null = null;
-let controller: ReaderController | null = null;
-/** The controller's own state subscription, dropped when the controller is. */
-let unsubscribeController: (() => void) | null = null;
-let announced = false;
-let starting = false;
-let initialRate = 1;
-let appendStopped = false;
-/**
- * Pages arrived while the engine was speaking, so their `load` was held back.
- *
- * Sending it then would stop the audio: the engine stops the speaker before it
- * reads `resume`. The longer list stays in the local document and goes out on
- * the next sync that finds the engine quiet.
- */
-let appendPending = false;
 /** Bumped for every document opened, so a slow open cannot overwrite a newer one. */
 let generation = 0;
+
+/**
+ * Everything one open document owns.
+ *
+ * The page opens a document repeatedly — a picked file, a redirect, another
+ * file after a failure — and each one has to be forgotten completely. Keeping
+ * the fields together is what lets a reset be one call to the factory below
+ * instead of twenty assignments that drift from the declarations.
+ *
+ * What is not here is deliberate: the engine, the plugin registry and the
+ * interface language outlive a document, and `generation` only ever grows.
+ */
+interface PdfSession {
+  controller: ReaderController | null;
+  /** The controller's own state subscription, dropped when the controller is. */
+  unsubscribeController: (() => void) | null;
+  /** The document the engine reads, grown page by page; null until it has text. */
+  doc: ReadingDoc | null;
+  /** The rate the reader had saved when the controller was built. */
+  initialRate: number;
+  /** Whether the document was handed to the engine, which is what syncDoc gates on. */
+  announced: boolean;
+  /** Whether `startReader()` is between its rate lookup and its controller. */
+  starting: boolean;
+  /** A rebuild changed a sentence already sent, so no further page may land. */
+  appendStopped: boolean;
+  /**
+   * Pages arrived while the engine was speaking, so their `load` was held back.
+   *
+   * Sending it then would stop the audio: the engine stops the speaker before it
+   * reads `resume`. The longer list stays in the local document and goes out on
+   * the next sync that finds the engine quiet.
+   */
+  appendPending: boolean;
+  /** The file waiting for the embedding tree, between `openBytes` and the open. */
+  pending: { bytes: ArrayBuffer; name: string } | null;
+  /**
+   * The document whose pages are allowed to report text.
+   *
+   * Closing a document and opening another one are asynchronous, and a page's
+   * text extraction can resolve in between; the id is what keeps the previous
+   * document's blocks from being committed into the new one.
+   */
+  currentDocumentId: string | null;
+  /**
+   * Page text, in page order.
+   *
+   * `pageResults[i]` is page `i`'s blocks (null while PDFium has not reported
+   * yet, and `[]` for a page without text). `pageDone` says whether the page has
+   * reported, so an empty page still advances the commit cursor: a scanned page
+   * must not hold back every page after it.
+   */
+  pageResults: Array<EmbedBlock[] | null>;
+  pageDone: boolean[];
+  commitCursor: number;
+  pageCount: number;
+  /** The highlight layer per page, recreated only when the page's DOM is. */
+  highlightLayers: Map<number, EmbedHighlightLayer>;
+  /** The open document's own bytes, kept for the download button. */
+  documentBytes: ArrayBuffer | null;
+  documentName: string;
+  /** The pending debounced search, so a fast typist only runs the last one. */
+  searchTimer: number | null;
+  passwordResolve: ((value: string | null) => void) | null;
+  passwordAttempts: number;
+}
+
+/** The state a document starts from, which is also the state a reset returns to. */
+function createSession(): PdfSession {
+  return {
+    controller: null,
+    unsubscribeController: null,
+    doc: null,
+    initialRate: 1,
+    announced: false,
+    starting: false,
+    appendStopped: false,
+    appendPending: false,
+    pending: null,
+    currentDocumentId: null,
+    pageResults: [],
+    pageDone: [],
+    commitCursor: 0,
+    pageCount: 0,
+    highlightLayers: new Map(),
+    documentBytes: null,
+    documentName: DEFAULT_DOCUMENT_NAME,
+    searchTimer: null,
+    passwordResolve: null,
+    passwordAttempts: 0,
+  };
+}
+
+let session: PdfSession = createSession();
 
 /** A doc whose contents can be swapped under the controller. */
 const redirect: ReadingDoc = {
   get blocks() {
-    return current?.blocks ?? [];
+    return session.doc?.blocks ?? [];
   },
   get sentences() {
-    return current?.sentences ?? [];
+    return session.doc?.sentences ?? [];
   },
-  getSentence: (index) => current?.getSentence(index) ?? null,
-  rangeForSentence: (index) => current?.rangeForSentence(index) ?? null,
-  rangeForWord: (index, start, end) => current?.rangeForWord(index, start, end) ?? null,
-  sentenceAt: (node, offset) => current?.sentenceAt(node, offset) ?? null,
-};
-
-/** The labels this page adds on top of the shared catalogue. */
-interface PdfUiLabels {
-  search: string;
-  closeSearch: string;
-  previousMatch: string;
-  nextMatch: string;
-  noMatches: string;
-  sidebar: SidebarLabels;
-  toggleSidebar: string;
-  download: string;
-  fitWidth: string;
-  previousPage: string;
-  nextPage: string;
-  pageBefore: string;
-  pageAfter: (total: number) => string;
-}
-
-const PDF_LABELS: Record<Lang, PdfUiLabels> = {
-  en: {
-    search: 'Search…',
-    closeSearch: 'Close search',
-    previousMatch: 'Previous match',
-    nextMatch: 'Next match',
-    noMatches: 'No matches',
-    sidebar: { pages: 'Pages', contents: 'Contents', empty: 'No table of contents' },
-    toggleSidebar: 'Toggle the thumbnail panel',
-    download: 'Download the PDF',
-    fitWidth: 'Fit the page width',
-    previousPage: 'Previous page',
-    nextPage: 'Next page',
-    pageBefore: 'Page ',
-    pageAfter: (total) => ` of ${total}`,
-  },
-  ja: {
-    search: '検索…',
-    closeSearch: '検索を閉じる',
-    previousMatch: '前の一致',
-    nextMatch: '次の一致',
-    noMatches: '一致なし',
-    sidebar: { pages: 'ページ', contents: '目次', empty: '目次はありません' },
-    toggleSidebar: 'サムネイルを表示',
-    download: 'PDF をダウンロード',
-    fitWidth: '幅に合わせる',
-    previousPage: '前のページ',
-    nextPage: '次のページ',
-    pageBefore: '',
-    pageAfter: (total) => ` / ${total} ページ`,
-  },
-  'zh-CN': {
-    search: '搜索…',
-    closeSearch: '关闭搜索',
-    previousMatch: '上一个匹配',
-    nextMatch: '下一个匹配',
-    noMatches: '没有匹配',
-    sidebar: { pages: '页面', contents: '目录', empty: '这份 PDF 没有目录' },
-    toggleSidebar: '切换缩略图侧边栏',
-    download: '下载 PDF',
-    fitWidth: '适合页面宽度',
-    previousPage: '上一页',
-    nextPage: '下一页',
-    pageBefore: '第 ',
-    pageAfter: (total) => ` 页 / 共 ${total} 页`,
-  },
+  getSentence: (index) => session.doc?.getSentence(index) ?? null,
+  rangeForSentence: (index) => session.doc?.rangeForSentence(index) ?? null,
+  rangeForWord: (index, start, end) => session.doc?.rangeForWord(index, start, end) ?? null,
+  sentenceAt: (node, offset) => session.doc?.sentenceAt(node, offset) ?? null,
 };
 
 function drawChrome(): void {
@@ -258,6 +225,7 @@ function drawChrome(): void {
       onPick={pickFile}
       onPassword={answerPassword}
       onPage={goToPage}
+      onOpenSearch={openSearch}
       onSearchQuery={setSearchQuery}
       onSearchNext={nextMatch}
       onSearchPrevious={previousMatch}
@@ -272,326 +240,6 @@ function drawChrome(): void {
 function show(notice: Notice): void {
   chrome = { ...chrome, notice };
   drawChrome();
-}
-
-/** The toolbar, the search bar, and whatever is blocking the view. */
-interface ChromeProps {
-  settings: SettingsStore;
-  state: ChromeState;
-  api: ViewerApi | null;
-  onZoom: (direction: 1 | -1) => void;
-  onFitWidth: () => void;
-  onPick: (file: File) => void;
-  onPassword: (value: string | null) => void;
-  onPage: (page: number) => void;
-  onSearchQuery: (query: string) => void;
-  onSearchNext: () => void;
-  onSearchPrevious: () => void;
-  onSearchClose: () => void;
-  onToggleSidebar: () => void;
-  onDownload: () => void;
-}
-
-function Chrome(props: ChromeProps) {
-  const { lang } = useUiLanguage(props.settings);
-  return (
-    <I18nProvider lang={lang}>
-      <ChromeBody {...props} labels={PDF_LABELS[lang]} />
-    </I18nProvider>
-  );
-}
-
-function ChromeBody({
-  state,
-  api,
-  labels,
-  onZoom,
-  onFitWidth,
-  onPick,
-  onPassword,
-  onPage,
-  onSearchQuery,
-  onSearchNext,
-  onSearchPrevious,
-  onSearchClose,
-  onToggleSidebar,
-  onDownload,
-}: ChromeProps & { labels: PdfUiLabels }) {
-  const t = useT();
-  const canPick = state.notice === 'pick' || state.notice === 'missing' || state.notice === 'empty';
-  const controls = state.open && api !== null;
-
-  return (
-    <>
-      <div class="pdf-top">
-        <button
-          type="button"
-          class="pdf-icon-button"
-          aria-label={labels.toggleSidebar}
-          aria-pressed={state.sidebar}
-          disabled={!controls}
-          onClick={onToggleSidebar}
-        >
-          ⊞
-        </button>
-        {/* Never dismissible: a multi-column paper read down the columns looks
-            like broken ordering, and the line is what distinguishes the two. */}
-        <p class="pdf-order-hint">{t('pdf.order.hint')}</p>
-        {state.open && (
-          <div class="pdf-page-nav">
-            <button
-              type="button"
-              aria-label={labels.previousPage}
-              disabled={!controls || state.page <= 1}
-              onClick={() => onPage(state.page - 1)}
-            >
-              ←
-            </button>
-            <PageField
-              page={state.page}
-              total={state.total}
-              before={labels.pageBefore}
-              after={labels.pageAfter(state.total)}
-              onGo={onPage}
-            />
-            <button
-              type="button"
-              aria-label={labels.nextPage}
-              disabled={!controls || state.page >= state.total}
-              onClick={() => onPage(state.page + 1)}
-            >
-              →
-            </button>
-          </div>
-        )}
-        {state.open && (
-          <fieldset class="pdf-zoom">
-            <button
-              type="button"
-              aria-label={t('pdf.zoom.out')}
-              disabled={!controls}
-              onClick={() => onZoom(-1)}
-            >
-              −
-            </button>
-            <span class="pdf-zoom-level" aria-live="polite">
-              {Math.round(state.zoom * 100)}%
-            </span>
-            <button
-              type="button"
-              aria-label={t('pdf.zoom.in')}
-              disabled={!controls}
-              onClick={() => onZoom(1)}
-            >
-              +
-            </button>
-            <button
-              type="button"
-              aria-label={labels.fitWidth}
-              disabled={!controls}
-              onClick={onFitWidth}
-            >
-              ⤢
-            </button>
-          </fieldset>
-        )}
-        {state.open && (
-          <button
-            type="button"
-            class="pdf-text-button"
-            aria-label={labels.search}
-            aria-expanded={state.search.open}
-            disabled={!controls}
-            onClick={openSearch}
-          >
-            {labels.search.replace('…', '')}
-          </button>
-        )}
-        {state.open && (
-          <button
-            type="button"
-            class="pdf-icon-button"
-            aria-label={labels.download}
-            disabled={!controls}
-            onClick={onDownload}
-          >
-            ↓
-          </button>
-        )}
-      </div>
-
-      {state.search.open && (
-        <div class="pdf-search">
-          <input
-            type="text"
-            aria-label={labels.search}
-            placeholder={labels.search}
-            value={state.search.query}
-            autofocus
-            onInput={(event) => onSearchQuery(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter') return;
-              event.preventDefault();
-              if (event.shiftKey) onSearchPrevious();
-              else onSearchNext();
-            }}
-          />
-          <span class="pdf-search-count" aria-live="polite">
-            {searchCount(state.search, labels)}
-          </span>
-          <button
-            type="button"
-            aria-label={labels.previousMatch}
-            disabled={state.search.total === 0}
-            onClick={onSearchPrevious}
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            aria-label={labels.nextMatch}
-            disabled={state.search.total === 0}
-            onClick={onSearchNext}
-          >
-            ↓
-          </button>
-          <button type="button" aria-label={labels.closeSearch} onClick={onSearchClose}>
-            ×
-          </button>
-        </div>
-      )}
-
-      {state.notice === 'opening' && <p class="pdf-notice">{t('panel.loading')}</p>}
-
-      {canPick && (
-        <div class="pdf-notice">
-          {state.notice !== 'pick' && (
-            <p role="alert">{t(state.notice === 'missing' ? 'pdf.missing' : 'pdf.empty')}</p>
-          )}
-          <label class="pdf-pick">
-            <span>{t('pdf.pick')}</span>
-            <input
-              type="file"
-              accept="application/pdf,.pdf"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                // Clearing lets the same file be chosen again after an error.
-                event.currentTarget.value = '';
-                if (file) onPick(file);
-              }}
-            />
-          </label>
-        </div>
-      )}
-
-      {state.password && (
-        <PasswordCard
-          // A rejection remounts the form, which clears the previous attempt.
-          key={state.password.wrong ? 'wrong' : 'first'}
-          wrong={state.password.wrong}
-          onAnswer={onPassword}
-        />
-      )}
-    </>
-  );
-}
-
-/** The "3/12" counter, or a state label when there is nothing to count. */
-function searchCount(search: SearchUiState, labels: PdfUiLabels): string {
-  if (search.query.trim() === '') return '';
-  if (search.loading && search.total === 0) return '…';
-  if (search.total === 0) return labels.noMatches;
-  return `${search.active + 1}/${search.total}`;
-}
-
-/** The editable page number in the middle of the page navigation control. */
-function PageField({
-  page,
-  total,
-  before,
-  after,
-  onGo,
-}: {
-  page: number;
-  total: number;
-  before: string;
-  after: string;
-  onGo: (page: number) => void;
-}) {
-  const [value, setValue] = useState(String(page));
-  const [editing, setEditing] = useState(false);
-
-  // While the reader is typing, the field owns its value; otherwise it follows
-  // the page the viewer is actually on (scrolling, page buttons, search).
-  useEffect(() => {
-    if (!editing) setValue(String(page));
-  }, [page, editing]);
-
-  return (
-    <form
-      class="pdf-page-field"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const next = Number.parseInt(value, 10);
-        if (!Number.isFinite(next)) {
-          setValue(String(page));
-          return;
-        }
-        onGo(Math.min(Math.max(next, 1), Math.max(total, 1)));
-      }}
-    >
-      {before && <span>{before}</span>}
-      <input
-        type="text"
-        inputMode="numeric"
-        aria-label="Page"
-        value={value}
-        onFocus={() => setEditing(true)}
-        onInput={(event) => setValue(event.currentTarget.value)}
-        onBlur={() => {
-          setEditing(false);
-          setValue(String(page));
-        }}
-      />
-      <span>{after}</span>
-    </form>
-  );
-}
-
-interface PasswordCardProps {
-  wrong: boolean;
-  onAnswer: (value: string | null) => void;
-}
-
-function PasswordCard({ wrong, onAnswer }: PasswordCardProps) {
-  const t = useT();
-  const [value, setValue] = useState('');
-
-  return (
-    <form
-      class="pdf-password"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onAnswer(value);
-      }}
-    >
-      <h2>{t('pdf.password.title')}</h2>
-      {wrong && <p role="alert">{t('pdf.password.wrong')}</p>}
-      <input
-        type="password"
-        aria-label={t('pdf.password.title')}
-        autofocus
-        value={value}
-        onInput={(event) => setValue(event.currentTarget.value)}
-      />
-      <button type="submit" aria-label={t('pdf.password.title')}>
-        →
-      </button>
-      <button type="button" onClick={() => onAnswer(null)}>
-        {t('settings.cache.cancel')}
-      </button>
-    </form>
-  );
 }
 
 /**
@@ -675,76 +323,6 @@ async function openIntercepted(url: string): Promise<void> {
   await openBytes(bytes, documentNameFromUrl(url));
 }
 
-/** A readable name from the URL's last path segment. */
-function documentNameFromUrl(url: string): string {
-  try {
-    const name = new URL(url).pathname.split('/').pop();
-    if (name) return decodeURIComponent(name);
-  } catch {
-    // The fetch already succeeded, so this is only a label; fall through.
-  }
-  return DEFAULT_DOCUMENT_NAME;
-}
-
-/**
- * Ask the service worker for the staged bytes.
- *
- * The handler belongs to a later task; until it exists a missing answer is the
- * expected one, so a rejection and a timeout are treated the same. The timeout
- * is for a worker that accepted the message and never answered.
- */
-function requestBytes(id: string): Promise<ArrayBuffer | null> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (bytes: ArrayBuffer | null): void => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      resolve(bytes);
-    };
-    const timer = window.setTimeout(() => finish(null), MISSING_TIMEOUT_MS);
-
-    try {
-      void browser.runtime
-        .sendMessage({ type: PDF_BYTES, id })
-        .then((reply: unknown) => {
-          finish(
-            isPdfBytesResponse(reply) && reply.type === PDF_BYTES
-              ? toArrayBuffer(reply.bytes)
-              : null
-          );
-        })
-        .catch(() => finish(null));
-    } catch {
-      finish(null);
-    }
-  });
-}
-
-function toArrayBuffer(value: unknown): ArrayBuffer | null {
-  if (value instanceof ArrayBuffer) return value;
-  // The worker cannot send an `ArrayBuffer`: `runtime.sendMessage` is JSON-only,
-  // so the bytes arrive as base64 and are rebuilt here.
-  if (typeof value === 'string') return fromBase64(value);
-  if (ArrayBuffer.isView(value)) {
-    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
-  }
-  return null;
-}
-
-function fromBase64(encoded: string): ArrayBuffer | null {
-  try {
-    const binary = atob(encoded);
-    const octets = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      octets[index] = binary.charCodeAt(index);
-    }
-    return octets.buffer;
-  } catch {
-    return null;
-  }
-}
-
 async function pickFile(file: File): Promise<void> {
   try {
     await openBytes(await file.arrayBuffer(), file.name);
@@ -774,7 +352,7 @@ async function openBytes(bytes: ArrayBuffer, name: string): Promise<void> {
   if (run !== generation) return;
 
   drawViewer();
-  pending = { bytes, name };
+  session.pending = { bytes, name };
   // `pending` is consumed either by the registry callback (the usual path) or
   // here, if the embedding tree was already up from a previous file.
   await openPending(run);
@@ -878,25 +456,27 @@ function handlePageBlocks(
   blocks: EmbedBlock[],
   layer: HTMLElement
 ): void {
-  if (documentId !== currentDocumentId) return;
+  if (documentId !== session.currentDocumentId) return;
 
-  const existing = highlightLayers.get(pageIndex);
+  const existing = session.highlightLayers.get(pageIndex);
   if (!existing || existing.container !== layer) {
-    highlightLayers.set(pageIndex, new EmbedHighlightLayer(layer));
+    session.highlightLayers.set(pageIndex, new EmbedHighlightLayer(layer));
   }
 
-  pageResults[pageIndex] = blocks;
-  pageDone[pageIndex] = true;
+  session.pageResults[pageIndex] = blocks;
+  session.pageDone[pageIndex] = true;
 
-  while (commitCursor < pageDone.length && pageDone[commitCursor]) commitCursor += 1;
+  while (session.commitCursor < session.pageDone.length && session.pageDone[session.commitCursor]) {
+    session.commitCursor += 1;
+  }
   syncDoc();
 }
 
 /** Open the file that was just chosen, asking for a password when PDFium does. */
 async function openPending(run: number): Promise<void> {
-  if (run !== generation || !pending || !registry) return;
-  const file = pending;
-  pending = null;
+  if (run !== generation || !session.pending || !registry) return;
+  const file = session.pending;
+  session.pending = null;
 
   let result: OpenedDocument;
   try {
@@ -911,7 +491,7 @@ async function openPending(run: number): Promise<void> {
     }
     return;
   } finally {
-    passwordAttempts = 0;
+    session.passwordAttempts = 0;
     chrome = { ...chrome, password: null };
     drawChrome();
   }
@@ -921,13 +501,14 @@ async function openPending(run: number): Promise<void> {
     return;
   }
 
-  currentDocumentId = result.documentId;
-  documentBytes = file.bytes;
-  documentName = file.name;
-  pageCount = result.document.pages.length;
-  pageResults = new Array<EmbedBlock[] | null>(pageCount).fill(null);
-  pageDone = new Array<boolean>(pageCount).fill(false);
-  commitCursor = 0;
+  session.currentDocumentId = result.documentId;
+  session.documentBytes = file.bytes;
+  session.documentName = file.name;
+  const pageCount = result.document.pages.length;
+  session.pageCount = pageCount;
+  session.pageResults = new Array<EmbedBlock[] | null>(pageCount).fill(null);
+  session.pageDone = new Array<boolean>(pageCount).fill(false);
+  session.commitCursor = 0;
   chrome = { ...chrome, open: true, page: 1, total: pageCount };
 
   if (pageCount === 0) {
@@ -964,46 +545,46 @@ async function openWithPassword(
       const reason = failure?.reason ?? null;
 
       if (!isPasswordError(reason) || !documentId) throw error;
-      if (passwordAttempts >= MAX_PASSWORD_ATTEMPTS) throw error;
+      if (session.passwordAttempts >= MAX_PASSWORD_ATTEMPTS) throw error;
 
       password = await askPassword();
       if (run !== generation) throw 'cancelled';
       if (password === null) throw 'cancelled';
-      passwordAttempts += 1;
+      session.passwordAttempts += 1;
     }
   }
 }
 
 /** Fold the committed pages into a document, appending only. */
 function syncDoc(): void {
-  if (appendStopped) return;
+  if (session.appendStopped) return;
 
   const blocks: Block[] = [];
-  for (let index = 0; index < commitCursor; index++) {
-    const page = pageResults[index];
+  for (let index = 0; index < session.commitCursor; index++) {
+    const page = session.pageResults[index];
     if (page) blocks.push(...page);
   }
 
   const next = buildReadingDoc(blocks);
-  const previous = current?.sentences ?? [];
+  const previous = session.doc?.sentences ?? [];
 
   if (!isAppendOnly(previous, next.sentences)) {
-    appendStopped = true;
+    session.appendStopped = true;
     console.warn('[SayLoud] the pdf text order changed; keeping the sentences already read');
     return;
   }
 
   const grew = next.sentences.length > previous.length;
-  current = next;
+  session.doc = next;
 
-  if (grew && announced) resend();
+  if (grew && session.announced) resend();
   syncHighlight();
 
-  if (!announced && !starting) {
+  if (!session.announced && !session.starting) {
     if (next.sentences.length > 0) {
       show('ready');
       void startReader();
-    } else if (commitCursor >= pageCount && pageCount > 0) {
+    } else if (session.commitCursor >= session.pageCount && session.pageCount > 0) {
       show('empty');
     }
   }
@@ -1019,10 +600,10 @@ function isAppendOnly(
 
 /** Build the reader once the first page's sentences exist. */
 async function startReader(): Promise<void> {
-  if (controller || starting || !current) return;
-  starting = true;
+  if (session.controller || session.starting || !session.doc) return;
+  session.starting = true;
 
-  initialRate = await settings
+  session.initialRate = await settings
     .load()
     .then((loaded) => loaded.rate)
     .catch((error: unknown) => {
@@ -1030,25 +611,29 @@ async function startReader(): Promise<void> {
       return 1;
     });
 
-  if (!current || controller) {
-    starting = false;
+  if (!session.doc || session.controller) {
+    session.starting = false;
     return;
   }
 
-  controller = new ReaderController(host, { initialRate, settings, doc: redirect });
-  controller.connect();
-  announced = true;
-  starting = false;
+  session.controller = new ReaderController(host, {
+    initialRate: session.initialRate,
+    settings,
+    doc: redirect,
+  });
+  session.controller.connect();
+  session.announced = true;
+  session.starting = false;
   // A page appended while the engine was speaking is held back; this is what
   // sends it once the engine goes quiet, which is the only moment a `load`
   // cannot cut the audio off.
-  unsubscribeController = controller.subscribe(() => {
-    if (appendPending) resend();
+  session.unsubscribeController = session.controller.subscribe(() => {
+    if (session.appendPending) resend();
     syncHighlight();
   });
   render(
     <ReaderPanel
-      controller={controller}
+      controller={session.controller}
       settings={settings}
       host={host}
       onOpenSettings={() => void browser.runtime.openOptionsPage()}
@@ -1066,26 +651,30 @@ async function startReader(): Promise<void> {
  * sentences stay in the local document and this is tried again on the next
  * sync. `resume` is what keeps a quiet engine from starting to speak just
  * because a later page arrived.
+ *
+ * The command is built here rather than through the controller's own
+ * `sendLoad`, which always sends the rate the controller was built with: this
+ * one has to send the rate the engine is on now, or a page arriving after the
+ * reader picked a speed would snap it back to the saved default and re-speak
+ * the rest at the old one. The sentence mapping is shared
+ * (`toEngineSentences`); the rate is why the command itself is not.
  */
 function resend(): void {
-  if (!controller || !current) return;
-  const status = controller.getState().status;
+  if (!session.controller || !session.doc) return;
+  const status = session.controller.getState().status;
 
   const decision = appendSync(status?.phase);
   if (!decision.send) {
-    appendPending = true;
+    session.appendPending = true;
     return;
   }
 
-  appendPending = false;
-  controller.sendCommand({
+  session.appendPending = false;
+  session.controller.sendCommand({
     type: 'load',
-    sentences: current.sentences.map((sentence) => ({
-      text: sentence.text,
-      lang: sentence.lang,
-    })),
+    sentences: toEngineSentences(session.doc.sentences),
     startIndex: status?.index ?? 0,
-    rate: status?.rate ?? initialRate,
+    rate: status?.rate ?? session.initialRate,
     resume: decision.resume,
   });
 }
@@ -1101,19 +690,19 @@ function resend(): void {
  * `index.html`).
  */
 function syncHighlight(): void {
-  for (const layer of highlightLayers.values()) layer.clear();
+  for (const layer of session.highlightLayers.values()) layer.clear();
 
-  const status = controller?.getState().status;
+  const status = session.controller?.getState().status;
   const index = status?.index;
   if (index === undefined) return;
   if (status?.phase === 'idle' || status?.phase === 'ended') return;
 
-  const sentence = current?.getSentence(index);
+  const sentence = session.doc?.getSentence(index);
   if (!sentence) return;
-  const block = current?.blocks[sentence.blockIndex];
+  const block = session.doc?.blocks[sentence.blockIndex];
   if (!block) return;
   const embed = block as EmbedBlock;
-  const layer = highlightLayers.get(embed.pageIndex);
+  const layer = session.highlightLayers.get(embed.pageIndex);
   if (!layer) return;
 
   const rects = embed.run
@@ -1147,6 +736,13 @@ function previousPage(): void {
   viewerApi?.previousPage();
 }
 
+/** Stop the debounced scan; the timer id only lives in the current session. */
+function clearSearchTimer(): void {
+  if (session.searchTimer === null) return;
+  window.clearTimeout(session.searchTimer);
+  session.searchTimer = null;
+}
+
 /** Open the search bar (or just put the caret back in it). */
 function openSearch(): void {
   if (!chrome.open) return;
@@ -1160,15 +756,9 @@ function openSearch(): void {
 }
 
 function closeSearch(): void {
-  if (searchTimer !== null) {
-    window.clearTimeout(searchTimer);
-    searchTimer = null;
-  }
+  clearSearchTimer();
   viewerApi?.stopSearch();
-  chrome = {
-    ...chrome,
-    search: { open: false, query: '', active: -1, total: 0, loading: false },
-  };
+  chrome = { ...chrome, search: EMPTY_SEARCH };
   drawChrome();
 }
 
@@ -1186,9 +776,9 @@ function setSearchQuery(query: string): void {
   };
   drawChrome();
 
-  if (searchTimer !== null) window.clearTimeout(searchTimer);
-  searchTimer = window.setTimeout(() => {
-    searchTimer = null;
+  clearSearchTimer();
+  session.searchTimer = window.setTimeout(() => {
+    session.searchTimer = null;
     if (!chrome.search.open) return;
     viewerApi?.search(chrome.search.query);
   }, SEARCH_DEBOUNCE_MS);
@@ -1212,28 +802,23 @@ function toggleSidebar(): void {
 
 /** Save the open document through the browser's download machinery. */
 function downloadDocument(): void {
-  if (!documentBytes) return;
-  const blob = new Blob([documentBytes], { type: 'application/pdf' });
+  if (!session.documentBytes) return;
+  const blob = new Blob([session.documentBytes], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = documentName || DEFAULT_DOCUMENT_NAME;
+  link.download = session.documentName || DEFAULT_DOCUMENT_NAME;
   document.body.appendChild(link);
   link.click();
   link.remove();
-  // The download reads the URL asynchronously; revoking it in the same turn
-  // would race the fetch.
-  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  window.setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }
 
 /** Whether a shortcut key should type into the focused control instead. */
 function isEditable(target: EventTarget | null): boolean {
-  const element = target as HTMLElement | null;
-  if (!element) return false;
-  if (element.isContentEditable) return true;
-  return (
-    element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.tagName === 'SELECT'
-  );
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
 }
 
 function handleKeydown(event: KeyboardEvent): void {
@@ -1291,57 +876,48 @@ function handleKeydown(event: KeyboardEvent): void {
 /** Ask for a password, and remember where the answer goes. */
 function askPassword(): Promise<string | null> {
   return new Promise((resolve) => {
-    passwordResolve = resolve;
-    chrome = { ...chrome, password: { wrong: passwordAttempts > 0 } };
+    session.passwordResolve = resolve;
+    chrome = { ...chrome, password: { wrong: session.passwordAttempts > 0 } };
     drawChrome();
   });
 }
 
 /** Resolve the open prompt; null is a cancel and is never asked again. */
 function answerPassword(value: string | null): void {
-  const resolve = passwordResolve;
-  passwordResolve = null;
+  const resolve = session.passwordResolve;
+  session.passwordResolve = null;
   chrome = { ...chrome, password: null };
   drawChrome();
   resolve?.(value);
 }
 
 function closeReader(): void {
-  unsubscribeController?.();
-  unsubscribeController = null;
-  controller?.dispose();
-  controller = null;
-  announced = false;
+  session.unsubscribeController?.();
+  session.unsubscribeController = null;
+  session.controller?.dispose();
+  session.controller = null;
+  session.announced = false;
   render(null, host);
   window.close();
 }
 
-/** Tear down the previous document, if there was one. */
+/**
+ * Tear down the previous document, if there was one.
+ *
+ * The assignments are the factory's job; what is left here is the teardown a
+ * new state cannot perform on its own. A pending password prompt has to be
+ * answered or the open awaiting it never settles, the controller owns listeners
+ * and a port that are not garbage collected, the debounce holds a live timer
+ * id, and the worker still holds the old document.
+ */
 function resetDocument(): void {
   answerPassword(null);
-  unsubscribeController?.();
-  unsubscribeController = null;
-  controller?.dispose();
-  controller = null;
-  announced = false;
-  starting = false;
-  appendStopped = false;
-  appendPending = false;
-  current = null;
-  currentDocumentId = null;
-  pending = null;
-  pageResults = [];
-  pageDone = [];
-  commitCursor = 0;
-  pageCount = 0;
-  documentBytes = null;
-  documentName = DEFAULT_DOCUMENT_NAME;
-  if (searchTimer !== null) {
-    window.clearTimeout(searchTimer);
-    searchTimer = null;
-  }
-  highlightLayers.clear();
-  passwordAttempts = 0;
+  session.unsubscribeController?.();
+  session.unsubscribeController = null;
+  session.controller?.dispose();
+  // Cleared before the state is replaced: the id lives in the old session.
+  clearSearchTimer();
+  session = createSession();
   render(null, host);
   void closePdfDocuments(registry);
   chrome = {
@@ -1350,7 +926,7 @@ function resetDocument(): void {
     password: null,
     page: 1,
     total: 0,
-    search: { open: false, query: '', active: -1, total: 0, loading: false },
+    search: EMPTY_SEARCH,
   };
 }
 

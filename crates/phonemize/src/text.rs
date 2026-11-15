@@ -115,10 +115,9 @@ pub fn normalize_ja_punctuation(text: &str) -> String {
 pub fn to_half_width(text: &str) -> String {
     text.chars()
         .map(|ch| match ch {
-            // Full-width digits U+FF10..U+FF19.
-            '\u{ff10}'..='\u{ff19}' => char::from_u32(ch as u32 - 0xfee0).unwrap_or(ch),
-            // Full-width capitals U+FF21..U+FF3A and lower case U+FF41..U+FF5A.
-            '\u{ff21}'..='\u{ff3a}' | '\u{ff41}'..='\u{ff5a}' => {
+            // Full-width digits U+FF10..U+FF19, capitals U+FF21..U+FF3A and
+            // lower case U+FF41..U+FF5A.
+            '\u{ff10}'..='\u{ff19}' | '\u{ff21}'..='\u{ff3a}' | '\u{ff41}'..='\u{ff5a}' => {
                 char::from_u32(ch as u32 - 0xfee0).unwrap_or(ch)
             }
             _ => ch,

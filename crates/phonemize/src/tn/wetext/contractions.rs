@@ -38,9 +38,9 @@
 //! with an apostrophe treat word boundaries differently.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 use aho_corasick::{AhoCorasick, Input, Match, MatchKind};
-use once_cell::sync::Lazy;
 
 /// The tables, embedded at compile time from the Python `contractions` package:
 /// - `contractions_dict.json`: standard contractions (~180 entries)
@@ -147,7 +147,7 @@ struct Tables {
     max_key_len: usize,
 }
 
-static TABLES: Lazy<Tables> = Lazy::new(Tables::new);
+static TABLES: LazyLock<Tables> = LazyLock::new(Tables::new);
 
 impl Tables {
     fn new() -> Self {
@@ -321,7 +321,7 @@ pub fn has_apostrophe(text: &str) -> bool {
 /// Called from `crate::tn::engine::english` during `finish_loading`, alongside
 /// the English FST parses (70 ms; this takes 0.7 ms).
 pub fn warm_up() {
-    Lazy::force(&TABLES);
+    LazyLock::force(&TABLES);
 }
 
 /// Every key and its expansion: the three JSON tables, the month keys, and a `’`
@@ -466,12 +466,6 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
         .as_bytes()
         .windows(needle.len())
         .any(|window| window.eq_ignore_ascii_case(needle))
-}
-
-/// Unused. `_include_slang` is ignored: slang is always expanded.
-#[allow(dead_code)]
-pub fn fix_contractions_with_options(text: &str, _include_slang: bool) -> String {
-    fix_contractions(text)
 }
 
 #[cfg(test)]

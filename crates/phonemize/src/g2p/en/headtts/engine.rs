@@ -57,10 +57,9 @@
 //! read this word" is an answer the caller can act on (it spells the word out
 //! instead) and a dropped phoneme is not.
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use super::rules;
 /// One rule: a pattern, how far it moves the position, and what it says.
@@ -81,7 +80,7 @@ pub struct Rule {
 
 /// Compiled regular expressions, one per rule, filled in on first use.
 ///
-/// Not a `Lazy<Vec<Regex>>`: that would compile all 309 to answer a question
+/// Not a `LazyLock<Vec<Regex>>`: that would compile all 309 to answer a question
 /// about one. The key is the pattern itself rather than an index, because that is
 /// what the cache has to be looked up with — the rule carries its pattern, and an
 /// index would have to be threaded through every call for a lookup that the
@@ -90,8 +89,8 @@ pub struct Rule {
 /// The values are leaked so that they can be handed out by reference; see
 /// [`compiled`] for why a reference and not a clone, which is the difference
 /// between a match costing 60 ns and costing 3.5 µs.
-static CACHE: Lazy<Mutex<HashMap<&'static str, &'static Regex>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static CACHE: LazyLock<Mutex<HashMap<&'static str, &'static Regex>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The compiled form of one rule's pattern, or `None` if it will not compile.
 ///
@@ -119,7 +118,7 @@ static CACHE: Lazy<Mutex<HashMap<&'static str, &'static Regex>>> =
 ///
 /// Leaking is what makes the reference possible: the entry can never be removed,
 /// so its address is valid for the life of the process, and the cache is bounded
-/// by the rule table — 309 entries, at most, once each. A `Lazy<Vec<...>>` of
+/// by the rule table — 309 entries, at most, once each. A `LazyLock<Vec<...>>` of
 /// `OnceLock`s would avoid `Box::leak` and the `Mutex` together, but it would have
 /// to be indexed by something, and the rule carries its pattern rather than its
 /// index.

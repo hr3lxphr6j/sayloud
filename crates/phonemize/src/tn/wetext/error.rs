@@ -30,10 +30,6 @@ pub enum WeTextError {
     #[error("Invalid language: {0}")]
     InvalidLanguage(String),
 
-    /// Invalid operator
-    #[error("Invalid operator: {0}")]
-    InvalidOperator(String),
-
     /// Token parse error
     #[error("Token parse error: {0}")]
     TokenParseError(String),

@@ -119,6 +119,17 @@ const REAL_JIEBA = realJiebaDictionary();
 const hasJieba = REAL_JIEBA !== null;
 
 /**
+ * How long a test that builds the real dictionary is allowed to take.
+ *
+ * Preparing a Japanese phonemizer decompresses a 33 MB frame and builds
+ * lindera's segmenter from it: measured at ~0.6 s on a laptop, and about eight
+ * times that on a CI runner, which put these tests right at the 5 s default and
+ * turned a busy runner into a red build. A hang is still a failure — this only
+ * keeps "slow machine" from being mistaken for one.
+ */
+const DICTIONARY_TIMEOUT_MS = 30_000;
+
+/**
  * A phonemizer with a dictionary source attached.
  *
  * The source records the URLs it was asked for, so a `prepare` that quietly
@@ -277,7 +288,7 @@ describe('RustPhonemizer', () => {
   });
 });
 
-describe('RustPhonemizer.prepare', () => {
+describe('RustPhonemizer.prepare', { timeout: DICTIONARY_TIMEOUT_MS }, () => {
   it.skipIf(!hasDictionary)('fetches what the wasm asks for and hands it over', async () => {
     const { phonemizer, fetch, caches } = phonemizerWith(REAL_DICTIONARY ?? undefined);
     await phonemizer.ready;
@@ -469,7 +480,7 @@ describe('RustPhonemizer.prepare', () => {
  * field named differently. `serde_wasm_bindgen` is what decides that, and this is
  * where a change to it would show up.
  */
-describe('RustPhonemizer.phonemize', () => {
+describe('RustPhonemizer.phonemize', { timeout: DICTIONARY_TIMEOUT_MS }, () => {
   async function prepared(): Promise<RustPhonemizer> {
     const { phonemizer } = phonemizerWith(REAL_DICTIONARY ?? undefined);
     await phonemizer.ready;
@@ -547,7 +558,7 @@ describe('RustPhonemizer.phonemize', () => {
  * the fixture contains no Latin text (a Latin run is the one step where the two
  * pipelines deliberately use different engines; see below).
  */
-describe('RustPhonemizer and the Chinese dictionary', () => {
+describe('RustPhonemizer and the Chinese dictionary', { timeout: DICTIONARY_TIMEOUT_MS }, () => {
   it.skipIf(!hasJieba)('asks the wasm for the jieba word list', async () => {
     // The names are the wasm's to decide, and they changed twice: Chinese used to
     // fetch nothing, then just the word list, and now the word list and its two

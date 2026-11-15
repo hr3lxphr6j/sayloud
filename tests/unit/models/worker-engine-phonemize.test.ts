@@ -78,6 +78,16 @@ function asset(name: string): DictionaryBytes | null {
 const REAL_UNIDIC = asset('lindera-unidic-ja');
 const REAL_JIEBA = asset('jieba-zh-dict');
 
+/**
+ * How long a test that builds the real dictionary is allowed to take.
+ *
+ * Preparing Japanese phonemes decompresses a 33 MB frame and builds lindera's
+ * segmenter from it: ~0.7 s locally, about eight times that on a CI runner. The
+ * 5 s default was close enough that a busy runner failed the test instead of
+ * merely running it slowly; a hang still fails at this bound.
+ */
+const DICTIONARY_TIMEOUT_MS = 30_000;
+
 /** Every grammar, under the same missing-is-a-failure rule. */
 const REAL_WETEXT = WETEXT.map((name) => [name, asset(name)] as const);
 
@@ -269,7 +279,7 @@ async function assembled(dictionaries: Record<string, DictionaryBytes | null>) {
   return { engine, kokoro, phonemizer };
 }
 
-describe('WorkerLocalEngine with the real phonemizer', () => {
+describe('WorkerLocalEngine with the real phonemizer', { timeout: DICTIONARY_TIMEOUT_MS }, () => {
   it('hands the model the English phonemes the pipeline produced', async () => {
     const { engine, kokoro } = await assembled({});
     const signal = new AbortController().signal;

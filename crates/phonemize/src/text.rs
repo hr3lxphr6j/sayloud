@@ -27,40 +27,43 @@ pub enum ScriptRun {
     Other(String),
 }
 
-/// Full-width punctuation to ASCII.
+/// Full-width punctuation to ASCII, in one pass.
 ///
-/// Each replacement is a single distinct character, so applying them in sequence
-/// is the same operation as the chained `replaceAll` calls it mirrors — no
-/// ordering hazard, even though `、` becomes `, ` while `，` becomes `. `.
+/// Every key is a single character and no replacement contains another key, so
+/// the mapping can be applied character by character: a mark that comes out of
+/// the table can never be a mark that goes back into it. Every replacement is
+/// also at most as long as the mark it replaces, so a string allocated with the
+/// input's byte length never has to grow. The replacement strings carry the
+/// spaces the marks imply, which is why the result is trimmed.
 ///
 /// This is the map Japanese and English share. The one mark that only Japanese
 /// text has is [`normalize_ja_punctuation`]'s, applied after it.
 pub fn normalize_punctuation(text: &str) -> String {
-    let mut out = text.to_string();
-    for (from, to) in [
-        ("、", ", "),
-        // Comma → period: force the pause Kokoro gives a period. See the module
-        // comment; this is the listening-tested choice, not an accident.
-        ("，", ". "),
-        ("。", ". "),
-        ("．", ". "),
-        ("！", "! "),
-        ("：", ": "),
-        ("；", "; "),
-        ("？", "? "),
-        ("«", " \""),
-        ("»", "\" "),
-        ("《", " \""),
-        ("》", "\" "),
-        ("「", " \""),
-        ("」", "\" "),
-        ("【", " \""),
-        ("】", "\" "),
-        ("（", " ("),
-        ("）", ") "),
-    ] {
-        if out.contains(from) {
-            out = out.replace(from, to);
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '、' => out.push_str(", "),
+            // Comma → period: force the pause Kokoro gives a period. See the
+            // module comment; this is the listening-tested choice, not an
+            // accident.
+            '，' => out.push_str(". "),
+            '。' => out.push_str(". "),
+            '．' => out.push_str(". "),
+            '！' => out.push_str("! "),
+            '：' => out.push_str(": "),
+            '；' => out.push_str("; "),
+            '？' => out.push_str("? "),
+            '«' => out.push_str(" \""),
+            '»' => out.push_str("\" "),
+            '《' => out.push_str(" \""),
+            '》' => out.push_str("\" "),
+            '「' => out.push_str(" \""),
+            '」' => out.push_str("\" "),
+            '【' => out.push_str(" \""),
+            '】' => out.push_str("\" "),
+            '（' => out.push_str(" ("),
+            '）' => out.push_str(") "),
+            other => out.push(other),
         }
     }
     out.trim().to_string()
@@ -321,4 +324,24 @@ pub fn is_js_whitespace(ch: char) -> bool {
                 | '\u{3000}'
                 | '\u{feff}'
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every mark [`normalize_punctuation`] maps, once each, on one line.
+    ///
+    /// The marks are separated by `|` so that each replacement can be read on
+    /// its own: most of them begin or end with a space, and the separator shows
+    /// which side of the mark it belongs to. The expected string is written out
+    /// rather than recomputed from a second copy of the table, because a test
+    /// that shares the table with the function cannot catch a wrong entry in
+    /// it.
+    #[test]
+    fn maps_every_full_width_mark() {
+        let input = "、|，|。|．|！|：|；|？|«|»|《|》|「|」|【|】|（|）";
+        let expected = ", |. |. |. |! |: |; |? | \"|\" | \"|\" | \"|\" | \"|\" | (|)";
+        assert_eq!(normalize_punctuation(input), expected);
+    }
 }

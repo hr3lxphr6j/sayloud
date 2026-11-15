@@ -220,12 +220,11 @@ impl Phonemizer {
         // question, so ask it rather than repeating the answer — this is the
         // same check `required_dictionaries` makes, and the same one that
         // rejects a Japanese voice on v1.1-zh.
-        dictionary::dictionary_names(&options.vocab, &options.lang)
+        let language = dictionary::check_supported(&options.vocab, &options.lang)
             .map_err(PhonemizeError::Dictionary)?;
 
-        let language = dictionary::primary_language(&options.lang);
-        let phonemes = match language.as_str() {
-            "ja" => {
+        let phonemes = match language {
+            dictionary::Language::Ja => {
                 let segmenter =
                     self.japanese
                         .as_ref()
@@ -243,13 +242,15 @@ impl Phonemizer {
             // whose numerals the engine did not read comes back as `Numerals` —
             // declining it is the point. The backend itself is built lazily on the
             // first call; see the `english` field.
-            "en" => pipeline::phonemize_en(text, self.english(), self.english_tn.as_ref())
-                .map_err(|error| numerals_error(error, &options.lang))?,
+            dictionary::Language::En => {
+                pipeline::phonemize_en(text, self.english(), self.english_tn.as_ref())
+                    .map_err(|error| numerals_error(error, &options.lang))?
+            }
             // Chinese needs jieba's word list, so like Japanese it can be asked
             // to phonemize before `prepare` ran — and that is a failure rather
             // than a sentence read without word boundaries, because the
             // boundaries are audible (人设, 曾经).
-            "zh" => {
+            dictionary::Language::Zh => {
                 let segmenter =
                     self.chinese
                         .as_ref()
@@ -270,26 +271,13 @@ impl Phonemizer {
                 )
                 .map_err(|error| numerals_error(error, &options.lang))?
             }
-            // Every language the vocabulary table lists has a pipeline now, so
-            // this arm is unreachable through `phonemize_with` — the vocabulary
-            // check at the top of this function rejects anything else first. It stays as
-            // the honest answer for the next language that is added to
-            // `supported_languages` before its pipeline exists: an error rather
-            // than an empty string, because a sentence that phonemizes to nothing
-            // plays as silence, and silence is exactly what this migration exists
-            // to stop producing quietly.
-            _ => {
-                return Err(PhonemizeError::NotImplemented {
-                    lang: options.lang.clone(),
-                })
-            }
         };
 
         // The gate. Every pipeline ends here, so a vocabulary that does not
         // match the phonemes fails loudly instead of losing the characters the
         // tokenizer would silently delete.
         //
-        // The name was already checked by `dictionary_names` above, so this
+        // The name was already checked by `check_supported` above, so this
         // lookup cannot fail — and an error rather than a panic, because a panic
         // inside the wasm takes the worker with it.
         let vocab = Vocab::for_id(&options.vocab).ok_or_else(|| {

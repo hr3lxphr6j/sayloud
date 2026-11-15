@@ -39,7 +39,7 @@
 //!
 //! There are 309, and compiling them all up front would spend milliseconds on the
 //! first OOV word a sentence happens to contain — and, worse, would spend them in
-//! `prepare` on a language that may never phonemize English at all. [`CACHE`]
+//! `prepare` on a language that may never phonemize English at all. `CACHE`
 //! compiles each one the first time a rule is tried, and keeps it. A rule that is
 //! never tried is never compiled, and the rules a word does not reach cost a hash
 //! lookup each.

@@ -659,7 +659,7 @@ fn split_unread_kanji(reading: &str) -> (String, String) {
     (readable, unread)
 }
 
-/// A kanji, by the same ranges [`text::classify`] calls Han, and by the same
+/// A kanji, by the same ranges the text layer classifies as Han, and by the same
 /// function that answers for it ([`crate::unicode::is_han`]).
 ///
 /// This question is asked at the *word* layer rather than the run layer: a reading

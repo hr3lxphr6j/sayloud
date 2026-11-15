@@ -57,7 +57,7 @@
 //! ordinary title-cased or all-caps words. They come from
 //! `tn/english/data/whitelist/alternatives.tsv`, which the tagger reads as a
 //! string map, and the only way to see them without running the tagger is to
-//! know the words. [`SHAPE_LESS_ABBREVIATIONS`] is that list; the part of the same
+//! know the words. `SHAPE_LESS_ABBREVIATIONS` is that list; the part of the same
 //! class it cannot cover is quantified on it below.
 
 use crate::tn::wetext::APOSTROPHES;

@@ -50,7 +50,7 @@ impl FstTextNormalizer {
     /// Implementation flow:
     /// 1. Convert input string to linear FST (acceptor) using UTF-8 bytes
     /// 2. Compose with the loaded FST
-    /// 3. Find the cheapest path with [`cheapest_path_labels`]
+    /// 3. Find the cheapest path with `cheapest_path_labels`
     /// 4. Extract output string from the path
     ///
     /// # Arguments

@@ -13,7 +13,7 @@
 //!
 //! Reads OpenFST binaries and runs the three-stage WeText TN over them:
 //! a *tagger* FST rewrites the input into tagged entities
-//! (`date { year: "2024" month: "1" }`), [`TokenParser`] reorders each
+//! (`date { year: "2024" month: "1" }`), `token_parser::TokenParser` reorders each
 //! entity's fields into the order its verbalizer expects, and a *verbalizer*
 //! FST turns the reordered entity into words. [`Normalizer`] is the whole of it.
 //!

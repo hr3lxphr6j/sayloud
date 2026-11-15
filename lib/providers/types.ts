@@ -252,6 +252,16 @@ export interface Provider {
 }
 
 /**
+ * The text `validate()` synthesizes for a provider with no credential-only
+ * endpoint.
+ *
+ * Two characters is the shortest request that still proves the key, the model
+ * and the default voice work together; an empty string does not exercise
+ * synthesis at all on services that accept it.
+ */
+export const VALIDATION_PROBE_TEXT = '你好';
+
+/**
  * Narrow a config union member to a specific provider.
  *
  * `Provider` takes the whole union so adapters stay interchangeable in a

@@ -1,7 +1,7 @@
 // @vitest-environment node
 // MSW patches Node's global fetch; happy-dom's fetch is not intercepted.
 import { HttpResponse, http } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   DashscopeProvider,
   mapDashscopeError,
@@ -220,6 +220,23 @@ describe('synthesize', () => {
       config({ workspaceId: 'ws-1', baseUrl: 'https://proxy.test' })
     );
 
+    expect(result.audio.byteLength).toBeGreaterThan(0);
+  });
+
+  it('normalizes a trailing slash on the base URL', async () => {
+    server.use(
+      http.post('https://proxy.test/api/v1/services/audio/tts/SpeechSynthesizer', () =>
+        HttpResponse.text(synthesisBody())
+      )
+    );
+
+    const result = await provider.synthesize(
+      { text: '你好', voiceId: 'longanyang', signal },
+      config({ baseUrl: 'https://proxy.test/' })
+    );
+
+    // A `//api/...` path would not match the handler and would escape to the
+    // real network, which the MSW setup fails loudly.
     expect(result.audio.byteLength).toBeGreaterThan(0);
   });
 
@@ -586,6 +603,25 @@ describe('error mapping', () => {
     await expect(
       provider.synthesize({ text: '你好', voiceId: 'longanyang', signal }, config())
     ).rejects.toMatchObject({ code: 'service-unavailable' });
+  });
+
+  it('reports the HTTP error even when the body cannot be read', async () => {
+    // A body read that fails (an already-consumed stream, a torn connection)
+    // must not replace the status mapping with a raw error.
+    const unreadable = {
+      ok: false,
+      status: 401,
+      text: () => Promise.reject(new Error('stream already consumed')),
+    } as unknown as Response;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(unreadable);
+
+    try {
+      await expect(
+        provider.synthesize({ text: '你好', voiceId: 'longanyang', signal }, config())
+      ).rejects.toMatchObject({ code: 'invalid-key' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('reads a code nested under error', () => {

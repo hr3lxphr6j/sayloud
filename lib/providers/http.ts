@@ -5,7 +5,7 @@
  * but the mechanics — network failures, base64 audio, SSE framing, chunked
  * JSON — are identical across services, so they live here.
  */
-import { isAbortError, networkError } from './errors';
+import { isAbortError, networkError, ProviderError } from './errors';
 
 /**
  * Issue a request, translating transport failures into `ProviderError`.
@@ -25,6 +25,34 @@ export async function sendRequest(
   } catch (error) {
     if (isAbortError(error)) throw error;
     throw networkError(error);
+  }
+}
+
+/**
+ * `baseUrl` with no trailing slash, so path joining is unambiguous.
+ *
+ * Every provider builds its URL by appending a path that starts with `/`; a
+ * config entered with a trailing slash (`https://host/`) would otherwise send
+ * `//path`, which some gateways reject and some static hosts treat as a
+ * protocol-relative URL.
+ */
+export function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, '');
+}
+
+/**
+ * Read a successful response's JSON body.
+ *
+ * A body that is not JSON means the server answered with something other than
+ * what it advertised — an HTML error page from a proxy is the usual case — so
+ * it is reported with the caller's own wording instead of escaping as a bare
+ * `SyntaxError` the engine cannot classify.
+ */
+export async function readJsonBody(response: Response, invalidMessage: string): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    throw new ProviderError('unknown', invalidMessage);
   }
 }
 
@@ -239,4 +267,23 @@ export function readFirstNumber(
     if (value !== undefined) return value;
   }
   return undefined;
+}
+
+/**
+ * Read a time as milliseconds, from a millisecond or a seconds field.
+ *
+ * Volcengine and Kokoro both report seconds while some revisions report
+ * milliseconds, so the millisecond alias is checked first and only then is the
+ * seconds field converted — never both, and never guessed at.
+ */
+export function readTimeMs(
+  record: Record<string, unknown>,
+  msKeys: string[],
+  secondKeys: string[]
+): number | undefined {
+  const milliseconds = readFirstNumber(record, msKeys);
+  if (milliseconds !== undefined) return milliseconds;
+
+  const seconds = readFirstNumber(record, secondKeys);
+  return seconds === undefined ? undefined : seconds * 1000;
 }

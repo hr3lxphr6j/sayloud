@@ -343,6 +343,23 @@ describe('synthesize (captioned endpoint)', () => {
       )
     ).rejects.toMatchObject({ message: 'server returned an unexpected captioned response' });
   });
+
+  it('reports a body that is not JSON as a provider failure', async () => {
+    // A proxy's HTML error page arrives with a 2xx status; it must become a
+    // ProviderError, not a raw SyntaxError the engine cannot classify.
+    server.use(http.post(CAPTIONED, () => HttpResponse.text('<html>oops</html>')));
+
+    await expect(
+      provider.synthesize(
+        { text: 'Hello', voiceId: 'af_bella', signal },
+        config({ captionedSpeech: true })
+      )
+    ).rejects.toMatchObject({
+      name: 'ProviderError',
+      code: 'unknown',
+      message: 'server returned an unexpected captioned response',
+    });
+  });
 });
 
 describe('listVoices', () => {

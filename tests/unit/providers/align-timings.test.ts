@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alignTimings, type TimingFormat } from '~/lib/providers/align-timings';
+import { alignTimings, maxEndMs, type TimingFormat } from '~/lib/providers/align-timings';
 
 /** One `chars` entry per code point, 100ms apart. */
 function perChar(
@@ -461,5 +461,27 @@ describe('alignTimings', () => {
       ];
       expect(alignTimings('go', { kind: 'chars', chars }, 500)).toBe(undefined);
     });
+  });
+});
+
+describe('maxEndMs', () => {
+  it('returns the furthest end', () => {
+    const items = [{ endMs: 400 }, { endMs: 900 }, { endMs: 200 }];
+
+    expect(maxEndMs(items)).toBe(900);
+  });
+
+  it('returns 0 for an empty or absent list, which alignTimings rejects on its own', () => {
+    expect(maxEndMs([])).toBe(0);
+    expect(maxEndMs(undefined)).toBe(0);
+  });
+
+  it('accepts timings with extra fields', () => {
+    // Providers pass their own word shapes, not a trimmed `{ endMs }`.
+    const timings: Array<{ text: string; startMs: number; endMs: number }> = [
+      { text: 'hi', startMs: 0, endMs: 700 },
+    ];
+
+    expect(maxEndMs(timings)).toBe(700);
   });
 });

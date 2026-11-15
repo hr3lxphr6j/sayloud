@@ -30,6 +30,22 @@ interface Span {
 }
 
 /**
+ * The furthest `endMs` among `items`, or 0 when there are none.
+ *
+ * Providers rarely report an audio duration, and the last word's end is the
+ * closest honest value for it. Returning 0 for an empty list is what lets a
+ * caller pass the result straight to `alignTimings()`, which rejects a
+ * non-positive duration itself — so no provider needs to guard before asking.
+ */
+export function maxEndMs(items: readonly { endMs: number }[] | undefined): number {
+  let last = 0;
+  for (const item of items ?? []) {
+    if (item.endMs > last) last = item.endMs;
+  }
+  return last;
+}
+
+/**
  * Align a provider's timings to `sentenceText`.
  *
  * @param sentenceText the exact text handed to `synthesize()`.

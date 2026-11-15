@@ -336,6 +336,23 @@ describe('synthesize', () => {
     expect(new TextDecoder().decode(result.audio)).toBe('AUDIO');
   });
 
+  it('normalizes a trailing slash on the base URL', async () => {
+    server.use(
+      http.post('https://proxy.test/api/v3/tts/unidirectional', () =>
+        HttpResponse.text(ndjson(audio('AUDIO'), end()))
+      )
+    );
+
+    // A `//api/...` path would not match the handler and would escape to the
+    // real network, which the MSW setup fails loudly.
+    await expect(
+      provider.synthesize(
+        { text: '你好世界', voiceId: 'voice-1', signal },
+        config({ baseUrl: 'https://proxy.test/' })
+      )
+    ).resolves.toMatchObject({ mime: 'audio/mpeg' });
+  });
+
   it('parses frames that arrive concatenated without separators', async () => {
     server.use(
       http.post(ENDPOINT, () =>

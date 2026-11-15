@@ -15,22 +15,24 @@
  * `config.voices`.
  */
 
-import { alignTimings } from './align-timings';
+import { alignTimings, maxEndMs } from './align-timings';
 import {
-  errorFromStatus,
   isAbortError,
-  messageFromBody,
+  mapHttpError,
   ProviderError,
   type ProviderErrorCode,
+  readBodyText,
 } from './errors';
 import {
   decodeBase64,
   isRecord,
+  normalizeBaseUrl,
   readArray,
-  readFirstNumber,
   readFirstString,
+  readJsonBody,
   readRecord,
   readString,
+  readTimeMs,
   sendRequest,
 } from './http';
 import type {
@@ -43,7 +45,7 @@ import type {
   Voice,
   WordTiming,
 } from './types';
-import { requireConfig } from './types';
+import { requireConfig, VALIDATION_PROBE_TEXT } from './types';
 
 const SPEECH_PATH = '/audio/speech';
 const CAPTIONED_SPEECH_PATH = '/dev/captioned_speech';
@@ -114,16 +116,7 @@ export function mapErrorCode(code: string): ProviderErrorCode | undefined {
  * the HTTP status alone cannot separate a rejected key from a missing model.
  */
 export function mapOpenAiError(status: number, body: string): ProviderError {
-  const message = messageFromBody(body, `HTTP ${status}`);
-  const code = readErrorCode(body);
-  const details = { status, code, body };
-
-  if (code) {
-    const mapped = mapErrorCode(code);
-    if (mapped) return new ProviderError(mapped, message, details);
-  }
-
-  return errorFromStatus(status, message, details);
+  return mapHttpError(status, body, { readCode: readErrorCode, mapCode: mapErrorCode });
 }
 
 /** Read `error.code` or `error.type` from an OpenAI-shaped error body. */
@@ -139,11 +132,6 @@ function readErrorCode(body: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-/** `baseUrl` with no trailing slash, so path joining is unambiguous. */
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, '');
 }
 
 /** Media type for a `response_format`. */
@@ -175,7 +163,7 @@ export class OpenAiCompatProvider implements Provider {
 
   /** Verify the server and key by synthesizing two characters. */
   async validate(config: ProviderConfig, signal: AbortSignal): Promise<void> {
-    await this.synthesize({ text: '你好', voiceId: '', signal }, config);
+    await this.synthesize({ text: VALIDATION_PROBE_TEXT, voiceId: '', signal }, config);
   }
 
   /**
@@ -232,11 +220,16 @@ export class OpenAiCompatProvider implements Provider {
     );
 
     if (!response.ok) {
-      throw mapOpenAiError(response.status, await response.text());
+      throw mapOpenAiError(response.status, await readBodyText(response));
     }
 
     if (resolved.captionedSpeech) {
-      return this.readCaptioned(await response.json(), request.text);
+      // A proxy answering with an HTML page where the JSON should be is
+      // reported as a provider failure, not as a raw SyntaxError.
+      return this.readCaptioned(
+        await readJsonBody(response, 'server returned an unexpected captioned response'),
+        request.text
+      );
     }
 
     const audio = await response.arrayBuffer();
@@ -268,7 +261,7 @@ export class OpenAiCompatProvider implements Provider {
       audio: decodeBase64(base64),
       // Kokoro names the format `audio_format`.
       mime: mimeFor(readFirstString(payload, ['audio_format', 'response_format']) ?? AUDIO_FORMAT),
-      durationMs: lastEndMs(timings),
+      durationMs: maxEndMs(timings),
       timings,
     };
   }
@@ -353,37 +346,13 @@ function parseTimestamps(payload: Record<string, unknown>): Timestamp[] {
   return timestamps;
 }
 
-/** Read a time as milliseconds, from a millisecond or a seconds field. */
-function readTimeMs(
-  record: Record<string, unknown>,
-  msKeys: string[],
-  secondKeys: string[]
-): number | undefined {
-  const milliseconds = readFirstNumber(record, msKeys);
-  if (milliseconds !== undefined) return milliseconds;
-
-  const seconds = readFirstNumber(record, secondKeys);
-  return seconds === undefined ? undefined : seconds * 1000;
-}
-
 /** Align word timings, or `undefined` so the caller highlights the sentence. */
 function resolveTimings(sentenceText: string, timestamps: Timestamp[]): WordTiming[] | undefined {
-  if (timestamps.length === 0) return undefined;
-
-  let durationMs = 0;
-  for (const timestamp of timestamps) {
-    if (timestamp.endMs > durationMs) durationMs = timestamp.endMs;
-  }
-  if (durationMs <= 0) return undefined;
-
-  return alignTimings(sentenceText, { kind: 'sequential-words', words: timestamps }, durationMs);
-}
-
-/** End of the last timing, used as the audio duration when the API omits one. */
-function lastEndMs(timings: WordTiming[] | undefined): number {
-  let last = 0;
-  for (const timing of timings ?? []) {
-    if (timing.endMs > last) last = timing.endMs;
-  }
-  return last;
+  // `alignTimings` rejects the 0 duration an empty timestamp list produces,
+  // so the empty case needs no guard here.
+  return alignTimings(
+    sentenceText,
+    { kind: 'sequential-words', words: timestamps },
+    maxEndMs(timestamps)
+  );
 }

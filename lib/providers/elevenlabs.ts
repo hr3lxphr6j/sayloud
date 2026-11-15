@@ -12,13 +12,15 @@
  * `alignTimings()` rejects it rather than misplacing highlights.
  */
 
-import { alignTimings } from './align-timings';
-import { errorFromStatus, messageFromBody, ProviderError, type ProviderErrorCode } from './errors';
+import { alignTimings, maxEndMs } from './align-timings';
+import { mapHttpError, ProviderError, type ProviderErrorCode, readBodyText } from './errors';
 import {
   decodeBase64,
   isRecord,
+  normalizeBaseUrl,
   readArray,
   readFirstString,
+  readJsonBody,
   readRecord,
   readString,
   sendRequest,
@@ -52,6 +54,9 @@ const DEFAULT_OUTPUT_FORMAT = 'mp3_44100_128';
 const MAX_CHARS = 5000;
 
 const CONCURRENCY = 2;
+
+/** Reported when a 2xx body is not the JSON shape the API documents. */
+const INVALID_RESPONSE_MESSAGE = 'ElevenLabs returned an unexpected response';
 
 /** Media type per `output_format` prefix. */
 const MIME_BY_PREFIX: Record<string, string> = {
@@ -88,16 +93,7 @@ export function mapErrorCode(code: string): ProviderErrorCode | undefined {
  * rejected key from a missing voice.
  */
 export function mapElevenLabsError(status: number, body: string): ProviderError {
-  const message = messageFromBody(body, `HTTP ${status}`);
-  const code = readErrorCode(body);
-  const details = { status, code, body };
-
-  if (code) {
-    const mapped = mapErrorCode(code);
-    if (mapped) return new ProviderError(mapped, message, details);
-  }
-
-  return errorFromStatus(status, message, details);
+  return mapHttpError(status, body, { readCode: readErrorCode, mapCode: mapErrorCode });
 }
 
 /** Read `detail.status`, `detail.code` or a top-level `code`. */
@@ -190,7 +186,7 @@ export class ElevenLabsProvider implements Provider {
     }
 
     const query = `?output_format=${encodeURIComponent(outputFormat)}`;
-    const url = `${baseUrl}${API_PREFIX}/text-to-speech/${encodeURIComponent(
+    const url = `${normalizeBaseUrl(baseUrl)}${API_PREFIX}/text-to-speech/${encodeURIComponent(
       request.voiceId
     )}/with-timestamps${query}`;
 
@@ -206,12 +202,12 @@ export class ElevenLabsProvider implements Provider {
     });
 
     if (!response.ok) {
-      throw mapElevenLabsError(response.status, await response.text());
+      throw mapElevenLabsError(response.status, await readBodyText(response));
     }
 
-    const payload: unknown = await response.json();
+    const payload = await readJsonBody(response, INVALID_RESPONSE_MESSAGE);
     if (!isRecord(payload)) {
-      throw new ProviderError('unknown', 'ElevenLabs returned an unexpected response');
+      throw new ProviderError('unknown', INVALID_RESPONSE_MESSAGE);
     }
 
     const base64 = readFirstString(payload, ['audio_base64', 'audio']);
@@ -224,7 +220,7 @@ export class ElevenLabsProvider implements Provider {
     return {
       audio: decodeBase64(base64),
       mime: mimeFor(outputFormat),
-      durationMs: lastEndMs(timings),
+      durationMs: maxEndMs(timings),
       timings,
     };
   }
@@ -236,17 +232,17 @@ export class ElevenLabsProvider implements Provider {
   ): Promise<Record<string, unknown>> {
     const { apiKey, baseUrl = DEFAULT_BASE_URL } = requireConfig(config, 'elevenlabs');
 
-    const response = await sendRequest(`${baseUrl}${VOICES_PATH}`, {
+    const response = await sendRequest(`${normalizeBaseUrl(baseUrl)}${VOICES_PATH}`, {
       method: 'GET',
       headers: { 'xi-api-key': apiKey },
       signal,
     });
 
     if (!response.ok) {
-      throw mapElevenLabsError(response.status, await response.text());
+      throw mapElevenLabsError(response.status, await readBodyText(response));
     }
 
-    const payload: unknown = await response.json();
+    const payload = await readJsonBody(response, INVALID_RESPONSE_MESSAGE);
     return isRecord(payload) ? payload : {};
   }
 }
@@ -279,13 +275,9 @@ function resolveTimings(
     readAlignment(readRecord(payload, 'normalized_alignment'));
   if (!chars) return undefined;
 
-  let durationMs = 0;
-  for (const char of chars) {
-    if (char.endMs > durationMs) durationMs = char.endMs;
-  }
-  if (durationMs <= 0) return undefined;
-
-  return alignTimings(sentenceText, { kind: 'chars', chars }, durationMs);
+  // `alignTimings` rejects the 0 duration an empty alignment produces, so the
+  // empty case needs no guard here.
+  return alignTimings(sentenceText, { kind: 'chars', chars }, maxEndMs(chars));
 }
 
 /**
@@ -318,13 +310,4 @@ function readAlignment(source: Record<string, unknown> | undefined): CharTiming[
   }
 
   return chars;
-}
-
-/** End of the last timing, used as the audio duration when the API omits one. */
-function lastEndMs(timings: WordTiming[] | undefined): number {
-  let last = 0;
-  for (const timing of timings ?? []) {
-    if (timing.endMs > last) last = timing.endMs;
-  }
-  return last;
 }

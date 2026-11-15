@@ -42,12 +42,13 @@
  * losing the audio.
  */
 
-import { alignTimings } from './align-timings';
-import { errorFromStatus, messageFromBody, ProviderError, type ProviderErrorCode } from './errors';
+import { alignTimings, maxEndMs } from './align-timings';
+import { mapHttpError, ProviderError, type ProviderErrorCode, readBodyText } from './errors';
 import {
   concatChunks,
   decodeBase64,
   isRecord,
+  normalizeBaseUrl,
   parseSse,
   readArray,
   readFirstNumber,
@@ -65,7 +66,7 @@ import type {
   Voice,
   WordTiming,
 } from './types';
-import { requireConfig } from './types';
+import { requireConfig, VALIDATION_PROBE_TEXT } from './types';
 
 /**
  * The general host for each region the service offers.
@@ -258,14 +259,7 @@ export function mapErrorCode(code: string): ProviderErrorCode | undefined {
  * "key rejected" as a 401, and only the code distinguishes them.
  */
 export function mapDashscopeError(status: number, body: string): ProviderError {
-  const message = messageFromBody(body, `HTTP ${status}`);
-  const code = readErrorCode(body);
-  const details = { status, code, body };
-
-  const mapped = code ? mapErrorCode(code) : undefined;
-  if (mapped) return new ProviderError(mapped, message, details);
-
-  return errorFromStatus(status, message, details);
+  return mapHttpError(status, body, { readCode: readErrorCode, mapCode: mapErrorCode });
 }
 
 /** Pull `code` out of a DashScope error body, including the nested shape. */
@@ -337,7 +331,10 @@ export class DashscopeProvider implements Provider {
    */
   async validate(config: ProviderConfig, signal: AbortSignal): Promise<void> {
     const { model = DEFAULT_MODEL } = requireConfig(config, 'dashscope');
-    await this.synthesize({ text: '你好', voiceId: defaultVoiceFor(model), signal }, config);
+    await this.synthesize(
+      { text: VALIDATION_PROBE_TEXT, voiceId: defaultVoiceFor(model), signal },
+      config
+    );
   }
 
   async listVoices(config: ProviderConfig, _signal: AbortSignal): Promise<Voice[]> {
@@ -356,7 +353,7 @@ export class DashscopeProvider implements Provider {
       baseUrl,
     } = requireConfig(config, 'dashscope');
 
-    const url = `${resolveBaseUrl(baseUrl, region, workspaceId)}${SYNTHESIZE_PATH}`;
+    const url = `${normalizeBaseUrl(resolveBaseUrl(baseUrl, region, workspaceId))}${SYNTHESIZE_PATH}`;
     const timings = supportsTimings(model);
 
     const response = await sendRequest(url, {
@@ -389,7 +386,7 @@ export class DashscopeProvider implements Provider {
     });
 
     if (!response.ok) {
-      throw mapDashscopeError(response.status, await response.text());
+      throw mapDashscopeError(response.status, await readBodyText(response));
     }
 
     const stream = parseStream(await response.text());
@@ -408,7 +405,7 @@ export class DashscopeProvider implements Provider {
     return {
       audio,
       mime,
-      durationMs: lastEndMs(aligned),
+      durationMs: maxEndMs(aligned),
       timings: aligned,
     };
   }
@@ -574,28 +571,14 @@ async function resolveAudio(
 
 /** Align word timings, or `undefined` so the caller highlights the sentence. */
 function resolveTimings(sentenceText: string, words: Word[]): WordTiming[] | undefined {
-  if (words.length === 0) return undefined;
-
   // The API reports no separate duration; the last word's end is the closest
-  // honest value, and `alignTimings` needs it to close the final span.
-  let durationMs = 0;
-  for (const word of words) {
-    if (word.endMs > durationMs) durationMs = word.endMs;
-  }
-  if (durationMs <= 0) return undefined;
-
+  // honest value for it, and `alignTimings` needs one to close the final span.
+  // Its own duration guard rejects the 0 an empty word list produces, so the
+  // call needs no guard of its own.
+  //
   // `begin_index` is a word ordinal, not a character offset, so the words are
   // located in the sentence by their text, in order — `sequential-words`. A
   // word the service normalized ("1.27" read as "一点二七") does not appear in
   // the sentence and is skipped rather than estimated.
-  return alignTimings(sentenceText, { kind: 'sequential-words', words }, durationMs);
-}
-
-/** End of the last timing, used as the audio duration when the API omits one. */
-function lastEndMs(timings: WordTiming[] | undefined): number {
-  let last = 0;
-  for (const timing of timings ?? []) {
-    if (timing.endMs > last) last = timing.endMs;
-  }
-  return last;
+  return alignTimings(sentenceText, { kind: 'sequential-words', words }, maxEndMs(words));
 }

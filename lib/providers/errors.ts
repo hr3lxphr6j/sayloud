@@ -173,16 +173,6 @@ export function formatProviderError(summary: ProviderErrorSummary, t: Translator
   return detail.length > 0 && detail !== text ? `${text} (${detail})` : text;
 }
 
-/** Provider-specific refinements applied before the generic status mapping. */
-export interface ErrorMappingContext {
-  /** HTTP status, when the failure came with a response. */
-  status?: number;
-  /** Raw response body, already read as text. */
-  body?: string;
-  /** Error code the provider reported in its own body, if any. */
-  providerCode?: string | number;
-}
-
 /**
  * Map an HTTP status onto a unified code.
  *
@@ -239,6 +229,50 @@ export function messageFromBody(body: string, fallback: string): string {
   }
 
   return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
+}
+
+/**
+ * How one service's error body is read.
+ *
+ * The vocabulary is the adapter's own; this is the little it has to say for
+ * `mapHttpError` to do the rest — read the message, record the body in
+ * `details`, and fall back to the HTTP status for a code we do not know.
+ */
+export interface HttpErrorMapping<Code extends string | number> {
+  /** Read the service's own error code from the body, if it sent one. */
+  readCode: (body: string) => Code | undefined;
+  /** Map that code onto a unified one, or `undefined` when it is unknown. */
+  mapCode: (code: Code) => ProviderErrorCode | undefined;
+  /**
+   * Read the message from a body whose shape is service-specific.
+   *
+   * Defaults to `messageFromBody`, which covers the common `message` /
+   * `error.message` shapes.
+   */
+  readMessage?: (body: string) => string | undefined;
+}
+
+/**
+ * Map a non-2xx response onto a `ProviderError`.
+ *
+ * The service's own code wins over the HTTP status: several services report
+ * "not activated" as a 400 or 403 that only the body code can tell apart from
+ * a rejected key. An absent or unrecognized code falls back to
+ * `errorFromStatus`.
+ */
+export function mapHttpError<Code extends string | number>(
+  status: number,
+  body: string,
+  mapping: HttpErrorMapping<Code>
+): ProviderError {
+  const message = mapping.readMessage?.(body) ?? messageFromBody(body, `HTTP ${status}`);
+  const code = mapping.readCode(body);
+  const details = { status, code, body };
+
+  const mapped = code === undefined ? undefined : mapping.mapCode(code);
+  if (mapped) return new ProviderError(mapped, message, details);
+
+  return errorFromStatus(status, message, details);
 }
 
 /**

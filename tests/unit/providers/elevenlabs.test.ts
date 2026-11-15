@@ -283,6 +283,33 @@ describe('synthesize', () => {
       provider.synthesize({ text: 'Hi', voiceId: '', signal }, config())
     ).rejects.toMatchObject({ message: 'ElevenLabs requires a voice id' });
   });
+
+  it('reports a body that is not JSON as a provider failure', async () => {
+    // A proxy's HTML error page arrives with a 2xx status; it must become a
+    // ProviderError, not a raw SyntaxError the engine cannot classify.
+    server.use(http.post(SYNTHESIZE, () => HttpResponse.text('<html>oops</html>')));
+
+    await expect(
+      provider.synthesize({ text: 'Hi', voiceId: VOICE_ID, signal }, config())
+    ).rejects.toMatchObject({
+      name: 'ProviderError',
+      code: 'unknown',
+      message: 'ElevenLabs returned an unexpected response',
+    });
+  });
+
+  it('normalizes a trailing slash on the base URL', async () => {
+    server.use(http.post(SYNTHESIZE, () => HttpResponse.json(synthesisBody('Hi'))));
+
+    // A `//v1/...` path would not match the handler and would escape to the
+    // real network, which the MSW setup fails loudly.
+    await expect(
+      provider.synthesize(
+        { text: 'Hi', voiceId: VOICE_ID, signal },
+        config({ baseUrl: `${BASE_URL}/` })
+      )
+    ).resolves.toMatchObject({ mime: 'audio/mpeg' });
+  });
 });
 
 describe('error mapping', () => {
@@ -414,6 +441,16 @@ describe('listVoices', () => {
 
     await expect(provider.listVoices(config(), signal)).rejects.toMatchObject({
       code: 'invalid-key',
+    });
+  });
+
+  it('reports a voices body that is not JSON as a provider failure', async () => {
+    server.use(http.get(VOICES, () => HttpResponse.text('<html>oops</html>')));
+
+    await expect(provider.listVoices(config(), signal)).rejects.toMatchObject({
+      name: 'ProviderError',
+      code: 'unknown',
+      message: 'ElevenLabs returned an unexpected response',
     });
   });
 });

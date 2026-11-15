@@ -21,17 +21,19 @@
  *   `words` array even for seed-tts-1.0.
  */
 
-import { alignTimings } from './align-timings';
-import { errorFromStatus, messageFromBody, ProviderError, type ProviderErrorCode } from './errors';
+import { alignTimings, maxEndMs } from './align-timings';
+import { mapHttpError, ProviderError, type ProviderErrorCode, readBodyText } from './errors';
 import {
   concatChunks,
   decodeBase64,
   isRecord,
+  normalizeBaseUrl,
   parseJsonChunks,
   readArray,
   readFirstNumber,
   readFirstString,
   readRecord,
+  readTimeMs,
   sendRequest,
 } from './http';
 import type {
@@ -44,7 +46,7 @@ import type {
   VolcengineResourceId,
   WordTiming,
 } from './types';
-import { requireConfig } from './types';
+import { requireConfig, VALIDATION_PROBE_TEXT } from './types';
 
 /** The public host; also the settings form's default. */
 export const DEFAULT_BASE_URL = 'https://openspeech.bytedance.com';
@@ -128,16 +130,13 @@ export function mapErrorCode(code: number): ProviderErrorCode | undefined {
  * code over the HTTP status when the body carries one.
  */
 export function mapVolcengineError(status: number, body: string): ProviderError {
-  const message = readHeaderMessage(body) ?? messageFromBody(body, `HTTP ${status}`);
-  const code = readErrorCode(body);
-  const details = { status, code, body };
-
-  if (code !== undefined) {
-    const mapped = mapErrorCode(code);
-    if (mapped) return new ProviderError(mapped, message, details);
-  }
-
-  return errorFromStatus(status, message, details);
+  return mapHttpError(status, body, {
+    readCode: readErrorCode,
+    mapCode: mapErrorCode,
+    // The live service nests the message under `header`, which the generic
+    // reader does not know about.
+    readMessage: readHeaderMessage,
+  });
 }
 
 /**
@@ -203,7 +202,10 @@ export class VolcengineProvider implements Provider {
     // The probe voice has to belong to the resource, or a valid key would be
     // reported as a voice mismatch.
     const { resourceId = DEFAULT_RESOURCE_ID } = requireConfig(config, 'volcengine');
-    await this.synthesize({ text: '你好', voiceId: defaultVoice(resourceId), signal }, config);
+    await this.synthesize(
+      { text: VALIDATION_PROBE_TEXT, voiceId: defaultVoice(resourceId), signal },
+      config
+    );
   }
 
   async listVoices(config: ProviderConfig, _signal: AbortSignal): Promise<Voice[]> {
@@ -224,7 +226,7 @@ export class VolcengineProvider implements Provider {
       baseUrl = DEFAULT_BASE_URL,
     } = requireConfig(config, 'volcengine');
 
-    const response = await sendRequest(`${baseUrl}${SYNTHESIZE_PATH}`, {
+    const response = await sendRequest(`${normalizeBaseUrl(baseUrl)}${SYNTHESIZE_PATH}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -257,7 +259,7 @@ export class VolcengineProvider implements Provider {
     });
 
     if (!response.ok) {
-      throw mapVolcengineError(response.status, await response.text());
+      throw mapVolcengineError(response.status, await readBodyText(response));
     }
 
     const responseText = await response.text();
@@ -281,7 +283,7 @@ export class VolcengineProvider implements Provider {
     return {
       audio: concatChunks(stream.chunks),
       mime: AUDIO_MIME,
-      durationMs: lastEndMs(timings),
+      durationMs: maxEndMs(timings),
       timings,
     };
   }
@@ -346,46 +348,13 @@ function collectWords(source: Record<string, unknown>, into: Word[]): void {
   }
 }
 
-/**
- * Read a time as milliseconds, from a millisecond or a seconds field.
- *
- * The verified fields are `startTime` / `endTime` in **seconds**;
- * the millisecond aliases are kept from the older endpoint so a revision that
- * still reports them is not misread as seconds.
- */
-function readTimeMs(
-  record: Record<string, unknown>,
-  msKeys: string[],
-  secondKeys: string[]
-): number | undefined {
-  const milliseconds = readFirstNumber(record, msKeys);
-  if (milliseconds !== undefined) return milliseconds;
-
-  const seconds = readFirstNumber(record, secondKeys);
-  return seconds === undefined ? undefined : seconds * 1000;
-}
-
 /** Align word timings, or `undefined` so the caller highlights the sentence. */
 function resolveTimings(sentenceText: string, words: Word[]): WordTiming[] | undefined {
-  if (words.length === 0) return undefined;
-
-  let durationMs = 0;
-  for (const word of words) {
-    if (word.endMs > durationMs) durationMs = word.endMs;
-  }
-  if (durationMs <= 0) return undefined;
-
   // The words are normalized on the way back ("1.27" is spoken as "一 点 二 七"),
   // so they are located by text. A word the sentence does not contain is never
   // placed by estimation — that is a hard constraint, not a heuristic.
-  return alignTimings(sentenceText, { kind: 'sequential-words', words }, durationMs);
-}
-
-/** End of the last timing, used as the audio duration when the API omits one. */
-function lastEndMs(timings: WordTiming[] | undefined): number {
-  let last = 0;
-  for (const timing of timings ?? []) {
-    if (timing.endMs > last) last = timing.endMs;
-  }
-  return last;
+  //
+  // `alignTimings` rejects the 0 duration an empty word list produces, so the
+  // empty case needs no guard here.
+  return alignTimings(sentenceText, { kind: 'sequential-words', words }, maxEndMs(words));
 }

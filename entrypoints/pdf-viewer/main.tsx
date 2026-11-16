@@ -27,7 +27,7 @@ import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import type { Block } from '~/lib/extractor';
 import { createTranslator, type Lang, resolveLang } from '~/lib/i18n';
 import { isInterceptHash, parseInterceptedUrl } from '~/lib/pdf/dnr';
-import type { EmbedBlock, EmbedRun } from '~/lib/pdf/embed/blocks';
+import type { EmbedBlock, EmbedRect, EmbedRun } from '~/lib/pdf/embed/blocks';
 import {
   closePdfDocuments,
   createPdfEngine,
@@ -46,7 +46,6 @@ import {
   type ReadingSentence,
   toEngineSentences,
 } from '~/lib/reading-doc';
-import type { EmbedRect } from '~/lib/pdf/embed/blocks';
 import { DEFAULT_SETTINGS, SettingsStore, type UiLang } from '~/lib/settings-store';
 import '~/entrypoints/reader.content/styles.css';
 import {

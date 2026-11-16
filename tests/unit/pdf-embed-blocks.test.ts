@@ -86,7 +86,11 @@ describe('buildEmbedBlocks', () => {
   it('joins the lines of a paragraph with a newline', () => {
     const container = slots();
     const blocks = buildEmbedBlocks(
-      [textRect('first line', 72, 100), textRect('second line', 72, 116)], container, 1, 612);
+      [textRect('first line', 72, 100), textRect('second line', 72, 116)],
+      container,
+      1,
+      612
+    );
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.text).toBe('first line\nsecond line');
@@ -96,7 +100,11 @@ describe('buildEmbedBlocks', () => {
   it('lets one range cross the newline between two lines', () => {
     const container = slots();
     const block = buildEmbedBlocks(
-      [textRect('first line', 0, 0, 50), textRect('second line', 0, 16, 50)], container, 1, 612)[0] as EmbedBlock;
+      [textRect('first line', 0, 0, 50), textRect('second line', 0, 16, 50)],
+      container,
+      1,
+      612
+    )[0] as EmbedBlock;
 
     // "line" ends at 10, the newline is 10, "second" starts at 11.
     const range = block.rangeFor(6, 17);
@@ -110,7 +118,11 @@ describe('buildEmbedBlocks', () => {
   it('starts a new block at a paragraph gap', () => {
     const container = slots();
     const blocks = buildEmbedBlocks(
-      [textRect('paragraph one', 0, 0), textRect('paragraph two', 0, 60)], container, 1, 612);
+      [textRect('paragraph one', 0, 0), textRect('paragraph two', 0, 60)],
+      container,
+      1,
+      612
+    );
 
     expect(blocks.map((block) => block.text)).toEqual(['paragraph one', 'paragraph two']);
   });
@@ -119,7 +131,11 @@ describe('buildEmbedBlocks', () => {
     const container = slots();
     // Same line, but 300 pt to the right: a column change, not a continuation.
     const blocks = buildEmbedBlocks(
-      [textRect('left column', 72, 100, 80), textRect('right column', 372, 100, 80)], container, 1, 612);
+      [textRect('left column', 72, 100, 80), textRect('right column', 372, 100, 80)],
+      container,
+      1,
+      612
+    );
 
     expect(blocks.map((block) => block.text)).toEqual(['left column', 'right column']);
   });
@@ -135,7 +151,11 @@ describe('buildEmbedBlocks', () => {
         textRect(' Haim Brezis ', 195, 364, 63, 8),
         textRect('的 ', 257, 362, 11, 11),
         textRect('Analyse Fonctionnelle', 270, 362, 215, 11),
-      ], container, 1, 612);
+      ],
+      container,
+      1,
+      612
+    );
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.text).toBe(
@@ -149,7 +169,11 @@ describe('buildEmbedBlocks', () => {
     // to the left margin. That is a line wrap, not a column change, so the
     // horizontal comparison must not use an absolute x distance.
     const blocks = buildEmbedBlocks(
-      [textRect('，以我阅读的偮䵓', 487, 362, 66, 12), textRect('部分内容来看', 54, 380, 200, 12)], container, 1, 612);
+      [textRect('，以我阅读的偮䵓', 487, 362, 66, 12), textRect('部分内容来看', 54, 380, 200, 12)],
+      container,
+      1,
+      612
+    );
 
     expect(blocks).toHaveLength(1);
   });
@@ -157,7 +181,11 @@ describe('buildEmbedBlocks', () => {
   it('drops rectangles without readable text', () => {
     const container = slots();
     const blocks = buildEmbedBlocks(
-      [textRect('   ', 0, 0), textRect('real text', 0, 30)], container, 1, 612);
+      [textRect('   ', 0, 0), textRect('real text', 0, 30)],
+      container,
+      1,
+      612
+    );
 
     expect(blocks.map((block) => block.text)).toEqual(['real text']);
   });
@@ -166,7 +194,11 @@ describe('buildEmbedBlocks', () => {
     const container = slots();
     // What PDFium's ToUnicode fallback emits: a glyph id per unmapped glyph.
     const block = buildEmbedBlocks(
-      [textRect('数学\u001b\u0010分析\u0018', 0, 0)], container, 1, 612)[0] as EmbedBlock | undefined;
+      [textRect('数学\u001b\u0010分析\u0018', 0, 0)],
+      container,
+      1,
+      612
+    )[0] as EmbedBlock | undefined;
 
     expect(block?.text).toBe('数学分析');
     // The span carries the same characters the block advertises, so a range
@@ -178,7 +210,11 @@ describe('buildEmbedBlocks', () => {
   it('skips a rectangle that is nothing but garbage', () => {
     const container = slots();
     const blocks = buildEmbedBlocks(
-      [textRect('\u001b\u0010', 0, 0), textRect('real text', 0, 30)], container, 1, 612);
+      [textRect('\u001b\u0010', 0, 0), textRect('real text', 0, 30)],
+      container,
+      1,
+      612
+    );
 
     // No stray newline and no empty run: the garbage rect never became a line.
     expect(blocks.map((block) => block.text)).toEqual(['real text']);
@@ -188,7 +224,12 @@ describe('buildEmbedBlocks', () => {
 
   it('maps a DOM position back to an offset in the block', () => {
     const container = slots();
-    const block = buildEmbedBlocks([textRect('Hello PDF', 0, 0)], container, 1, 612)[0] as EmbedBlock;
+    const block = buildEmbedBlocks(
+      [textRect('Hello PDF', 0, 0)],
+      container,
+      1,
+      612
+    )[0] as EmbedBlock;
     const node = textNodeOf(block);
 
     expect(block.offsetAt(node, 0)).toBe(0);
@@ -202,7 +243,11 @@ describe('buildEmbedBlocks', () => {
   it('maps a position in the second line into the joined text', () => {
     const container = slots();
     const block = buildEmbedBlocks(
-      [textRect('first', 0, 0, 30), textRect('second', 0, 16, 36)], container, 1, 612)[0] as EmbedBlock;
+      [textRect('first', 0, 0, 30), textRect('second', 0, 16, 36)],
+      container,
+      1,
+      612
+    )[0] as EmbedBlock;
 
     // "first" is 0-4, the newline is 5, "second" starts at 6.
     expect(block.offsetAt(textNodeOf(block, 1), 0)).toBe(6);
@@ -212,7 +257,11 @@ describe('buildEmbedBlocks', () => {
   it('reports a bounding box over every run of the block', () => {
     const container = slots();
     const block = buildEmbedBlocks(
-      [textRect('first', 100, 50, 30, 10), textRect('second line', 80, 62, 66, 10)], container, 1, 612)[0] as EmbedBlock;
+      [textRect('first', 100, 50, 30, 10), textRect('second line', 80, 62, 66, 10)],
+      container,
+      1,
+      612
+    )[0] as EmbedBlock;
 
     expect(block.rect).toEqual({ x: 80, y: 50, width: 66, height: 22 });
   });

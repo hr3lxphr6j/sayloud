@@ -143,7 +143,8 @@ function isUsable(entry: PdfTextRectObject, pageWidth: number): boolean {
   const looksLikeWatermark =
     /arXiv:\d+\.\d+|astro-ph|hep-th|hep-ph|cs\.|math\.|cond-mat|quant-ph|gr-qc/i.test(
       entry.content
-    ) || /^\[.*?\]$|^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i.test(
+    ) ||
+    /^\[.*?\]$|^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i.test(
       entry.content.trim()
     );
 

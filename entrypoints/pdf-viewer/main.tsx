@@ -27,7 +27,7 @@ import { ReaderPanel } from '~/entrypoints/reader.content/ReaderPanel';
 import type { Block } from '~/lib/extractor';
 import { createTranslator, type Lang, resolveLang } from '~/lib/i18n';
 import { isInterceptHash, parseInterceptedUrl } from '~/lib/pdf/dnr';
-import type { EmbedBlock } from '~/lib/pdf/embed/blocks';
+import type { EmbedBlock, EmbedRun } from '~/lib/pdf/embed/blocks';
 import {
   closePdfDocuments,
   createPdfEngine,
@@ -46,6 +46,7 @@ import {
   type ReadingSentence,
   toEngineSentences,
 } from '~/lib/reading-doc';
+import type { EmbedRect } from '~/lib/pdf/embed/blocks';
 import { DEFAULT_SETTINGS, SettingsStore, type UiLang } from '~/lib/settings-store';
 import '~/entrypoints/reader.content/styles.css';
 import {
@@ -730,6 +731,9 @@ function resend(): void {
  * stay on the glyphs even when the invisible text layer's font metrics do not.
  * The page's CSS makes the sentence highlight transparent for that reason (see
  * `index.html`).
+ *
+ * When a sentence spans only part of a text run (e.g., starts or ends mid-line),
+ * we clip the rectangle horizontally based on the character position ratio.
  */
 function syncHighlight(): void {
   for (const layer of session.highlightLayers.values()) layer.clear();
@@ -749,8 +753,43 @@ function syncHighlight(): void {
 
   const rects = embed.run
     .filter((run) => run.end > sentence.start && run.start < sentence.end)
-    .map((run) => run.rect);
+    .map((run) => clipRectForSentence(run, sentence));
   layer.setRects(rects, index);
+}
+
+/**
+ * Clip a run's rectangle to match only the portion that belongs to the sentence.
+ *
+ * When a sentence spans part of a text run, we estimate the character-to-pixel
+ * mapping by proportional width: if the sentence uses 50% of the run's characters,
+ * we assume it occupies ~50% of the run's width.
+ */
+function clipRectForSentence(run: EmbedRun, sentence: ReadingSentence): EmbedRect {
+  const runLength = run.end - run.start;
+  if (runLength === 0) return run.rect;
+
+  // Character range of the sentence within this run
+  const sentenceStart = Math.max(0, sentence.start - run.start);
+  const sentenceEnd = Math.min(runLength, sentence.end - run.start);
+
+  // If the sentence covers the entire run, return it as-is
+  if (sentenceStart <= 0 && sentenceEnd >= runLength) {
+    return run.rect;
+  }
+
+  // Estimate the pixel range based on character position ratio
+  // Assumes monospaced or proportional font with roughly uniform character width
+  const startRatio = sentenceStart / runLength;
+  const endRatio = sentenceEnd / runLength;
+
+  const clippedRect: EmbedRect = {
+    x: run.rect.x + run.rect.width * startRatio,
+    y: run.rect.y,
+    width: run.rect.width * (endRatio - startRatio),
+    height: run.rect.height,
+  };
+
+  return clippedRect;
 }
 
 /** Zoom through the embedding tree's own plugin. */

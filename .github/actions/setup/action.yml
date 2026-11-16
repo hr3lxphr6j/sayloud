@@ -41,6 +41,17 @@ runs:
       shell: bash
       run: pnpm install --frozen-lockfile
 
+    # The tests assert readings our grammar produces. `pnpm install` may have
+    # built the grammars already (the postinstall tolerates a failure), so make
+    # the source build explicit and let it fail the job. macOS runners have no
+    # Docker, and `build:fst` falls through to a native pynini environment
+    # (micromamba, one-time per run); those bytes differ from the amd64 baseline
+    # in state numbering only, which is why the byte gate lives in
+    # `fst-build.yml` and the tests assert behaviour.
+    - name: Build the text-normalization grammars
+      shell: bash
+      run: pnpm build:fst
+
     - uses: dtolnay/rust-toolchain@stable
       with:
         targets: wasm32-unknown-unknown

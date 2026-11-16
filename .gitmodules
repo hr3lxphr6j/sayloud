@@ -1,0 +1,4 @@
+[submodule "tools/fst-build/upstream/WeTextProcessing"]
+	path = tools/fst-build/upstream/WeTextProcessing
+	url = https://github.com/wenet-e2e/WeTextProcessing.git
+	shallow = true

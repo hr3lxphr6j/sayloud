@@ -16,6 +16,7 @@
 
 use std::borrow::Cow;
 
+use crate::canonical;
 use crate::g2p::en::{EnglishError, EnglishG2p};
 use crate::g2p::ja::ipa::{fix_numeral_sound_changes, kana_to_ipa};
 use crate::g2p::ja::segmenter::{SegmenterError, SegmenterJa};
@@ -278,12 +279,24 @@ pub fn phonemize_ja(
     english: Option<&EnglishG2p>,
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
-    let normalized = normalize_punctuation(text);
+    let folded = canonical::fold(text, tn::Lang::Ja);
+    let normalized = normalize_punctuation(folded.as_ref());
     let punctuated = normalize_ja_punctuation(&normalized);
     let with_numerals = read_numerals(&punctuated, tn::Lang::Ja, engine)?;
-    let runs = segment_japanese(&with_numerals);
 
     let mut accumulator = Accumulator::default();
+    report_unread(
+        &mut accumulator,
+        &punctuated,
+        &with_numerals,
+        &with_numerals,
+        engine.is_some(),
+    );
+
+    // Anything the engine did not read is spelled so it is still audible; the
+    // alternative is the digit reaching `keep_punctuation` and disappearing.
+    let spelled = spell_digits(&with_numerals, tn::Lang::Ja);
+    let runs = segment_japanese(&spelled);
 
     for run in &runs {
         match run {
@@ -421,11 +434,24 @@ pub fn phonemize_en(
     english: Option<&EnglishG2p>,
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
-    let normalized = normalize_punctuation(text);
+    let folded = canonical::fold(text, tn::Lang::En);
+    let normalized = normalize_punctuation(folded.as_ref());
     let with_numerals = read_numerals(&normalized, tn::Lang::En, engine)?;
-    let runs = segment_text(&with_numerals);
 
     let mut accumulator = Accumulator::default();
+    // English only enters the engine when its own cheap gate says so; a skip is
+    // not a "no path" and must not be reported as one.
+    let engine_ran = engine.is_some() && tn::needs_normalization(&normalized);
+    report_unread(
+        &mut accumulator,
+        &normalized,
+        &with_numerals,
+        &with_numerals,
+        engine_ran,
+    );
+
+    let spelled = spell_digits(&with_numerals, tn::Lang::En);
+    let runs = segment_text(&spelled);
 
     for run in &runs {
         match run {
@@ -572,7 +598,8 @@ pub fn phonemize_zh(
     tone_rules: ToneRules,
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
-    let with_numerals = read_numerals(text, tn::Lang::Zh, engine)?;
+    let folded = canonical::fold(text, tn::Lang::Zh);
+    let with_numerals = read_numerals(folded.as_ref(), tn::Lang::Zh, engine)?;
     // The fold is *here* and not in `full_to_half`, and the order is what decides
     // it: `map_punctuation` turns `，` into `. ` and `。` into `. ` because that is
     // the pause Kokoro should give them, and the wetext fold would turn both into
@@ -580,11 +607,22 @@ pub fn phonemize_zh(
     // the grammar reads a full-width `．` as a decimal point — so the fold cannot
     // go in front of it either. See `crate::text::to_half_width`.
     let mapped = zh_text::map_punctuation(&with_numerals);
-    let folded = to_half_width(&mapped);
-    let runs = zh_text::split_runs(&folded);
+    let half_width = to_half_width(&mapped);
 
     let chinese = ChinesePinyin::new();
     let mut accumulator = Accumulator::default();
+    // The check is on the *half-width* text: a full-width `３` leaves the engine
+    // unread and only becomes an ASCII digit here.
+    report_unread(
+        &mut accumulator,
+        folded.as_ref(),
+        &with_numerals,
+        &half_width,
+        engine.is_some(),
+    );
+
+    let spelled = spell_digits(&half_width, tn::Lang::Zh);
+    let runs = zh_text::split_runs(&spelled);
 
     for run in &runs {
         match run {
@@ -623,6 +661,113 @@ pub fn phonemize_zh(
     }
 
     Ok(accumulator.finish())
+}
+
+/// Digits the engine left behind, spelled so they are still heard.
+///
+/// The engine normally removes every ASCII digit it sees; this is the fallback
+/// for the shapes it has no path for (an engine that returns the sentence
+/// unchanged, or a sentence the gate skipped). It runs *after* the engine
+/// and never re-enters it — a second pass would make the reading depend on how
+/// the sentence was split.
+///
+/// English spells each digit as a word with a space on both sides, so
+/// `3.2` becomes `three . two` rather than `threepointtwo`; Japanese and Chinese
+/// write the digit onto what follows them and take no space (`3つ` → `ニつ`).
+fn spell_digits(text: &str, lang: tn::Lang) -> Cow<'_, str> {
+    if !text.chars().any(|c| c.is_ascii_digit()) {
+        return Cow::Borrowed(text);
+    }
+
+    let mut out = String::with_capacity(text.len() + 16);
+    for ch in text.chars() {
+        match ch.to_digit(10) {
+            Some(digit) => {
+                let digit = digit as usize;
+                match lang {
+                    tn::Lang::En => {
+                        out.push(' ');
+                        out.push_str(EN_DIGITS[digit]);
+                        out.push(' ');
+                    }
+                    tn::Lang::Ja => out.push_str(JA_DIGITS[digit]),
+                    tn::Lang::Zh => out.push_str(ZH_DIGITS[digit]),
+                }
+            }
+            None => out.push(ch),
+        }
+    }
+    Cow::Owned(out)
+}
+
+const EN_DIGITS: [&str; 10] = [
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+];
+const JA_DIGITS: [&str; 10] = [
+    "ゼロ",
+    "イチ",
+    "ニ",
+    "サン",
+    "ヨン",
+    "ゴ",
+    "ロク",
+    "ナナ",
+    "ハチ",
+    "キュウ",
+];
+const ZH_DIGITS: [&str; 10] = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+/// The symbols worth a warning when they survive the engine.
+///
+/// Currency and mathematics only. A hyphen, a slash or a bracket is ordinary
+/// punctuation and would make every sentence with one noisy; these are the ones
+/// that carry a reading the engine was supposed to supply. `§` is deliberately
+/// absent: it is a *shape* symbol, and since `rules/en_section.py`
+/// reads `§3.2` the grammar has a reading for both of its forms (`§` alone is in
+/// upstream's whitelist), so a warning here would be noise.
+const UNREAD_SYMBOLS: &[char] = &[
+    '$', '£', '€', '¥', '₩', '₹', '₽', '₺', '₴', '₦', '₱', '₪', '₫', '₼', '₿', '¢', '±', '×', '÷',
+    '=', '≠', '≈', '≤', '≥', '∞', '√', '∑', '∏', '∫',
+];
+
+/// Report what the engine left unread, once per code.
+///
+/// `tn_input` is what the engine was given and `tn_output` what it returned;
+/// `checked` is the text the reading actually comes from (the same string for
+/// English and Japanese, the half-width fold for Chinese). A no-path is
+/// `tn_output == tn_input` on a sentence that went into the engine — the one
+/// case where the pipeline would otherwise continue as if nothing happened.
+fn report_unread(
+    accumulator: &mut Accumulator,
+    tn_input: &str,
+    tn_output: &str,
+    checked: &str,
+    engine_ran: bool,
+) {
+    let mut symbols = String::new();
+    for ch in checked.chars() {
+        if UNREAD_SYMBOLS.contains(&ch) && !symbols.contains(ch) {
+            symbols.push(ch);
+        }
+    }
+
+    if !symbols.is_empty() {
+        accumulator.warn(format!("unread-symbol: {symbols:?}"));
+    }
+
+    let has_digit = checked.chars().any(|c| c.is_ascii_digit());
+    if engine_ran && tn_output == tn_input && (has_digit || !symbols.is_empty()) {
+        accumulator.warn(format!("tn-no-path: {}", snippet(tn_input)));
+    }
+}
+
+/// The first 40 characters, quoted, for a warning a reader can act on.
+fn snippet(text: &str) -> String {
+    let mut out: String = text.chars().take(40).collect();
+    if text.chars().count() > 40 {
+        out.push('…');
+    }
+    format!("{out:?}")
 }
 
 /// What the caller is told about a run that produced nothing.

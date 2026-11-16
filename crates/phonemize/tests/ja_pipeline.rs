@@ -532,16 +532,18 @@ fn the_numeral_step_reads_these_entities() {
         // A unit, where the old reader handed `km` to the English dictionary and
         // got the letters K and M.
         ("2.5km", "niteɴɡokiromeːtoru"),
-        // A telephone number inside a sentence: the grammar reads the hyphens as
-        // a range and inserts マイナス. A bare one reads as a telephone number
-        // (`tests/wetext_ja.rs`); this is the contextual case.
+        // A telephone number inside a sentence. The rule consumes `番号は`
+        // with the number, because otherwise upstream's ordinal branch claims
+        // the first group and the hyphens come back as マイナス; `電話は555-1234`
+        // has no such word, and still reads as a range (the second group does
+        // not start with zero, so it is not a postal code either).
         (
             "電話は555-1234",
             "deɴwawaɡoçakuɡoʥuːɡomainasuseɴniçakusaɴʥuːjoɴ",
         ),
         (
             "電話番号は090-1234-5678です。",
-            "deɴwabaɴɡoːwakjuːmainasuseɴniçakusaɴʥuːjoɴmainasuɡoseɴroʔpjakunanaʥuːhaʨidesu.",
+            "deɴwabaɴɡoːwazerokjuːzeroiʨinisaɴjoɴɡorokunanahaʨidesu.",
         ),
         // **The one genuine loss.** `０` normalizes to `〇` (U+3007), which no
         // script run in this crate claims, so it is dropped and the digit reads

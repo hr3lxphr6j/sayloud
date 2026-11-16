@@ -6,9 +6,8 @@
 //! in for a caller that never called `prepare` are gone, all three of them, so a
 //! numeral the engine did not read is a sentence this stage declines ([`NoReader`])
 //! rather than text with its digits missing. What differs per language is only
-//! *whether* the engine is asked about a sentence at all and *what* the language
-//! does to its answer afterwards — so both are properties of [`Lang`] rather than
-//! parameters a caller supplies.
+//! *whether* the engine is asked about a sentence at all — so that is a property
+//! of [`Lang`] rather than a parameter a caller supplies.
 //!
 //! Nothing here knows what a phoneme is: the stage after this one is the one that
 //! turns this text into phonemes.
@@ -25,9 +24,9 @@ use std::borrow::Cow;
 
 /// Which language's numerals are being read.
 ///
-/// The two things that differ per language are methods here rather than arguments
-/// to [`normalize`], because they are correlated and a caller that has the language
-/// in hand has no business choosing them separately.
+/// The thing that differs per language is a method here rather than an argument
+/// to [`normalize`], because a caller that has the language in hand has no
+/// business choosing it separately.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lang {
     Ja,
@@ -50,16 +49,6 @@ impl Lang {
         match self {
             Self::En => Gate::CheapSkip,
             Self::Ja | Self::Zh => Gate::EngineDecides,
-        }
-    }
-
-    /// What this language does to the engine's answer before the text moves on.
-    ///
-    /// Only English has something to do; see [`fix_one_thousand_bug`].
-    fn postprocess(self, normalized: String) -> String {
-        match self {
-            Self::En => fix_one_thousand_bug(&normalized),
-            Self::Ja | Self::Zh => normalized,
         }
     }
 }
@@ -146,7 +135,7 @@ pub fn normalize<'a>(
 
     match engine {
         Some(engine) if !skipped => match engine.normalize(text) {
-            Ok(normalized) => Ok(Cow::Owned(lang.postprocess(normalized))),
+            Ok(normalized) => Ok(Cow::Owned(normalized)),
             Err(error) => unread(text, Some(error)),
         },
         Some(_) => Ok(Cow::Borrowed(text)),
@@ -170,83 +159,4 @@ fn unread(text: &str, error: Option<WeTextError>) -> Result<Cow<'_, str>, NoRead
         Some(error) => NoReader::Failed(error),
         None => NoReader::NoEngine,
     })
-}
-
-/// The words that already count a following ` thousand`, so
-/// [`fix_one_thousand_bug`] must not add `one` in front of them.
-const NUMBER_WORDS: &[&str] = &[
-    "one",
-    "two",
-    "three",
-    "four",
-    "five",
-    "six",
-    "seven",
-    "eight",
-    "nine",
-    "ten",
-    "eleven",
-    "twelve",
-    "thirteen",
-    "fourteen",
-    "fifteen",
-    "sixteen",
-    "seventeen",
-    "eighteen",
-    "nineteen",
-    "twenty",
-    "thirty",
-    "forty",
-    "fifty",
-    "sixty",
-    "seventy",
-    "eighty",
-    "ninety",
-    "hundred",
-    "a",
-];
-
-/// Fix WeText 0.1.8's bug where 1,000-1,999 lose the leading "one".
-///
-/// WeText's English verbalizer has a bug in the 1,000-1,999 range: it produces
-/// "thousand two hundred and thirty four" instead of "one thousand two hundred
-/// and thirty four". It affects only this range.
-///
-/// Examples:
-/// - "thousand" → "one thousand"
-/// - "thousand two hundred" → "one thousand two hundred"
-/// - "two thousand" → "two thousand" (unchanged)
-/// - "a thousand people" → "a thousand people" (unchanged)
-///
-/// The fix is applied as post-processing after normalization to avoid forking
-/// the upstream FST grammars.
-///
-/// **English only, and it is [`Lang::postprocess`] that says so.** It used to sit
-/// on the shared numeral step, where it was safe only because the words it looks
-/// for do not occur in Chinese or Japanese — a Japanese sentence quoting the
-/// English word `thousand` would have had an `one` inserted into it.
-fn fix_one_thousand_bug(text: &str) -> String {
-    // Case 1: exactly "thousand" (e.g., "1,000")
-    if text == "thousand" {
-        return "one thousand".to_string();
-    }
-
-    // Case 2: starts with "thousand " (most common)
-    if text.starts_with("thousand ") {
-        return format!("one {}", text);
-    }
-
-    // Case 3: " thousand" appears later in the text. Only the first occurrence
-    // is examined, and `split_at` keeps the space with `after`.
-    if let Some(idx) = text.find(" thousand") {
-        let (before, after) = text.split_at(idx);
-        let prev_word = before.split_whitespace().last().unwrap_or("");
-
-        // Don't fix if preceded by a number word or "a"
-        if !NUMBER_WORDS.contains(&prev_word) {
-            return format!("{} one{}", before, after);
-        }
-    }
-
-    text.to_string()
 }

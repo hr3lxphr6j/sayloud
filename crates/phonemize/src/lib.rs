@@ -35,6 +35,7 @@ use std::sync::OnceLock;
 
 use wasm_bindgen::prelude::*;
 
+pub mod canonical;
 pub mod dictionary;
 pub mod g2p;
 pub mod kana;

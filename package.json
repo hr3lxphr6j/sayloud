@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
-    "prebuild": "pnpm build:wasm",
+    "prebuild": "pnpm build:wasm && pnpm build:fst",
     "zip": "wxt zip",
-    "prezip": "pnpm build:wasm",
+    "prezip": "pnpm build:wasm && pnpm build:fst",
     "build:wasm": "./scripts/build/build-phonemize-wasm.sh",
     "gen:headtts": "node scripts/generate/gen-headtts-rules.mjs",
     "gen:vocab": "node scripts/generate/gen-kokoro-vocab.mjs",
@@ -30,7 +30,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "postinstall": "wxt prepare && (./scripts/setup/setup-dictionaries.sh || echo '⚠️  Dictionaries were not built; the pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup/setup-dictionaries.sh')"
+    "postinstall": "wxt prepare && (./scripts/setup/setup-dictionaries.sh || echo '⚠️  Dictionaries were not built; the pipeline tests will fail. Re-run: FORCE=1 ./scripts/setup/setup-dictionaries.sh')",
+    "build:fst": "bash scripts/setup/build-wetext-fsts.sh"
   },
   "devDependencies": {
     "@babel/core": "^8.0.6",

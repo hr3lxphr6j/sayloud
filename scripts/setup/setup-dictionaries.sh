@@ -31,7 +31,7 @@ echo ""
 "$SCRIPT_DIR/setup-lindera-dict.sh"
 echo ""
 
-"$SCRIPT_DIR/setup-wetext-fsts.sh"
+"$SCRIPT_DIR/build-wetext-fsts.sh"
 echo ""
 
 echo "✅ All dictionaries ready in public/dictionaries/"

@@ -101,12 +101,22 @@ fn reads_a_bare_cardinal_the_way_the_hand_written_reader_did() {
 /// each run as a **quantity**: 九十・千二百三十四・五千六百七十八, three numbers
 /// that are each larger than the one on the page.
 ///
+/// The telephone rule took this row over. Upstream's telephone branch reads the hyphens as
+/// の (`ゼロ九ゼロの一二三四の五六七八`) and leaves the digits as kanji; our
+/// `rules/ja_numbers.py` reads the groups digit by digit in katakana with `、`
+/// between them, which is what the number is said like.
+///
 /// The context matters, and that is why the same digits appear twice here: with
-/// the 電話番号は in front, the grammar reads the hyphens as separators of a
-/// *range* instead (see [`reads_a_hyphen_as_the_range_the_grammar_reads`]).
+/// the 電話番号は in front — or with a second group that does not start with a
+/// zero — the shape is not a postal code either, and the grammar reads the
+/// hyphens as *subtraction* instead (see
+/// [`reads_a_hyphen_as_the_range_the_grammar_reads`]).
 #[test]
 fn reads_a_telephone_number_as_a_telephone_number() {
-    assert_reads(&[("090-1234-5678", "ゼロ九ゼロの一二三四の五六七八")]);
+    assert_reads(&[(
+        "090-1234-5678",
+        "ゼロきゅうゼロ、いちにさんよん、ごろくななはち",
+    )]);
 }
 
 /// A hyphen between two numbers, which the grammar reads as a range and the old
@@ -269,10 +279,11 @@ fn the_phonemes_of_full_width_latin_are_the_phonemes_of_its_ascii_form() {
 
 /// **The `1,NNN` fix is English-only, and this is what says so.**
 ///
-/// The same test `wetext_zh.rs` makes, for the same reason: the fix belongs to
-/// `tn::Lang::En::postprocess` and not to the shared numeral step, because its
-/// whole job is to insert an `one` in front of the word `thousand` — an English
-/// word a Japanese sentence is free to quote.
+/// The same test `wetext_zh.rs` makes, for the same reason: the fix lives in
+/// the English cardinal grammar, which Japanese never loads. It used to be a
+/// post-process on the shared numeral step — whose whole job was to insert an
+/// `one` in front of the word `thousand`, an English word a Japanese sentence
+/// is free to quote.
 #[test]
 fn the_english_thousand_fix_does_not_reach_japanese() {
     let Some(tn) = japanese_tn() else {

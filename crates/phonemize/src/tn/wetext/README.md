@@ -78,7 +78,7 @@ Readings through the whole engine:
 |---|---|
 | `I have 123 apples.` | `one hundred and twenty three apples` |
 | `There are 100 people.` | `one hundred people` |
-| `Total 1,234 items.` | `thousand two hundred and thirty four items` |
+| `Total 1,234 items.` | `one thousand two hundred and thirty four items` |
 | `About 1000000 people.` | `one million people` |
 | `It is 250 km away.` | `two hundred and fifty kilometers` |
 | `Call 555-1234.` | `five hundred and fifty five to …` |

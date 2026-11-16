@@ -1,0 +1,69 @@
+# Rebuilds the 8 WeText TN grammars in the pinned linux/amd64 toolchain and
+# diffs them against the baselines in tools/fst-build/lock.json.
+#
+# This is the gate that keeps "we own the grammar" true: a rule change, a
+# submodule bump or a toolchain change has to show up here as either an expected
+# lock.json update (in the same commit as the rule change) or a failure.
+# public/dictionaries/ is generated on install and is not tracked, so the
+# baseline is lock.json, not a tree of committed assets. See
+# docs/superpowers/TN-PLAN.md §5.3 — from the first local rule (`tools/fst-build/rules/`)
+# the baseline is `hashes.assets`, rebuilt in the same pinned container. CI is
+# the only place the bytes are asserted; a native arm64 build renumbers the
+# English states and is checked by behaviour instead.
+name: FST build
+on:
+  push:
+    paths:
+      - 'tools/fst-build/**'
+      - '.gitmodules'
+      - '.github/workflows/fst-build.yml'
+  pull_request:
+    paths:
+      - 'tools/fst-build/**'
+      - '.gitmodules'
+      - '.github/workflows/fst-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # `submodules: recursive` checks out tools/fst-build/upstream/WeTextProcessing
+      # at the commit the repository records — the same tree lock.json pins.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Show the pinned upstream commit
+        run: git -C tools/fst-build/upstream/WeTextProcessing rev-parse HEAD
+
+      - name: Build the image
+        run: docker build --platform linux/amd64 -t fstbuild tools/fst-build
+
+      - name: Build all grammars
+        run: |
+          docker run --rm --platform linux/amd64 --memory=2g \
+            -v "$PWD/tools/fst-build:/work" -w /work fstbuild \
+            python /work/build.py --langs en,zh,ja --out /work/out-ci
+
+      # The raw sha256 of each .fst is the artifact contract. The .bin.zst frame
+      # is compressor output and therefore version-sensitive (Ubuntu 24.04's
+      # zstd 1.5.5 emits a different frame for all eight files than the 1.5.7 the
+      # baselines were made with), so the gate is raw-only. `verify.py --frames`
+      # is for the local case where the compressor itself is under test.
+      - name: Verify against our asset baseline
+        run: python3 tools/fst-build/verify.py --out tools/fst-build/out-ci --mode assets
+
+      # The grammars are build outputs, not source: a build must never rewrite
+      # anything the repository tracks. (public/dictionaries/ is generated and
+      # ignored, so it cannot appear here either way; `out-ci` is ignored too.)
+      - name: Assert the workspace is untouched
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::the build modified the working tree; the grammars are build outputs and must not be written into tracked paths."
+            git status --porcelain
+            exit 1
+          fi

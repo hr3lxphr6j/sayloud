@@ -89,15 +89,17 @@ fn reads_the_entity_classes_the_hand_written_reader_could_not() {
 ///
 /// The deleted reader stopped at a thousands separator because a comma is *also* a
 /// sentence pause and cannot be removed globally, so a bare `1,234` loses its
-/// leading digit. The tagger fragments it too, for a different reason. What the
-/// grammar adds is the *measure* case: given something to count, it reads the
-/// whole number, and separately it switches 二 to 两.
+/// leading digit. The tagger fragments it too, for a different reason. The grouped-number rule
+/// `rules/zh_grouped.py` now reads the grouped number on its own — the separators
+/// are deleted and the digits go through upstream's cardinal graph, so the
+/// measure case and the bare case agree — and `2,000` comes out 两千 because that
+/// is upstream's own reading of 2 at the start of a number.
 #[test]
 fn reads_a_grouped_number_when_there_is_something_to_count() {
     assert_reads(&[
         ("1,234个", "一千二百三十四个"),
-        ("1,234", "一,两百三十四"),
-        ("2,000", "二,零零零"),
+        ("1,234", "一千二百三十四"),
+        ("2,000", "两千"),
         ("200元", "两百元"),
     ]);
 }
@@ -319,10 +321,12 @@ fn every_fst_chinese_declares_has_to_arrive() {
 
 /// **The `1,NNN` fix is English-only, and this is what says so.**
 ///
-/// `fix_one_thousand_bug` inserts an `one` in front of the word `thousand`
-/// wherever the *shared* numeral step produced one. While it sat on that shared
-/// path it was one English word away from rewriting a Chinese sentence — every
-/// input below contains the letters.
+/// The fix now lives in the English cardinal grammar
+/// (`tools/fst-build/rules/en_cardinal.py`), which Chinese and Japanese never
+/// load — so the shared numeral step cannot revise a Chinese sentence, and this
+/// stays as the check that it does not. It used to be a post-process on that
+/// shared path, one English word away from rewriting any input containing the
+/// letters.
 #[test]
 fn the_english_thousand_fix_does_not_reach_chinese() {
     let Some(tn) = chinese_tn() else {

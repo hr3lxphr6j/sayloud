@@ -206,7 +206,7 @@ const NUMERAL_READING_CHANGED: &[(&str, &str)] = &[
     ("1.2.3", "i→.ɚ↘tjɛ↓n sa→n"),
     ("０１２３", "li↗ŋ i→pai↓ɚ↘ʂɻ\u{329}↗ sa→n"),
     ("２０２２年", "ɚ↘li↗ŋɚ↘ ɚ↘njɛ↗n"),
-    ("1,234", "i→,lja↓ŋpai↓ sa→nʂɻ\u{329}↗sɹ\u{329}↘"),
+    ("1,234", "i↘ʨʰjɛ→nɚ↘pai↓ sa→nʂɻ\u{329}↗sɹ\u{329}↘"),
 ];
 
 #[test]
@@ -410,11 +410,11 @@ const TONE_RULE_CHANGES: &[(&str, &str)] = &[
     ),
     // 合词, plus the 轻声 and 三声连读 in the same sentence
     ("3.14", "sa→ntjɛ↓n i→sɹ̩↘"),
-    // New when the reader was deleted, and the only entry here that the numeral
-    // step is why: `numbersToHan` read this as 一百二十三 with no tone-bearing
-    // syllable of its own, and the engine's 两 is one — so the tone rules have
-    // something to move here now. `NUMERAL_READING_CHANGED` has the reading.
-    ("1,234", "i→,lja↗ŋpai↓ sa→nʂɻ̩↗sɹ̩↘"),
+    // `1,234` used to be here: the engine's 两千 gave the tone rules a
+    // tone-bearing 两 to move, and the JavaScript's 一,两百三十四 was the
+    // divergent reading `NUMERAL_READING_CHANGED` carries. The grouped-number rule reads the
+    // grouped number as 一千二百三十四 — no 两, and nothing the tone rules touch —
+    // so the row moved out of this table and only the reading table still has it.
     (
         "他是一个非常努力的学生每天早上六点起床跑步然后去图书馆学习到晚上十点才回家休息",
         "tʰa→ ʂɻ̩↘ i↗kɤ fei→ꭧʰa↗ŋ nu↓li↘ tɤ ɕɥe↗ʂə→ŋ mei↓tʰjɛ→n ʦau↓ʂa↘ŋ ljou↘tjɛ↓n ʨʰi↓ꭧʰwa↗ŋ pʰau↓pu↘ ɻa↗nxou↘ ʨʰy↘ tʰu↗ʂu→kwa↓n ɕɥe↗ɕi↗ tau↘ wa↓nʂa↘ŋ ʂɻ̩↗tjɛ↓n ʦʰai↗ xwei↗ʨja→ ɕjou→ɕi",
@@ -443,9 +443,10 @@ const TONE_RULE_CHANGES: &[(&str, &str)] = &[
 ///
 /// **The engine is on both sides here**, deliberately: the numeral step is no longer
 /// a switch (there is no second reader behind it), and holding it fixed is what makes
-/// this table a claim about the tone rules alone. The cost is `1,234`, which the
-/// engine's reading newly brings into range of a tone rule — it is in the table
-/// below, and in [`NUMERAL_READING_CHANGED`], for two different reasons.
+/// this table a claim about the tone rules alone. `1,234` used to be the row that
+/// made the interaction visible — the engine's 两 gave the tone rules something to
+/// move — and The grouped-number rule (一千二百三十四) took that away, so it
+/// is now only in [`NUMERAL_READING_CHANGED`].
 #[test]
 fn the_tone_rules_change_exactly_these_samples() {
     let Some(legacy) = legacy() else {

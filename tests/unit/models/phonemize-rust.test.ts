@@ -226,7 +226,7 @@ function readGrammar(name: string): DictionaryBytes | null {
     }
     throw new Error(
       `no ${name} grammar (${String(error)}).\n` +
-        'Run ./scripts/setup/setup-wetext-fsts.sh to build them, or set ' +
+        'Run pnpm build:fst to build them, or set ' +
         'PHONEMIZE_SKIP_DICT_TESTS=1 to skip the text-normalization tests.'
     );
   }

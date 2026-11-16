@@ -1,0 +1,67 @@
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "Chapter IV", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "World War II", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "Louis XIV", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "Section VII of the treaty", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "III", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "the XX century", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "Romeo and Juliet, Act III, Scene ii", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "$5", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "$1,234.56", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "£5", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "€20", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "US$3", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "5 dollars", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "-$5", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "$0.99", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "v1.2.3", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "Chrome 120.0.6099.109", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "version 2.0", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "1.2.3-beta", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "release 3.2.1", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "3:30pm", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "15:30", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "12:00 a.m.", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "at 7:05 in the morning", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "pages 10-20", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "1990-2000", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "5-10kg", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "1-5", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "3.14", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "1/2", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "2 1/2", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "0.5", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "-3.5", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "21st", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "3rd", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "102nd", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "2024-01-05", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "January 5, 2024", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "05/06/2024", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "555-1234", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "(555) 123-4567", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "50%", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "3.5kg", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "10km", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "2.5 GHz", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "AB-123", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "user@example.com", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "1,234,567", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "1234", "expected": null}
+{"lang": "en", "file": "corpus_extra", "line": 0, "input": "1,234", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "2024年", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "$20.50", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "3:30", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "1,234个", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "第3章", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "3.5kg", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "50%", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "v1.2.3", "expected": null}
+{"lang": "zh", "file": "corpus_extra", "line": 0, "input": "2024-01-05", "expected": null}
+{"lang": "ja", "file": "corpus_extra", "line": 0, "input": "1,234円", "expected": null}
+{"lang": "ja", "file": "corpus_extra", "line": 0, "input": "2.5km", "expected": null}
+{"lang": "ja", "file": "corpus_extra", "line": 0, "input": "2024年3月5日", "expected": null}
+{"lang": "ja", "file": "corpus_extra", "line": 0, "input": "3:30", "expected": null}
+{"lang": "ja", "file": "corpus_extra", "line": 0, "input": "1/2", "expected": null}
+{"lang": "ja", "file": "corpus_extra", "line": 0, "input": "50%", "expected": null}
+{"lang": "ja", "file": "corpus_extra", "line": 0, "input": "v1.2.3", "expected": null}
+{"lang": "ja", "file": "corpus_extra", "line": 0, "input": "1,234", "expected": null}

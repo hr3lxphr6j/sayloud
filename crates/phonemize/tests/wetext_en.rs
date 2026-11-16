@@ -41,72 +41,16 @@ fn engine() -> Option<Normalizer> {
     Some(tn::english(borrowed[0], borrowed[1], borrowed[2]).expect("the FSTs parse"))
 }
 
-/// One reading, as the words the verbalizer produced, with the 1,000-1,999 fix.
+/// One reading, as the words the verbalizer produced.
+///
+/// No post-processing: the 1,000-1,999 reading is the grammar's, fixed in
+/// `tools/fst-build/rules/en_cardinal.py` and rebuilt into the shipped assets.
+/// Anything repaired here would hide a grammar that regressed.
 fn read(text: &str) -> Option<String> {
     let normalized = engine()?
         .normalize(text)
         .unwrap_or_else(|error| panic!("{text:?} normalizes: {error}"));
-    Some(fix_one_thousand_bug(&normalized))
-}
-
-/// Fix WeText 0.1.8 bug where 1,000-1,999 lose the leading "one".
-///
-/// This is the same fix applied in `crates/phonemize/src/pipeline.rs`.
-fn fix_one_thousand_bug(text: &str) -> String {
-    // Case 1: exactly "thousand" (e.g., "1,000")
-    if text == "thousand" {
-        return "one thousand".to_string();
-    }
-
-    // Case 2: starts with "thousand " (most common)
-    if text.starts_with("thousand ") {
-        return format!("one {}", text);
-    }
-
-    // Case 3: "thousand " or " thousand" appears in the middle
-    if let Some(idx) = text.find(" thousand") {
-        let (before, after) = text.split_at(idx);
-        let prev_word = before.split_whitespace().last().unwrap_or("");
-
-        // Don't fix if preceded by a number word or "a"
-        let number_words = [
-            "one",
-            "two",
-            "three",
-            "four",
-            "five",
-            "six",
-            "seven",
-            "eight",
-            "nine",
-            "ten",
-            "eleven",
-            "twelve",
-            "thirteen",
-            "fourteen",
-            "fifteen",
-            "sixteen",
-            "seventeen",
-            "eighteen",
-            "nineteen",
-            "twenty",
-            "thirty",
-            "forty",
-            "fifty",
-            "sixty",
-            "seventy",
-            "eighty",
-            "ninety",
-            "hundred",
-            "a",
-        ];
-
-        if !number_words.contains(&prev_word) {
-            return format!("{} one{}", before, after);
-        }
-    }
-
-    text.to_string()
+    Some(normalized)
 }
 
 // ------------------------------------------------------- the eight classes
@@ -141,8 +85,9 @@ fn reads_the_entity_classes_the_hand_written_reader_could_not() {
         // Dates.
         ("10/4/2024", "the fourth of october twenty twenty four"),
         // Money — the `$` used to survive into the phonemes.
-        ("$20.50", "twenty point five dollars"),
-        ("I paid $20.50", "I paid twenty point five dollars"),
+        // Cents are said as cents, not as a decimal of dollars.
+        ("$20.50", "twenty dollars and fifty cents"),
+        ("I paid $20.50", "I paid twenty dollars and fifty cents"),
         ("£5", "five pounds"),
         // Units, which the old reader read as a bare number followed by letters.
         //
@@ -376,8 +321,11 @@ fn the_pipeline_reads_numerals_through_the_engine() {
             "I have 123 apples.",
             "aɪ hæv wˈʌn hˈʌndɹəd ənd twˈɛntiː θɹˈiː ˈæpəlz.",
         ),
-        // "I paid twenty point five dollars"
-        ("I paid $20.50", "aɪ pˈeɪd twˈɛntiː pˈɔɪnt fˈaɪv dˈɑlɚz"),
+        // "I paid twenty dollars and fifty cents" (the cents rule)
+        (
+            "I paid $20.50",
+            "aɪ pˈeɪd twˈɛntiː dˈɑlɚz ənd fˈɪftiː sˈɛnts",
+        ),
         // "doctor Smith" — the abbreviation from `reads_abbreviations_…`, now
         // through the whole pipeline. The old output was "drive smith".
         ("Dr. Smith", "dˈɑktɚ smˈɪθ"),
@@ -559,13 +507,15 @@ fn the_grammars_and_the_preprocessor_all_have_to_arrive() {
     registry.finish().unwrap();
 }
 
-/// WeText 0.1.8 bug: 1,000-1,999 lose the leading "one".
+/// 1,000-1,999 keep their leading "one", and the grammar is what provides it.
 ///
-/// This is a known bug in the upstream verbalizer FST that affects only the
-/// 1,000-1,999 range. Our post-processing fix ensures these numbers are read
-/// correctly.
+/// Upstream's `Cardinal.build_tagger` rewrites "one thousand" to "thousand" at
+/// a negative weight, so the shortened reading used to win for this whole range.
+/// The fix is in the grammar we build (`tools/fst-build/rules/en_cardinal.py`,
+/// rebound in `build.py`), not in this crate — `read()` is the engine's own
+/// answer, so the rows below fail if a rebuild loses the fix.
 #[test]
-fn one_thousand_bug_is_fixed() {
+fn one_thousand_reads_its_one() {
     for (input, expected) in [
         ("1,000", "one thousand"),
         ("1,234", "one thousand two hundred and thirty four"),

@@ -1,0 +1,12 @@
+# Generated grammars. Rebuild with `build.py` (or the PoC scripts
+# `build_min.py` + `build_extras.py`); the expected hashes are in `lock.json`,
+# so nothing here needs to be committed.
+out/
+out-*/
+shipped/
+# Verify scratch space (`verify.py --out verify-…`).
+verify*/
+# Python leaves these behind in the mounted workdir; the container runs as root,
+# so they are cheap to avoid committing but annoying to delete.
+__pycache__/
+*.pyc

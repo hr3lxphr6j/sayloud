@@ -1,8 +1,8 @@
 //! Shared setup for the tests that need the real dictionaries.
 //!
 //! The assets are built by `scripts/setup/setup-lindera-dict.sh`,
-//! `scripts/setup/setup-jieba-dict.sh` and `scripts/setup/setup-wetext-fsts.sh`, which `pnpm
-//! install` runs, and they are not committed: megabytes of regenerable dictionary
+//! `scripts/setup/setup-jieba-dict.sh` and `scripts/setup/build-wetext-fsts.sh`,
+//! which `pnpm install` runs, and they are not committed: megabytes of regenerable dictionary
 //! in git is not worth it, and the same choice was already made for the kuromoji
 //! dictionaries.
 //!
@@ -190,7 +190,7 @@ pub fn wetext_compressed(names: &[&str]) -> Option<Vec<(String, Vec<u8>)>> {
     for name in names {
         out.push((
             name.to_string(),
-            asset(&wetext_path(name), "./scripts/setup/setup-wetext-fsts.sh")?,
+            asset(&wetext_path(name), "pnpm build:fst")?,
         ));
     }
     Some(out)

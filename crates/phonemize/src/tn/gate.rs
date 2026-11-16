@@ -50,7 +50,7 @@
 //! including the ones with nothing in them. The scan is one pass, no allocation,
 //! and measures 4–5 µs for 710 characters against the 33 ms it decides about.
 //!
-//! # The one criterion that is not a shape
+//! # The two criteria that are not shapes
 //!
 //! `Mon`, `Mr`, `Ms`, `TV` and friends are rewritten by the grammar (`Mon` →
 //! `Monday`, `Mr` → `Mister`) and have no distinguishing shape at all: they are
@@ -59,6 +59,11 @@
 //! string map, and the only way to see them without running the tagger is to
 //! know the words. `SHAPE_LESS_ABBREVIATIONS` is that list; the part of the same
 //! class it cannot cover is quantified on it below.
+//!
+//! The second is ours rather than upstream's: `Chapter V` is a key word from
+//! `tools/fst-build/rules/en_roman.py` followed by a numeral. `IV` is a capital
+//! run and was caught by accident, but a single `V` is not, so before
+//! `ROMAN_KEY_WORDS` existed the rule was correct and never ran.
 
 use crate::tn::wetext::APOSTROPHES;
 
@@ -98,6 +103,26 @@ fn is_normalized_symbol(character: char) -> bool {
             | '₩'
             | '¥'
             | '°'
+            // Ours, not upstream's: `tools/fst-build/rules/en_symbols.py` reads
+            // these, and a sentence holding only one of them would otherwise
+            // reach the grammar never.
+            | '×'
+            | '÷'
+            | '≈'
+            | '±'
+            | '≠'
+            | '≤'
+            | '≥'
+            | '∞'
+            | '√'
+            | '∑'
+            | '∏'
+            | '∫'
+            // Vulgar fractions. Upstream's fraction rule reads these, but they
+            // are not ASCII digits and none of the other criteria sees them, so
+            // `a ½ cup` was skipped and the glyph dropped by `keep_punctuation`.
+            | '½' | '⅓' | '⅔' | '¼' | '¾' | '⅕' | '⅖' | '⅗' | '⅘' | '⅙' | '⅚'
+            | '⅛' | '⅜' | '⅝' | '⅞' | '⅐' | '⅑' | '⅒'
             | 'º'
     )
 }
@@ -153,8 +178,78 @@ pub fn needs_normalization(text: &str) -> bool {
         || has_capital_run(text)
         || has_terminated_abbreviation(text)
         || contains_shape_less_abbreviation(text)
+        || has_contextual_roman(text)
         || text.chars().any(step_rewrites_an_apostrophe)
         || text.chars().any(step_rewrites_a_full_width_form)
+}
+
+/// The key words our Roman rule matches, lower-case.
+///
+/// It has to be the same list as `tools/fst-build/rules/en_roman.py`'s: the rule
+/// rewrites `Chapter V` to `Chapter five`, and the gate is what lets that
+/// sentence reach the grammar. A single capital `V` is not a capital *run*, so
+/// without this criterion `Chapter V` was skipped and the `V` was read as a
+/// letter — the rule was correct and never ran.
+///
+/// This is the one criterion that depends on a rule we added rather than on a
+/// shape, and that is why it is written as words: there is no way to see
+/// "key word followed by a Roman numeral" without knowing the key words.
+const ROMAN_KEY_WORDS: &[&str] = &[
+    // Upstream's six.
+    "chapter",
+    "class",
+    "part",
+    "article",
+    "section",
+    "paragraph",
+    // Ours. Common nouns were deliberately removed: `the act I saw` became
+    // "the act one saw" because `I` is a Roman numeral after any key word.
+    "super bowl",
+    "world war",
+];
+
+/// A key word followed by a Roman numeral token (`Chapter V`, `Super Bowl LVIII`).
+///
+/// Case-insensitive on the key word and on the numeral, boundary-checked on both
+/// ends, and no allocation: this runs on every English sentence the other
+/// criteria did not already send to the engine.
+fn has_contextual_roman(text: &str) -> bool {
+    fn is_word(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || byte == b'_'
+    }
+
+    let bytes = text.as_bytes();
+    ROMAN_KEY_WORDS.iter().any(|keyword| {
+        let needle = keyword.as_bytes();
+        if needle.len() > bytes.len() {
+            return false;
+        }
+        (0..=bytes.len() - needle.len()).any(|start| {
+            if !bytes[start..start + needle.len()].eq_ignore_ascii_case(needle) {
+                return false;
+            }
+            if start > 0 && is_word(bytes[start - 1]) {
+                return false;
+            }
+            let mut at = start + needle.len();
+            if at < bytes.len() && is_word(bytes[at]) {
+                return false;
+            }
+            while at < bytes.len() && bytes[at].is_ascii_whitespace() {
+                at += 1;
+            }
+            let numeral = at;
+            while at < bytes.len()
+                && matches!(
+                    bytes[at].to_ascii_lowercase(),
+                    b'i' | b'v' | b'x' | b'l' | b'c' | b'd' | b'm'
+                )
+            {
+                at += 1;
+            }
+            at > numeral && (at == bytes.len() || !is_word(bytes[at]))
+        })
+    })
 }
 
 /// Whether a character in `text` has no reading at all without the engine.
@@ -314,6 +409,11 @@ mod tests {
         assert!(needs_normalization("Ph.D. in physics"));
         // A shape-less alternative.
         assert!(needs_normalization("see you on Mon morning"));
+        // A Roman numeral in a context our rule reads. A single capital is not a
+        // capital run, so this is the one criterion that has to name the words.
+        assert!(needs_normalization("Chapter V"));
+        assert!(needs_normalization("super bowl LVIII"));
+        assert!(needs_normalization("Book III"));
     }
 
     /// And the negative side: prose with none of the above is skipped.
@@ -324,6 +424,10 @@ mod tests {
             "Hello there, how are you?",
             "This is a sentence, and another one follows it.",
             "a well-known fact about the world",
+            // A key word with no Roman numeral after it is not a rewrite.
+            "a book on the table",
+            // A capital V that is not preceded by a key word is not one either.
+            "I have a V neck",
         ] {
             assert!(!needs_normalization(prose), "{prose:?}");
         }

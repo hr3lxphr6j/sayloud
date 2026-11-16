@@ -23,7 +23,7 @@ scripts/
 │   ├── setup-dictionaries.sh     # entry point — calls the three below
 │   ├── setup-jieba-dict.sh       # Chinese word list
 │   ├── setup-lindera-dict.sh     # Japanese UniDic
-│   └── setup-wetext-fsts.sh      # six text-normalization grammars
+│   └── build-wetext-fsts.sh      # eight TN grammars, from our source
 ├── generate/           # Data generation (local inputs; committed output)
 │   ├── gen-pinyin-pro-data.mjs
 │   ├── gen-pinyin-table.py
@@ -89,7 +89,7 @@ to **`public/dictionaries/`**, which is git-ignored.
 |---|---|---|
 | `jieba-zh-dict.bin.zst` | `jieba-rs` 0.11.0's `dict.txt`, sha256-pinned | 1.6 MB |
 | `lindera-unidic-ja.bin.zst` | lindera 6.2.0's UniDic release zip, nine files in a tar | 34.2 MB |
-| `wetext-{en,zh,ja}-tn-{tagger,verbalizer}.bin.zst` | `wetext` 0.1.8 wheel, sha256-pinned | 707 / 160 / 63 KB |
+| `wetext-{en,zh,ja}-tn-{tagger,verbalizer}.bin.zst` | built from `tools/fst-build/` (submodule + our rules), pinned in `lock.json` | 707 / 160 / 63 KB |
 
 `NOTICE` files land beside them: these are other people's dictionaries and the
 licence has to travel with the bytes.
@@ -97,7 +97,7 @@ licence has to travel with the bytes.
 ### `setup/setup-dictionaries.sh`
 
 The entry point. Calls `setup-jieba-dict.sh`, `setup-lindera-dict.sh` and
-`setup-wetext-fsts.sh` in that order and says where everything landed.
+`build-wetext-fsts.sh` in that order and says where everything landed.
 
 ```bash
 ./scripts/setup/setup-dictionaries.sh
@@ -132,15 +132,15 @@ on every machine; a glob would make it depend on the filesystem. The dictionary
 and the crate that reads it have to be the same generation, so the lindera
 version is pinned here. Needs `curl`, `unzip`, `tar` and `zstd`.
 
-### `setup/setup-wetext-fsts.sh`
+### `setup/build-wetext-fsts.sh`
 
-The six weighted-FST text-normalization grammars, from the `wetext` wheel (the
-upstream WeTextProcessing project's own build, published inside the wheel rather
-than as a data release). Only `{en,zh,ja}/tn/{tagger,verbalizer}` are taken: the
-crate's normalizer configuration asks for none of the wheel's other grammars, and
-a tagger without its verbalizer can only fail — `crates/phonemize/src/lib.rs`
-refuses to build a language's normalizer unless both halves arrived. The wheel is
-sha256-pinned, which covers the FSTs inside it. Needs `curl`, `unzip` and `zstd`.
+The eight weighted-FST text-normalization grammars — three taggers, three
+verbalizers and the two shared preprocessors — built from the pinned
+WeTextProcessing submodule plus the rules in `tools/fst-build/`. `pnpm build:fst`
+is the same script. It needs Docker with the pinned linux/amd64 image, or a
+Python that can `import pynini`; on Apple Silicon it can create a conda-forge
+environment. The built assets are gitignored, and `tools/fst-build/lock.json`
+pins the submodule, pynini and the expected hashes.
 
 ---
 
@@ -431,11 +431,12 @@ from, and "do not edit" — see the head of
 
 ### 5. Downstream versions are pinned where they matter
 
-`pinyin-pro` 3.29.4, `jieba-rs` 0.11.0, lindera 6.2.0 and `wetext` 0.1.8 are
-constants in these scripts, and the two network downloads that have no version in
-a lockfile (jieba's word list, the wetext wheel) are additionally pinned by
-sha256. UniDic's release zip is pinned by version only — its contents are checked
-by the crate's own metadata validation at load time.
+`pinyin-pro` 3.29.4, `jieba-rs` 0.11.0 and lindera 6.2.0 are constants in these
+scripts; the WeText submodule, pynini and the eight output hashes are pinned in
+`tools/fst-build/lock.json`. Jieba's word list, the one network download with no
+version in a lockfile, is pinned by sha256. UniDic's release zip is pinned by
+version only — its contents are checked by the crate's own metadata validation
+at load time.
 
 ---
 

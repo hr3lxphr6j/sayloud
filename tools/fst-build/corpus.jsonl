@@ -1,0 +1,207 @@
+{"lang": "en", "file": "wetext_en.rs", "line": 69, "input": "3:30pm", "expected": "three thirty PM"}
+{"lang": "en", "file": "wetext_en.rs", "line": 70, "input": "3:30 pm", "expected": "three thirty PM"}
+{"lang": "en", "file": "wetext_en.rs", "line": 71, "input": "7:15", "expected": "seven fifteen"}
+{"lang": "en", "file": "wetext_en.rs", "line": 74, "input": "50%", "expected": "fifty percent"}
+{"lang": "en", "file": "wetext_en.rs", "line": 76, "input": "1st", "expected": "first"}
+{"lang": "en", "file": "wetext_en.rs", "line": 77, "input": "2nd", "expected": "second"}
+{"lang": "en", "file": "wetext_en.rs", "line": 78, "input": "3rd", "expected": "third"}
+{"lang": "en", "file": "wetext_en.rs", "line": 79, "input": "4th", "expected": "fourth"}
+{"lang": "en", "file": "wetext_en.rs", "line": 80, "input": "The 21st of March", "expected": "The twenty first of March"}
+{"lang": "en", "file": "wetext_en.rs", "line": 82, "input": "1/2", "expected": "one half"}
+{"lang": "en", "file": "wetext_en.rs", "line": 84, "input": "2,000", "expected": "two thousand"}
+{"lang": "en", "file": "wetext_en.rs", "line": 86, "input": "10/4/2024", "expected": "the fourth of october twenty twenty four"}
+{"lang": "en", "file": "wetext_en.rs", "line": 89, "input": "$20.50", "expected": "twenty dollars and fifty cents"}
+{"lang": "en", "file": "wetext_en.rs", "line": 90, "input": "I paid $20.50", "expected": "I paid twenty dollars and fifty cents"}
+{"lang": "en", "file": "wetext_en.rs", "line": 91, "input": "£5", "expected": "five pounds"}
+{"lang": "en", "file": "wetext_en.rs", "line": 98, "input": "250 km", "expected": "two hundred and fifty kilometers"}
+{"lang": "en", "file": "wetext_en.rs", "line": 113, "input": "Dr. Smith", "expected": "doctor Smith"}
+{"lang": "en", "file": "wetext_en.rs", "line": 113, "input": "Mr. Jones", "expected": "Mister Jones"}
+{"lang": "en", "file": "wetext_en.rs", "line": 148, "input": "We'll go", "expected": "we will go"}
+{"lang": "en", "file": "wetext_en.rs", "line": 149, "input": "We’ll go", "expected": "we will go"}
+{"lang": "en", "file": "wetext_en.rs", "line": 150, "input": "don't", "expected": "do not"}
+{"lang": "en", "file": "wetext_en.rs", "line": 151, "input": "don’t", "expected": "do not"}
+{"lang": "en", "file": "wetext_en.rs", "line": 152, "input": "It's fine", "expected": "it is fine"}
+{"lang": "en", "file": "wetext_en.rs", "line": 153, "input": "It’s fine", "expected": "it is fine"}
+{"lang": "en", "file": "wetext_en.rs", "line": 154, "input": "I'm here", "expected": "I am here"}
+{"lang": "en", "file": "wetext_en.rs", "line": 158, "input": "John'll come", "expected": "John will come"}
+{"lang": "en", "file": "wetext_en.rs", "line": 160, "input": "hello world", "expected": "hello world"}
+{"lang": "en", "file": "wetext_en.rs", "line": 182, "input": "ＡＢＣ", "expected": "ABC"}
+{"lang": "en", "file": "wetext_en.rs", "line": 183, "input": "Ｈｅｌｌｏ world", "expected": "Hello world"}
+{"lang": "en", "file": "wetext_en.rs", "line": 184, "input": "Ｉ ａｍ here", "expected": "I am here"}
+{"lang": "en", "file": "wetext_en.rs", "line": 185, "input": "１２３", "expected": "one hundred and twenty three"}
+{"lang": "en", "file": "wetext_en.rs", "line": 186, "input": "１２３ cats", "expected": "one hundred and twenty three cats"}
+{"lang": "en", "file": "wetext_en.rs", "line": 187, "input": "３Ｄ printer", "expected": "three D printer"}
+{"lang": "en", "file": "wetext_en.rs", "line": 188, "input": "＃tag", "expected": "＃tag"}
+{"lang": "en", "file": "wetext_en.rs", "line": 223, "input": "I have 123 apples.", "expected": "I have one hundred and twenty three apples."}
+{"lang": "en", "file": "wetext_en.rs", "line": 227, "input": "There are 100 people.", "expected": "There are one hundred people."}
+{"lang": "en", "file": "wetext_en.rs", "line": 228, "input": "Total 1,234 items.", "expected": "Total one thousand two hundred and thirty four items."}
+{"lang": "en", "file": "wetext_en.rs", "line": 232, "input": "About 1000000 people.", "expected": "About one million people."}
+{"lang": "en", "file": "wetext_en.rs", "line": 233, "input": "It is 250 km away.", "expected": "It is two hundred and fifty kilometers away."}
+{"lang": "en", "file": "wetext_en.rs", "line": 237, "input": "Call 555-1234.", "expected": "Call five hundred and fifty five to one thousand two hundred and thirty four."}
+{"lang": "en", "file": "wetext_en.rs", "line": 241, "input": "Between 100 and 200 people.", "expected": "Between one hundred and two hundred people."}
+{"lang": "en", "file": "wetext_en.rs", "line": 246, "input": "Meet at 3:30pm.", "expected": "Meet at three thirty PM."}
+{"lang": "en", "file": "wetext_en.rs", "line": 247, "input": "About 50% agreed.", "expected": "About fifty percent agreed."}
+{"lang": "en", "file": "wetext_en.rs", "line": 248, "input": "She came 1st.", "expected": "She came first."}
+{"lang": "en", "file": "wetext_en.rs", "line": 249, "input": "Use 1/2 cup.", "expected": "Use one half cup."}
+{"lang": "en", "file": "wetext_en.rs", "line": 250, "input": "Made in 2024.", "expected": "Made in twenty twenty four."}
+{"lang": "en", "file": "wetext_en.rs", "line": 251, "input": "Add 2,000 units.", "expected": "Add two thousand units."}
+{"lang": "en", "file": "wetext_en.rs", "line": 252, "input": "Read page 42.", "expected": "Read page forty two."}
+{"lang": "en", "file": "wetext_en.rs", "line": 253, "input": "Room 007.", "expected": "Room oh oh seven."}
+{"lang": "en", "file": "wetext_en.rs", "line": 254, "input": "It cost 1000 dollars.", "expected": "It cost ten hundred dollars."}
+{"lang": "en", "file": "wetext_en.rs", "line": 278, "input": "100", "expected": "one hundred"}
+{"lang": "en", "file": "wetext_en.rs", "line": 279, "input": "1,234", "expected": "one thousand two hundred and thirty four"}
+{"lang": "en", "file": "wetext_en.rs", "line": 280, "input": "1,500 people", "expected": "one thousand five hundred people"}
+{"lang": "en", "file": "wetext_en.rs", "line": 281, "input": "1000000", "expected": "one million"}
+{"lang": "en", "file": "wetext_en.rs", "line": 283, "input": "1000", "expected": "ten hundred"}
+{"lang": "en", "file": "wetext_en.rs", "line": 284, "input": "1999", "expected": "nineteen ninety nine"}
+{"lang": "en", "file": "wetext_en.rs", "line": 285, "input": "2024", "expected": "twenty twenty four"}
+{"lang": "en", "file": "wetext_en.rs", "line": 287, "input": "3", "expected": "three"}
+{"lang": "en", "file": "wetext_en.rs", "line": 288, "input": "42", "expected": "forty two"}
+{"lang": "en", "file": "wetext_en.rs", "line": 289, "input": "I have 3 cats", "expected": "I have three cats"}
+{"lang": "en", "file": "wetext_en.rs", "line": 364, "input": "we will go", "expected": "wiː wɪl ɡˈoʊ"}
+{"lang": "en", "file": "wetext_en.rs", "line": 368, "input": "it is fine", "expected": "ɪt ɪz fˈaɪn"}
+{"lang": "en", "file": "wetext_en.rs", "line": 371, "input": "ABC", "expected": "ə bˈiː sˈiː"}
+{"lang": "en", "file": "wetext_en.rs", "line": 375, "input": "Hello world", "expected": "həlˈoʊ wˈɜːld"}
+{"lang": "en", "file": "wetext_en.rs", "line": 439, "input": "HTTP", "expected": "ˈeɪtʃ tˈiː tˈiː pˈiː"}
+{"lang": "en", "file": "wetext_en.rs", "line": 441, "input": "Mon", "expected": "mˈoʊn"}
+{"lang": "en", "file": "wetext_en.rs", "line": 477, "input": "kokoro-v1", "expected": "en-US"}
+{"lang": "en", "file": "wetext_en.rs", "line": 520, "input": "1,000", "expected": "one thousand"}
+{"lang": "en", "file": "wetext_en.rs", "line": 522, "input": "1,500", "expected": "one thousand five hundred"}
+{"lang": "en", "file": "wetext_en.rs", "line": 523, "input": "1,999", "expected": "one thousand nine hundred and ninety nine"}
+{"lang": "en", "file": "wetext_en.rs", "line": 526, "input": "11,234", "expected": "eleven thousand two hundred and thirty four"}
+{"lang": "en", "file": "wetext_en.rs", "line": 527, "input": "a thousand people", "expected": "a thousand people"}
+{"lang": "en", "file": "wetext_en.rs", "line": 528, "input": "two thousand", "expected": "two thousand"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 68, "input": "2024年", "expected": "二零二四年"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 71, "input": "下午3:30", "expected": "下午三点三十分"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 72, "input": "18:30", "expected": "十八点三十分"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 75, "input": "$20.50", "expected": "二十点五零美元"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 77, "input": "1/2", "expected": "二分之一"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 79, "input": "3月5日", "expected": "三月五日"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 82, "input": "50%", "expected": "百分之五十"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 83, "input": "15.6%", "expected": "百分之十五点六"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 100, "input": "1,234个", "expected": "一千二百三十四个"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 101, "input": "1,234", "expected": "一千二百三十四"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 102, "input": "2,000", "expected": "两千"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 103, "input": "200元", "expected": "两百元"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 115, "input": "123", "expected": "一百二十三"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 116, "input": "0", "expected": "零"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 117, "input": "10", "expected": "十"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 118, "input": "100015", "expected": "十万零一十五"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 119, "input": "我有3只猫", "expected": "我有三只猫"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 120, "input": "两千", "expected": "两千"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 147, "input": "２０２２年", "expected": "二零二二年"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 148, "input": "１２３", "expected": "一百二十三"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 152, "input": "０１２３", "expected": "零一百二十三"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 157, "input": "１５．６", "expected": "十五．六"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 160, "input": "ＡＢＣ", "expected": "ＡＢＣ"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 202, "input": "銀行", "expected": "银行"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 203, "input": "銀行行長", "expected": "银行行长"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 204, "input": "音樂", "expected": "音乐"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 205, "input": "會計", "expected": "会计"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 206, "input": "長大", "expected": "长大"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 207, "input": "為了", "expected": "为了"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 208, "input": "重複", "expected": "重复"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 209, "input": "還是有", "expected": "还是有"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 210, "input": "後面有這個", "expected": "后面有这个"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 211, "input": "繁體字", "expected": "繁体字"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 214, "input": "乾燥", "expected": "乾燥"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 215, "input": "乾隆", "expected": "乾隆"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 216, "input": "著作", "expected": "著作"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 217, "input": "藉口", "expected": "藉口"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 267, "input": "1.2.3%", "expected": "一.百分之二点三"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 267, "input": "1.2.3", "expected": "一.二点三"}
+{"lang": "zh", "file": "wetext_zh.rs", "line": 285, "input": "kokoro-v1", "expected": "zh-CN"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 59, "input": "1,234", "expected": "千二百三十四"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 60, "input": "1234円", "expected": "千二百三十四円"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 63, "input": "¥1,200", "expected": "千二百円"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 64, "input": "3,000円", "expected": "三千円"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 67, "input": "2.5km", "expected": "二点五キロメートル"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 69, "input": "1/2", "expected": "二分の一"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 71, "input": "午後3時30分", "expected": "午後三時三十分"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 72, "input": "18:30", "expected": "十八時三十分"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 73, "input": "10月4日", "expected": "十月四日"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 74, "input": "2024年10月4日", "expected": "二千二十四年十月四日"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 76, "input": "50%", "expected": "五十パーセント"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 77, "input": "15.6%", "expected": "十五点六パーセント"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 85, "input": "7", "expected": "七"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 86, "input": "123", "expected": "百二十三"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 87, "input": "200円", "expected": "二百円"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 88, "input": "2022年", "expected": "二千二十二年"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 89, "input": "8000", "expected": "八千"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 90, "input": "10001", "expected": "一万一"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 116, "input": "090-1234-5678", "expected": "ゼロきゅうゼロ、いちにさんよん、ごろくななはち"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 132, "input": "電話は555-1234", "expected": "電話は五百五十五マイナス千二百三十四"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 149, "input": "０", "expected": "〇"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 178, "input": "２０２２年", "expected": "二千二十二年"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 179, "input": "１２３", "expected": "百二十三"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 180, "input": "１５．６％", "expected": "十五点六パーセント"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 185, "input": "資産３２億ドル、約４２００億円", "expected": "資産三十二億ドル、約四千二百億円"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 193, "input": "ｈｅｌｌｏ", "expected": "hello"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 194, "input": "ＡＢＣの話", "expected": "ABCの話"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 203, "input": "１２３４円", "expected": "1234円"}
+{"lang": "ja", "file": "wetext_ja.rs", "line": 225, "input": "kokoro-v1", "expected": "ja-JP"}
+{"lang": "en", "file": "tn_gate.rs", "line": 45, "input": "The quick brown fox jumps over the lazy dog.", "expected": "45 characters, no entity"}
+{"lang": "en", "file": "tn_gate.rs", "line": 49, "input": "It was the best of times, it was the worst of times, it was the age of wisdom.", "expected": "prose, 80 characters"}
+{"lang": "en", "file": "tn_gate.rs", "line": 53, "input": "Hello there, how are you?", "expected": "greeting, question mark"}
+{"lang": "en", "file": "tn_gate.rs", "line": 54, "input": "I think that this is a reasonable thing to say.", "expected": "prose, no short final word"}
+{"lang": "en", "file": "tn_gate.rs", "line": 58, "input": "She walked to the window and looked out at the garden.", "expected": "prose, no entity"}
+{"lang": "en", "file": "tn_gate.rs", "line": 62, "input": "This sentence has a comma, a pause, and nothing else.", "expected": "punctuation only"}
+{"lang": "en", "file": "tn_gate.rs", "line": 66, "input": "the lowercase opening is fine too", "expected": "no capital at all"}
+{"lang": "en", "file": "tn_gate.rs", "line": 67, "input": "A well-known fact about the world.", "expected": "hyphen, not a numeral sign"}
+{"lang": "en", "file": "tn_gate.rs", "line": 71, "input": "Everything went according to plan.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 72, "input": "We should probably leave before it gets dark.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 73, "input": "The meeting was long but not unpleasant.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 74, "input": "Neither of them said anything for a moment.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 75, "input": "His answer was short and completely wrong.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 76, "input": "The whole thing took longer than anyone expected.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 77, "input": "Nobody knew what to do about the leaking roof.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 78, "input": "It is a good idea, and it is also a cheap one.", "expected": "two clauses"}
+{"lang": "en", "file": "tn_gate.rs", "line": 82, "input": "They left the building through a side door.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 83, "input": "Nothing here needs rewriting at all.", "expected": "prose, and the claim itself"}
+{"lang": "en", "file": "tn_gate.rs", "line": 87, "input": "A sentence, another sentence, and then a third sentence, all quite ordinary.", "expected": "multi-clause prose, the shape a paragraph is made of"}
+{"lang": "en", "file": "tn_gate.rs", "line": 91, "input": "Consider how the thing behaves when it is cold.", "expected": "prose"}
+{"lang": "en", "file": "tn_gate.rs", "line": 92, "input": "Please close the door on your way out.", "expected": "imperative with a trailing period"}
+{"lang": "en", "file": "tn_gate.rs", "line": 96, "input": "Both of those are correct, actually.", "expected": "prose ending in a comma clause"}
+{"lang": "en", "file": "tn_gate.rs", "line": 103, "input": "The cat sat on the mat.", "expected": "sentence-final short word: not `mat.` the abbreviation"}
+{"lang": "en", "file": "tn_gate.rs", "line": 107, "input": "It is done.", "expected": "sentence-final 2-letter word"}
+{"lang": "en", "file": "tn_gate.rs", "line": 108, "input": "He is not sure.", "expected": "sentence-final 4-letter word"}
+{"lang": "en", "file": "tn_gate.rs", "line": 109, "input": "That was fast.", "expected": "sentence-final 4-letter word"}
+{"lang": "en", "file": "tn_gate.rs", "line": 110, "input": "I have no idea.", "expected": "sentence-final 4-letter word"}
+{"lang": "en", "file": "tn_gate.rs", "line": 111, "input": "Then it stopped.", "expected": "sentence-final 7-letter word"}
+{"lang": "en", "file": "tn_gate.rs", "line": 112, "input": "What do you want?", "expected": "sentence-final after `?`"}
+{"lang": "en", "file": "tn_gate.rs", "line": 114, "input": "Hello. How are you?", "expected": "a period followed by more text: the same shape as `Dr. Smith`, so the gate fires"}
+{"lang": "en", "file": "tn_gate.rs", "line": 118, "input": "The mat. Then it ended.", "expected": "the `mat.` above, with more text after it"}
+{"lang": "en", "file": "tn_gate.rs", "line": 134, "input": "Meet at 3:30 pm.", "expected": "time with a space before the suffix"}
+{"lang": "en", "file": "tn_gate.rs", "line": 149, "input": "Use ½ cup.", "expected": "vulgar fraction: no ASCII digit, but the grammar reads it"}
+{"lang": "en", "file": "tn_gate.rs", "line": 151, "input": "It costs £5.", "expected": "money in pounds"}
+{"lang": "en", "file": "tn_gate.rs", "line": 157, "input": "It is 5 ft 10 in tall.", "expected": "measure, two units"}
+{"lang": "en", "file": "tn_gate.rs", "line": 159, "input": "Write to foo@bar.com today.", "expected": "email: `@` is a symbol but the shape is its own case"}
+{"lang": "en", "file": "tn_gate.rs", "line": 163, "input": "See https://example.com/x for details.", "expected": "URL: `://` needs the scheme"}
+{"lang": "en", "file": "tn_gate.rs", "line": 167, "input": "Visit www.example.com.", "expected": "URL with no scheme, which `://` alone would miss"}
+{"lang": "en", "file": "tn_gate.rs", "line": 172, "input": "Dr. Smith arrived.", "expected": "abbreviation with following text"}
+{"lang": "en", "file": "tn_gate.rs", "line": 173, "input": "Mr. Jones called.", "expected": "abbreviation with following text"}
+{"lang": "en", "file": "tn_gate.rs", "line": 174, "input": "Prof. Green lectured.", "expected": "abbreviation with following text"}
+{"lang": "en", "file": "tn_gate.rs", "line": 175, "input": "Acme Inc. & Co. shipped it.", "expected": "abbreviation plus `&`, a symbol"}
+{"lang": "en", "file": "tn_gate.rs", "line": 179, "input": "He has a Ph.D. in physics.", "expected": "two-dot abbreviation, no space after the first dot"}
+{"lang": "en", "file": "tn_gate.rs", "line": 183, "input": "The U.S.A. is large.", "expected": "capitals separated by dots: neither capital run nor plain dot shape"}
+{"lang": "en", "file": "tn_gate.rs", "line": 187, "input": "She lives in the U.S.", "expected": "the same, two letters"}
+{"lang": "en", "file": "tn_gate.rs", "line": 189, "input": "See you on Mon morning.", "expected": "shape-less weekday abbreviation: `Mon` reads `Monday`"}
+{"lang": "en", "file": "tn_gate.rs", "line": 193, "input": "I saw Mrs Smith.", "expected": "shape-less honorific: `Mrs` reads `Misses`"}
+{"lang": "en", "file": "tn_gate.rs", "line": 197, "input": "Martin Luther King Jr spoke.", "expected": "shape-less suffix: `Jr` reads `junior`"}
+{"lang": "en", "file": "tn_gate.rs", "line": 201, "input": "We watched TV all evening.", "expected": "capital run, and the grammar reads it as `Television`"}
+{"lang": "en", "file": "tn_gate.rs", "line": 205, "input": "Read Vol 3 when you can.", "expected": "a dot-less table key the grammar does *not* tag: a false positive"}
+{"lang": "en", "file": "tn_gate.rs", "line": 210, "input": "Use salt & pepper.", "expected": "`&` from symbol.tsv"}
+{"lang": "en", "file": "tn_gate.rs", "line": 211, "input": "Mail it to Dept #4.", "expected": "`#` from symbol.tsv"}
+{"lang": "en", "file": "tn_gate.rs", "line": 212, "input": "That is 100% certain.", "expected": "`%` from symbol.tsv"}
+{"lang": "en", "file": "tn_gate.rs", "line": 213, "input": "Add 1 + 1.", "expected": "`+` from symbol.tsv"}
+{"lang": "en", "file": "tn_gate.rs", "line": 214, "input": "It was 20° outside.", "expected": "`°`, one of the three the brief's list omitted"}
+{"lang": "en", "file": "tn_gate.rs", "line": 218, "input": "She paid in ₩.", "expected": "`₩`, non-ASCII symbol"}
+{"lang": "en", "file": "tn_gate.rs", "line": 220, "input": "Roman numeral IV is ambiguous.", "expected": "`IV` is a capital run but upstream leaves Roman out"}
+{"lang": "en", "file": "tn_gate.rs", "line": 224, "input": "World War II was long.", "expected": "`II` the same, and the grammar does not tag this phrase"}
+{"lang": "en", "file": "tn_gate.rs", "line": 228, "input": "He said OK and left.", "expected": "`OK`: a capital run with nothing behind it"}
+{"lang": "en", "file": "tn_gate.rs", "line": 239, "input": "We'll go tomorrow.", "expected": "straight apostrophe: `fix_contractions` rewrites it to `we will`"}
+{"lang": "en", "file": "tn_gate.rs", "line": 243, "input": "We’ll go tomorrow.", "expected": "the curly apostrophe, which the tables are keyed with and the old guard missed"}
+{"lang": "en", "file": "tn_gate.rs", "line": 247, "input": "It isn't far.", "expected": "one more contraction, mid-sentence"}
+{"lang": "en", "file": "tn_gate.rs", "line": 248, "input": "ＡＢＣ is easy.", "expected": "full-width Latin: `full_to_half` folds it, and `classify` drops it unfolded"}
+{"lang": "en", "file": "tn_gate.rs", "line": 252, "input": "１２３ cats sat.", "expected": "full-width digits, the shape that used to reach neither the gate nor the reader"}
+{"lang": "en", "file": "tn_gate.rs", "line": 256, "input": "Ｈｅｌｌｏ world.", "expected": "a whole full-width word, which phonemized to `wˈɜːld` alone"}

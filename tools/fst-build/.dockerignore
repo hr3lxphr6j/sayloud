@@ -1,0 +1,9 @@
+# Only the pinned grammar sources are copied into the image
+# (`COPY upstream/WeTextProcessing`); keep its .git metadata, build outputs and
+# host-side tools out of the context so the image stays small and reproducible.
+**/.git
+out*
+shipped
+verify*
+**/__pycache__
+*.pyc

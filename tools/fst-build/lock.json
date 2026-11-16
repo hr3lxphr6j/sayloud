@@ -1,0 +1,103 @@
+{
+  "_comment": "Pins that reproduce public/dictionaries/wetext-*-tn-*.bin.zst byte for byte. Determined 2026-11-15 for the grammar-ownership PoC; see docs/superpowers/REPORT.md for the evidence behind each field and docs/superpowers/env.md / Dockerfile for the two working environments. The assets under public/dictionaries/ are generated from these pins and are NOT committed, so they must be rebuilt from this file — never hand-edited, and never treated as the source of truth.",
+  "upstream": {
+    "submodule": "tools/fst-build/upstream/WeTextProcessing",
+    "commit": "039007e6b819bd40c4c4a0644f3939da1da47e44",
+    "note": "The git submodule is the source of truth for the grammar code; the Docker image copies this checkout instead of cloning. The commit is the same one recorded under wetextprocessing below (kept there for its provenance note)."
+  },
+  "hashes": {
+    "_comment": "wheel_parity_before_rules / wheel_parity_zstd_before_rules are historical: they are the output before any local rule, and are kept only as the PoC record. They are NOT a live baseline and `verify.py --mode parity` will not match once a local rule exists. assets / assets_zstd are the live baseline and the only one CI asserts. Byte identity is not required for correctness — see the conda-forge variant in docs/superpowers/REPORT.md — but it is what CI asserts.",
+    "output_files": [
+      "en/tn/tagger.fst",
+      "en/tn/verbalizer.fst",
+      "zh/tn/tagger.fst",
+      "zh/tn/verbalizer.fst",
+      "ja/tn/tagger.fst",
+      "ja/tn/verbalizer.fst",
+      "full_to_half.fst",
+      "traditional_to_simple.fst"
+    ],
+    "wheel_parity_before_rules": {
+      "en/tn/tagger.fst": "245e2dc9174cdd007a8e9e50f3339773d1adbbc7535b71cf67478dc1683cc3ec",
+      "en/tn/verbalizer.fst": "03155c88f317b2795969e264c19f87faf98b9853d5ac631e419bacdc3b3ee15a",
+      "zh/tn/tagger.fst": "cf341314c51f7ce59049f3b2c42f0ce8fd71e6d08d4d6969613aad384a5e2ae8",
+      "zh/tn/verbalizer.fst": "5a13cd679dd54637d12d2bd1bd33ee2165d91c867e14468c93195af02256e5da",
+      "ja/tn/tagger.fst": "4e07b61a391df366ed8e2d249a36fa16fdbed9cbb505c186e12352429187aa88",
+      "ja/tn/verbalizer.fst": "34d9cc3a219f23052273e00e2f8810f6f24614f291794914d2ba52ecc39a6cfc",
+      "full_to_half.fst": "3ac164703b7e83133a8864c8d5dd3cd44ea398c74f49480258e6d986c73b21ad",
+      "traditional_to_simple.fst": "01ff345b2416ac19b20bbc46236ed6a6923cf2a430a96411ae3b4f60ea9bf01d"
+    },
+    "wheel_parity_zstd_before_rules": {
+      "en/tn/tagger.fst": "0f78cc651e967d3de9929bbc3859b3d1680637c473f5f92ababe71e4abd27077",
+      "en/tn/verbalizer.fst": "5828f3de8cec14480e7b14726ad7d59f434b1ec5070a9658c956ae4a39a55dfd",
+      "zh/tn/tagger.fst": "c6bd5489fbd33da289f8a1dfbc00d2213ee9a4f5636d0e32d42623d4adbf1c45",
+      "zh/tn/verbalizer.fst": "37b8e46e72ea88cc97e60a23d0e6530853291543afef41787fa87108e0c1b991",
+      "ja/tn/tagger.fst": "576822cc212b94b5c439f884a0b955c89554d5fd46eae25d215027036c8e5a78",
+      "ja/tn/verbalizer.fst": "b4637e24d97ffeb9ca86f77d8bba16c09c55cf6cf652f3f8fa39736143e158e9",
+      "full_to_half.fst": "4bb4120687da8fd883353583842529d43e06c7e06a40319027b4fec60ea26539",
+      "traditional_to_simple.fst": "ac56ef27fe426933157003f66c3fb1a3554e4710f4b2004160638df7ea0a93f6"
+    },
+    "assets": {
+      "en/tn/tagger.fst": "7cbee7ca5f8b3028925dddc1c17a28c271a03227566fd016963db292b8fe6f1d",
+      "en/tn/verbalizer.fst": "56626f7564a34a4d4e7315d43d2001855568a1dc4f99c9c184aae57e1451ce69",
+      "zh/tn/tagger.fst": "309cb9f076c6177912c301c18dc526bc212a27fe9ed934279d0305ec4ad47b20",
+      "zh/tn/verbalizer.fst": "ad3431124c4c6c77d0969ec8823f1ff9f8983aa05e2006601db8a08125637fdc",
+      "ja/tn/tagger.fst": "391451060553eae4f02d8ccd1ca596d385561312d433601fef4844a5c0672bfa",
+      "ja/tn/verbalizer.fst": "511cf66117a2dae1ebd308050c54898c4c89944e0e430f76a3988a9513500025",
+      "full_to_half.fst": "3ac164703b7e83133a8864c8d5dd3cd44ea398c74f49480258e6d986c73b21ad",
+      "traditional_to_simple.fst": "01ff345b2416ac19b20bbc46236ed6a6923cf2a430a96411ae3b4f60ea9bf01d"
+    },
+    "_outputs_note": "`assets` is the amd64 build of the grammar we own (Roman key-word rule; money with cents and the symbols upstream does not read; `Cardinal.build_tagger` with the 1,000-1,999 weight sign flipped, so `1,234` reads \"one thousand two hundred and thirty four\"; English versions, the `24/7` idiom and `§` against its section number; digit-by-digit Japanese telephone and postal codes; Chinese thousands separators; and the fixes found in review: zero components in versions, postal only with `〒`, vulgar fractions in the gate, currency beside a grouped number through upstream's `money` token, and Roman key words cut back to proper names). A five-component bare dot chain is still split by the three-component version rule; covering it means looping the cardinal word graph, which the build cannot afford for a shape this rare. CI asserts `assets` with `verify.py --mode assets`; a native arm64 build is behaviourally equal but renumbers the English states.",
+    "assets_zstd": {
+      "en/tn/tagger.fst": "800814e395b115226d940f4aed0954d36d32a5ab3213701a4c394aae8409ef33",
+      "en/tn/verbalizer.fst": "eb046895a8b43130b70a6139f37df172587d5ca449891b68ae7b450fe41fb3d3",
+      "zh/tn/tagger.fst": "2b1d9997c6ef43e834e203dbc4b5b2ba54aeda7e6efb7cf0fa5d851530a17875",
+      "zh/tn/verbalizer.fst": "226d3e59e40aa3863ffdb337aadbccbdbe2bbb75b842615e218b980037f62920",
+      "ja/tn/tagger.fst": "56df87605c4d02036ad3d84a014e3c6dbe5744df35e5ab19480a0b7db5788bf5",
+      "ja/tn/verbalizer.fst": "6aca0b5101d9b2e268cfaeb823e46d2c4fc0b6511ae904bac376746252efa114",
+      "full_to_half.fst": "4bb4120687da8fd883353583842529d43e06c7e06a40319027b4fec60ea26539",
+      "traditional_to_simple.fst": "ac56ef27fe426933157003f66c3fb1a3554e4710f4b2004160638df7ea0a93f6"
+    }
+  },
+  "wetext": {
+    "version": "0.1.8",
+    "wheel_url": "https://files.pythonhosted.org/packages/43/fe/ca7ccae2673b64ba7d63612e68b31963e3842dd77fb6aa632270d123d685/wetext-0.1.8-py3-none-any.whl",
+    "wheel_sha256": "b2083e7f38ac38fcbecdf7aec6ac6f0e3d1a11b763facfa4daabc12138215454",
+    "source_repository": "https://github.com/pengzhendong/wetext",
+    "source_commit": "c188fc775afecb69dc71ce79d0e4b910afacc961",
+    "source_commit_date": "2026-09-09T18:05:56+08:00",
+    "source_commit_subject": "Merge pull request #20 from pengzhendong/codex/stream-prefix-matcher",
+    "file_used": "build_fsts.py",
+    "how_picked": "The repository carries no git tags and its VERSION file is a build-time placeholder (the release workflow writes `echo $version > VERSION`, so VERSION is 0.0.1 in every commit). The wheel's zip entries are stamped 2026-09-09 10:10 UTC, and c188fc7 is the last commit before that timestamp (10:05:56 UTC), five minutes earlier — the release ran on that tree. build_min.py is a transcription of that commit's build_fsts.py.",
+    "note": "The wheel is `py3-none-any`: it ships no compiled code, only the FSTs and a kaldifst runtime. Nothing in it pins the toolchain, which is why the pynini/environment fields below matter as much as the commit."
+  },
+  "wetextprocessing": {
+    "repository": "https://github.com/wenet-e2e/WeTextProcessing",
+    "commit": "039007e6b819bd40c4c4a0644f3939da1da47e44",
+    "commit_date": "2026-07-29T09:15:31+08:00",
+    "commit_subject": "docs: simplify README usage notes",
+    "how_picked": "The wetext 0.1.8 release workflow did NOT pin this: it ran `git clone --depth 1 https://github.com/wenet-e2e/WeTextProcessing.git`, so the pin is whatever master was on release day. There are no commits on that default branch between 039007e (2026-07-29) and 2026-10-31, so 039007e is the tree the release cloned. Confirmed empirically rather than assumed: building against 039007e on linux/amd64 reproduces all six shipped FSTs byte for byte. No other commit needed to be tried.",
+    "later_pins_in_that_repo": "wetext's own release workflow (from 2026-11-05, i.e. 0.1.9 and later) pins c3b4d88d11c5efef817881f7e515cbdd3a19d99b. That is not this version and must not be used to rebuild 0.1.8."
+  },
+  "pynini": {
+    "version": "2.1.7",
+    "how_picked": "WeTextProcessing declares `pynini>=2.1.6` and the release did an unpinned `pip install -U`. PyPI's 2.1.7 uploaded 2025-09-04, a year before the 0.1.8 release, so resolution landed on 2.1.7. Using 2.1.7 reproduces the shipped bytes exactly.",
+    "distribution_that_reproduces_bytes": "PyPI manylinux_2_28_x86_64 wheel (bundles its own OpenFst: pynini.libs/libfst.so.26)",
+    "distribution_that_does_not": "conda-forge osx-arm64 build, linked against conda-forge openfst 1.8.4 — behaviourally identical, byte-different for English (see docs/superpowers/REPORT.md). Do not use it for CI byte-identity assertions.",
+    "version_string_gotcha": "`pip show pynini` says 2.1.7, but `pynini.__version__` still reports \"2.1.6.post1\" — upstream did not bump the string in the 2.1.7 wheel. Judge the pin by the dist-info version, not by that attribute (verified 2026-11-15 in python:3.11-slim)."
+  },
+  "python": {
+    "version": "3.11",
+    "how_picked": "wetext's release workflow sets `python-version: 3.11`. Verified with 3.11.18 (conda-forge) and python:3.11-slim (Docker)."
+  },
+  "environment": {
+    "ci": "linux/amd64, python:3.11-slim, pip install pynini==2.1.7, PYTHONPATH=<WeTextProcessing checkout>. See Dockerfile; ~19 s for all three languages under QEMU emulation on Apple Silicon with a 2 GiB memory cap.",
+    "local_experiment": "macOS arm64, conda-forge python 3.11 + pynini 2.1.7 (no PyPI wheel exists for osx-arm64). See docs/superpowers/env.md."
+  },
+  "reproduction": {
+    "extract_shipped": "unzip -q wetext-0.1.8-py3-none-any.whl -d wheel && cp wheel/wetext/fsts/{en,zh,ja}/tn/{tagger,verbalizer}.fst shipped/",
+    "build": "PYTHONPATH=<WeTextProcessing> python build_min.py --langs en,zh,ja --out out",
+    "compare": "shasum -a 256 out/*/tn/*.fst  # compare with outputs.sha256 above",
+    "recompress": "zstd -19 -q -c out/en/tn/tagger.fst | shasum -a 256  # equals public/dictionaries/wetext-en-tn-tagger.bin.zst"
+  }
+}

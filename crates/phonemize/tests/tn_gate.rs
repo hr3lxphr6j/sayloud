@@ -146,6 +146,10 @@ const CORPUS: &[(&str, &str)] = &[
         "ordinal in a sentence, which is why it is not `two one`",
     ),
     ("Use 1/2 cup.", "fraction: `/` alone is enough"),
+    (
+        "Use ½ cup.",
+        "vulgar fraction: no ASCII digit, but the grammar reads it",
+    ),
     ("I paid $20.50", "money: `$` is a symbol"),
     ("It costs £5.", "money in pounds"),
     ("Call 555-1234.", "telephone/range: digits with a hyphen"),

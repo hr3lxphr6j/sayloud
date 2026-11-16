@@ -27,7 +27,7 @@ function setup(rects: PdfTextRectObject[]): {
   document.body.innerHTML = '';
   const container = document.createElement('div');
   document.body.append(container);
-  const blocks = buildEmbedBlocks(rects, { textLayer: container, pageEl: container }, 1);
+  const blocks = buildEmbedBlocks(rects, { textLayer: container, pageEl: container }, 1, 612);
   return { layer: new EmbedHighlightLayer(container), container, blocks };
 }
 

@@ -96,7 +96,7 @@ let chrome: ChromeState = {
   open: false,
   page: 1,
   total: 0,
-  sidebar: false,
+  sidebar: true,
   search: EMPTY_SEARCH,
 };
 
@@ -176,6 +176,19 @@ interface PdfSession {
   searchTimer: number | null;
   passwordResolve: ((value: string | null) => void) | null;
   passwordAttempts: number;
+  /**
+   * Whether `zoomTo(1)` has been dispatched for this document.
+   *
+   * The initial zoom is applied once per document: `handleViewerApi` fires
+   * whenever EmbedPDF's plugin scopes change reference (which can happen more
+   * than once during a document load), and calling `zoomTo` synchronously
+   * inside that callback triggers a zoom-state change that causes a re-render,
+   * which changes the scope reference, which re-fires `handleViewerApi` —
+   * an infinite loop that crashes the page. The flag breaks the loop by
+   * ensuring the zoom is set at most once, and the `setTimeout` defers the
+   * call to outside EmbedPDF's current reconciliation pass.
+   */
+  initialZoomApplied: boolean;
 }
 
 /** The state a document starts from, which is also the state a reset returns to. */
@@ -201,6 +214,7 @@ function createSession(): PdfSession {
     searchTimer: null,
     passwordResolve: null,
     passwordAttempts: 0,
+    initialZoomApplied: false,
   };
 }
 
@@ -406,6 +420,22 @@ function handleRegistry(next: PluginRegistry | null): void {
 function handleViewerApi(api: ViewerApi | null): void {
   viewerApi = api;
   drawChrome();
+  // Start each document at 100% (matching Chrome's native PDF viewer).
+  // The zoom plugin must start with FitWidth so it unblocks the viewport
+  // on the first render; once the API is available we switch to 1.0.
+  //
+  // Two guards are needed:
+  //   1. `initialZoomApplied` — `handleViewerApi` can fire more than once per
+  //      document (EmbedPDF re-creates scope objects on re-renders), so we only
+  //      apply the zoom the first time.
+  //   2. `setTimeout` — calling `zoomScope.requestZoom` *synchronously* inside
+  //      the useEffect that also calls `onApi` triggers a zoom-state change →
+  //      re-render → new scope reference → effect re-fires → infinite loop.
+  //      Deferring by one task breaks the cycle.
+  if (api && !session.initialZoomApplied) {
+    session.initialZoomApplied = true;
+    window.setTimeout(() => api.zoomTo(1), 0);
+  }
 }
 
 function handleScale(scale: number): void {
@@ -414,6 +444,12 @@ function handleScale(scale: number): void {
   if (Math.abs(chrome.zoom - scale) < 0.001) return;
   chrome = { ...chrome, zoom: scale };
   drawChrome();
+  // The highlight rects are absolutely-positioned at the scale the blocks were
+  // built at. When zoom changes, the text-layer container is resized immediately
+  // by applyPageTransform, but new blocks (at the new scale) don't arrive until
+  // pageTextRects resolves asynchronously. Clear the stale rects now; they are
+  // repainted by syncHighlight once handlePageBlocks fires with fresh blocks.
+  for (const layer of session.highlightLayers.values()) layer.clear();
 }
 
 function handlePageState(page: number, total: number): void {

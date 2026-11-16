@@ -89,13 +89,17 @@ const SEPARATOR = '\n';
  * rather than only in the splitter, is what keeps `text` and the live text
  * node identical: `rangeFor` and `offsetAt` address the DOM offsets the block
  * text already describes, so the block must not carry characters no node has.
+ *
+ * @param pageWidth The page's width in PDF points (unscaled), used to detect
+ *   and filter out margin watermarks (e.g. arXiv's vertical stamps).
  */
 export function buildEmbedBlocks(
   textRects: readonly PdfTextRectObject[],
   slots: EmbedPageSlots,
-  scale: number
+  scale: number,
+  pageWidth: number
 ): EmbedBlock[] {
-  const usable = textRects.filter((entry) => isUsable(entry));
+  const usable = textRects.filter((entry) => isUsable(entry, pageWidth));
   const blocks: EmbedBlock[] = [];
 
   let group: PdfTextRectObject[] = [];
@@ -118,14 +122,37 @@ export function buildEmbedBlocks(
   return blocks;
 }
 
-/** Whether a rectangle carries text this viewer can read. */
-function isUsable(entry: PdfTextRectObject): boolean {
-  return (
-    entry.rect.size.width > 0 &&
-    entry.rect.size.height > 0 &&
-    entry.content.trim().length > 0 &&
-    entry.content.length > 0
-  );
+/**
+ * Whether a rectangle carries text this viewer can read.
+ *
+ * Filters out:
+ *   - Empty or zero-size rectangles
+ *   - Margin watermarks (arXiv stamps, publisher logos) based on position and shape
+ *
+ * @param pageWidth The page's width in PDF points, used to detect left-edge watermarks.
+ */
+function isUsable(entry: PdfTextRectObject, pageWidth: number): boolean {
+  // Basic sanity checks
+  if (entry.rect.size.width <= 0 || entry.rect.size.height <= 0) return false;
+  if (entry.content.trim().length === 0) return false;
+
+  // arXiv and similar watermarks: vertical text on the left margin.
+  // Common pattern: "arXiv:2611.17374v1 [astro-ph.CO] 10 Nov 2026" rotated 90°.
+  const isLeftEdge = entry.rect.origin.x < pageWidth * 0.12;
+  const isVertical = entry.rect.size.height > entry.rect.size.width * 3;
+  const looksLikeWatermark =
+    /arXiv:\d+\.\d+|astro-ph|hep-th|hep-ph|cs\.|math\.|cond-mat|quant-ph|gr-qc/i.test(
+      entry.content
+    ) || /^\[.*?\]$|^\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i.test(
+      entry.content.trim()
+    );
+
+  if (isLeftEdge && (isVertical || looksLikeWatermark)) {
+    // Silently skip — these are margin decorations, not readable content.
+    return false;
+  }
+
+  return true;
 }
 
 /** Block grouping rule: see the doc comment on {@link buildEmbedBlocks}. */

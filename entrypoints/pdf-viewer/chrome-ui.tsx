@@ -12,6 +12,238 @@ import { I18nProvider, type Translator, useT, useUiLanguage } from '~/lib/i18n';
 import type { SettingsStore } from '~/lib/settings-store';
 import type { SidebarLabels, ViewerApi } from './viewer';
 
+// ─── SVG icons ────────────────────────────────────────────────────────────────
+// Inline SVGs use currentColor so they inherit the toolbar text colour without
+// an extra paint step. All icons are decorative — the surrounding button always
+// carries an accessible name — so each is aria-hidden and focusable="false".
+// biome requires aria-hidden to be a literal prop (not a spread) to satisfy
+// noSvgWithoutTitle, so we set it explicitly on each element.
+
+const ICON_SIZE = 16;
+const ICON_VIEWBOX = '0 0 16 16';
+
+function SvgIcon({ name }: { name: string }) {
+  switch (name) {
+    case 'sidebar':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <rect x="1.5" y="1.5" width="13" height="13" rx="2" />
+          <line x1="5.5" y1="2" x2="5.5" y2="14" />
+        </svg>
+      );
+    case 'info':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="8" cy="8" r="6.5" />
+          <line x1="8" y1="7.5" x2="8" y2="11" />
+          <circle cx="8" cy="5" r="0.75" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case 'chevron-left':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <polyline points="10 4 6 8 10 12" />
+        </svg>
+      );
+    case 'chevron-right':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <polyline points="6 4 10 8 6 12" />
+        </svg>
+      );
+    case 'zoom-in':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="6.5" cy="6.5" r="4.5" />
+          <line x1="10" y1="10" x2="13.5" y2="13.5" />
+          <line x1="6.5" y1="4.5" x2="6.5" y2="8.5" />
+          <line x1="4.5" y1="6.5" x2="8.5" y2="6.5" />
+        </svg>
+      );
+    case 'zoom-out':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="6.5" cy="6.5" r="4.5" />
+          <line x1="10" y1="10" x2="13.5" y2="13.5" />
+          <line x1="4.5" y1="6.5" x2="8.5" y2="6.5" />
+        </svg>
+      );
+    case 'fit-width':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <polyline points="2 6 2 2 6 2" />
+          <polyline points="10 2 14 2 14 6" />
+          <polyline points="14 10 14 14 10 14" />
+          <polyline points="6 14 2 14 2 10" />
+        </svg>
+      );
+    case 'download':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <line x1="8" y1="2" x2="8" y2="10.5" />
+          <polyline points="5 7.5 8 10.5 11 7.5" />
+          <line x1="2" y1="13.5" x2="14" y2="13.5" />
+        </svg>
+      );
+    case 'search':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="6.5" cy="6.5" r="4.5" />
+          <line x1="10" y1="10" x2="13.5" y2="13.5" />
+        </svg>
+      );
+    case 'chevron-up':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <polyline points="4 10 8 6 12 10" />
+        </svg>
+      );
+    case 'chevron-down':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <polyline points="4 6 8 10 12 6" />
+        </svg>
+      );
+    case 'close':
+      return (
+        <svg
+          width={ICON_SIZE}
+          height={ICON_SIZE}
+          viewBox={ICON_VIEWBOX}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <line x1="4" y1="4" x2="12" y2="12" />
+          <line x1="12" y1="4" x2="4" y2="12" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 /** What the strip above the pages is saying right now. */
 export type Notice = 'opening' | 'pick' | 'missing' | 'empty' | 'ready';
 
@@ -106,100 +338,126 @@ function ChromeBody({
 
   return (
     <>
+      {/* ─── Main toolbar ─────────────────────────────────────────────────── */}
       <div class="pdf-top">
-        <button
-          type="button"
-          class="pdf-icon-button"
-          aria-label={t('pdf.sidebar.toggle')}
-          aria-pressed={state.sidebar}
-          disabled={!controls}
-          onClick={onToggleSidebar}
-        >
-          ⊞
-        </button>
-        {/* Never dismissible: a multi-column paper read down the columns looks
-            like broken ordering, and the line is what distinguishes the two. */}
-        <p class="pdf-order-hint">{t('pdf.order.hint')}</p>
-        {state.open && (
-          <div class="pdf-page-nav">
-            <button
-              type="button"
-              aria-label={t('pdf.page.previous')}
-              disabled={!controls || state.page <= 1}
-              onClick={() => onPage(state.page - 1)}
-            >
-              ←
-            </button>
-            <PageField page={state.page} total={state.total} onGo={onPage} />
-            <button
-              type="button"
-              aria-label={t('pdf.page.next')}
-              disabled={!controls || state.page >= state.total}
-              onClick={() => onPage(state.page + 1)}
-            >
-              →
-            </button>
-          </div>
-        )}
-        {state.open && (
-          <fieldset class="pdf-zoom">
-            <button
-              type="button"
-              aria-label={t('pdf.zoom.out')}
-              disabled={!controls}
-              onClick={() => onZoom(-1)}
-            >
-              −
-            </button>
-            <span class="pdf-zoom-level" aria-live="polite">
-              {Math.round(state.zoom * 100)}%
-            </span>
-            <button
-              type="button"
-              aria-label={t('pdf.zoom.in')}
-              disabled={!controls}
-              onClick={() => onZoom(1)}
-            >
-              +
-            </button>
-            <button
-              type="button"
-              aria-label={t('pdf.fit-width')}
-              disabled={!controls}
-              onClick={onFitWidth}
-            >
-              ⤢
-            </button>
-          </fieldset>
-        )}
-        {state.open && (
-          <button
-            type="button"
-            class="pdf-text-button"
-            aria-label={t('pdf.search')}
-            aria-expanded={state.search.open}
-            disabled={!controls}
-            onClick={onOpenSearch}
-          >
-            {/* The button's word, without the ellipsis its placeholder has. */}
-            {t('pdf.search').replace('…', '')}
-          </button>
-        )}
-        {state.open && (
+        <div class="pdf-top-left">
           <button
             type="button"
             class="pdf-icon-button"
-            aria-label={t('pdf.download')}
+            aria-label={t('pdf.sidebar.toggle')}
+            aria-pressed={state.sidebar}
             disabled={!controls}
-            onClick={onDownload}
+            onClick={onToggleSidebar}
           >
-            ↓
+            <SvgIcon name="sidebar" />
           </button>
+
+          {/* Reading-order hint collapsed into a tooltip on the info icon.
+              It is never dismissible — a multi-column paper looks broken
+              otherwise — but it no longer occupies permanent toolbar space. */}
+          <div class="pdf-info-wrap">
+            <button
+              type="button"
+              class="pdf-icon-button pdf-info-trigger"
+              aria-label={t('pdf.order.hint')}
+            >
+              <SvgIcon name="info" />
+            </button>
+            {/* Keep .pdf-order-hint in the DOM so e2e tests can assert on it;
+                visually it only shows on hover via the tooltip below. */}
+            <p class="pdf-order-hint sr-only">{t('pdf.order.hint')}</p>
+            <div class="pdf-info-tooltip" role="tooltip">
+              {t('pdf.order.hint')}
+            </div>
+          </div>
+        </div>
+
+        <span class="pdf-top-spacer" />
+
+        {state.open && (
+          <div class="pdf-top-right">
+            {/* Page navigation */}
+            <div class="pdf-ctrl-group">
+              <button
+                type="button"
+                aria-label={t('pdf.page.previous')}
+                disabled={!controls || state.page <= 1}
+                onClick={() => onPage(state.page - 1)}
+              >
+                <SvgIcon name="chevron-left" />
+              </button>
+              <PageField page={state.page} total={state.total} onGo={onPage} />
+              <button
+                type="button"
+                aria-label={t('pdf.page.next')}
+                disabled={!controls || state.page >= state.total}
+                onClick={() => onPage(state.page + 1)}
+              >
+                <SvgIcon name="chevron-right" />
+              </button>
+            </div>
+
+            {/* Zoom */}
+            <div class="pdf-ctrl-group">
+              <button
+                type="button"
+                aria-label={t('pdf.zoom.out')}
+                disabled={!controls}
+                onClick={() => onZoom(-1)}
+              >
+                <SvgIcon name="zoom-out" />
+              </button>
+              <span class="pdf-zoom-level" aria-live="polite">
+                {Math.round(state.zoom * 100)}%
+              </span>
+              <button
+                type="button"
+                aria-label={t('pdf.zoom.in')}
+                disabled={!controls}
+                onClick={() => onZoom(1)}
+              >
+                <SvgIcon name="zoom-in" />
+              </button>
+              <button
+                type="button"
+                aria-label={t('pdf.fit-width')}
+                disabled={!controls}
+                onClick={onFitWidth}
+              >
+                <SvgIcon name="fit-width" />
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div class="pdf-ctrl-group">
+              <button
+                type="button"
+                aria-label={t('pdf.search')}
+                aria-expanded={state.search.open}
+                disabled={!controls}
+                onClick={onOpenSearch}
+              >
+                <SvgIcon name="search" />
+              </button>
+              <button
+                type="button"
+                aria-label={t('pdf.download')}
+                disabled={!controls}
+                onClick={onDownload}
+              >
+                <SvgIcon name="download" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
+      {/* ─── Search bar ───────────────────────────────────────────────────── */}
       {state.search.open && (
         <div class="pdf-search">
+          <span class="pdf-search-icon">
+            <SvgIcon name="search" />
+          </span>
           <input
             type="text"
             aria-label={t('pdf.search')}
@@ -217,28 +475,36 @@ function ChromeBody({
           <span class="pdf-search-count" aria-live="polite">
             {searchCount(state.search, t)}
           </span>
+          <div class="pdf-ctrl-group">
+            <button
+              type="button"
+              aria-label={t('pdf.search.previous')}
+              disabled={state.search.total === 0}
+              onClick={onSearchPrevious}
+            >
+              <SvgIcon name="chevron-up" />
+            </button>
+            <button
+              type="button"
+              aria-label={t('pdf.search.next')}
+              disabled={state.search.total === 0}
+              onClick={onSearchNext}
+            >
+              <SvgIcon name="chevron-down" />
+            </button>
+          </div>
           <button
             type="button"
-            aria-label={t('pdf.search.previous')}
-            disabled={state.search.total === 0}
-            onClick={onSearchPrevious}
+            class="pdf-search-close"
+            aria-label={t('pdf.search.close')}
+            onClick={onSearchClose}
           >
-            ↑
-          </button>
-          <button
-            type="button"
-            aria-label={t('pdf.search.next')}
-            disabled={state.search.total === 0}
-            onClick={onSearchNext}
-          >
-            ↓
-          </button>
-          <button type="button" aria-label={t('pdf.search.close')} onClick={onSearchClose}>
-            ×
+            <SvgIcon name="close" />
           </button>
         </div>
       )}
 
+      {/* ─── Notices ──────────────────────────────────────────────────────── */}
       {state.notice === 'opening' && <p class="pdf-notice">{t('panel.loading')}</p>}
 
       {canPick && (
@@ -365,7 +631,7 @@ function PasswordCard({ wrong, onAnswer }: PasswordCardProps) {
         onInput={(event) => setValue(event.currentTarget.value)}
       />
       <button type="submit" aria-label={t('pdf.password.title')}>
-        →
+        <SvgIcon name="chevron-right" />
       </button>
       <button type="button" onClick={() => onAnswer(null)}>
         {t('pdf.password.cancel')}

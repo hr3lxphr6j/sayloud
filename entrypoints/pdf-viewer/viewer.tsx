@@ -55,6 +55,8 @@ export interface ViewerApi {
   zoomOut(): void;
   /** Fit the page width to the viewport (`0` in the keyboard shortcuts). */
   fitWidth(): void;
+  /** Jump to an exact numeric zoom factor (e.g. `1` for 100%). */
+  zoomTo(scale: number): void;
   nextPage(): void;
   previousPage(): void;
   goToPage(page: number): void;
@@ -208,7 +210,8 @@ function PageTextLayer({ documentId, layout, engine, onPageBlocks }: PageTextLay
         const blocks = buildEmbedBlocks(
           rects,
           { textLayer: target, pageEl: pageElRef.current ?? target },
-          scale
+          scale,
+          page.size.width
         );
         for (const block of blocks) block.pageIndex = layout.pageIndex;
         onPageBlocks(documentId, layout.pageIndex, blocks, target);
@@ -276,6 +279,7 @@ function ViewerController({
       zoomIn: () => zoomScope.zoomIn(),
       zoomOut: () => zoomScope.zoomOut(),
       fitWidth: () => zoomScope.requestZoom(ZoomMode.FitWidth),
+      zoomTo: (scale: number) => zoomScope.requestZoom(scale),
       nextPage: () => scrollScope.scrollToNextPage('smooth'),
       previousPage: () => scrollScope.scrollToPreviousPage('smooth'),
       goToPage: (page: number) =>
@@ -337,6 +341,7 @@ export interface SidebarLabels {
 /** The thumbnail/outline rail to the left of the pages. */
 function PdfSidebar({ documentId, labels }: { documentId: string; labels: SidebarLabels }) {
   const [tab, setTab] = useState<'pages' | 'contents'>('pages');
+  const [sidebarWidth, setSidebarWidth] = useState(180);
   const scroll = useScroll(documentId);
   const currentPage = scroll.state.currentPage;
 
@@ -344,8 +349,31 @@ function PdfSidebar({ documentId, labels }: { documentId: string; labels: Sideba
     scroll.provides?.scrollToPage({ pageNumber, behavior: 'smooth' });
   };
 
+  const startResize = (e: MouseEvent): void => {
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: MouseEvent): void => {
+      setSidebarWidth(Math.max(140, Math.min(360, startW + ev.clientX - startX)));
+    };
+    const onUp = (): void => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  };
+
   return (
-    <aside class="pdf-sidebar">
+    <aside
+      class="pdf-sidebar"
+      style={{ width: `${sidebarWidth}px`, flex: `0 0 ${sidebarWidth}px` }}
+    >
+      <hr class="pdf-sidebar-resizer" aria-orientation="vertical" onMouseDown={startResize} />
       <div class="pdf-sidebar-tabs" role="tablist">
         <button
           type="button"

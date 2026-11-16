@@ -20,7 +20,7 @@ import { LocalProvider } from '~/lib/providers/local';
 import type { LocalConfig, SynthesizeRequest } from '~/lib/providers/types';
 import { FakeCaches, requireTier } from '../models/fakes';
 
-const CONFIG: LocalConfig = { provider: 'local', modelId: 'kokoro-82m', tier: 'fp16' };
+const CONFIG: LocalConfig = { provider: 'local', modelId: 'kokoro-82m', tier: 'fp32' };
 
 /** An engine whose failures the test chooses. */
 class FakeEngine implements OnDeviceEngine {
@@ -59,14 +59,14 @@ function request(text = 'hello'): SynthesizeRequest {
 /** A provider whose tier is on disk, with engines built by `makeEngine`. */
 function setup(makeEngine: (index: number) => FakeEngine = () => new FakeEngine()) {
   const caches = new FakeCaches();
-  const tier = requireTier(KOKORO_82M, 'fp16');
+  const tier = requireTier(KOKORO_82M, 'fp32');
   const bucket = caches.bucket(TRANSFORMERS_CACHE);
   for (const file of tier.files) bucket.seed(canonicalModelUrl(KOKORO_82M.repo, file));
 
   const engines: FakeEngine[] = [];
   const provider = new LocalProvider({
     cacheStorage: caches,
-    probe: async () => ({ caps: { webgpu: true, shaderF16: true } }),
+    probe: async () => ({ caps: { webgpu: true } }),
     resolveSource: async () => ({ source: { host: 'modelscope' }, allowFallback: false }),
     createEngine: async () => {
       const engine = makeEngine(engines.length);
@@ -130,7 +130,7 @@ describe('LocalProvider', () => {
     const engines: FakeEngine[] = [];
     const provider = new LocalProvider({
       cacheStorage: caches,
-      probe: async () => ({ caps: { webgpu: true, shaderF16: true } }),
+      probe: async () => ({ caps: { webgpu: true } }),
       resolveSource: async () => ({ source: { host: 'modelscope' }, allowFallback: false }),
       createEngine: async () => {
         const engine = new FakeEngine();
@@ -144,7 +144,7 @@ describe('LocalProvider', () => {
     });
 
     // Nothing is downloaded and nothing is built: the check exists to fail
-    // early, not to discover the problem after a 163 MB session build.
+    // early, not to discover the problem after a 325 MB session build.
     expect(engines).toHaveLength(0);
   });
 
@@ -159,13 +159,13 @@ describe('LocalProvider', () => {
     // never be able to reach ONNX Runtime — so the missing factory is the
     // guarantee, and it has to produce a message rather than a hang.
     const caches = new FakeCaches();
-    const tier = requireTier(KOKORO_82M, 'fp16');
+    const tier = requireTier(KOKORO_82M, 'fp32');
     const bucket = caches.bucket(TRANSFORMERS_CACHE);
     for (const file of tier.files) bucket.seed(canonicalModelUrl(KOKORO_82M.repo, file));
 
     const provider = new LocalProvider({
       cacheStorage: caches,
-      probe: async () => ({ caps: { webgpu: true, shaderF16: true } }),
+      probe: async () => ({ caps: { webgpu: true } }),
     });
 
     await expect(provider.synthesize(request(), CONFIG)).rejects.toThrow('not wired up');

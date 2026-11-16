@@ -357,9 +357,9 @@ export const en = {
   // Only the names the registry itself carries: the model and its tiers. The
   // rest of the model tab's copy is added with the tab.
   'model.kokoro-82m': 'Kokoro 82M',
-  'model.tier.light': 'Light',
-  'model.tier.standard': 'Standard',
-  'model.tier.hifi': 'High fidelity',
+  // Named after the precision rather than a quality claim: there is one tier
+  // now, so "high fidelity" would be comparing it with nothing.
+  'model.tier.fp32': 'FP32',
 
   // --- the Models tab -------------------------------------------------------
   // The tab manages files rather than preferences, so every line here is about
@@ -387,12 +387,6 @@ export const en = {
   'model.download-failed': 'Failed to download. Check your connection.',
   'model.download-cancelled': 'Download cancelled.',
   'model.read-failed': 'The downloaded models could not be read.',
-  // Two keys rather than one "Recommended": what is recommended depends on the
-  // machine, and a badge that does not say which machine is a badge that means
-  // nothing when the user reads it on the other one.
-  'model.recommended': 'Recommended for WebGPU',
-  'model.recommended-cpu': 'Recommended without a GPU',
-  'model.broken-on-device': 'Known to distort the audio on this device',
   'model.license': 'Licence: {name}',
   'model.voice-count': '{count} voices',
   'model.timings': 'Sentence highlighting',

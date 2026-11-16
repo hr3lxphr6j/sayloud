@@ -28,8 +28,7 @@ import {
 import { bytesOf, FakeCaches, type FakeRoute, fakeArea, fakeFetch, requireTier } from './fakes';
 
 const REPO = KOKORO_82M.repo;
-const Q8 = requireTier(KOKORO_82M, 'q8');
-const FP16 = requireTier(KOKORO_82M, 'fp16');
+const FP32 = requireTier(KOKORO_82M, 'fp32');
 
 const SHARED_BYTES = Object.values(SHARED_FILE_BYTES).reduce((sum, bytes) => sum + bytes, 0);
 
@@ -160,7 +159,7 @@ describe('resolveSource', () => {
     const { store, fake } = makeStore(fetch);
     await store.setSource({ host: 'huggingface' });
 
-    const error = await store.downloadTier(KOKORO_82M, Q8).catch((thrown: unknown) => thrown);
+    const error = await store.downloadTier(KOKORO_82M, FP32).catch((thrown: unknown) => thrown);
 
     expect((error as DownloadError).status).toBe(503);
     expect(fetch.calls).toEqual([probe('huggingface')]);
@@ -221,42 +220,42 @@ describe('resolveSource', () => {
 describe('tiers', () => {
   it('reports a tier downloaded only when every one of its files is there', async () => {
     const { store, caches } = makeStore(fakeFetch({}));
-    expect(await store.isTierDownloaded(KOKORO_82M, Q8)).toBe(false);
+    expect(await store.isTierDownloaded(KOKORO_82M, FP32)).toBe(false);
 
-    seedTier(caches, Q8);
-    expect(await store.isTierDownloaded(KOKORO_82M, Q8)).toBe(true);
+    seedTier(caches, FP32);
+    expect(await store.isTierDownloaded(KOKORO_82M, FP32)).toBe(true);
 
     await caches.bucket(TRANSFORMERS_CACHE).delete(canonicalModelUrl(REPO, 'tokenizer.json'));
-    expect(await store.isTierDownloaded(KOKORO_82M, Q8)).toBe(false);
+    expect(await store.isTierDownloaded(KOKORO_82M, FP32)).toBe(false);
   });
 
   it('lists the tiers that are downloaded', async () => {
     const { store, caches } = makeStore(fakeFetch({}));
-    seedTier(caches, FP16);
+    seedTier(caches, FP32);
 
-    expect((await store.downloadedTiers(KOKORO_82M)).map((tier) => tier.id)).toEqual(['fp16']);
+    expect((await store.downloadedTiers(KOKORO_82M)).map((tier) => tier.id)).toEqual(['fp32']);
   });
 
   it('downloads a tier and remembers the source that worked', async () => {
-    const fetch = fakeFetch(tierRoutes(Q8));
+    const fetch = fakeFetch(tierRoutes(FP32));
     const { store, caches, fake } = makeStore(fetch);
     await store.setSource({ host: 'huggingface' });
     const progress: number[] = [];
     let total = 0;
 
-    await store.downloadTier(KOKORO_82M, Q8, {
+    await store.downloadTier(KOKORO_82M, FP32, {
       onProgress: (update) => {
         progress.push(update.bytes);
         total = update.totalBytes;
       },
     });
 
-    expect(await store.isTierDownloaded(KOKORO_82M, Q8)).toBe(true);
-    expect(fetch.calls).toHaveLength(Q8.files.length);
+    expect(await store.isTierDownloaded(KOKORO_82M, FP32)).toBe(true);
+    expect(fetch.calls).toHaveLength(FP32.files.length);
     // The bar follows the registry's measured sizes, not the token bodies the
     // fake served — that is what makes the promise before a download honest.
-    expect(progress.at(-1)).toBe(Q8.bytes + SHARED_BYTES);
-    expect(total).toBe(Q8.bytes + SHARED_BYTES);
+    expect(progress.at(-1)).toBe(FP32.bytes + SHARED_BYTES);
+    expect(total).toBe(FP32.bytes + SHARED_BYTES);
     expect(fake.data.get(MODEL_HOST_LAST_GOOD_KEY)).toBe('huggingface');
     expect(caches.bucket(TRANSFORMERS_CACHE).has(canonicalModelUrl(REPO, 'config.json'))).toBe(
       true
@@ -264,53 +263,37 @@ describe('tiers', () => {
   });
 
   it('fetches only the files a failed download did not finish', async () => {
-    const fetch = fakeFetch(tierRoutes(Q8));
+    const fetch = fakeFetch(tierRoutes(FP32));
     const { store, caches } = makeStore(fetch);
     await store.setSource({ host: 'huggingface' });
     caches.bucket(TRANSFORMERS_CACHE).seed(canonicalModelUrl(REPO, 'config.json'), 44);
 
-    await store.downloadTier(KOKORO_82M, Q8);
+    await store.downloadTier(KOKORO_82M, FP32);
 
     expect(fetch.calls).not.toContain(modelUrl('config.json'));
-    expect(fetch.calls).toHaveLength(Q8.files.length - 1);
+    expect(fetch.calls).toHaveLength(FP32.files.length - 1);
   });
 
-  it('deletes one tier and keeps what another tier still needs', async () => {
+  it('deletes every file of the tier, including the shared metadata', async () => {
     const { store, caches } = makeStore(fakeFetch({}));
-    seedTier(caches, Q8);
-    seedTier(caches, FP16);
+    seedTier(caches, FP32);
 
-    await store.deleteTier(KOKORO_82M, Q8);
+    await store.deleteTier(KOKORO_82M, FP32);
 
-    const bucket = caches.bucket(TRANSFORMERS_CACHE);
-    expect(bucket.has(canonicalModelUrl(REPO, 'onnx/model_quantized.onnx'))).toBe(false);
-    expect(bucket.has(canonicalModelUrl(REPO, 'onnx/model_fp16.onnx'))).toBe(true);
-    for (const file of ['config.json', 'tokenizer.json', 'tokenizer_config.json']) {
-      expect(bucket.has(canonicalModelUrl(REPO, file))).toBe(true);
-    }
-  });
-
-  it('deletes the shared files with the last tier that needed them', async () => {
-    const { store, caches } = makeStore(fakeFetch({}));
-    seedTier(caches, Q8);
-    seedTier(caches, FP16);
-
-    await store.deleteTier(KOKORO_82M, Q8);
-    await store.deleteTier(KOKORO_82M, FP16);
-
+    // Kokoro has one tier, so nothing else can still need `config.json` and the
+    // tokenizers: a delete is a full delete.
     expect(caches.bucket(TRANSFORMERS_CACHE).entries.size).toBe(0);
   });
 
   it('does not let orphaned shared files keep themselves alive', async () => {
     const { store, caches } = makeStore(fakeFetch({}));
-    seedTier(caches, Q8);
-    // Another tier's metadata, with no weights behind it: not a reason to keep
-    // the shared files forever.
+    seedTier(caches, FP32);
+    // Metadata with no weights behind it: not a reason to keep anything.
     for (const file of ['config.json', 'tokenizer.json', 'tokenizer_config.json']) {
       caches.bucket(TRANSFORMERS_CACHE).seed(canonicalModelUrl(REPO, file));
     }
 
-    await store.deleteTier(KOKORO_82M, Q8);
+    await store.deleteTier(KOKORO_82M, FP32);
 
     expect(caches.bucket(TRANSFORMERS_CACHE).entries.size).toBe(0);
   });
@@ -329,22 +312,26 @@ describe('usage', () => {
 
   it('counts a tier by its measured size', async () => {
     const { store, caches } = makeStore(fakeFetch({}));
-    seedTier(caches, Q8);
+    seedTier(caches, FP32);
 
-    expect(await store.usage()).toMatchObject({ modelBytes: Q8.bytes + SHARED_BYTES });
+    expect(await store.usage()).toMatchObject({ modelBytes: FP32.bytes + SHARED_BYTES });
   });
 
-  it('counts the shared files once, however many tiers are installed', async () => {
+  it('counts only the files this build knows about', async () => {
     const { store, caches } = makeStore(fakeFetch({}));
-    seedTier(caches, Q8);
-    seedTier(caches, FP16);
+    seedTier(caches, FP32);
+    // A retired tier's weights, left in the cache by a build that shipped q8.
+    // They are not part of any tier now, so they are not counted and not shown;
+    // deleting them is the browser's job, not a silent side effect of loading
+    // the Models tab.
+    caches.bucket(TRANSFORMERS_CACHE).seed(canonicalModelUrl(REPO, 'onnx/model_quantized.onnx'));
 
-    expect((await store.usage()).modelBytes).toBe(Q8.bytes + FP16.bytes + SHARED_BYTES);
+    expect(await store.usage()).toMatchObject({ modelBytes: FP32.bytes + SHARED_BYTES });
   });
 
   it('counts voices separately from the model', async () => {
     const { store, caches } = makeStore(fakeFetch({}));
-    seedTier(caches, Q8);
+    seedTier(caches, FP32);
     seedVoice(caches, 'af_heart');
     seedVoice(caches, 'zf_xiaoxiao');
 
@@ -469,11 +456,11 @@ describe('voices', () => {
 
   it('leaves the model files alone when voices are deleted', async () => {
     const { store, caches } = makeStore(fakeFetch({}));
-    seedTier(caches, Q8);
+    seedTier(caches, FP32);
     seedVoice(caches, 'af_heart');
 
     await store.deleteAllVoices(KOKORO_82M);
 
-    expect(await store.isTierDownloaded(KOKORO_82M, Q8)).toBe(true);
+    expect(await store.isTierDownloaded(KOKORO_82M, FP32)).toBe(true);
   });
 });

@@ -30,7 +30,6 @@ import {
   type ModelTier,
   modelById,
   type OnDeviceModel,
-  preferredTier,
   tierById,
 } from '../models/registry';
 import { modelKeysInCache, tierFilesPresent } from '../models/store';
@@ -135,13 +134,13 @@ export class LocalProvider implements Provider {
    *
    * There is no key to test, so what is checked is the thing that would fail
    * first: the tier's files have to be in Cache Storage. An offscreen document
-   * that had to download 163 MB would be killed long before it finished, so
+   * that had to download 325 MB would be killed long before it finished, so
    * "not downloaded" is a fact worth reporting early and precisely.
    */
   async validate(config: ProviderConfig, _signal: AbortSignal): Promise<void> {
     const local = requireConfig(config, 'local');
     const model = modelFor(local);
-    const tier = await tierFor(model, local);
+    const tier = tierFor(model, local);
 
     if (!(await this.isDownloaded(model, tier))) {
       throw new ProviderError(
@@ -154,7 +153,7 @@ export class LocalProvider implements Provider {
   async synthesize(request: SynthesizeRequest, config: ProviderConfig): Promise<SynthesisResult> {
     const local = requireConfig(config, 'local');
     const model = modelFor(local);
-    const tier = await tierFor(model, local);
+    const tier = tierFor(model, local);
 
     if (!(await this.isDownloaded(model, tier))) {
       throw new ProviderError(
@@ -260,12 +259,14 @@ function modelFor(local: LocalConfig): OnDeviceModel {
 }
 
 /**
- * The tier a config names, or the one this machine should use.
+ * The tier a config names, or the model's own.
  *
- * The fallback is not "the first tier": it is what the device measurements
- * recommend, which is the whole reason `preferredTier` exists.
+ * A named tier is still validated against the registry: a config written by
+ * another build can name one this build does not ship, and reporting that is
+ * better than loading whatever file happens to be in the cache. Unset falls
+ * back to the first tier, which is the only one Kokoro has.
  */
-async function tierFor(model: OnDeviceModel, local: LocalConfig): Promise<ModelTier> {
+function tierFor(model: OnDeviceModel, local: LocalConfig): ModelTier {
   if (local.tier !== undefined) {
     const named = tierById(model, local.tier);
     if (!named) {
@@ -274,8 +275,7 @@ async function tierFor(model: OnDeviceModel, local: LocalConfig): Promise<ModelT
     return named;
   }
 
-  const caps = await probeThisMachine();
-  const tier = preferredTier(model, caps.caps);
+  const tier = model.tiers?.[0];
   if (!tier) throw new ProviderError('unknown', `${model.id} has no tiers`);
   return tier;
 }

@@ -172,8 +172,8 @@ const MODEL_ID_OPTIONS: readonly FieldOption[] = MODELS.map((model) => ({
  *
  * A union rather than a per-model list because a field spec cannot see which
  * model is selected; a tier that belongs to another model is rejected by the
- * provider, which does know. Ids repeat across families by design — `q8` means
- * the same thing to every engine — so duplicates are collapsed.
+ * provider, which does know. Ids repeat across families by design — `fp32`
+ * means the same thing to every engine — so duplicates are collapsed.
  */
 const TIER_OPTIONS: readonly FieldOption[] = [
   ...new Map(
@@ -440,6 +440,11 @@ const SCHEMAS = {
         kind: 'select',
         hidden: true,
         options: TIER_OPTIONS,
+        // `q8` and `fp16` were the other two tiers until 2026-11-16, when they
+        // measured as unusable on Apple Silicon and NVIDIA. A config saved then
+        // has to keep working: map it to the one tier that is left instead of
+        // dropping the field and making the provider report an unknown tier.
+        retiredOptions: { q8: 'fp32', fp16: 'fp32' },
       },
       // A closed union, so a `select`: anything else would be passed to
       // `resolveDevice`, which reads an unknown value as `auto` — a silent

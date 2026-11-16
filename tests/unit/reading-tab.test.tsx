@@ -271,7 +271,7 @@ describe('the auto-scroll switch', () => {
  * ready.
  */
 describe('the on-device notices', () => {
-  const LOCAL: ProviderConfig = { provider: 'local', tier: 'q8' };
+  const LOCAL: ProviderConfig = { provider: 'local', tier: 'fp32' };
 
   function providerThat(validate: () => Promise<void>): Record<AdapterProviderId, Provider> {
     return { ...providers, local: { ...fakeProvider(), validate: vi.fn(validate) } as Provider };
@@ -319,7 +319,7 @@ describe('the on-device notices', () => {
       providers: providerThat(() => Promise.resolve()),
       models: {
         store: {} as never,
-        probe: () => Promise.resolve({ caps: { webgpu: false, shaderF16: false } }),
+        probe: () => Promise.resolve({ caps: { webgpu: false } }),
       },
     });
 
@@ -332,7 +332,7 @@ describe('the on-device notices', () => {
       providers: providerThat(() => Promise.resolve()),
       models: {
         store: {} as never,
-        probe: () => Promise.resolve({ caps: { webgpu: true, shaderF16: true } }),
+        probe: () => Promise.resolve({ caps: { webgpu: true } }),
       },
     });
 

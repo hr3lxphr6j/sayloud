@@ -611,9 +611,9 @@ describe('the activation circle', () => {
     const config = await store.getConfig();
     expect(config).toMatchObject({ provider: 'local', modelId: 'kokoro-82m', device: 'auto' });
     // Absent, not merely falsy: an explicit `tier` sends `tierFor` down the
-    // "the user chose this" path, where the device is never consulted. That is
-    // how a GPU without `shader-f16` ended up running fp16 and producing
-    // distorted audio that stopped part-way through the sentence.
+    // "the user chose this" path. The provider falls back to the model's only
+    // tier, so a build that changes the set of weights does not inherit a
+    // choice the user never made.
     expect(config).not.toHaveProperty('tier');
 
     expect(onChanged).toHaveBeenCalled();

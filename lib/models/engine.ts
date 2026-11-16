@@ -56,8 +56,7 @@ export interface OnDeviceEngine {
    * Load a tier onto a device. Loading the same tier twice reuses the session.
    *
    * `device` is not `'auto'`: the caller has already resolved it against the
-   * machine's capabilities, because that decision also picks the tier and the
-   * two must agree.
+   * machine's capabilities, because only that caller has probed them.
    */
   load(model: OnDeviceModel, tier: ModelTier, device: Device): Promise<DeviceInfo>;
 

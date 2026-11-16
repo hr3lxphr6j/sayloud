@@ -28,7 +28,7 @@ import {
 } from './fakes';
 
 const HF = { host: 'huggingface' } as const;
-const Q8 = requireTier(KOKORO_82M, 'q8');
+const FP32 = requireTier(KOKORO_82M, 'fp32');
 
 /** Two small files, so the progress arithmetic can be checked by hand. */
 const FILES: readonly PlannedFile[] = [
@@ -58,19 +58,19 @@ function routes(): Record<string, FakeRoute> {
 
 describe('the plans', () => {
   it('sizes a shared file by its own measurement and the ONNX by the tier', () => {
-    expect(fileBytes(Q8, 'config.json')).toBe(sharedBytes('config.json'));
-    expect(fileBytes(Q8, 'tokenizer.json')).toBe(sharedBytes('tokenizer.json'));
-    expect(fileBytes(Q8, 'onnx/model_quantized.onnx')).toBe(Q8.bytes);
+    expect(fileBytes(FP32, 'config.json')).toBe(sharedBytes('config.json'));
+    expect(fileBytes(FP32, 'tokenizer.json')).toBe(sharedBytes('tokenizer.json'));
+    expect(fileBytes(FP32, 'onnx/model.onnx')).toBe(FP32.bytes);
   });
 
   it('plans a tier with canonical keys and resolved URLs', () => {
-    const plan = tierPlan(KOKORO_82M, Q8, HF);
+    const plan = tierPlan(KOKORO_82M, FP32, HF);
 
     expect(plan.map((file) => file.path)).toEqual([
       'config.json',
       'tokenizer.json',
       'tokenizer_config.json',
-      'onnx/model_quantized.onnx',
+      'onnx/model.onnx',
     ]);
     for (const file of plan) {
       expect(file.cache).toBe(TRANSFORMERS_CACHE);
@@ -81,7 +81,7 @@ describe('the plans', () => {
 
     const total = plan.reduce((sum, file) => sum + file.bytes, 0);
     expect(total).toBe(
-      Q8.bytes +
+      FP32.bytes +
         sharedBytes('config.json') +
         sharedBytes('tokenizer.json') +
         sharedBytes('tokenizer_config.json')
@@ -89,7 +89,7 @@ describe('the plans', () => {
   });
 
   it('plans a tier against ModelScope on the other branch', () => {
-    const plan = tierPlan(KOKORO_82M, Q8, { host: 'modelscope' });
+    const plan = tierPlan(KOKORO_82M, FP32, { host: 'modelscope' });
     expect(plan[0]?.url).toBe(
       `https://modelscope.cn/models/${KOKORO_82M.repo}/resolve/master/config.json`
     );

@@ -362,9 +362,7 @@ export const ja: Record<MessageKey, string> = {
   // Only the names the registry itself carries: the model and its tiers. The
   // rest of the model tab's copy is added with the tab.
   'model.kokoro-82m': 'Kokoro 82M',
-  'model.tier.light': 'ライト',
-  'model.tier.standard': '標準',
-  'model.tier.hifi': '高忠実度',
+  'model.tier.fp32': 'FP32',
 
   // --- the Models tab -------------------------------------------------------
   // The tab manages files rather than preferences, so every line here is about
@@ -392,12 +390,6 @@ export const ja: Record<MessageKey, string> = {
   'model.download-failed': 'ダウンロードに失敗しました。接続を確認してください。',
   'model.download-cancelled': 'ダウンロードがキャンセルされました。',
   'model.read-failed': 'ダウンロードされたモデルを読み取れませんでした。',
-  // Two keys rather than one "Recommended": what is recommended depends on the
-  // machine, and a badge that does not say which machine is a badge that means
-  // nothing when the user reads it on the other one.
-  'model.recommended': 'WebGPU推奨',
-  'model.recommended-cpu': 'GPU非搭載時推奨',
-  'model.broken-on-device': 'このデバイスで音声が歪むことが確認されています',
   'model.license': 'ライセンス：{name}',
   'model.voice-count': '{count}個の音声',
   'model.timings': '文のハイライト',

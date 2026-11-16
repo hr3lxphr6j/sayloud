@@ -184,9 +184,12 @@ export class ModelStore {
   /**
    * Delete one tier, keeping what another downloaded tier still needs.
    *
-   * All three tiers share `config.json` and the two tokenizer files, so the
-   * tier's own ONNX is not the only thing a delete touches — and removing a
+   * The tiers of a model share `config.json` and the two tokenizer files, so
+   * the tier's own ONNX is not the only thing a delete touches — and removing a
    * shared file while another tier is still installed would silently break it.
+   * Kokoro only has one tier today, but the rule is structural: it is what a
+   * second tier would rely on, and what keeps a shared file from being deleted
+   * out from under it.
    */
   async deleteTier(model: OnDeviceModel, tier: ModelTier): Promise<void> {
     const cache = await this.bucket(TRANSFORMERS_CACHE);
@@ -308,10 +311,10 @@ export class ModelStore {
   /**
    * What the model buckets hold.
    *
-   * Counted by key, so the three files every tier shares are counted once no
-   * matter how many tiers are installed. Sizes come from the registry's
-   * measured constants rather than from reading the bodies back: a user asking
-   * "how much space" must not cost a 325 MB read.
+   * Counted by key, so the files every tier shares are counted once no matter
+   * how many tiers are installed. Sizes come from the registry's measured
+   * constants rather than from reading the bodies back: a user asking "how much
+   * space" must not cost a 325 MB read.
    *
    * Only tiers carry a measured size, so a `files`-shaped model (shapes B and
    * C, neither of which ships today) would not be counted until it has one.

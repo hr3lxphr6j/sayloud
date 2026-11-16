@@ -613,11 +613,24 @@ describe('the on-device provider', () => {
     const saved = {
       provider: 'local',
       modelId: 'kokoro-82m',
-      tier: 'fp16',
+      tier: 'fp32',
       device: 'webgpu',
     };
 
     expect(parseStoredConfig(saved)).toEqual(saved);
+  });
+
+  it('reads a config that names a retired tier as the tier that replaced it', () => {
+    // q8 and fp16 were removed on 2026-11-16 after measuring as unusable. A
+    // config saved by a build that still offered them has to keep working:
+    // dropping the key would leave the provider on its fallback, and rejecting
+    // it would report an unknown tier for a choice the user never made.
+    for (const retired of ['q8', 'fp16']) {
+      expect(parseStoredConfig({ provider: 'local', tier: retired })).toEqual({
+        provider: 'local',
+        tier: 'fp32',
+      });
+    }
   });
 
   it('round-trips through the form values the panel seeds itself with', () => {

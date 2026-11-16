@@ -68,7 +68,7 @@ function tick(): Promise<void> {
 async function speaking(session: unknown): Promise<InstanceType<typeof KokoroEngine>> {
   fromPretrained.mockResolvedValue(session);
   const engine = new KokoroEngine();
-  await engine.load('kokoro-82m', 'fp16', 'wasm');
+  await engine.load('kokoro-82m', 'fp32', 'wasm');
   return engine;
 }
 
@@ -83,10 +83,10 @@ describe('KokoroEngine.load', () => {
     fromPretrained.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
     const engine = new KokoroEngine();
-    const stale = engine.load('kokoro-82m', 'fp16', 'webgpu');
+    const stale = engine.load('kokoro-82m', 'fp32', 'webgpu');
     // Both calls see `tts === null`, so both build one. The slower one used to
     // simply be written over.
-    const fresh = engine.load('kokoro-82m', 'fp16', 'webgpu');
+    const fresh = engine.load('kokoro-82m', 'fp32', 'webgpu');
 
     const staleSession = fakeSession();
     const freshSession = fakeSession();
@@ -108,8 +108,8 @@ describe('KokoroEngine.load', () => {
     fromPretrained.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
     const engine = new KokoroEngine();
-    const stale = engine.load('kokoro-82m', 'fp16', 'webgpu');
-    const fresh = engine.load('kokoro-82m', 'fp16', 'webgpu');
+    const stale = engine.load('kokoro-82m', 'fp32', 'webgpu');
+    const fresh = engine.load('kokoro-82m', 'fp32', 'webgpu');
 
     const staleSession = fakeSession();
     const freshSession = fakeSession();
@@ -127,11 +127,11 @@ describe('KokoroEngine.load', () => {
     fromPretrained.mockResolvedValue(fakeSession().session);
     const engine = new KokoroEngine();
 
-    await engine.load('kokoro-82m', 'fp16', 'webgpu');
-    await engine.load('kokoro-82m', 'fp16', 'webgpu');
+    await engine.load('kokoro-82m', 'fp32', 'webgpu');
+    await engine.load('kokoro-82m', 'fp32', 'webgpu');
 
     // A seek, a new sentence and a voice change all call this; rebuilding
-    // 163 MB for each would be the slowest thing in the extension.
+    // 325 MB for each would be the slowest thing in the extension.
     expect(fromPretrained).toHaveBeenCalledTimes(1);
   });
 
@@ -139,8 +139,8 @@ describe('KokoroEngine.load', () => {
     fromPretrained.mockResolvedValue(fakeSession().session);
     const engine = new KokoroEngine();
 
-    await engine.load('kokoro-82m', 'fp16', 'webgpu');
-    await engine.load('kokoro-82m', 'fp16', 'wasm');
+    await engine.load('kokoro-82m', 'fp32', 'webgpu');
+    await engine.load('kokoro-82m', 'fp32', 'wasm');
 
     expect(fromPretrained).toHaveBeenCalledTimes(2);
   });
@@ -149,9 +149,9 @@ describe('KokoroEngine.load', () => {
     fromPretrained.mockResolvedValue(fakeSession().session);
     const engine = new KokoroEngine();
 
-    await engine.load('kokoro-82m', 'fp16', 'webgpu');
+    await engine.load('kokoro-82m', 'fp32', 'webgpu');
     engine.dispose();
-    await engine.load('kokoro-82m', 'fp16', 'webgpu');
+    await engine.load('kokoro-82m', 'fp32', 'webgpu');
 
     // `dispose` drops the device back to the default, so a later load with the
     // same preference is not mistaken for the session that is already gone.

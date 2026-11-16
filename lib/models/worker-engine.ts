@@ -300,7 +300,7 @@ export class WorkerLocalEngine implements OnDeviceEngine {
   /**
    * Load the model, and instantiate the phonemizer alongside it.
    *
-   * The two are independent — one is a 163 MB ONNX session, the other is 5 MB
+   * The two are independent — one is a 325 MB ONNX session, the other is 5 MB
    * of wasm and a dictionary — so they are started together rather than one
    * after the other. It is a few milliseconds next to twelve seconds, and it
    * also means the phonemizer is ready by the time the first sentence needs it.

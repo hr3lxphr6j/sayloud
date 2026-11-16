@@ -4,7 +4,7 @@
  * It lives here rather than inside the worker because it needed tests, and a
  * class buried in a worker module cannot have any. The bug that forced the move
  * was a race between two `load()` calls: both saw `this.tts === null`, both
- * built a session, and the slower one was written over — leaving a 163 MB
+ * built a session, and the slower one was written over — leaving a 325 MB
  * session that nothing could reach to dispose. That is only reachable by
  * calling `load()` twice before the first resolves, which is exactly what a
  * test can do and a browser cannot be asked to reproduce on demand.
@@ -49,7 +49,7 @@ export class KokoroEngine {
     if (!model || !tier) throw new Error(`unknown model or tier: ${modelId}/${tierId}`);
 
     // Reuse the session when nothing about it changed. A seek, a new sentence
-    // and a voice change all call this, and rebuilding a 163 MB session for
+    // and a voice change all call this, and rebuilding a 325 MB session for
     // each would be the slowest thing in the extension.
     if (this.tts && this.tier?.id === tier.id && this.device === device) {
       return { device: this.device, sessionInitMs: 0 };

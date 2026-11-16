@@ -8,15 +8,16 @@
  *    `ModelStore` (`sayloud:model-source`), which is the only place that stores
  *    it; a copy in the provider config would be a second answer to "where do
  *    downloads come from" and the two would disagree.
- * 2. **Tiers** — one row per size of the same model. Each row is in one of
- *    three states, and nothing else on the panel may claim to know better.
+ * 2. **The model** — the row for its weights: download, delete, or make it the
+ *    one in use. Kokoro ships a single set of files, so there is one row rather
+ *    than a choice between sizes.
  * 3. **Device and space** — what the machine can do, and how much room the two
  *    model buckets take. Not the audio cache: that is on the Settings tab, and
  *    a user who clears one must not expect the other to shrink.
  *
  * The download itself runs in the *panel*, never in the offscreen document:
  * Chrome closes an offscreen document 30 seconds after audio stops, and a
- * 163 MB download would be killed halfway through. It is owned
+ * 325 MB download would be killed halfway through. It is owned
  * by the panel shell rather than by this page, so switching tabs mid-download
  * does not cancel it — closing the panel does, which is exactly what the user
  * closing it means.
@@ -32,13 +33,7 @@ import { formatDecimalBytes } from '~/lib/format-bytes';
 import { type MessageKey, type Translator, useT } from '~/lib/i18n';
 import type { DevicePreference } from '~/lib/models/device';
 import { fileBytes } from '~/lib/models/downloader';
-import {
-  type DeviceClass,
-  deviceClass,
-  MODELS,
-  type ModelTier,
-  type OnDeviceModel,
-} from '~/lib/models/registry';
+import { MODELS, type ModelTier, type OnDeviceModel } from '~/lib/models/registry';
 import type { ModelSourceSetting } from '~/lib/models/store';
 import { isMirrorUrl, MODEL_HOSTS, type ModelHostId } from '~/lib/models/urls';
 import { errorMessage } from '~/lib/providers/errors';
@@ -93,7 +88,6 @@ export function ModelsTab({
       <TierCards
         store={store}
         downloads={downloads}
-        device={device}
         chosenTier={chosen}
         onSetActive={(model, tier) => void setActiveTier(store, model, tier, inUse, onChanged)}
         onChanged={onChanged}
@@ -267,7 +261,6 @@ function SourceCard({ models }: SourceCardProps) {
 interface TierCardsProps {
   store: ConfigStore;
   downloads: ModelStoreView;
-  device: ReturnType<typeof useDevice>;
   chosenTier: string | undefined;
   onSetActive: (model: OnDeviceModel, tier: ModelTier) => void;
   onChanged: () => void;
@@ -280,18 +273,9 @@ interface TierCardsProps {
  * registry entry and nothing here. With one entry there is deliberately no
  * "add a model" placeholder: an empty control is worse than no control.
  */
-function TierCards({
-  store,
-  downloads,
-  device,
-  chosenTier,
-  onSetActive,
-  onChanged,
-}: TierCardsProps) {
+function TierCards({ store, downloads, chosenTier, onSetActive, onChanged }: TierCardsProps) {
   const t = useT();
   const [confirming, setConfirming] = useState<string | null>(null);
-  const caps = device?.probe.caps;
-  const recommendedClass = caps ? deviceClass(caps) : undefined;
 
   return (
     <>
@@ -318,7 +302,6 @@ function TierCards({
                 model={model}
                 tier={tier}
                 status={downloads.statuses[tierKey(model, tier)] ?? { kind: 'unknown' }}
-                recommended={recommendationKey(tier, recommendedClass)}
                 chosen={chosenTier === tier.id}
                 confirming={confirming === tierKey(model, tier)}
                 onDownload={() => downloads.start(model, tier)}
@@ -349,26 +332,6 @@ function cardMeta(model: OnDeviceModel, t: Translator): string {
   ].join(' · ');
 }
 
-/**
- * Why this tier is the one to get, or why it must not be used here.
- *
- * A tier can be preferred for exactly one device class, and the badge has to
- * say which: "recommended" alone is a claim about a machine the reader may be
- * looking at from another one.
- *
- * A known-broken combination outranks that and replaces it. "Not preferred"
- * means slower than it needs to be; "broken here" means the audio comes out
- * wrong, and that is worth losing the recommendation badge over.
- */
-function recommendationKey(tier: ModelTier, cls: DeviceClass | undefined): MessageKey | undefined {
-  if (cls === undefined) return undefined;
-  if (tier.brokenOn?.includes(cls) === true) return 'model.broken-on-device';
-  if (tier.preferredFor?.includes(cls) !== true) return undefined;
-  // `wasm` is the only class without a GPU, and the one whose badge must not
-  // read as advice to use one.
-  return cls === 'wasm' ? 'model.recommended-cpu' : 'model.recommended';
-}
-
 function modelHasTier(model: OnDeviceModel, tierId: string): boolean {
   return (model.tiers ?? []).some((tier) => tier.id === tierId);
 }
@@ -377,8 +340,6 @@ interface TierRowProps {
   model: OnDeviceModel;
   tier: ModelTier;
   status: TierStatus;
-  /** Why this tier is the one to get, when it is. */
-  recommended: MessageKey | undefined;
   chosen: boolean;
   confirming: boolean;
   onDownload: () => void;
@@ -394,7 +355,6 @@ function TierRow({
   model,
   tier,
   status,
-  recommended,
   chosen,
   confirming,
   onDownload,
@@ -435,10 +395,7 @@ function TierRow({
   return (
     <li class="tier" data-tier={`${model.id}:${tier.id}`} data-state={status.kind}>
       <div class="tier-text">
-        <span class="tier-name">
-          {label}
-          {recommended !== undefined && <span class="tier-hint"> · {t(recommended)}</span>}
-        </span>
+        <span class="tier-name">{label}</span>
         <span class="tier-size">{tierSize(tier)}</span>
 
         {status.kind === 'failed' && (
@@ -509,11 +466,11 @@ interface StorageCardProps {
  * `chrome.storage` to write such a record into, and a guess from the panel would
  * be a claim about a context it cannot see.
  *
- * The control exists because "auto" is a decision made from one capability
- * check, and a capability check cannot see a driver bug. A GPU that advertises
- * `shader-f16` and then produces distorted half-precision audio is a real thing
- * to be caught by, and the only way to tell it apart from a bad download is to
- * ask the CPU to run the same weights.
+ * The control exists because "auto" is decided from one capability check, and a
+ * capability check cannot see a driver bug: a GPU that builds the session and
+ * then produces broken audio is a real thing to be caught by, and the only way
+ * to tell it apart from a bad download is to ask the CPU to run the same
+ * weights.
  */
 function StorageCard({ device, downloads, preference, onSetDevice }: StorageCardProps) {
   const t = useT();

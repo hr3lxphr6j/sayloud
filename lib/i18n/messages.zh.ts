@@ -278,9 +278,7 @@ export const zh: Record<MessageKey, string> = {
 
   // --- on-device models -----------------------------------------------------
   'model.kokoro-82m': 'Kokoro 82M',
-  'model.tier.light': '轻量',
-  'model.tier.standard': '标准',
-  'model.tier.hifi': '高保真',
+  'model.tier.fp32': 'FP32',
 
   // --- the Models tab -------------------------------------------------------
   'model.source.title': '下载源',
@@ -306,9 +304,6 @@ export const zh: Record<MessageKey, string> = {
   'model.download-failed': '下载失败，请检查网络连接。',
   'model.download-cancelled': '下载已取消。',
   'model.read-failed': '无法读取已下载的模型。',
-  'model.recommended': '推荐用于 WebGPU',
-  'model.recommended-cpu': '推荐用于无 GPU 的设备',
-  'model.broken-on-device': '在此设备上已知会损伤音质',
   'model.license': '许可：{name}',
   'model.voice-count': '{count} 个音色',
   'model.timings': '仅句级高亮',

@@ -1,18 +1,16 @@
 /**
  * What the machine can actually do.
  *
- * The tier a machine should use is not "GPU or not": the measurements found
- * that a quantised model gains *nothing* from WebGPU, because its
- * dequantisation nodes fall back to the CPU, while `fp16`/`fp32` gain 6–8×.
- * So the question this module answers is narrower — is there a WebGPU adapter,
- * and does it have `shader-f16` — and `preferredTier` in the registry turns
- * that into a tier.
+ * The question this module answers is narrow — is there a WebGPU adapter —
+ * because that is the only capability left that changes what the engine can
+ * use: Kokoro ships one full-precision tier, and the half-precision variant it
+ * used to share the registry with was removed after it measured as unusable
+ * (see `registry.ts`).
  *
  * `navigator.gpu` is typed by the DOM library, but this module takes a
  * structural slice of it: a unit test can then drive every branch — no GPU, no
- * adapter, f16, no f16 — without a browser that has WebGPU.
+ * adapter — without a browser that has WebGPU.
  */
-import type { DeviceCaps } from './registry';
 
 /** The slice of `navigator.gpu` used here. */
 export interface GpuLike {
@@ -21,7 +19,6 @@ export interface GpuLike {
 
 /** The slice of a `GPUAdapter` used here. */
 export interface AdapterLike {
-  readonly features: { has(feature: string): boolean };
   readonly info?: AdapterInfoLike | undefined;
 }
 
@@ -32,8 +29,10 @@ export interface AdapterInfoLike {
   readonly description?: string | undefined;
 }
 
-/** The feature name that decides between `fp16` and `fp32`. */
-export const SHADER_F16 = 'shader-f16';
+/** What the caller measured about the device, before picking a backend. */
+export interface DeviceCaps {
+  readonly webgpu: boolean;
+}
 
 /** What a probe found. */
 export interface DeviceProbe {
@@ -75,18 +74,18 @@ export class DeviceUnavailableError extends Error {
  * `wasm` — and none of them is worth failing a synthesis over.
  */
 export async function probeDevice(gpu: GpuLike | null | undefined): Promise<DeviceProbe> {
-  if (!gpu) return { caps: { webgpu: false, shaderF16: false } };
+  if (!gpu) return { caps: { webgpu: false } };
 
   let adapter: AdapterLike | null = null;
   try {
     adapter = await gpu.requestAdapter();
   } catch {
     // A blocked or driverless adapter rejects rather than returning null.
-    return { caps: { webgpu: false, shaderF16: false } };
+    return { caps: { webgpu: false } };
   }
-  if (!adapter) return { caps: { webgpu: false, shaderF16: false } };
+  if (!adapter) return { caps: { webgpu: false } };
 
-  const caps: DeviceCaps = { webgpu: true, shaderF16: adapter.features.has(SHADER_F16) };
+  const caps: DeviceCaps = { webgpu: true };
   const adapterName = describeAdapter(adapter.info);
   return adapterName === undefined ? { caps } : { caps, adapterName };
 }
@@ -106,8 +105,7 @@ function describeAdapter(info: AdapterInfoLike | undefined): string | undefined 
 /**
  * The device to run on, given what the user asked for and what the machine has.
  *
- * `auto` means "use the GPU if there is one"; the tier chosen on top of that is
- * what decides whether the GPU is actually worth using.
+ * `auto` means "use the GPU if there is one".
  */
 export function resolveDevice(preference: DevicePreference, caps: DeviceCaps): Device {
   switch (preference) {

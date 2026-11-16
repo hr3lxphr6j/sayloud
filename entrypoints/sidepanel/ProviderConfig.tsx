@@ -112,10 +112,9 @@ export function ProviderConfigPanel({
         // Create a default config so the user can activate local without
         // visiting the Models tab first.
         //
-        // No `tier`: which one is right depends on this machine, and only
-        // `preferredTier` knows that. Pinning `fp16` here is what handed a tier
-        // the GPU cannot run — silent, distorted audio — to every machine whose
-        // adapter lacks `shader-f16`, which is most of them.
+        // No `tier`: the provider falls back to the model's only tier, and
+        // leaving it unset means a build that ships a different set of weights
+        // is not pointed at one this one happens to name.
         await store.saveConfig({ provider: 'local', modelId: 'kokoro-82m', device: 'auto' });
       } else if (localSaved.provider === 'local' && saved?.provider === 'local') {
         // Sync saved config to active config when they differ (e.g. user changed

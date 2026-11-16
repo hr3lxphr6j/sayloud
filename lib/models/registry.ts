@@ -1,14 +1,14 @@
 /**
  * The on-device model registry: the one place that describes
- * which models exist, what they cost, and which tier a machine should use.
+ * which models exist and what they cost.
  *
  * It deliberately has **no runtime dependencies**. The side panel and the
  * offscreen worker both import it, and the side panel must never pull
  * `onnxruntime-web` (or anything that pulls it) into its bundle — the model tab
  * only downloads files, it never runs them.
  *
- * The tier sizes are measured constants rather than `Content-Length` probes:
- * the UI has to show "163 MB" *before* the download starts. The numbers come
+ * The file sizes are measured constants rather than `Content-Length` probes:
+ * the UI has to show "325 MB" *before* the download starts. The numbers come
  * from the ModelScope file-listing API and
  * are quoted in MB, so they are the decimal values the repository reports.
  */
@@ -27,11 +27,18 @@ export type OnDeviceFamily = 'kokoro' | 'kitten' | 'piper' | 'vits';
  */
 export type ModelShape = 'model+voices' | 'per-voice' | 'multi-component';
 
-/** The grouping unit of a `model+voices` model; a tier is one set of files. */
+/**
+ * The grouping unit of a `model+voices` model; a tier is one set of files.
+ *
+ * Kokoro has exactly one — the full-precision weights. The quantised (`q8`) and
+ * half-precision (`fp16`) variants were removed on 2026-11-16: measured on
+ * Apple Silicon and on NVIDIA they produced unusable audio, so there was
+ * nothing left for a smaller tier to be *for*.
+ */
 export interface ModelTier {
-  /** Family-scoped id: `'q8' | 'fp16' | 'fp32'` for Kokoro. */
+  /** Family-scoped id: `'fp32'` for Kokoro. */
   readonly id: string;
-  /** i18n label, e.g. "Light". */
+  /** i18n label, e.g. "FP32". */
   readonly labelKey: MessageKey;
   /**
    * The value handed to the engine (for Kokoro, the transformers.js `dtype`).
@@ -45,44 +52,6 @@ export interface ModelTier {
   readonly files: readonly string[];
   /** Measured size of the tier's own files. */
   readonly bytes: number;
-  /**
-   * Where this tier is the *preferred* one.
-   *
-   * Absent means "never selected automatically, manual choice only".
-   */
-  readonly preferredFor?: readonly DeviceClass[];
-  /**
-   * Device classes where this tier is known to produce wrong audio.
-   *
-   * Neither a missing `preferredFor` nor a capability requirement can express
-   * this. "Not preferred" means slower than it needs to be; a missing
-   * capability means the hardware cannot do the arithmetic at all. This is the
-   * third case: the capability is there, the session builds, and the backend is
-   * simply wrong.
-   *
-   * `fp16` on WebGPU is that case. Measured 2026-10-01 on an Apple M3, whose
-   * adapter does advertise `shader-f16`: the audio was distorted and stopped
-   * part-way through the sentence, while the _same weights_ on the CPU were
-   * perfect and `fp32` on the same GPU was perfect too. It is the combination
-   * of this dtype with this backend, and nothing was ever verified about the
-   * audio: fp16 was measured for *speed*, never for quality.
-   */
-  readonly brokenOn?: readonly DeviceClass[];
-}
-
-/**
- * How much GPU a machine has, in the three classes the measurements found.
- *
- * The split is an empirical result, not a guess: `q8` gains
- * nothing from WebGPU (its dequantisation nodes fall back to the CPU), so the
- * tier worth having depends on `shader-f16` rather than on "GPU or not".
- */
-export type DeviceClass = 'webgpu-f16' | 'webgpu' | 'wasm';
-
-/** What the caller measured about the device, before picking a tier. */
-export interface DeviceCaps {
-  readonly webgpu: boolean;
-  readonly shaderF16: boolean;
 }
 
 /** One model the extension can run locally. */
@@ -165,39 +134,15 @@ export const KOKORO_82M: OnDeviceModel = {
   voiceCount: 41,
   tiers: [
     {
-      // Smallest, and the only sensible choice without WebGPU: the GPU cannot
-      // be used anyway, so q8's weakness on it costs nothing.
-      id: 'q8',
-      labelKey: 'model.tier.light',
-      engineArg: 'q8',
-      bytes: 92_360_000,
-      preferredFor: ['wasm'],
-      files: [...SHARED_MODEL_FILES, 'onnx/model_quantized.onnx'],
-    },
-    {
-      // Half of fp32's size, and it was the recommended tier for a `shader-f16`
-      // GPU until its audio was actually listened to. It produces distorted
-      // speech that stops part-way through on WebGPU — measured on hardware whose
-      // adapter advertises the extension — while the same weights on the CPU are
-      // flawless. So it is never recommended, and the Models tab says why.
-      id: 'fp16',
-      labelKey: 'model.tier.standard',
-      engineArg: 'fp16',
-      bytes: 163_230_000,
-      brokenOn: ['webgpu-f16', 'webgpu'],
-      files: [...SHARED_MODEL_FILES, 'onnx/model_fp16.onnx'],
-    },
-    {
-      // WebGPU, with or without `shader-f16`. It took over the `webgpu-f16`
-      // class from fp16, which means the larger download is now the one
-      // automatic selection makes on a modern GPU — correctness is not
-      // negotiable, and every other tier of this model has a device class where
-      // it is the right answer.
+      // The only tier. `q8` and `fp16` were removed rather than re-ranked:
+      // measured on both Apple Silicon and NVIDIA, neither produced usable
+      // audio on any backend, so a smaller download was not a trade the user
+      // could make. `fp32` runs on WebGPU and on the CPU, and is the one set of
+      // weights this model ships.
       id: 'fp32',
-      labelKey: 'model.tier.hifi',
+      labelKey: 'model.tier.fp32',
       engineArg: 'fp32',
       bytes: 325_530_000,
-      preferredFor: ['webgpu-f16', 'webgpu'],
       files: [...SHARED_MODEL_FILES, 'onnx/model.onnx'],
     },
   ],
@@ -215,34 +160,4 @@ export function modelById(id: string): OnDeviceModel | undefined {
 /** The tier with this id, or undefined when the model has no such tier. */
 export function tierById(model: OnDeviceModel, id: string): ModelTier | undefined {
   return model.tiers?.find((tier) => tier.id === id);
-}
-
-/** The class a machine belongs to, from what the caller measured. */
-export function deviceClass(caps: DeviceCaps): DeviceClass {
-  if (!caps.webgpu) return 'wasm';
-  return caps.shaderF16 ? 'webgpu-f16' : 'webgpu';
-}
-
-/**
- * The tier this machine should use, from its capabilities alone.
- *
- * A pure function on purpose: "which tier is recommended" and "which tier is
- * downloaded" are different questions, and only the store can answer the
- * second. The model tab combines the two into a "recommended" badge next to a
- * "download" button.
- *
- * Falls back to the first tier so a caller always gets something to show, and
- * returns undefined only for a model with no tiers at all.
- */
-export function preferredTier(model: OnDeviceModel, caps: DeviceCaps): ModelTier | undefined {
-  const tiers = model.tiers;
-  if (!tiers || tiers.length === 0) return undefined;
-
-  const wanted = deviceClass(caps);
-  return (
-    tiers.find(
-      (tier) =>
-        tier.preferredFor?.includes(wanted) === true && tier.brokenOn?.includes(wanted) !== true
-    ) ?? tiers[0]
-  );
 }

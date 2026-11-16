@@ -52,9 +52,9 @@ describe('formatDecimalBytes', () => {
     expect(formatDecimalBytes(3497)).toBe('3.5 KB');
   });
 
-  it('quotes the tier sizes the repository measures', () => {
-    expect(formatDecimalBytes(92_363_654)).toBe('92.4 MB');
-    expect(formatDecimalBytes(163_233_654)).toBe('163.2 MB');
+  it('quotes the size the repository measures', () => {
+    // Written down from the file-listing API, because the Models tab shows it
+    // before anything is downloaded.
     expect(formatDecimalBytes(325_533_654)).toBe('325.5 MB');
   });
 

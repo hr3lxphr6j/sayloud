@@ -178,9 +178,9 @@ export interface LocalConfig {
   /**
    * Which tier of that model.
    *
-   * Optional rather than defaulted here: the right tier depends on the
-   * machine's measured capabilities, and only the caller that has measured the
-   * device can pick one. Unset means "ask `preferredTier`".
+   * Optional rather than defaulted here: the config is written by builds that
+   * may know a different set of tiers, so the provider resolves it against the
+   * registry. Unset means the model's first tier — the only one Kokoro has.
    */
   tier?: string;
   /** `auto` uses WebGPU when there is one. */

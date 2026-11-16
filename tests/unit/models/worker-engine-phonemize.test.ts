@@ -275,7 +275,7 @@ async function assembled(dictionaries: Record<string, DictionaryBytes | null>) {
     source: { host: 'modelscope' },
   });
 
-  await engine.load(KOKORO_82M, tierOf('fp16'), 'wasm');
+  await engine.load(KOKORO_82M, tierOf('fp32'), 'wasm');
   return { engine, kokoro, phonemizer };
 }
 

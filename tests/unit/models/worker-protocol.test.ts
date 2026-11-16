@@ -21,7 +21,7 @@ describe('isWorkerRequest', () => {
         type: 'load',
         id: 2,
         modelId: 'kokoro-82m',
-        tierId: 'fp16',
+        tierId: 'fp32',
         device: 'wasm',
       })
     ).toBe(true);

@@ -29,8 +29,6 @@ import {
   requireTier,
 } from './models/fakes';
 
-const q8 = requireTier(KOKORO_82M, 'q8');
-const fp16 = requireTier(KOKORO_82M, 'fp16');
 const fp32 = requireTier(KOKORO_82M, 'fp32');
 
 const HUGGINGFACE: ModelSource = { host: 'huggingface' };
@@ -42,7 +40,7 @@ function routesFor(model: OnDeviceModel, tiers: readonly ModelTier[]): Record<st
     for (const file of tier.files) {
       const url = resolveUrl(canonicalModelUrl(model.repo, file), HUGGINGFACE);
       // Four bytes whatever the file claims to be: the downloader trusts the
-      // registry's measured size for progress, so a 163 MB allocation would
+      // registry's measured size for progress, so a 325 MB allocation would
       // slow the suite down and prove nothing.
       routes[url] = { bytes: bytesOf(4) };
     }
@@ -76,10 +74,10 @@ function harness(
   }
 
   const caches = new FakeCaches();
-  const fetch = fakeFetch(options.routes ?? routesFor(KOKORO_82M, [q8, fp16, fp32]));
+  const fetch = fakeFetch(options.routes ?? routesFor(KOKORO_82M, [fp32]));
   const models: ModelAdmin = {
     store: new ModelStore({ storage: storage.area, cacheStorage: caches, fetch }),
-    probe: () => Promise.resolve({ caps: { webgpu: false, shaderF16: false } }),
+    probe: () => Promise.resolve({ caps: { webgpu: false } }),
   };
   return { models, store: new ConfigStore(storage.area), caches, storage, fetch };
 }
@@ -173,15 +171,15 @@ function controllableBody() {
 }
 
 describe('the model cards', () => {
-  it('gives a row to every tier the registry lists, with its size', async () => {
+  it('gives the model a row, with its size', async () => {
     renderTab();
 
     await screen.findByText('Kokoro 82M');
 
-    expect(document.querySelectorAll('[data-tier]')).toHaveLength(3);
-    // 92.4 MB is the ONNX plus the three files every tier shares.
-    expect(tierRow(q8).textContent).toContain('92.4 MB');
-    expect(tierRow(fp16).textContent).toContain('163.2 MB');
+    // One set of weights, so one row: FP32 is all this build ships.
+    expect(document.querySelectorAll('[data-tier]')).toHaveLength(1);
+    // 325.5 MB is the ONNX plus the three files it shares with any other tier.
+    expect(tierRow(fp32).textContent).toContain('FP32');
     expect(tierRow(fp32).textContent).toContain('325.5 MB');
   });
 
@@ -194,80 +192,62 @@ describe('the model cards', () => {
     expect(licence.getAttribute('href')).toBe('https://www.apache.org/licenses/LICENSE-2.0');
   });
 
-  it('starts every tier not downloaded, with a Download button', async () => {
+  it('starts not downloaded, with a Download button', async () => {
     renderTab();
     await screen.findByText('Kokoro 82M');
 
     // The state is derived from Cache Storage, so it starts as "not read yet".
-    await waitFor(() => expect(document.querySelectorAll('[data-state=absent]')).toHaveLength(3));
-    expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(3);
+    await waitFor(() => expect(document.querySelectorAll('[data-state=absent]')).toHaveLength(1));
+    expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(1);
   });
 
-  it('marks the tier in use and offers the others', async () => {
-    renderTab({ saved: { local: { provider: 'local', tier: 'q8' } } });
+  it('marks the tier in use only once its files are there', async () => {
+    renderTab({ saved: { local: { provider: 'local', tier: 'fp32' } } });
     await screen.findByText('Kokoro 82M');
 
-    // `q8` is not downloaded yet, so it is only *asked for*; the badge waits
-    // for a tier that is both chosen and present.
-    expect(tierRow(q8).textContent).not.toContain('In use');
+    // Chosen but not downloaded: the badge waits for files that are both named
+    // and present.
+    expect(tierRow(fp32).textContent).not.toContain('In use');
   });
 
-  it('marks a downloaded tier in use, and offers the rest', async () => {
-    const built = harness({ saved: { local: { provider: 'local', tier: 'q8' } } });
-    for (const tier of [q8, fp16]) {
-      for (const file of tier.files) {
-        built.caches.bucket('transformers-cache').seed(canonicalModelUrl(KOKORO_82M.repo, file));
-      }
+  it('marks a downloaded tier in use', async () => {
+    const built = harness({ saved: { local: { provider: 'local', tier: 'fp32' } } });
+    for (const file of fp32.files) {
+      built.caches.bucket('transformers-cache').seed(canonicalModelUrl(KOKORO_82M.repo, file));
     }
     render(
       <Harness
         models={built.models}
         store={built.store}
-        config={{ provider: 'local', tier: 'q8' }}
+        config={{ provider: 'local', tier: 'fp32' }}
         savedConfigs={built.storage.data.get('sayloud:provider-configs') as SavedConfigs}
         onChanged={vi.fn()}
       />
     );
 
     await screen.findByText('Kokoro 82M');
-    await waitFor(() => expect(tierRow(q8).textContent).toContain('In use'));
-
-    const row = tierRow(fp16);
-    expect(row.textContent).toContain('Set as active');
-    expect(row.textContent).toContain('Delete');
+    await waitFor(() => expect(tierRow(fp32).textContent).toContain('In use'));
+    expect(tierRow(fp32).textContent).toContain('Delete');
+    expect(tierRow(fp32).textContent).not.toContain('Set as active');
   });
 
-  it('recommends the tier this machine can use', async () => {
-    renderTab();
+  it('puts no recommendation badge on the only tier', async () => {
+    renderTab({ probe: () => Promise.resolve({ caps: { webgpu: true } }) });
     await screen.findByText('Kokoro 82M');
 
-    // No GPU, so `q8` is the recommendation and the WebGPU advice is not shown.
-    expect(tierRow(q8).textContent).toContain('Recommended without a GPU');
-    expect(tierRow(fp16).textContent).not.toContain('Recommended');
-  });
-
-  it('sends both GPU classes to fp32, and warns about fp16 instead', async () => {
-    renderTab({ probe: () => Promise.resolve({ caps: { webgpu: true, shaderF16: true } }) });
-
-    await screen.findByText('Kokoro 82M');
-    // `shader-f16` is present, and it does not matter: fp16 on WebGPU distorts
-    // the audio regardless (measured 2026-10-01 on an Apple M3). So the badge
-    // that used to sit on fp16 now sits on fp32, and fp16 says what it does.
-    await waitFor(() => expect(tierRow(fp32).textContent).toContain('Recommended for WebGPU'));
-    expect(tierRow(fp16).textContent).toContain('Known to distort the audio on this device');
-    expect(tierRow(fp16).textContent).not.toContain('Recommended');
-    expect(tierRow(q8).textContent).not.toContain('Recommended');
+    // There is nothing to recommend it over, and no smaller tier to warn
+    // about: both the badge and the "distorts the audio" note retired with
+    // q8 and fp16.
+    expect(tierRow(fp32).textContent).not.toContain('Recommended');
+    expect(tierRow(fp32).textContent).not.toContain('distort');
   });
 });
 
-describe('downloading a tier', () => {
+describe('downloading the model', () => {
   it('shows progress, then the files are there and the row says so', async () => {
-    const onnxUrl = resolveUrl(
-      canonicalModelUrl(KOKORO_82M.repo, 'onnx/model_quantized.onnx'),
-      HUGGINGFACE
-    );
+    const onnxUrl = resolveUrl(canonicalModelUrl(KOKORO_82M.repo, 'onnx/model.onnx'), HUGGINGFACE);
     const body = controllableBody();
-    const routes = routesFor(KOKORO_82M, [fp16, fp32]);
+    const routes = routesFor(KOKORO_82M, [fp32]);
     routes[onnxUrl] = { body: body.body };
     // The shared files have to answer too.
     routes[resolveUrl(canonicalModelUrl(KOKORO_82M.repo, 'config.json'), HUGGINGFACE)] = {
@@ -277,42 +257,39 @@ describe('downloading a tier', () => {
     const built = renderTab({ routes });
     await screen.findByText('Kokoro 82M');
 
-    fireEvent.click(tierRow(q8).querySelector('button') as HTMLElement);
+    fireEvent.click(tierRow(fp32).querySelector('button') as HTMLElement);
 
     // Half of the ONNX is 50% of the tier's declared total.
-    body.push(Math.round(q8.bytes / 2));
-    expect(await screen.findByText(/Downloading Light · 50%/)).toBeTruthy();
+    body.push(Math.round(fp32.bytes / 2));
+    expect(await screen.findByText(/Downloading FP32 · 50%/)).toBeTruthy();
 
     body.close();
-    await waitFor(() => expect(tierRow(q8).getAttribute('data-state')).toBe('downloaded'));
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('downloaded'));
 
     // Read from the cache rather than from a flag the tab could have set
     // optimistically: the canonical keys are what the engine will look up.
     const bucket = built.caches.bucket('transformers-cache');
-    for (const file of q8.files) {
+    for (const file of fp32.files) {
       expect(bucket.has(canonicalModelUrl(KOKORO_82M.repo, file))).toBe(true);
     }
   });
 
   it('counts the bytes it stored as the space used', async () => {
-    const built = renderTab({ saved: { local: { provider: 'local', tier: 'q8' } } });
+    const built = renderTab({ saved: { local: { provider: 'local', tier: 'fp32' } } });
     await screen.findByText('Kokoro 82M');
 
-    fireEvent.click(tierRow(q8).querySelector('button') as HTMLElement);
-    await waitFor(() => expect(tierRow(q8).getAttribute('data-state')).toBe('downloaded'));
-    await waitFor(() => expect(storageUsed()).toBe('92.4 MB'));
+    fireEvent.click(tierRow(fp32).querySelector('button') as HTMLElement);
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('downloaded'));
+    await waitFor(() => expect(storageUsed()).toBe('325.5 MB'));
 
     expect(built.fetch.calls).toContain(
-      resolveUrl(canonicalModelUrl(KOKORO_82M.repo, 'onnx/model_quantized.onnx'), HUGGINGFACE)
+      resolveUrl(canonicalModelUrl(KOKORO_82M.repo, 'onnx/model.onnx'), HUGGINGFACE)
     );
   });
 
   it('goes back to not downloaded when the user cancels, and says so', async () => {
-    const onnxUrl = resolveUrl(
-      canonicalModelUrl(KOKORO_82M.repo, 'onnx/model_quantized.onnx'),
-      HUGGINGFACE
-    );
-    const routes = routesFor(KOKORO_82M, [fp16, fp32]);
+    const onnxUrl = resolveUrl(canonicalModelUrl(KOKORO_82M.repo, 'onnx/model.onnx'), HUGGINGFACE);
+    const routes = routesFor(KOKORO_82M, [fp32]);
     // The source takes its time, so the cancellation lands mid-request — the
     // only moment an `AbortController` can actually stop anything.
     routes[onnxUrl] = { bytes: bytesOf(4), delayMs: 30_000 };
@@ -320,40 +297,37 @@ describe('downloading a tier', () => {
     renderTab({ routes });
     await screen.findByText('Kokoro 82M');
 
-    fireEvent.click(tierRow(q8).querySelector('button') as HTMLElement);
-    await screen.findByText(/Downloading Light/);
+    fireEvent.click(tierRow(fp32).querySelector('button') as HTMLElement);
+    await screen.findByText(/Downloading FP32/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    await waitFor(() => expect(tierRow(q8).getAttribute('data-state')).toBe('absent'));
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('absent'));
     expect(await screen.findByText('Download cancelled.')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(3);
+    expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(1);
   });
 
   it('returns the row to not downloaded when the download fails', async () => {
-    const onnxUrl = resolveUrl(
-      canonicalModelUrl(KOKORO_82M.repo, 'onnx/model_quantized.onnx'),
-      HUGGINGFACE
-    );
-    const routes = routesFor(KOKORO_82M, [fp16, fp32]);
+    const onnxUrl = resolveUrl(canonicalModelUrl(KOKORO_82M.repo, 'onnx/model.onnx'), HUGGINGFACE);
+    const routes = routesFor(KOKORO_82M, [fp32]);
     routes[onnxUrl] = { status: 500 };
 
     renderTab({ routes });
     await screen.findByText('Kokoro 82M');
 
-    fireEvent.click(tierRow(q8).querySelector('button') as HTMLElement);
+    fireEvent.click(tierRow(fp32).querySelector('button') as HTMLElement);
 
-    await waitFor(() => expect(tierRow(q8).getAttribute('data-state')).toBe('failed'));
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('failed'));
     expect(screen.getByText('Failed to download. Check your connection.')).toBeTruthy();
     // And it can be tried again.
-    expect(tierRow(q8).textContent).toContain('Download');
+    expect(tierRow(fp32).textContent).toContain('Download');
   });
 });
 
-describe('deleting a tier', () => {
-  it('deletes a tier that is not in use without asking', async () => {
-    const built = harness({ saved: { local: { provider: 'local', tier: 'q8' } } });
-    for (const file of fp16.files) {
+describe('deleting the model', () => {
+  it('deletes files that are not in use without asking', async () => {
+    const built = harness();
+    for (const file of fp32.files) {
       built.caches.bucket('transformers-cache').seed(canonicalModelUrl(KOKORO_82M.repo, file));
     }
     render(
@@ -361,23 +335,23 @@ describe('deleting a tier', () => {
         models={built.models}
         store={built.store}
         config={null}
-        savedConfigs={built.storage.data.get('sayloud:provider-configs') as SavedConfigs}
+        savedConfigs={{}}
         onChanged={vi.fn()}
       />
     );
 
-    await waitFor(() => expect(tierRow(fp16).getAttribute('data-state')).toBe('downloaded'));
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('downloaded'));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
-    await waitFor(() => expect(tierRow(fp16).getAttribute('data-state')).toBe('absent'));
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('absent'));
   });
 
-  it('warns before deleting the tier in use, and falls back to the first tier', async () => {
-    const built = harness({ saved: { local: { provider: 'local', tier: 'fp16' } } });
-    for (const file of fp16.files) {
+  it('warns before deleting the files in use', async () => {
+    const built = harness({ saved: { local: { provider: 'local', tier: 'fp32' } } });
+    for (const file of fp32.files) {
       built.caches.bucket('transformers-cache').seed(canonicalModelUrl(KOKORO_82M.repo, file));
     }
-    const config: ProviderConfig = { provider: 'local', tier: 'fp16' };
+    const config: ProviderConfig = { provider: 'local', tier: 'fp32' };
     render(
       <Harness
         models={built.models}
@@ -388,7 +362,7 @@ describe('deleting a tier', () => {
       />
     );
 
-    await waitFor(() => expect(tierRow(fp16).getAttribute('data-state')).toBe('downloaded'));
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('downloaded'));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     expect(
@@ -397,42 +371,45 @@ describe('deleting a tier', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete anyway' }));
 
-    await waitFor(() =>
-      expect(built.storage.data.get('sayloud:provider-configs')).toMatchObject({
-        local: { provider: 'local', tier: q8.id },
-      })
-    );
-    expect(tierRow(fp16).getAttribute('data-state')).toBe('absent');
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('absent'));
+    // The config still names the model's only tier: there is nowhere else to
+    // point it, so deleting does not rewrite the choice.
+    expect(built.storage.data.get('sayloud:provider-configs')).toMatchObject({
+      local: { provider: 'local', tier: fp32.id },
+    });
   });
 
   it('leaves everything alone when the warning is dismissed', async () => {
-    const built = harness({ saved: { local: { provider: 'local', tier: 'q8' } } });
-    for (const file of q8.files) {
+    const built = harness({ saved: { local: { provider: 'local', tier: 'fp32' } } });
+    for (const file of fp32.files) {
       built.caches.bucket('transformers-cache').seed(canonicalModelUrl(KOKORO_82M.repo, file));
     }
     render(
       <Harness
         models={built.models}
         store={built.store}
-        config={{ provider: 'local', tier: 'q8' }}
-        savedConfigs={{ local: { provider: 'local', tier: 'q8' } }}
+        config={{ provider: 'local', tier: 'fp32' }}
+        savedConfigs={{ local: { provider: 'local', tier: 'fp32' } }}
         onChanged={vi.fn()}
       />
     );
 
-    await waitFor(() => expect(tierRow(q8).textContent).toContain('In use'));
+    await waitFor(() => expect(tierRow(fp32).textContent).toContain('In use'));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(screen.queryByText(/need to download again/)).toBeNull();
-    expect(tierRow(q8).getAttribute('data-state')).toBe('downloaded');
+    expect(tierRow(fp32).getAttribute('data-state')).toBe('downloaded');
   });
 });
 
 describe('choosing the tier to run', () => {
   it('writes the tier into the saved on-device config', async () => {
-    const built = harness({ saved: { local: { provider: 'local', tier: 'q8' } } });
-    for (const file of fp16.files) {
+    // A config that does not name a tier, which is what activating the local
+    // provider writes: the provider falls back to the model's only tier, but the
+    // tab has to be able to make that explicit.
+    const built = harness();
+    for (const file of fp32.files) {
       built.caches.bucket('transformers-cache').seed(canonicalModelUrl(KOKORO_82M.repo, file));
     }
     const onChanged = vi.fn();
@@ -440,18 +417,18 @@ describe('choosing the tier to run', () => {
       <Harness
         models={built.models}
         store={built.store}
-        config={{ provider: 'local', tier: 'q8' }}
-        savedConfigs={{ local: { provider: 'local', tier: 'q8' } }}
+        config={{ provider: 'local' }}
+        savedConfigs={{ local: { provider: 'local' } }}
         onChanged={onChanged}
       />
     );
 
-    await waitFor(() => expect(tierRow(fp16).getAttribute('data-state')).toBe('downloaded'));
+    await waitFor(() => expect(tierRow(fp32).getAttribute('data-state')).toBe('downloaded'));
     fireEvent.click(screen.getByRole('button', { name: 'Set as active' }));
 
     await waitFor(() =>
       expect(built.storage.data.get('sayloud:provider-configs')).toMatchObject({
-        local: { tier: fp16.id },
+        local: { tier: fp32.id },
       })
     );
     // The panel re-reads the store rather than keeping a copy of the config.
@@ -519,9 +496,9 @@ describe('the download source', () => {
       store: new ModelStore({
         storage: gated,
         cacheStorage: new FakeCaches(),
-        fetch: fakeFetch(routesFor(KOKORO_82M, [q8])),
+        fetch: fakeFetch(routesFor(KOKORO_82M, [fp32])),
       }),
-      probe: () => Promise.resolve({ caps: { webgpu: false, shaderF16: false } }),
+      probe: () => Promise.resolve({ caps: { webgpu: false } }),
     };
     render(
       <Harness
@@ -572,7 +549,7 @@ describe('device and space', () => {
     renderTab({
       probe: () =>
         Promise.resolve({
-          caps: { webgpu: true, shaderF16: true },
+          caps: { webgpu: true },
           adapterName: 'apple metal-3',
         }),
     });
@@ -588,7 +565,7 @@ describe('device and space', () => {
 
   it('counts what the downloaded models actually occupy', async () => {
     const built = harness();
-    for (const file of q8.files) {
+    for (const file of fp32.files) {
       built.caches.bucket('transformers-cache').seed(canonicalModelUrl(KOKORO_82M.repo, file));
     }
     render(
@@ -601,8 +578,8 @@ describe('device and space', () => {
       />
     );
 
-    // The shared files are counted once, not once per tier.
-    const expected = q8.files.reduce((sum, file) => sum + fileBytes(q8, file), 0);
+    // The shared files are counted once, with the tier's own weights.
+    const expected = fp32.files.reduce((sum, file) => sum + fileBytes(fp32, file), 0);
     await waitFor(() => expect(storageUsed()).toBe(`${(expected / 1_000_000).toFixed(1)} MB`));
     expect(
       screen.getByText('Models and voices. The audio cache is counted on the Settings tab.')

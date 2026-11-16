@@ -179,7 +179,7 @@ function serveAll(
 async function loaded() {
   const workers = setup();
   serveAll(workers);
-  await workers.engine.load(KOKORO_82M, tierOf('fp16'), 'wasm');
+  await workers.engine.load(KOKORO_82M, tierOf('fp32'), 'wasm');
   return workers;
 }
 
@@ -194,7 +194,7 @@ describe('WorkerLocalEngine', () => {
   it('resolves a load the worker answers', async () => {
     const { kokoro, phonemizer, engine } = setup();
 
-    const loading = engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu');
+    const loading = engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu');
     await handshake(kokoro, phonemizer);
     kokoro.reply({
       type: 'loaded',
@@ -208,7 +208,7 @@ describe('WorkerLocalEngine', () => {
   it('sends the handshake before the load', async () => {
     const { kokoro, phonemizer, engine } = setup();
 
-    const loading = engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu');
+    const loading = engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu');
     expect(kokoro.posted).toEqual([
       { type: 'init', id: 1, source: { host: 'modelscope' }, allowFallback: false },
     ]);
@@ -218,7 +218,7 @@ describe('WorkerLocalEngine', () => {
       type: 'load',
       id: 2,
       modelId: 'kokoro-82m',
-      tierId: 'fp16',
+      tierId: 'fp32',
       device: 'webgpu',
     });
 
@@ -228,12 +228,12 @@ describe('WorkerLocalEngine', () => {
 
   it('instantiates the phonemizer while the model is still loading', async () => {
     // The two have nothing to do with each other — 5 MB of wasm against a
-    // 163 MB ONNX session — so the load must not be what triggers the second
+    // 325 MB ONNX session — so the load must not be what triggers the second
     // handshake, and the second handshake must not wait for the first to be
     // answered.
     const { kokoro, phonemizer, engine } = setup();
 
-    const loading = engine.load(KOKORO_82M, tierOf('fp16'), 'wasm');
+    const loading = engine.load(KOKORO_82M, tierOf('fp32'), 'wasm');
 
     expect(kokoro.types).toEqual(['init']);
     expect(phonemizer.types).toEqual(['init']);
@@ -246,7 +246,7 @@ describe('WorkerLocalEngine', () => {
   it('rejects the request in flight when the worker dies', async () => {
     const { kokoro, phonemizer, engine } = setup();
 
-    const loading = engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu');
+    const loading = engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu');
     // Attached before the crash so the rejection is never unhandled.
     const failure = expect(loading).rejects.toThrow('boom');
 
@@ -260,7 +260,7 @@ describe('WorkerLocalEngine', () => {
     const { kokoro, engine } = setup();
     kokoro.crash('the GPU process went away');
 
-    const error = await engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu').catch((e: unknown) => e);
+    const error = await engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu').catch((e: unknown) => e);
 
     expect(isWorkerDeadError(error)).toBe(true);
     expect((error as Error).message).toBe('the GPU process went away');
@@ -270,7 +270,7 @@ describe('WorkerLocalEngine', () => {
     const { kokoro, engine } = setup();
     kokoro.breakChannel();
 
-    const error = await engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu').catch((e: unknown) => e);
+    const error = await engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu').catch((e: unknown) => e);
 
     expect(isWorkerDeadError(error)).toBe(true);
   });
@@ -282,7 +282,7 @@ describe('WorkerLocalEngine', () => {
     // pending request hangs.
     const { kokoro, phonemizer, engine } = setup();
 
-    const loading = engine.load(KOKORO_82M, tierOf('fp16'), 'wasm');
+    const loading = engine.load(KOKORO_82M, tierOf('fp32'), 'wasm');
     const failure = expect(loading).rejects.toThrow('the dictionary is corrupt');
 
     await handshake(kokoro, phonemizer);
@@ -299,7 +299,7 @@ describe('WorkerLocalEngine', () => {
     kokoro.crash('worker died');
     const posted = kokoro.posted.length;
 
-    await expect(engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu')).rejects.toThrow('worker died');
+    await expect(engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu')).rejects.toThrow('worker died');
 
     // A request that cannot be answered must not be sent to a dead worker.
     expect(kokoro.posted).toHaveLength(posted);
@@ -355,12 +355,12 @@ describe('WorkerLocalEngine', () => {
 
     // The handshake fails while the worker is alive: a call made after that
     // must send a new `init` instead of returning the same rejection forever.
-    const first = engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu');
+    const first = engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu');
     const firstFailure = expect(first).rejects.toThrow('no');
     kokoro.reply({ type: 'error', id: 1, code: 'model-load-failed', message: 'no' });
     await firstFailure;
 
-    await expect(engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu')).resolves.toBeDefined();
+    await expect(engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu')).resolves.toBeDefined();
 
     expect(kokoro.types.filter((type) => type === 'init')).toHaveLength(2);
     // The phonemizer's own handshake succeeded the first time, so it is not
@@ -371,7 +371,7 @@ describe('WorkerLocalEngine', () => {
   it('rejects every waiting request when it is disposed', async () => {
     const { kokoro, phonemizer, engine } = setup();
 
-    const loading = engine.load(KOKORO_82M, tierOf('fp16'), 'webgpu');
+    const loading = engine.load(KOKORO_82M, tierOf('fp32'), 'webgpu');
     const failure = expect(loading).rejects.toThrow('disposed');
 
     engine.dispose();

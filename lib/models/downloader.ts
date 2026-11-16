@@ -75,7 +75,7 @@ export type FetchLike = (
 
 /** One file to fetch, and where its bytes belong once they are all in. */
 export interface PlannedFile {
-  /** Path inside the model root, e.g. `onnx/model_quantized.onnx`. */
+  /** Path inside the model root, e.g. `onnx/model.onnx`. */
   readonly path: string;
   /** Where to fetch it from, already resolved for the chosen source. */
   readonly url: string;

@@ -4,8 +4,8 @@
  * Two things are substituted, and both of them have to be for this to run at
  * all on CI:
  *
- * - **The model files.** They are 92–325 MB and CI has no network, so the
- *   tiers are either seeded straight into Cache Storage (which is what the
+ * - **The model files.** They are 325 MB and CI has no network, so the tier
+ *   is either seeded straight into Cache Storage (which is what the
  *   downloader would write) or served by a Playwright route that stands in for
  *   the mirror. Everything downstream of `cache.put` is the real code.
  * - **The engine.** The e2e build wires `FakeLocalEngine` where production
@@ -31,10 +31,8 @@ import { sentenceHighlight, wordHighlight } from './helpers';
 const CANONICAL_HOST = 'https://model-cache.sayloud.invalid/';
 const REPO = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 
-/** The files each tier needs, from `KOKORO_82M.tiers` in the registry. */
+/** The files the tier needs, from `KOKORO_82M.tiers` in the registry. */
 const TIER_FILES: Record<string, string[]> = {
-  q8: ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'onnx/model_quantized.onnx'],
-  fp16: ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'onnx/model_fp16.onnx'],
   fp32: ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'onnx/model.onnx'],
 };
 
@@ -101,7 +99,7 @@ test('tells the reader the model is missing, and takes them to the Models tab', 
   serviceWorker,
   extensionId,
 }) => {
-  await useLocal(serviceWorker, 'q8');
+  await useLocal(serviceWorker, 'fp32');
   const panel = await openPanel(context, extensionId);
 
   // The panel asks the provider, not a copy of its logic: this is the same
@@ -111,15 +109,15 @@ test('tells the reader the model is missing, and takes them to the Models tab', 
 
   await expect(panel.locator('#tab-models')).toHaveAttribute('aria-selected', 'true');
   await expect(panel.locator('#panel-models')).toBeVisible();
-  await expect(tierRow(panel, 'q8')).toHaveAttribute('data-state', 'absent');
+  await expect(tierRow(panel, 'fp32')).toHaveAttribute('data-state', 'absent');
 });
 
-test('renders every tier, and downloads the one the source serves', async ({
+test('renders the model, and downloads it from the source', async ({
   context,
   serviceWorker,
   extensionId,
 }) => {
-  await useLocal(serviceWorker, 'q8');
+  await useLocal(serviceWorker, 'fp32');
   await context.route('https://huggingface.co/**', (route) =>
     route.fulfill({ status: 200, body: 'model-bytes', contentType: 'application/octet-stream' })
   );
@@ -127,41 +125,39 @@ test('renders every tier, and downloads the one the source serves', async ({
   const panel = await openPanel(context, extensionId);
   await panel.locator('#tab-models').click();
 
-  // Not downloaded: a size and a Download button, one per tier.
-  await expect(panel.locator('[data-tier]')).toHaveCount(3);
-  await expect(tierRow(panel, 'q8')).toHaveAttribute('data-state', 'absent');
-  await expect(panel.getByRole('button', { name: 'Download' })).toHaveCount(3);
-  await expect(tierRow(panel, 'q8')).toContainText('92.4 MB');
+  // Not downloaded: one row, because FP32 is the only set of weights shipped.
+  await expect(panel.locator('[data-tier]')).toHaveCount(1);
+  await expect(tierRow(panel, 'fp32')).toHaveAttribute('data-state', 'absent');
+  await expect(panel.getByRole('button', { name: 'Download' })).toHaveCount(1);
+  await expect(tierRow(panel, 'fp32')).toContainText('FP32');
+  await expect(tierRow(panel, 'fp32')).toContainText('325.5 MB');
 
-  // Downloading: a progress bar and a way out, and only for that row.
-  await tierRow(panel, 'q8').getByRole('button', { name: 'Download' }).click();
-  await expect(tierRow(panel, 'fp16')).toHaveAttribute('data-state', 'absent');
+  // Downloading: a progress bar and a way out.
+  await tierRow(panel, 'fp32').getByRole('button', { name: 'Download' }).click();
 
   // Downloaded: the tier in use is badged, and can be deleted.
-  await expect(tierRow(panel, 'q8')).toHaveAttribute('data-state', 'downloaded', {
+  await expect(tierRow(panel, 'fp32')).toHaveAttribute('data-state', 'downloaded', {
     timeout: 15_000,
   });
-  await expect(tierRow(panel, 'q8')).toContainText('In use');
-  await expect(tierRow(panel, 'q8')).toContainText('Delete');
-  await expect(panel.getByRole('button', { name: 'Download' })).toHaveCount(2);
+  await expect(tierRow(panel, 'fp32')).toContainText('In use');
+  await expect(tierRow(panel, 'fp32')).toContainText('Delete');
+  await expect(panel.getByRole('button', { name: 'Download' })).toHaveCount(0);
 
   // And the bytes are in the cache under the canonical keys, which is what the
   // engine will look up when it loads the model.
   const stored = await panel.evaluate(async (keys) => {
     const cache = await caches.open('transformers-cache');
     return Promise.all(keys.map(async (key) => (await cache.match(key)) !== undefined));
-  }, tierKeys('q8'));
+  }, tierKeys('fp32'));
   expect(stored).toEqual([true, true, true, true]);
 });
 
-test('cancels a download, then deletes one and falls back to the first tier', async ({
+test('cancels a download, then deletes the model in use', async ({
   context,
   serviceWorker,
   extensionId,
 }) => {
-  // The tier in use is fp16, so deleting it has to move the choice rather than
-  // leave a config pointing at a file that is gone.
-  await useLocal(serviceWorker, 'fp16');
+  await useLocal(serviceWorker, 'fp32');
 
   let delayMs = 0;
   await context.route('https://huggingface.co/**', async (route) => {
@@ -175,33 +171,33 @@ test('cancels a download, then deletes one and falls back to the first tier', as
 
   const panel = await openPanel(context, extensionId);
   await panel.locator('#tab-models').click();
-  await expect(panel.locator('[data-tier]')).toHaveCount(3);
+  await expect(panel.locator('[data-tier]')).toHaveCount(1);
 
   // Cancelling puts the row back where it started, and says why.
   delayMs = 3_000;
-  await tierRow(panel, 'q8').getByRole('button', { name: 'Download' }).click();
-  await expect(tierRow(panel, 'q8')).toHaveAttribute('data-state', 'downloading');
-  await tierRow(panel, 'q8').getByRole('button', { name: 'Cancel' }).click();
-  await expect(tierRow(panel, 'q8')).toHaveAttribute('data-state', 'absent');
-  await expect(tierRow(panel, 'q8')).toContainText('Download cancelled.');
+  await tierRow(panel, 'fp32').getByRole('button', { name: 'Download' }).click();
+  await expect(tierRow(panel, 'fp32')).toHaveAttribute('data-state', 'downloading');
+  await tierRow(panel, 'fp32').getByRole('button', { name: 'Cancel' }).click();
+  await expect(tierRow(panel, 'fp32')).toHaveAttribute('data-state', 'absent');
+  await expect(tierRow(panel, 'fp32')).toContainText('Download cancelled.');
 
   // A real download, from the same routed source.
   delayMs = 0;
-  await tierRow(panel, 'fp16').getByRole('button', { name: 'Download' }).click();
-  await expect(tierRow(panel, 'fp16')).toHaveAttribute('data-state', 'downloaded', {
+  await tierRow(panel, 'fp32').getByRole('button', { name: 'Download' }).click();
+  await expect(tierRow(panel, 'fp32')).toHaveAttribute('data-state', 'downloaded', {
     timeout: 15_000,
   });
-  await expect(tierRow(panel, 'fp16')).toContainText('In use');
+  await expect(tierRow(panel, 'fp32')).toContainText('In use');
 
-  // Deleting the tier in use warns first.
-  await tierRow(panel, 'fp16').getByRole('button', { name: 'Delete' }).click();
+  // Deleting the model in use warns first.
+  await tierRow(panel, 'fp32').getByRole('button', { name: 'Delete' }).click();
   await expect(
     panel.getByText("After deleting, you'll need to download again to read aloud.")
   ).toBeVisible();
-  await tierRow(panel, 'fp16').getByRole('button', { name: 'Delete anyway' }).click();
+  await tierRow(panel, 'fp32').getByRole('button', { name: 'Delete anyway' }).click();
 
-  await expect(tierRow(panel, 'fp16')).toHaveAttribute('data-state', 'absent');
-  await expect(tierRow(panel, 'q8')).toContainText('Download');
+  await expect(tierRow(panel, 'fp32')).toHaveAttribute('data-state', 'absent');
+  await expect(tierRow(panel, 'fp32')).toContainText('Download');
 
   const saved = await serviceWorker.evaluate(async () => {
     const chrome = (
@@ -212,7 +208,7 @@ test('cancels a download, then deletes one and falls back to the first tier', as
     return chrome.storage.local.get('sayloud:provider-configs');
   });
   const configs = saved['sayloud:provider-configs'] as { local?: { tier?: string } };
-  expect(configs.local?.tier).toBe('q8');
+  expect(configs.local?.tier).toBe('fp32');
 });
 
 test('synthesizes on device, highlights whole sentences, and caches the audio', async ({
@@ -222,9 +218,9 @@ test('synthesizes on device, highlights whole sentences, and caches the audio', 
   page,
   activate,
 }) => {
-  await useLocal(serviceWorker, 'q8');
+  await useLocal(serviceWorker, 'fp32');
   const panel = await openPanel(context, extensionId);
-  await seedTier(panel, 'q8');
+  await seedTier(panel, 'fp32');
 
   await page.goto('/article.html');
   await activate();
@@ -265,7 +261,7 @@ test('the panel loads with no page errors on the Models tab', async ({
   serviceWorker,
   extensionId,
 }) => {
-  await useLocal(serviceWorker, 'q8');
+  await useLocal(serviceWorker, 'fp32');
   const panel = await openPanel(context, extensionId);
   const errors: string[] = [];
   panel.on('pageerror', (error) => errors.push(error.message));

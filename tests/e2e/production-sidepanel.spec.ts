@@ -287,8 +287,8 @@ test('production settings and model controls work without horizontal overflow', 
       .evaluateAll((nodes) =>
         nodes.map((node) => `${node.getAttribute('data-tier')}:${node.getAttribute('data-state')}`)
       )
-  ).toEqual(['kokoro-82m:q8:absent', 'kokoro-82m:fp16:absent', 'kokoro-82m:fp32:absent']);
-  await expect(page.locator('[data-tier] button')).toHaveText(['Download', 'Download', 'Download']);
+  ).toEqual(['kokoro-82m:fp32:absent']);
+  await expect(page.locator('[data-tier] button')).toHaveText(['Download']);
   await expect(page.getByRole('link', { name: 'Licence: Apache-2.0' })).toBeVisible();
   await expect(page.getByText(/41 voices/)).toBeVisible();
   await expect(page.getByText('Storage used')).toBeVisible();

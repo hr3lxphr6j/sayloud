@@ -78,6 +78,16 @@ export interface OnDeviceModel {
   readonly vocab: VocabId;
   /** Voices offered, counting only the ones this extension can synthesize. */
   readonly voiceCount: number;
+  /**
+   * Repositories this one replaced, oldest sense of the word.
+   *
+   * The old weights are unreachable once the repository changes — every key
+   * this store builds names the current one — so the UI can tell a user with
+   * them still installed what happened and what to do. Files under a
+   * superseded repository are what [`unknown-model prune`] clears; see the
+   * store's `pruneUnknownModels`.
+   */
+  readonly supersedes?: readonly string[];
   /** `model+voices` groups its files into tiers; other shapes use `files`. */
   readonly tiers?: readonly ModelTier[];
   readonly files?: readonly string[];
@@ -124,7 +134,13 @@ export const KOKORO_82M: OnDeviceModel = {
   family: 'kokoro',
   shape: 'model+voices',
   labelKey: 'model.kokoro-82m',
-  repo: 'onnx-community/Kokoro-82M-v1.0-ONNX',
+  // The `-timestamped` fork of the same weights: one added `durations` output
+  // (per token, how many frames the model spoke it for) and a byte-identical
+  // waveform — verified sample for sample against the plain repository on three
+  // sentences, `maxdiff = 0`. The word timings come from the added output, and
+  // the audio from the same weights the voices were graded against.
+  repo: 'onnx-community/Kokoro-82M-v1.0-ONNX-timestamped',
+  supersedes: ['onnx-community/Kokoro-82M-v1.0-ONNX'],
   license: {
     name: 'Apache-2.0',
     url: 'https://www.apache.org/licenses/LICENSE-2.0',
@@ -142,7 +158,7 @@ export const KOKORO_82M: OnDeviceModel = {
       id: 'fp32',
       labelKey: 'model.tier.fp32',
       engineArg: 'fp32',
-      bytes: 325_530_000,
+      bytes: 325_532_000,
       files: [...SHARED_MODEL_FILES, 'onnx/model.onnx'],
     },
   ],

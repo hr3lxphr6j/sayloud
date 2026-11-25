@@ -291,6 +291,10 @@ function TierCards({ store, downloads, chosenTier, onSetActive, onChanged }: Tie
             )}
           </div>
 
+          {downloads.upgraded && model.supersedes !== undefined && (
+            <p class="muted">{t('model.updated')}</p>
+          )}
+
           <a class="field-help link" href={model.license.url} target="_blank" rel="noreferrer">
             {t('model.license', { name: model.license.name })}
           </a>

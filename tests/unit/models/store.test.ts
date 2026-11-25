@@ -464,3 +464,78 @@ describe('voices', () => {
     expect(await store.isTierDownloaded(KOKORO_82M, FP32)).toBe(true);
   });
 });
+
+describe('pruneUnknownModels', () => {
+  it('removes the files of a repository the registry no longer names', async () => {
+    const { store, caches } = makeStore(fakeFetch({}));
+    seedTier(caches, FP32);
+    // The previous model: same file names, previous repository. Every delete
+    // keyed by the registry cannot see it — this call is the one place that can.
+    caches
+      .bucket(TRANSFORMERS_CACHE)
+      .seed(
+        'https://model-cache.sayloud.invalid/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx',
+        1
+      );
+
+    const removed = await store.pruneUnknownModels();
+
+    expect(removed).toBe(1);
+    expect(
+      (await caches.bucket(TRANSFORMERS_CACHE).keys()).filter((key) => key.includes('v1.0-ONNX/'))
+    ).toEqual([]);
+    // The downloaded tier survives.
+    expect(
+      (await caches.bucket(TRANSFORMERS_CACHE).keys()).filter((key) => key.includes('timestamped'))
+        .length
+    ).toBeGreaterThan(0);
+  });
+
+  it('removes the voices of a repository the registry no longer names', async () => {
+    const { store, caches } = makeStore(fakeFetch({}));
+    seedVoice(caches, 'af_heart');
+    caches
+      .bucket(KOKORO_VOICES_CACHE)
+      .seed(
+        'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/af_heart.bin',
+        VOICE_FILE_BYTES
+      );
+
+    await store.pruneUnknownModels();
+
+    expect(
+      (await caches.bucket(KOKORO_VOICES_CACHE).keys()).filter((key) => key.includes('v1.0-ONNX/'))
+    ).toEqual([]);
+  });
+
+  it('leaves keys it does not recognize alone', async () => {
+    const { store, caches } = makeStore(fakeFetch({}));
+    caches.bucket(TRANSFORMERS_CACHE).seed('https://some-other-origin.example/not-ours', 1);
+    caches
+      .bucket(KOKORO_VOICES_CACHE)
+      .seed('https://huggingface.co/other/model/resolve/main/x.bin', 1);
+
+    expect(await store.pruneUnknownModels()).toBe(0);
+    expect(await caches.bucket(TRANSFORMERS_CACHE).keys()).toContain(
+      'https://some-other-origin.example/not-ours'
+    );
+  });
+
+  it('runs after a tier download', async () => {
+    const fetch = fakeFetch(tierRoutes(FP32));
+    const { store, caches } = makeStore(fetch);
+    caches
+      .bucket(TRANSFORMERS_CACHE)
+      .seed(
+        'https://model-cache.sayloud.invalid/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx',
+        1
+      );
+    await store.setSource({ host: 'huggingface' });
+
+    await store.downloadTier(KOKORO_82M, FP32);
+
+    expect(
+      (await caches.bucket(TRANSFORMERS_CACHE).keys()).filter((key) => key.includes('v1.0-ONNX/'))
+    ).toEqual([]);
+  });
+});

@@ -29,7 +29,7 @@ import { sentenceHighlight, wordHighlight } from './helpers';
 
 /** Must match `lib/models/urls.ts`, which e2e specs cannot import. */
 const CANONICAL_HOST = 'https://model-cache.sayloud.invalid/';
-const REPO = 'onnx-community/Kokoro-82M-v1.0-ONNX';
+const REPO = 'onnx-community/Kokoro-82M-v1.0-ONNX-timestamped';
 
 /** The files the tier needs, from `KOKORO_82M.tiers` in the registry. */
 const TIER_FILES: Record<string, string[]> = {

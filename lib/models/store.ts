@@ -28,8 +28,10 @@ import {
 } from './downloader';
 import { MODELS, type ModelTier, type OnDeviceModel } from './registry';
 import {
+  CANONICAL_HOST,
   type ConcreteModelHost,
   canonicalModelUrl,
+  isCanonicalModelUrl,
   isMirrorUrl,
   isVoiceUrl,
   KOKORO_VOICES_CACHE,
@@ -179,6 +181,87 @@ export class ModelStore {
     const source = await this.resolveSource(model);
     await downloadFiles(tierPlan(model, tier, source), this.downloadOptions(options));
     await this.rememberHost(source.host);
+    // The download just succeeded, so the files this frees are provably not
+    // the ones it was for: a tier whose weights arrived is in the registry,
+    // and everything the registry no longer names is unreachable weight.
+    await this.pruneUnknownModels();
+  }
+
+  /**
+   * Delete every cached file no model in the registry knows about.
+   *
+   * A model whose repository changed leaves its old weight files unreachable:
+   * every delete in this store builds its keys from the registry's current
+   * repository, so the old ones are invisible to all of them and would sit on
+   * the user's disk for the life of the install. This is the one place that
+   * looks at the whole bucket rather than at one model's keys, and the callers
+   * run it right after a download succeeds — the moment the files it frees are
+   * provably not the ones the download was for.
+   *
+   * Keys that are neither our canonical model keys nor voice URLs are left
+   * alone: this bucket belongs to the extension origin, but a key this module
+   * does not recognize is a key this module did not write, and guessing is how
+   * a stranger's file gets deleted.
+   *
+   * Returns how many entries went, for the caller that reports the space.
+   */
+  async pruneUnknownModels(): Promise<number> {
+    const keep = new Set<string>();
+    const voicePrefixes: string[] = [];
+    for (const model of MODELS) {
+      for (const tier of model.tiers ?? []) {
+        for (const file of tier.files) keep.add(canonicalModelUrl(model.repo, file));
+      }
+      for (const file of model.files ?? []) keep.add(canonicalModelUrl(model.repo, file));
+      voicePrefixes.push(voiceUrlPrefix(model.repo));
+    }
+
+    let removed = 0;
+    const modelCache = await this.bucket(TRANSFORMERS_CACHE);
+    for (const entry of await modelCache.keys()) {
+      const url = cacheKeyUrl(entry);
+      if (url === null || !isCanonicalModelUrl(url) || keep.has(url)) continue;
+      await modelCache.delete(url);
+      removed += 1;
+    }
+    const voiceCache = await this.bucket(KOKORO_VOICES_CACHE);
+    for (const entry of await voiceCache.keys()) {
+      const url = cacheKeyUrl(entry);
+      if (url === null || !isVoiceUrl(url)) continue;
+      if (voicePrefixes.some((prefix) => url.startsWith(prefix))) continue;
+      await voiceCache.delete(url);
+      removed += 1;
+    }
+    return removed;
+  }
+
+  /**
+   * Whether this model's previous repository left files in the cache.
+   *
+   * True for the user an update caught with weights installed: the current
+   * repository's files are not there, so the tier reads as "not downloaded",
+   * and without this the 325 MB re-download would look like a bug rather than
+   * an upgrade. Pruning has usually already taken the old files; this reads
+   * the moment the user opens the panel, before it has necessarily run.
+   */
+  async hasStaleModel(model: OnDeviceModel): Promise<boolean> {
+    const prefixes = (model.supersedes ?? []).map((repo) => voiceUrlPrefix(repo));
+    const modelPrefixes = (model.supersedes ?? []).map(
+      (repo) => `${CANONICAL_HOST}${repo}/resolve/`
+    );
+    if (prefixes.length === 0) return false;
+
+    const modelCache = await this.bucket(TRANSFORMERS_CACHE);
+    for (const entry of await modelCache.keys()) {
+      const url = cacheKeyUrl(entry);
+      if (url !== null && modelPrefixes.some((prefix) => url.startsWith(prefix))) return true;
+    }
+    const voiceCache = await this.bucket(KOKORO_VOICES_CACHE);
+    for (const entry of await voiceCache.keys()) {
+      const url = cacheKeyUrl(entry);
+      if (url !== null && prefixes.some((prefix) => url.startsWith(prefix))) return true;
+    }
+    return false;
   }
 
   /**
@@ -228,7 +311,29 @@ export class ModelStore {
   ): Promise<void> {
     const source = await this.resolveSource(model);
     await downloadFiles(voicePlan(model, voiceId, source), this.downloadOptions(options));
+    await this.requireStyleVector(model, voiceId);
     await this.rememberHost(source.host);
+  }
+
+  /**
+   * Read a voice file back and insist it is a style vector.
+   *
+   * A style vector is a float array, so its byte length must be a multiple of
+   * four; anything else means the source answered 200 with something else, and
+   * the file is evicted rather than left where the engine would load it and
+   * fail with nothing to point at.
+   */
+  private async requireStyleVector(model: OnDeviceModel, voiceId: string): Promise<void> {
+    const cache = await this.bucket(KOKORO_VOICES_CACHE);
+    const key = voiceKey(model, voiceId);
+    const hit = await cache.match(key);
+    const buffer = hit === undefined ? undefined : await hit.arrayBuffer();
+    if (buffer === undefined || buffer.byteLength === 0 || buffer.byteLength % 4 !== 0) {
+      await cache.delete(key).catch(() => false);
+      throw new Error(
+        `the voice file for ${voiceId} is not a style vector: ${buffer?.byteLength ?? 0} bytes from ${key}`
+      );
+    }
   }
 
   /**
@@ -274,6 +379,12 @@ export class ModelStore {
               report(path, index);
             },
           });
+          // A source that answers 200 with an error page stores garbage under
+          // a voice key, and every sentence would then die inside the engine
+          // with a bare RangeError. The file is small enough to read back, and
+          // a style vector is a float array — anything else never gets to
+          // count as downloaded.
+          await this.requireStyleVector(model, voiceId);
           fetched.set(voiceId, VOICE_FILE_BYTES);
           downloaded.push(voiceId);
         } catch (error) {

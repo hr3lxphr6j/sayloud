@@ -45,7 +45,7 @@ describe('the registry', () => {
   it('quotes the measured tier size', () => {
     // Written down from the file-listing API rather than probed, because the UI
     // has to show the size before anything is downloaded.
-    expect(tierById(KOKORO_82M, 'fp32')?.bytes).toBe(325_530_000);
+    expect(tierById(KOKORO_82M, 'fp32')?.bytes).toBe(325_532_000);
   });
 
   it('maps the tier to the file its dtype actually requests', () => {

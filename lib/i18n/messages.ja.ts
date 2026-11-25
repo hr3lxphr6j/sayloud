@@ -390,6 +390,7 @@ export const ja: Record<MessageKey, string> = {
   'model.download-failed': 'ダウンロードに失敗しました。接続を確認してください。',
   'model.download-cancelled': 'ダウンロードがキャンセルされました。',
   'model.read-failed': 'ダウンロードされたモデルを読み取れませんでした。',
+  'model.updated': 'このモデルは更新されました。モデルファイルの再ダウンロード（1 回）が必要です。',
   'model.license': 'ライセンス：{name}',
   'model.voice-count': '{count}個の音声',
   'model.timings': '文のハイライト',

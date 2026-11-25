@@ -191,6 +191,11 @@ export interface ModelStoreView {
   readonly usage: ModelUsage | null;
   /** The store could not be read at all, which the tab says plainly. */
   readonly failed: boolean;
+  /**
+   * True when an extension update replaced a model the user had installed, so
+   * the "not downloaded" row needs its explanation.
+   */
+  readonly upgraded: boolean;
   start(model: OnDeviceModel, tier: ModelTier): void;
   cancel(model: OnDeviceModel, tier: ModelTier): void;
   remove(model: OnDeviceModel, tier: ModelTier): Promise<void>;
@@ -211,6 +216,7 @@ export function useModelStore(models: ModelAdmin | undefined): ModelStoreView {
   const [statuses, setStatuses] = useState<Record<string, TierStatus>>({});
   const [usage, setUsage] = useState<ModelUsage | null>(null);
   const [failed, setFailed] = useState(false);
+  const [upgraded, setUpgraded] = useState(false);
   const controllers = useRef(new Map<string, AbortController>());
   /** False once the shell is gone, so a late reply writes nothing. */
   const mounted = useRef(true);
@@ -244,6 +250,13 @@ export function useModelStore(models: ModelAdmin | undefined): ModelStoreView {
       setUsage(measured);
       setFailed(false);
       setStatuses((current) => mergedTiers(current, perModel));
+      // The weights the update replaced are unreachable to every delete keyed
+      // by the registry, so this is also where they get taken back — at panel
+      // start, when nothing is mid-download that the registry would not name.
+      // Stale is read first: the prune is what makes the answer false.
+      const anyStale = await Promise.all(MODELS.map((model) => store.hasStaleModel(model)));
+      await store.pruneUnknownModels();
+      if (mounted.current) setUpgraded(anyStale.some(Boolean));
     } catch (error) {
       console.error('[SayLoud] cannot read the model store', error);
       if (mounted.current) setFailed(true);
@@ -338,7 +351,7 @@ export function useModelStore(models: ModelAdmin | undefined): ModelStoreView {
     [store, readUsage]
   );
 
-  return { statuses, usage, failed, start, cancel, remove };
+  return { statuses, usage, failed, upgraded, start, cancel, remove };
 }
 
 /** The tiers that are completely present, merged over what was already known. */

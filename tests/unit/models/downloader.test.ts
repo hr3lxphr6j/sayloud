@@ -97,7 +97,7 @@ describe('the plans', () => {
     expect(plan[0]?.key).toBe(canonicalModelUrl(KOKORO_82M.repo, 'config.json'));
   });
 
-  it('plans a voice under the key kokoro-js looks up', () => {
+  it('plans a voice under the key the engine loads it from', () => {
     const plan = voicePlan(KOKORO_82M, 'af_heart', HF);
     const file = plan[0];
 
@@ -107,14 +107,14 @@ describe('the plans', () => {
     expect(file?.bytes).toBe(VOICE_FILE_BYTES);
     expect(file?.key).toBe(voiceKey(KOKORO_82M, 'af_heart'));
     expect(file?.key).toBe(
-      'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/af_heart.bin'
+      'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/main/voices/af_heart.bin'
     );
   });
 
   it('plans a voice against ModelScope without moving its key', () => {
     const file = voicePlan(KOKORO_82M, 'af_heart', { host: 'modelscope' })[0];
     expect(file?.url).toBe(
-      'https://modelscope.cn/models/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/master/voices/af_heart.bin'
+      'https://modelscope.cn/models/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped/resolve/master/voices/af_heart.bin'
     );
     expect(file?.key).toContain('https://huggingface.co/');
   });

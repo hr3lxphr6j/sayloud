@@ -387,6 +387,9 @@ export const en = {
   'model.download-failed': 'Failed to download. Check your connection.',
   'model.download-cancelled': 'Download cancelled.',
   'model.read-failed': 'The downloaded models could not be read.',
+  // An update moved the model to a repository that reports word timings, and
+  // the old weights are not reusable — different bytes under a different key.
+  'model.updated': 'This model was updated and needs a one-time download of the weights again.',
   'model.license': 'Licence: {name}',
   'model.voice-count': '{count} voices',
   'model.timings': 'Sentence highlighting',

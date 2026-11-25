@@ -31,8 +31,28 @@
 //! order `ChinesePhonemizer.phonemize` uses, and it matters, because the numeral
 //! pass introduces Han characters that then belong to a Han run.
 
+use std::iter::once;
+
+use crate::provenance::SpannedText;
 use crate::text::is_js_whitespace;
 use crate::unicode::{self, CJK_COMPAT, CJK_EXT_A, CJK_UNIFIED};
+
+/// A run plus where it starts, in characters of the text it was segmented from.
+#[derive(Debug, Clone)]
+pub struct SpannedZhRun {
+    pub run: ZhRun,
+    /// Character index of the run's first character.
+    pub start: usize,
+}
+
+impl ZhRun {
+    /// The run's text, whichever kind it is.
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Han(text) | Self::Latin(text) | Self::Other(text) => text,
+        }
+    }
+}
 
 /// One run of text that will be phonemized the same way.
 ///
@@ -66,32 +86,38 @@ pub enum ZhRun {
 /// The quotation marks are the difference from [`crate::text::normalize_punctuation`]
 /// that the module comment describes: `“ ”`, not `"`.
 pub fn map_punctuation(text: &str) -> String {
-    let mut out = text.to_string();
-    for (from, to) in [
-        ("、", ", "),
-        ("，", ". "),
-        ("。", ". "),
-        ("．", ". "),
-        ("！", "! "),
-        ("：", ": "),
-        ("；", "; "),
-        ("？", "? "),
-        ("«", " “"),
-        ("»", "” "),
-        ("《", " “"),
-        ("》", "” "),
-        ("「", " “"),
-        ("」", "” "),
-        ("【", " “"),
-        ("】", "” "),
-        ("（", " ("),
-        ("）", ") "),
-    ] {
-        if out.contains(from) {
-            out = out.replace(from, to);
-        }
-    }
-    out.trim().to_string()
+    map_punctuation_spanned(SpannedText::identity(text)).into_text()
+}
+
+/// [`map_punctuation`], keeping track of where each character came from.
+///
+/// Every key is a single character, so the per-character mapping is the chained
+/// replaces it mirrors — no ordering hazard, and the origins stay right.
+pub fn map_punctuation_spanned(text: SpannedText) -> SpannedText {
+    let mut text = text;
+    text.map_chars(|ch| match ch {
+        '、' => ", ".chars().collect::<Vec<char>>(),
+        '，' => ". ".chars().collect::<Vec<char>>(),
+        '。' => ". ".chars().collect::<Vec<char>>(),
+        '．' => ". ".chars().collect::<Vec<char>>(),
+        '！' => "! ".chars().collect::<Vec<char>>(),
+        '：' => ": ".chars().collect::<Vec<char>>(),
+        '；' => "; ".chars().collect::<Vec<char>>(),
+        '？' => "? ".chars().collect::<Vec<char>>(),
+        '«' => " “".chars().collect::<Vec<char>>(),
+        '»' => "” ".chars().collect::<Vec<char>>(),
+        '《' => " “".chars().collect::<Vec<char>>(),
+        '》' => "” ".chars().collect::<Vec<char>>(),
+        '「' => " “".chars().collect::<Vec<char>>(),
+        '」' => "” ".chars().collect::<Vec<char>>(),
+        '【' => " “".chars().collect::<Vec<char>>(),
+        '】' => "” ".chars().collect::<Vec<char>>(),
+        '（' => " (".chars().collect::<Vec<char>>(),
+        '）' => ") ".chars().collect::<Vec<char>>(),
+        _ => once(ch).collect::<Vec<char>>(),
+    });
+    text.trim();
+    text
 }
 
 /// The three run kinds [`classify`] sorts a character into.
@@ -162,14 +188,33 @@ fn classify(character: char) -> Kind {
 /// else. `matchAll` cannot overlap and cannot skip, so a single left-to-right
 /// pass over the characters is the same partition.
 pub fn split_runs(text: &str) -> Vec<ZhRun> {
-    let mut runs: Vec<ZhRun> = Vec::new();
+    split_runs_spanned(&SpannedText::identity(text))
+        .into_iter()
+        .map(|spanned| spanned.run)
+        .collect()
+}
 
-    for character in text.chars() {
+/// [`split_runs`], with each run's position in the text.
+pub fn split_runs_spanned(text: &SpannedText) -> Vec<SpannedZhRun> {
+    let mut runs: Vec<SpannedZhRun> = Vec::new();
+
+    let mut index = 0usize;
+    for character in text.text().chars() {
         let kind = classify(character);
-        match runs.last_mut() {
-            Some(run) if run.kind() == kind => run.push(character),
-            _ => runs.push(kind.run(character)),
+        let extends_last = match runs.last_mut() {
+            Some(last) if last.run.kind() == kind => {
+                last.run.push(character);
+                true
+            }
+            _ => false,
+        };
+        if !extends_last {
+            runs.push(SpannedZhRun {
+                run: kind.run(character),
+                start: index,
+            });
         }
+        index += 1;
     }
 
     runs

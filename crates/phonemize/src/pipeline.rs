@@ -15,20 +15,24 @@
 //! caller's business and not the step's.
 
 use std::borrow::Cow;
+use std::iter::once;
 
 use crate::canonical;
+use crate::provenance::SpannedText;
 use crate::g2p::en::{EnglishError, EnglishG2p};
 use crate::g2p::ja::ipa::{fix_numeral_sound_changes, kana_to_ipa};
 use crate::g2p::ja::segmenter::{SegmenterError, SegmenterJa};
 use crate::g2p::zh::pinyin::{ChinesePinyin, PinyinError};
 use crate::g2p::zh::segmenter::{SegmenterZh, SegmenterZhError};
 use crate::g2p::zh::text as zh_text;
-use crate::g2p::zh::text::ZhRun;
+use crate::g2p::zh::text::{SpannedZhRun, ZhRun};
 use crate::g2p::zh::tone_sandhi;
 use crate::text::{
-    collapse_whitespace, keep_punctuation, normalize_ja_punctuation, normalize_punctuation,
-    segment_japanese, segment_text, to_half_width, ScriptRun,
+    collapse_whitespace_with_map, keep_punctuation, normalize_ja_punctuation_spanned,
+    normalize_punctuation_spanned, segment_japanese_spanned, segment_text_spanned,
+    to_half_width_spanned, SpannedRun, ScriptRun,
 };
+use crate::types::PhonemeSpan;
 use crate::tn::{self, Normalizer as WeTextNormalizer};
 
 /// Why text could not be turned into phonemes.
@@ -138,6 +142,11 @@ pub struct Phonemized {
     pub phonemes: String,
     /// One entry per distinct warning: the same gap named twice is one entry.
     pub warnings: Vec<String>,
+    /// Where each word's phonemes came from, when the pipeline could trace
+    /// them. `None` is the honest answer for a sentence whose numerals the
+    /// engine rewrote, and for one whose per-word mapping did not reproduce
+    /// the phonemes byte for byte; see [`Accumulator::push_words`].
+    pub spans: Option<Vec<PhonemeSpan>>,
 }
 
 /// What a pipeline has read so far, and what it had to leave out.
@@ -150,12 +159,51 @@ pub struct Phonemized {
 struct Accumulator {
     parts: Vec<String>,
     warnings: Vec<String>,
+    /// One entry per word whose phonemes were traced to the input, recorded
+    /// against the parts as they are concatenated — [`Self::finish`] is what
+    /// turns them into offsets in the final string.
+    spans: Vec<PhonemeSpan>,
+    /// Characters accumulated so far, so a span's phoneme offsets can be
+    /// recorded without re-reading the parts.
+    phonemes_len: usize,
 }
 
 impl Accumulator {
     /// Keep a run's phonemes, in the order the runs came in.
     fn push(&mut self, phonemes: String) {
+        self.phonemes_len += phonemes.chars().count();
         self.parts.push(phonemes);
+    }
+
+    /// Keep a run's phonemes and record where each of its words came from.
+    ///
+    /// `words` is one entry per word: `(input range, phoneme range)`, the input
+    /// range in UTF-16 units of the original text (what [`SpannedText`]
+    /// tracks) and the phoneme range in characters of `phonemes`, the string
+    /// being pushed. Offsets into the *final* phonemes string are
+    /// [`Self::finish`]'s job, because the final collapse is what moves them.
+    ///
+    /// A word the pipeline could not trace to one input range contributes no
+    /// entry, which is how a sentence loses its timings word by word instead of
+    /// whole: the words around an unreadable run keep theirs.
+    fn push_words(
+        &mut self,
+        phonemes: String,
+        words: Vec<(Option<(u32, u32)>, (usize, usize))>,
+    ) {
+        let base = self.phonemes_len;
+        for (input, (phoneme_start, phoneme_end)) in words {
+            let Some((char_start, char_end)) = input else {
+                continue;
+            };
+            self.spans.push(PhonemeSpan {
+                char_start: char_start as usize,
+                char_end: char_end as usize,
+                phoneme_start: base + phoneme_start,
+                phoneme_end: base + phoneme_end,
+            });
+        }
+        self.push(phonemes);
     }
 
     /// Record something the sentence had to leave out.
@@ -168,11 +216,15 @@ impl Accumulator {
     ///
     /// `english` is `None` when the backend could not be built at all; the run
     /// then contributes nothing and the warning is the honest answer, because
-    /// one unusable word must not cost the caller the sentence around it.
+    /// one unusable word must not cost the caller the sentence around it. A run
+    /// that produced phonemes contributes one span: a Latin run is one word by
+    /// construction (the segmenter sends every space to an `other` run), and
+    /// its whole reading came from that word.
     fn push_latin(
         &mut self,
         run_text: &str,
         english: Option<&EnglishG2p>,
+        input: Option<(u32, u32)>,
     ) -> Result<(), PipelineError> {
         let phonemes = match english {
             Some(english) => english.phonemize(run_text)?,
@@ -181,21 +233,61 @@ impl Accumulator {
 
         if phonemes.is_empty() {
             self.warnings.push(no_pronunciation(run_text));
+        } else if input.is_some_and(|(start, end)| start < end) {
+            let phoneme_end = phonemes.chars().count();
+            self.push_words(phonemes, vec![(input, (0, phoneme_end))]);
         } else {
-            self.parts.push(phonemes);
+            // An untraceable range: pushed, but not highlighted.
+            self.push(phonemes);
         }
 
         Ok(())
     }
 
     /// The sentence, with the steps every pipeline ends with.
+    ///
+    /// The collapse is where a span's phoneme offsets stop being about the
+    /// parts and start being about the final string: whitespace the collapse
+    /// removes has no position to map to, so a span is dropped when its start
+    /// was whitespace (a span never starts on one, but the filter is what makes
+    /// that true rather than assumed) and its end is the first surviving
+    /// character after it — a word's phonemes end where the next thing begins,
+    /// whatever happened to the space between them.
     fn finish(self) -> Phonemized {
+        let joined = self.parts.concat();
+        let (phonemes, remap, length) = collapse_whitespace_with_map(&joined);
+        let spans = if self.spans.is_empty() {
+            None
+        } else {
+            let spans: Vec<PhonemeSpan> = self
+                .spans
+                .into_iter()
+                .filter_map(|span| {
+                    let phoneme_start = remap.get(span.phoneme_start).copied().flatten()?;
+                    let phoneme_end = remap[span.phoneme_end.min(remap.len())..]
+                        .iter()
+                        .filter_map(|mapped| *mapped)
+                        .next()
+                        .unwrap_or(length);
+                    (phoneme_end > phoneme_start).then(|| PhonemeSpan {
+                        phoneme_start,
+                        phoneme_end,
+                        ..span
+                    })
+                })
+                .collect();
+            if spans.is_empty() { None } else { Some(spans) }
+        };
+
         Phonemized {
-            phonemes: collapse_whitespace(&self.parts.concat()),
+            phonemes,
             warnings: dedupe_warnings(self.warnings),
+            spans,
         }
     }
 }
+
+
 
 /// Japanese text to IPA, for the v1.0 frontend.
 ///
@@ -279,15 +371,15 @@ pub fn phonemize_ja(
     english: Option<&EnglishG2p>,
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
-    let folded = canonical::fold(text, tn::Lang::Ja);
-    let normalized = normalize_punctuation(folded.as_ref());
-    let punctuated = normalize_ja_punctuation(&normalized);
-    let with_numerals = read_numerals(&punctuated, tn::Lang::Ja, engine)?;
+    let folded = canonical::fold_spanned(text, tn::Lang::Ja);
+    let normalized = normalize_punctuation_spanned(folded);
+    let punctuated = normalize_ja_punctuation_spanned(normalized);
+    let with_numerals = read_numerals(punctuated.text(), tn::Lang::Ja, engine)?;
 
     let mut accumulator = Accumulator::default();
     report_unread(
         &mut accumulator,
-        &punctuated,
+        punctuated.text(),
         &with_numerals,
         &with_numerals,
         engine.is_some(),
@@ -295,10 +387,21 @@ pub fn phonemize_ja(
 
     // Anything the engine did not read is spelled so it is still audible; the
     // alternative is the digit reaching `keep_punctuation` and disappearing.
-    let spelled = spell_digits(&with_numerals, tn::Lang::Ja);
-    let runs = segment_japanese(&spelled);
+    // A rewrite the engine made is aligned back to the input character by
+    // character (`SpannedText::aligned`), so the words it left verbatim stay
+    // traceable and only the engine's own output loses its span.
+    let spelled = spell_digits_spanned(
+        if with_numerals.as_ref() == punctuated.text() {
+            punctuated
+        } else {
+            SpannedText::aligned(&punctuated, &with_numerals)
+        },
+        tn::Lang::Ja,
+    );
+    let runs = segment_japanese_spanned(&spelled);
 
-    for run in &runs {
+    for spanned in runs {
+        let SpannedRun { run, start } = spanned;
         match run {
             ScriptRun::Han(run_text) | ScriptRun::Kana(run_text) => {
                 // The numeral sound changes are applied to the whole run rather
@@ -309,18 +412,77 @@ pub fn phonemize_ja(
                 // A `Han` run here is a word the dictionary had no pronunciation
                 // for — `segment_japanese` merges the two kinds, so this arm is
                 // only reached by what `segment_text` would have called Han.
-                let katakana = segmenter.read_as_katakana(run_text)?;
+                //
+                // **The reading is taken twice.** The run's phonemes come from
+                // the whole-run reading, unchanged. The word spans come from a
+                // per-token reading, and they are only kept when the per-token
+                // mapping reproduces the run's phonemes exactly — a sound
+                // change crossing a token boundary (サンヒャク over 三 and 百)
+                // is the one way it would not, and the run then keeps a single
+                // span over all of its words instead of spans that would point
+                // at the wrong phonemes.
+                let pieces = segmenter.read_as_katakana_pieces(&run_text)?;
 
-                let (readable, unread) = split_unread_kanji(&katakana);
+                // The run's reading is the tokens' contributions concatenated —
+                // `read_as_katakana`'s answer, taken apart. The unread kanji are
+                // asked once of the whole reading, so the warning names every
+                // kanji the run could not read, exactly as before; the per-token
+                // readings are only for the spans.
+                let katakana: String = pieces.iter().map(|piece| piece.reading.as_str()).collect();
+                let (run_readable, unread) = split_unread_kanji(&katakana);
                 if !unread.is_empty() {
                     accumulator.warn(unread_kanji(&unread));
                 }
-                if !readable.is_empty() {
-                    accumulator.push(kana_to_ipa(&fix_numeral_sound_changes(&readable)));
+                let readable_pieces: Vec<String> = pieces
+                    .iter()
+                    .map(|piece| split_unread_kanji(&piece.reading).0)
+                    .collect();
+
+                let run_phonemes = kana_to_ipa(&fix_numeral_sound_changes(&run_readable));
+
+                if run_phonemes.is_empty() {
+                    continue;
+                }
+
+                let mut words = Vec::new();
+                let mut per_piece = String::new();
+                let mut phoneme_at = 0usize;
+                for (piece, readable) in pieces.iter().zip(&readable_pieces) {
+                    let piece_phonemes = kana_to_ipa(&fix_numeral_sound_changes(readable));
+                    let piece_len = piece_phonemes.chars().count();
+                    if piece_len > 0 {
+                        let input = spelled.char_range(
+                            start + piece.start,
+                            start + piece.start + piece.surface_len,
+                        );
+                        if input.is_some_and(|(begin, end)| begin < end) {
+                            words.push((input, (phoneme_at, phoneme_at + piece_len)));
+                        }
+                    }
+                    phoneme_at += piece_len;
+                    per_piece.push_str(&piece_phonemes);
+                }
+
+                if per_piece == run_phonemes {
+                    accumulator.push_words(run_phonemes, words);
+                } else {
+                    // The per-token reading disagrees with the run's, so the
+                    // word boundaries in the phonemes are unknown. One span for
+                    // the whole run is the honest coarse answer.
+                    let input = spelled.char_range(start, start + run_text.chars().count());
+                    if input.is_some_and(|(begin, end)| begin < end) {
+                        let phoneme_end = run_phonemes.chars().count();
+                        accumulator.push_words(run_phonemes, vec![(input, (0, phoneme_end))]);
+                    } else {
+                        accumulator.push(run_phonemes);
+                    }
                 }
             }
-            ScriptRun::Latin(run_text) => accumulator.push_latin(run_text, english)?,
-            ScriptRun::Other(run_text) => accumulator.push(keep_punctuation(run_text)),
+            ScriptRun::Latin(run_text) => {
+                let input = spelled.char_range(start, start + run_text.chars().count());
+                accumulator.push_latin(&run_text, english, input)?
+            }
+            ScriptRun::Other(run_text) => accumulator.push(keep_punctuation(&run_text)),
         }
     }
 
@@ -434,29 +596,43 @@ pub fn phonemize_en(
     english: Option<&EnglishG2p>,
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
-    let folded = canonical::fold(text, tn::Lang::En);
-    let normalized = normalize_punctuation(folded.as_ref());
-    let with_numerals = read_numerals(&normalized, tn::Lang::En, engine)?;
+    let folded = canonical::fold_spanned(text, tn::Lang::En);
+    let normalized = normalize_punctuation_spanned(folded);
+    let with_numerals = read_numerals(normalized.text(), tn::Lang::En, engine)?;
 
     let mut accumulator = Accumulator::default();
     // English only enters the engine when its own cheap gate says so; a skip is
     // not a "no path" and must not be reported as one.
-    let engine_ran = engine.is_some() && tn::needs_normalization(&normalized);
+    let engine_ran = engine.is_some() && tn::needs_normalization(normalized.text());
     report_unread(
         &mut accumulator,
-        &normalized,
+        normalized.text(),
         &with_numerals,
         &with_numerals,
         engine_ran,
     );
 
-    let spelled = spell_digits(&with_numerals, tn::Lang::En);
-    let runs = segment_text(&spelled);
+    // A rewrite the engine made is aligned back to the input character by
+    // character (`SpannedText::aligned`), so the words it left verbatim stay
+    // traceable and only the engine's own output loses its span.
+    let spelled = spell_digits_spanned(
+        if with_numerals.as_ref() == normalized.text() {
+            normalized
+        } else {
+            SpannedText::aligned(&normalized, &with_numerals)
+        },
+        tn::Lang::En,
+    );
+    let runs = segment_text_spanned(&spelled);
 
-    for run in &runs {
+    for spanned in runs {
+        let SpannedRun { run, start } = spanned;
         match run {
-            ScriptRun::Latin(run_text) => accumulator.push_latin(run_text, english)?,
-            ScriptRun::Other(run_text) => accumulator.push(keep_punctuation(run_text)),
+            ScriptRun::Latin(run_text) => {
+                let input = spelled.char_range(start, start + run_text.chars().count());
+                accumulator.push_latin(&run_text, english, input)?
+            }
+            ScriptRun::Other(run_text) => accumulator.push(keep_punctuation(&run_text)),
             ScriptRun::Han(_) | ScriptRun::Kana(_) => {}
         }
     }
@@ -598,16 +774,29 @@ pub fn phonemize_zh(
     tone_rules: ToneRules,
     engine: Option<&WeTextNormalizer>,
 ) -> Result<Phonemized, PipelineError> {
-    let folded = canonical::fold(text, tn::Lang::Zh);
-    let with_numerals = read_numerals(folded.as_ref(), tn::Lang::Zh, engine)?;
+    let folded = canonical::fold_spanned(text, tn::Lang::Zh);
+    let folded_text = folded.text().to_string();
+    let with_numerals = read_numerals(&folded_text, tn::Lang::Zh, engine)?;
+
     // The fold is *here* and not in `full_to_half`, and the order is what decides
     // it: `map_punctuation` turns `，` into `. ` and `。` into `. ` because that is
     // the pause Kokoro should give them, and the wetext fold would turn both into
     // ASCII punctuation first. Chinese's numeral step has to run before the map —
     // the grammar reads a full-width `．` as a decimal point — so the fold cannot
     // go in front of it either. See `crate::text::to_half_width`.
-    let mapped = zh_text::map_punctuation(&with_numerals);
-    let half_width = to_half_width(&mapped);
+    // A rewrite the engine made is aligned back to the input character by
+    // character (`SpannedText::aligned`), so the words it left verbatim stay
+    // traceable and only the engine's own output loses its span. The alignment
+    // is against the text the engine was given, and the punctuation map and the
+    // width fold run on its output — the same order the plain pipeline has.
+    let normalized = zh_text::map_punctuation_spanned(
+        if with_numerals.as_ref() == folded_text {
+            folded
+        } else {
+            SpannedText::aligned(&folded, &with_numerals)
+        },
+    );
+    let half_width = to_half_width_spanned(normalized);
 
     let chinese = ChinesePinyin::new();
     let mut accumulator = Accumulator::default();
@@ -615,16 +804,17 @@ pub fn phonemize_zh(
     // unread and only becomes an ASCII digit here.
     report_unread(
         &mut accumulator,
-        folded.as_ref(),
+        &folded_text,
         &with_numerals,
-        &half_width,
+        half_width.text(),
         engine.is_some(),
     );
 
-    let spelled = spell_digits(&half_width, tn::Lang::Zh);
-    let runs = zh_text::split_runs(&spelled);
+    let spelled = spell_digits_spanned(half_width, tn::Lang::Zh);
+    let runs = zh_text::split_runs_spanned(&spelled);
 
-    for run in &runs {
+    for spanned in runs {
+        let SpannedZhRun { run, start } = spanned;
         match run {
             ZhRun::Han(run_text) => {
                 // The boundaries first, so that a segmenter that lost a character
@@ -640,23 +830,52 @@ pub fn phonemize_zh(
                 // frozen pipeline byte for byte, and that pipeline took its
                 // boundaries from `word_lengths`. `On` needs the tags, and takes
                 // them from the same call. `SegmenterZh` asserts the two agree.
-                let phonemes = if tone_rules.are_on() {
-                    let words = segmenter.tagged_words(run_text)?;
-                    let readings = chinese.complete_readings(run_text)?;
-                    let plan = tone_sandhi::plan(run_text, &words, &readings, segmenter);
-                    chinese.syllables_to_ipa_by_words(
-                        &plan.syllables,
-                        &plan.word_lengths,
-                        run_text,
-                    )?
+                //
+                // The phonemes come out one string per word, and that is where
+                // the spans live: word `i`'s phonemes start where the pieces
+                // before it end, plus the space that joins them, and its input
+                // range is the `lengths` characters of the run it came from.
+                let (pieces, lengths) = if tone_rules.are_on() {
+                    let words = segmenter.tagged_words(&run_text)?;
+                    let readings = chinese.complete_readings(&run_text)?;
+                    let plan = tone_sandhi::plan(&run_text, &words, &readings, segmenter);
+                    let lengths = plan.word_lengths;
+                    let pieces =
+                        chinese.syllables_to_ipa_word_pieces(&plan.syllables, &lengths, &run_text)?;
+                    (pieces, lengths)
                 } else {
-                    let lengths = segmenter.word_lengths(run_text)?;
-                    chinese.han_to_ipa_by_words(run_text, &lengths)?
+                    let lengths = segmenter.word_lengths(&run_text)?;
+                    let pieces = chinese.han_to_ipa_word_pieces(&run_text, &lengths)?;
+                    (pieces, lengths)
                 };
-                accumulator.push(phonemes);
+
+                let mut words = Vec::new();
+                let mut char_at = 0usize;
+                let mut phoneme_at = 0usize;
+                for (piece, length) in pieces.iter().zip(&lengths) {
+                    let piece_len = piece.chars().count();
+                    if piece_len > 0 {
+                        let input = spelled.char_range(start + char_at, start + char_at + length);
+                        if input.is_some_and(|(begin, end)| begin < end) {
+                            words.push((input, (phoneme_at, phoneme_at + piece_len)));
+                        }
+                    }
+                    char_at += length;
+                    phoneme_at += piece_len + 1; // the space the join puts after it
+                }
+
+                let phonemes = pieces.join(" ");
+                if words.is_empty() {
+                    accumulator.push(phonemes);
+                } else {
+                    accumulator.push_words(phonemes, words);
+                }
             }
-            ZhRun::Latin(run_text) => accumulator.push_latin(run_text, english)?,
-            ZhRun::Other(run_text) => accumulator.push(zh_text::keep_punctuation(run_text)),
+            ZhRun::Latin(run_text) => {
+                let input = spelled.char_range(start, start + run_text.chars().count());
+                accumulator.push_latin(&run_text, english, input)?
+            }
+            ZhRun::Other(run_text) => accumulator.push(zh_text::keep_punctuation(&run_text)),
         }
     }
 
@@ -674,30 +893,28 @@ pub fn phonemize_zh(
 /// English spells each digit as a word with a space on both sides, so
 /// `3.2` becomes `three . two` rather than `threepointtwo`; Japanese and Chinese
 /// write the digit onto what follows them and take no space (`3つ` → `ニつ`).
-fn spell_digits(text: &str, lang: tn::Lang) -> Cow<'_, str> {
-    if !text.chars().any(|c| c.is_ascii_digit()) {
-        return Cow::Borrowed(text);
+fn spell_digits_spanned(text: SpannedText, lang: tn::Lang) -> SpannedText {
+    if !text.text().chars().any(|c| c.is_ascii_digit()) {
+        return text;
     }
 
-    let mut out = String::with_capacity(text.len() + 16);
-    for ch in text.chars() {
-        match ch.to_digit(10) {
-            Some(digit) => {
-                let digit = digit as usize;
-                match lang {
-                    tn::Lang::En => {
-                        out.push(' ');
-                        out.push_str(EN_DIGITS[digit]);
-                        out.push(' ');
-                    }
-                    tn::Lang::Ja => out.push_str(JA_DIGITS[digit]),
-                    tn::Lang::Zh => out.push_str(ZH_DIGITS[digit]),
-                }
+    let mut text = text;
+    text.map_chars(|ch| match ch.to_digit(10) {
+        None => once(ch).collect::<Vec<char>>(),
+        Some(digit) => {
+            let digit = digit as usize;
+            match lang {
+                // English spells each digit as a word with a space on both
+                // sides, so `3.2` becomes `three . two` rather than
+                // `threepointtwo`; Japanese and Chinese write the digit onto
+                // what follows them and take no space (`3つ` → `ニつ`).
+                tn::Lang::En => format!(" {} ", EN_DIGITS[digit]).chars().collect(),
+                tn::Lang::Ja => JA_DIGITS[digit].chars().collect(),
+                tn::Lang::Zh => ZH_DIGITS[digit].chars().collect(),
             }
-            None => out.push(ch),
         }
-    }
-    Cow::Owned(out)
+    });
+    text
 }
 
 const EN_DIGITS: [&str; 10] = [

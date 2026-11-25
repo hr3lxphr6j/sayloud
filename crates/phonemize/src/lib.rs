@@ -40,6 +40,7 @@ pub mod dictionary;
 pub mod g2p;
 pub mod kana;
 pub mod pipeline;
+pub mod provenance;
 pub mod text;
 pub mod tn;
 mod types;
@@ -291,9 +292,36 @@ impl Phonemizer {
         let repaired = vocab.repair(&phonemes.phonemes);
         validate_phonemes(&repaired, vocab).map_err(PhonemizeError::Vocab)?;
 
+        // A span's phoneme offsets were recorded against the pre-repair string;
+        // the repair's substitutions move characters, so the offsets move with
+        // them. `repair_offsets` walks the text once and replaces per character,
+        // while `repair` runs the substitutions as a chain of passes — the two
+        // agree exactly when no replacement contains a character a later pass
+        // would substitute again, so when they could disagree the spans are
+        // dropped rather than carried at offsets nobody verified.
+        let spans = phonemes.spans.and_then(|spans| {
+            match vocab.repair_offsets(&phonemes.phonemes) {
+                None => Some(spans),
+                Some(offsets) => {
+                    if !vocab.replacement_is_terminal() {
+                        return None;
+                    }
+                    let moved = spans.into_iter().map(|span| {
+                        let (_, end) = offsets[span.phoneme_end - 1];
+                        PhonemeSpan {
+                            phoneme_start: offsets[span.phoneme_start].0,
+                            phoneme_end: end,
+                            ..span
+                        }
+                    });
+                    Some(moved.collect())
+                }
+            }
+        });
+
         Ok(PhonemizeResult {
             phonemes: repaired.into_owned(),
-            spans: None,
+            spans,
             warnings: phonemes.warnings,
         })
     }

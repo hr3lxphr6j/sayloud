@@ -33,9 +33,12 @@ pub struct PhonemizeResult {
     /// Exactly what goes into the tokenizer, guaranteed to contain only
     /// characters the target model's vocabulary keeps.
     pub phonemes: String,
-    /// Offsets for word-level highlighting. Unpopulated in v1: the engine
-    /// highlights per sentence today, and this is here so adding word-level
-    /// later does not change the signature.
+    /// Where each word's phonemes came from, for word-level highlighting.
+    ///
+    /// `None` means "no timings for this sentence" and the engine falls back to
+    /// its per-sentence highlight. The pipelines return it for the words whose
+    /// phonemes they can trace to the input; a sentence whose numerals the
+    /// WeText engine rewrote loses all of them, because the rewrite is opaque.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spans: Option<Vec<PhonemeSpan>>,
     /// Runs of text that produced no phonemes, one message each.
@@ -49,8 +52,17 @@ pub struct PhonemizeResult {
 
 /// A run of phonemes produced by a run of the input text.
 ///
-/// Offsets are into the *input* text.
-#[derive(Debug, Clone, Serialize)]
+/// `char_start`/`char_end` are UTF-16 code unit offsets into the *input* text —
+/// what a JavaScript `slice` needs, since the highlight is
+/// `sentence.slice(charStart, charEnd)`. `phoneme_start`/`phoneme_end` are
+/// character offsets into `phonemes` — equivalent to UTF-16 offsets, because
+/// every character that survives the vocabulary gate is BMP — and are what the
+/// model's `durations` output is indexed against, one token per character after
+/// the tokenizer's own strip.
+///
+/// `char_start == char_end` is not emitted: a span with no text to highlight is
+/// dropped, and so is one with no phonemes ([`crate::pipeline`] drops both).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhonemeSpan {
     pub char_start: usize,

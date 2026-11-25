@@ -489,10 +489,26 @@ impl ChinesePinyin {
         text: &str,
         lengths: &[usize],
     ) -> Result<String, PinyinError> {
+        Ok(self
+            .han_to_ipa_word_pieces(text, lengths)?
+            .join(" "))
+    }
+
+    /// A run's characters to IPA, one string per word.
+    ///
+    /// The piece-per-word form of [`ChinesePinyin::han_to_ipa_by_words`], for a
+    /// caller that wants to know where each word's phonemes are — word-level
+    /// highlighting, which needs the ranges. The joined form is
+    /// [`ChinesePinyin::han_to_ipa_by_words`] and stays what the tokenizer sees.
+    pub fn han_to_ipa_word_pieces(
+        &self,
+        text: &str,
+        lengths: &[usize],
+    ) -> Result<Vec<String>, PinyinError> {
         let readings = self.complete_readings(text)?;
         let syllables = self.ipa_of(&readings, text)?;
 
-        join_by_words(&syllables, lengths, text)
+        words_by_syllables(&syllables, lengths, text)
     }
 
     /// A run's syllables to IPA, grouped into words.
@@ -511,8 +527,23 @@ impl ChinesePinyin {
         lengths: &[usize],
         text: &str,
     ) -> Result<String, PinyinError> {
+        Ok(self
+            .syllables_to_ipa_word_pieces(syllables, lengths, text)?
+            .join(" "))
+    }
+
+    /// Already-read syllables to IPA, one string per word.
+    ///
+    /// The piece-per-word form of [`ChinesePinyin::syllables_to_ipa_by_words`];
+    /// see [`ChinesePinyin::han_to_ipa_word_pieces`] for why it exists.
+    pub fn syllables_to_ipa_word_pieces(
+        &self,
+        syllables: &[String],
+        lengths: &[usize],
+        text: &str,
+    ) -> Result<Vec<String>, PinyinError> {
         let ipa = self.ipa_of(syllables, text)?;
-        join_by_words(&ipa, lengths, text)
+        words_by_syllables(&ipa, lengths, text)
     }
 
     // ------------------------------------------------------------- internals
@@ -745,11 +776,11 @@ impl ChinesePinyin {
 /// check below, rather than panicking on an out-of-range index. A panic inside
 /// the wasm takes the worker with it, and the answer — "these boundaries are
 /// wrong" — is available either way.
-fn join_by_words(
+fn words_by_syllables(
     syllables: &[String],
     lengths: &[usize],
     context: &str,
-) -> Result<String, PinyinError> {
+) -> Result<Vec<String>, PinyinError> {
     let mut words: Vec<String> = Vec::with_capacity(lengths.len());
     let mut at = 0;
 
@@ -771,7 +802,7 @@ fn join_by_words(
         });
     }
 
-    Ok(words.join(" "))
+    Ok(words)
 }
 
 /// One segmentation candidate.

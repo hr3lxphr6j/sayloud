@@ -292,6 +292,46 @@ impl SegmenterJa {
         let tokens = self.tokenize(text)?;
         Ok(tokens.iter().map(read_one_token).collect())
     }
+
+    /// [`SegmenterJa::read_as_katakana`], one contribution per dictionary token.
+    ///
+    /// The pieces concatenate to exactly what [`SegmenterJa::read_as_katakana`]
+    /// returns — same tokens, same `read_one_token` — but a caller that wants to
+    /// know which reading came from which word (word-level highlighting) gets
+    /// the split here, plus where each token sat in the text: surfaces are
+    /// contiguous, so a character count up to the token is its position.
+    pub fn read_as_katakana_pieces(&self, text: &str) -> Result<Vec<KanaPiece>, SegmenterError> {
+        let tokens = self.tokenize(text)?;
+        let mut pieces = Vec::with_capacity(tokens.len());
+        let mut at = 0usize;
+        for token in tokens {
+            let start = at;
+            let surface_len = token.surface.chars().count();
+            at += surface_len;
+            pieces.push(KanaPiece {
+                start,
+                surface_len,
+                reading: read_one_token(&token),
+            });
+        }
+        Ok(pieces)
+    }
+}
+
+/// One dictionary token's contribution to a katakana reading.
+#[derive(Debug, Clone)]
+pub struct KanaPiece {
+    /// Character index of the token's first character, within the text it was
+    /// read from.
+    pub start: usize,
+    /// The token's surface, in characters — the input range its reading came
+    /// from.
+    pub surface_len: usize,
+    /// What [`SegmenterJa::read_as_katakana`] contributes for this token (see
+    /// `read_one_token`): the dictionary's katakana reading, the kana-shifted
+    /// surface when there is none, or the surface itself for text with no
+    /// Japanese in it.
+    pub reading: String,
 }
 
 /// One token's contribution to the katakana reading, following kuroshiro.

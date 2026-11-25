@@ -107,6 +107,57 @@ impl Vocab {
         }
     }
 
+    /// Whether a substitution's replacement can itself be substituted.
+    ///
+    /// `repair` runs the substitutions as a chain of passes over the whole
+    /// string; `repair_offsets` replaces per character in one pass. The two are
+    /// the same operation exactly when no replacement contains a character a
+    /// later substitution would match — true of the tables here, and the
+    /// property a caller must check before trusting the offsets.
+    pub fn replacement_is_terminal(self) -> bool {
+        self.substitutions().iter().all(|(_, to)| {
+            !self
+                .substitutions()
+                .iter()
+                .any(|(later, _)| to.chars().any(|ch| ch == *later))
+        })
+    }
+
+    /// The positions `repair` moves phoneme characters to, when it moves any.
+    ///
+    /// Returns `None` when [`Vocab::repair`] would return the text unchanged —
+    /// either because this vocabulary has no substitutions or because none of
+    /// them apply — in which case a span's offsets survive as they are. The
+    /// answer is `(new start, new end)` per character of the input.
+    pub fn repair_offsets(self, phonemes: &str) -> Option<Vec<(usize, usize)>> {
+        let substitutions = self.substitutions();
+        if substitutions.is_empty() {
+            return None;
+        }
+        if !substitutions
+            .iter()
+            .any(|(from, _)| phonemes.contains(*from))
+        {
+            return None;
+        }
+
+        let mut offsets = Vec::with_capacity(phonemes.chars().count());
+        let mut at = 0usize;
+        for ch in phonemes.chars() {
+            let start = at;
+            let replacement = substitutions
+                .iter()
+                .find(|(from, _)| *from == ch)
+                .map(|(_, to)| *to);
+            match replacement {
+                Some(to) => at += to.chars().count(),
+                None => at += 1,
+            }
+            offsets.push((start, at));
+        }
+        Some(offsets)
+    }
+
     /// Rewrite what this vocabulary cannot express into what it can.
     ///
     /// Borrows when there is nothing to rewrite, which is the common case: this

@@ -37,6 +37,7 @@
 
 use std::borrow::Cow;
 
+use crate::provenance::SpannedText;
 use crate::tn::Lang;
 
 /// The text with the characters no reader can pronounce replaced by ones it can.
@@ -48,6 +49,17 @@ pub fn fold(text: &str, lang: Lang) -> Cow<'_, str> {
         return Cow::Borrowed(text);
     }
     Cow::Owned(fold_owned(text, lang))
+}
+
+/// [`fold`], keeping track of where each character came from.
+///
+/// The identity fast path is the same one [`fold`] has: a sentence of ordinary
+/// prose pays nothing, and its characters came from themselves.
+pub fn fold_spanned(text: &str, lang: Lang) -> SpannedText {
+    if text.is_empty() || !needs_fold(text) {
+        return SpannedText::identity(text);
+    }
+    fold_owned_spanned(text, lang)
 }
 
 /// Whether [`fold`] would change this text.
@@ -96,8 +108,65 @@ fn is_trigger(ch: char) -> bool {
 }
 
 fn fold_owned(text: &str, lang: Lang) -> String {
+    fold_owned_spanned(text, lang).into_text()
+}
+
+/// The fold's output, recording what each emitted character came from.
+struct FoldOutput {
+    text: String,
+    origin: Vec<(u32, u32)>,
+}
+
+impl FoldOutput {
+    /// Emit one character, from the input characters `source` names.
+    ///
+    /// `source` is a UTF-16 range in the input — one character for everything
+    /// ordinary, two for a composed half-width kana. An emission that carries
+    /// no source (the space [`Self::push_space`] adds between two others) is
+    /// attributed to the character that asked for it, so a word's range reaches
+    /// the spacing it was given.
+    fn emit(&mut self, source: (u32, u32), ch: char) {
+        self.text.push(ch);
+        self.origin.push(source);
+    }
+
+    /// Emit the characters of `replacement`, from one source range.
+    fn emit_str(&mut self, source: (u32, u32), replacement: &str) {
+        for ch in replacement.chars() {
+            self.emit(source, ch);
+        }
+    }
+
+    /// Append one space, unless the output already ends with one (or is empty).
+    /// Attributed to `source`, like everything else this call emits.
+    fn push_space(&mut self, source: (u32, u32)) {
+        if !self.text.is_empty() && !self.text.ends_with(' ') {
+            self.emit(source, ' ');
+        }
+    }
+}
+
+/// The fold's loop, recording what each emitted character came from.
+///
+/// Every emission is attributed to the input character that produced it — a
+/// replacement string ("number", 株式会社) to its one source character, and a
+/// composed half-width kana (ｶ + ﾞ, which the loop consumes as a pair) to the
+/// *range* of both, which is what [`crate::provenance::SpannedText`] records.
+fn fold_owned_spanned(text: &str, lang: Lang) -> SpannedText {
     let chars: Vec<char> = text.chars().collect();
-    let mut out = String::with_capacity(text.len());
+    // The UTF-16 range of each input character, by index.
+    let mut ranges: Vec<(u32, u32)> = Vec::with_capacity(chars.len());
+    let mut utf16 = 0u32;
+    for ch in &chars {
+        let start = utf16;
+        utf16 += ch.len_utf16() as u32;
+        ranges.push((start, utf16));
+    }
+
+    let mut out = FoldOutput {
+        text: String::with_capacity(text.len()),
+        origin: Vec::with_capacity(chars.len()),
+    };
     let mut index = 0;
 
     while index < chars.len() {
@@ -108,9 +177,10 @@ fn fold_owned(text: &str, lang: Lang) -> String {
             Some(chars[index - 1])
         };
         let next = chars.get(index + 1).copied();
+        let source = ranges[index];
 
         if ch.is_whitespace() {
-            push_space(&mut out);
+            out.push_space(source);
             index += 1;
             continue;
         }
@@ -121,7 +191,7 @@ fn fold_owned(text: &str, lang: Lang) -> String {
         }
 
         if let Some(replacement) = ligature(ch) {
-            out.push_str(replacement);
+            out.emit_str(source, replacement);
             index += 1;
             continue;
         }
@@ -135,37 +205,37 @@ fn fold_owned(text: &str, lang: Lang) -> String {
                 // English needs the space (`x squared`); Chinese and Japanese
                 // write the unit onto the number (`x平方`).
                 if lang == Lang::En {
-                    push_space(&mut out);
+                    out.push_space(source);
                 }
-                out.push_str(squared_word(ch, lang));
+                out.emit_str(source, squared_word(ch, lang));
             } else {
-                push_space(&mut out);
-                out.push(digit);
-                push_space(&mut out);
+                out.push_space(source);
+                out.emit(source, digit);
+                out.push_space(source);
             }
             index += 1;
             continue;
         }
 
         if let Some(value) = circled_value(ch) {
-            push_space(&mut out);
-            out.push_str(&value.to_string());
-            push_space(&mut out);
+            out.push_space(source);
+            out.emit_str(source, &value.to_string());
+            out.push_space(source);
             index += 1;
             continue;
         }
 
         if let Some(value) = roman_value(ch) {
-            push_space(&mut out);
-            out.push_str(&value.to_string());
-            push_space(&mut out);
+            out.push_space(source);
+            out.emit_str(source, &value.to_string());
+            out.push_space(source);
             index += 1;
             continue;
         }
 
         match ch {
             '\u{2212}' | '\u{2010}' | '\u{2011}' => {
-                out.push('-');
+                out.emit(source, '-');
                 index += 1;
                 continue;
             }
@@ -174,7 +244,7 @@ fn fold_owned(text: &str, lang: Lang) -> String {
                 // else it is punctuation this layer has no business rewriting.
                 let between_digits = previous.is_some_and(|c| c.is_ascii_digit())
                     && next.is_some_and(|c| c.is_ascii_digit());
-                out.push(if between_digits { '-' } else { ch });
+                out.emit(source, if between_digits { '-' } else { ch });
                 index += 1;
                 continue;
             }
@@ -183,11 +253,11 @@ fn fold_owned(text: &str, lang: Lang) -> String {
 
         if ('\u{ff61}'..='\u{ff9f}').contains(&ch) {
             match ch {
-                '\u{ff61}' => out.push('。'),
-                '\u{ff62}' => out.push('「'),
-                '\u{ff63}' => out.push('」'),
-                '\u{ff64}' => out.push('、'),
-                '\u{ff65}' => out.push('・'),
+                '\u{ff61}' => out.emit(source, '。'),
+                '\u{ff62}' => out.emit(source, '「'),
+                '\u{ff63}' => out.emit(source, '」'),
+                '\u{ff64}' => out.emit(source, '、'),
+                '\u{ff65}' => out.emit(source, '・'),
                 // An orphan dakuten has no base to voice.
                 '\u{ff9e}' | '\u{ff9f}' => {}
                 _ => {
@@ -195,11 +265,13 @@ fn fold_owned(text: &str, lang: Lang) -> String {
                         let mark = next.filter(|c| matches!(c, '\u{ff9e}' | '\u{ff9f}'));
                         match mark.and_then(|mark| compose_kana(base, mark)) {
                             Some(composed) => {
-                                out.push(composed);
+                                // The pair is one character now, and its range
+                                // is both input characters'.
+                                out.emit((source.0, ranges[index + 1].1), composed);
                                 index += 2; // the mark is part of the character
                                 continue;
                             }
-                            None => out.push(base),
+                            None => out.emit(source, base),
                         }
                     }
                 }
@@ -210,31 +282,26 @@ fn fold_owned(text: &str, lang: Lang) -> String {
 
         match ch {
             '\u{2116}' => {
-                out.push_str("number");
-                push_space(&mut out);
+                out.emit_str(source, "number");
+                out.push_space(source);
             }
             '\u{2121}' => {
-                out.push_str("telephone");
-                push_space(&mut out);
+                out.emit_str(source, "telephone");
+                out.push_space(source);
             }
-            '\u{3231}' => out.push_str("株式会社"),
-            '\u{3232}' => out.push_str("有限会社"),
-            _ => out.push(ch),
+            '\u{3231}' => out.emit_str(source, "株式会社"),
+            '\u{3232}' => out.emit_str(source, "有限会社"),
+            _ => out.emit(source, ch),
         }
         index += 1;
     }
 
-    while out.ends_with(' ') {
-        out.pop();
+    while out.text.ends_with(' ') {
+        out.text.pop();
+        out.origin.pop();
     }
-    out
-}
 
-/// Append one space, unless the output already ends with one (or is empty).
-fn push_space(out: &mut String) {
-    if !out.is_empty() && !out.ends_with(' ') {
-        out.push(' ');
-    }
+    SpannedText::from_parts(out.text, out.origin, utf16)
 }
 
 fn ligature(ch: char) -> Option<&'static str> {

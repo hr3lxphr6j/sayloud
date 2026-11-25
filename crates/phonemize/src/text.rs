@@ -9,8 +9,44 @@
 //! - [`segment_text`] splits into script runs before anything else looks at the
 //!   text, because each run takes a different route to phonemes.
 
+use std::iter::once;
+
 use crate::kana::{is_hiragana, is_katakana};
+use crate::provenance::{map_char_or_keep, SpannedText};
 use crate::unicode::{self, KATAKANA_PHONETIC_EXTENSIONS};
+
+/// A script run plus where it starts, in characters of the text it was
+/// segmented from ([`SpannedText`], so the pipeline can turn the position into
+/// a range of the *original* input with [`SpannedText::char_range`]).
+#[derive(Debug, Clone)]
+pub struct SpannedRun {
+    pub run: ScriptRun,
+    /// Character index of the run's first character.
+    pub start: usize,
+}
+
+impl SpannedRun {
+    /// How many characters the run holds.
+    pub fn len(&self) -> usize {
+        self.run.text().chars().count()
+    }
+}
+
+impl ScriptRun {
+    /// The run's text, whichever kind it is.
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Han(text) | Self::Kana(text) | Self::Latin(text) | Self::Other(text) => text,
+        }
+    }
+
+    /// The run's text as an owned string, dropping the kind.
+    pub fn into_text(self) -> String {
+        match self {
+            Self::Han(text) | Self::Kana(text) | Self::Latin(text) | Self::Other(text) => text,
+        }
+    }
+}
 
 /// One run of text that will be phonemized the same way.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,34 +75,45 @@ pub enum ScriptRun {
 /// This is the map Japanese and English share. The one mark that only Japanese
 /// text has is [`normalize_ja_punctuation`]'s, applied after it.
 pub fn normalize_punctuation(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '、' => out.push_str(", "),
-            // Comma → period: force the pause Kokoro gives a period. See the
-            // module comment; this is the listening-tested choice, not an
-            // accident.
-            '，' => out.push_str(". "),
-            '。' => out.push_str(". "),
-            '．' => out.push_str(". "),
-            '！' => out.push_str("! "),
-            '：' => out.push_str(": "),
-            '；' => out.push_str("; "),
-            '？' => out.push_str("? "),
-            '«' => out.push_str(" \""),
-            '»' => out.push_str("\" "),
-            '《' => out.push_str(" \""),
-            '》' => out.push_str("\" "),
-            '「' => out.push_str(" \""),
-            '」' => out.push_str("\" "),
-            '【' => out.push_str(" \""),
-            '】' => out.push_str("\" "),
-            '（' => out.push_str(" ("),
-            '）' => out.push_str(") "),
-            other => out.push(other),
-        }
+    normalize_punctuation_spanned(SpannedText::identity(text)).into_text()
+}
+
+/// [`normalize_punctuation`], keeping track of where each character came from.
+pub fn normalize_punctuation_spanned(text: SpannedText) -> SpannedText {
+    let mut text = text;
+    text.map_chars(|ch| map_char_or_keep(ch, punctuation_replacement(ch)));
+    text.trim();
+    text
+}
+
+/// What [`normalize_punctuation`] makes of one character.
+///
+/// Shared by the plain and the spanned path, so the two cannot drift.
+fn punctuation_replacement(ch: char) -> Option<&'static str> {
+    match ch {
+        '、' => Some(", "),
+        // Comma → period: force the pause Kokoro gives a period. See the
+        // module comment; this is the listening-tested choice, not an
+        // accident.
+        '，' => Some(". "),
+        '。' => Some(". "),
+        '．' => Some(". "),
+        '！' => Some("! "),
+        '：' => Some(": "),
+        '；' => Some("; "),
+        '？' => Some("? "),
+        '«' => Some(" \""),
+        '»' => Some("\" "),
+        '《' => Some(" \""),
+        '》' => Some("\" "),
+        '「' => Some(" \""),
+        '」' => Some("\" "),
+        '【' => Some(" \""),
+        '】' => Some("\" "),
+        '（' => Some(" ("),
+        '）' => Some(") "),
+        _ => None,
     }
-    out.trim().to_string()
 }
 
 /// The punctuation that only Japanese text has.
@@ -88,7 +135,14 @@ pub fn normalize_punctuation(text: &str) -> String {
 /// `"` — is left to the shared map, because both are in the vocabulary and the
 /// difference is cosmetic.
 pub fn normalize_ja_punctuation(text: &str) -> String {
-    text.replace('・', ", ")
+    normalize_ja_punctuation_spanned(SpannedText::identity(text)).into_text()
+}
+
+/// [`normalize_ja_punctuation`], keeping track of where each character came from.
+pub fn normalize_ja_punctuation_spanned(text: SpannedText) -> SpannedText {
+    let mut text = text;
+    text.map_chars(|ch| map_char_or_keep(ch, (ch == '・').then_some(", ")));
+    text
 }
 
 /// Full-width forms to ASCII: the digits, and the Latin letters.
@@ -116,8 +170,14 @@ pub fn normalize_ja_punctuation(text: &str) -> String {
 /// `full_to_half` FST folds the whole block for them — and Chinese does, which is
 /// why this function exists at all and why `phonemize_zh` calls it *after* the map.
 pub fn to_half_width(text: &str) -> String {
-    text.chars()
-        .map(|ch| match ch {
+    to_half_width_spanned(SpannedText::identity(text)).into_text()
+}
+
+/// [`to_half_width`], keeping track of where each character came from.
+pub fn to_half_width_spanned(text: SpannedText) -> SpannedText {
+    let mut text = text;
+    text.map_chars(|ch| {
+        once(match ch {
             // Full-width digits U+FF10..U+FF19, capitals U+FF21..U+FF3A and
             // lower case U+FF41..U+FF5A.
             '\u{ff10}'..='\u{ff19}' | '\u{ff21}'..='\u{ff3a}' | '\u{ff41}'..='\u{ff5a}' => {
@@ -125,7 +185,9 @@ pub fn to_half_width(text: &str) -> String {
             }
             _ => ch,
         })
-        .collect()
+        .collect::<Vec<char>>()
+    });
+    text
 }
 
 /// Split text into runs of one script each.
@@ -141,7 +203,15 @@ pub fn to_half_width(text: &str) -> String {
 /// that would fail if the range were removed. The range itself is
 /// `unicode::CJK_EXT_B`.
 pub fn segment_text(text: &str) -> Vec<ScriptRun> {
-    segment_by(text, false)
+    segment_text_spanned(&SpannedText::identity(text))
+        .into_iter()
+        .map(|spanned| spanned.run)
+        .collect()
+}
+
+/// [`segment_text`], with each run's position in the text.
+pub fn segment_text_spanned(text: &SpannedText) -> Vec<SpannedRun> {
+    segment_by_spanned(text, false)
 }
 
 /// The same split, but with the kanji and the kana kept in one run.
@@ -159,21 +229,41 @@ pub fn segment_text(text: &str) -> Vec<ScriptRun> {
 /// The merged run is a [`ScriptRun::Kana`] whatever it started with, because the
 /// two variants take the same route from here on.
 pub fn segment_japanese(text: &str) -> Vec<ScriptRun> {
-    segment_by(text, true)
+    segment_japanese_spanned(&SpannedText::identity(text))
+        .into_iter()
+        .map(|spanned| spanned.run)
+        .collect()
 }
 
-fn segment_by(text: &str, merge_kanji_into_kana: bool) -> Vec<ScriptRun> {
-    let mut runs: Vec<ScriptRun> = Vec::new();
+/// [`segment_japanese`], with each run's position in the text.
+pub fn segment_japanese_spanned(text: &SpannedText) -> Vec<SpannedRun> {
+    segment_by_spanned(text, true)
+}
 
-    for ch in text.chars() {
+/// The split both public segmenters share, recording each run's start.
+fn segment_by_spanned(text: &SpannedText, merge_kanji_into_kana: bool) -> Vec<SpannedRun> {
+    let mut runs: Vec<SpannedRun> = Vec::new();
+
+    let mut index = 0usize;
+    for ch in text.text().chars() {
         let mut kind = classify(ch);
         if merge_kanji_into_kana && kind == Kind::Han {
             kind = Kind::Kana;
         }
-        match runs.last_mut() {
-            Some(run) if run.kind() == kind => run.push(ch),
-            _ => runs.push(kind.run(ch)),
+        let extends_last = match runs.last_mut() {
+            Some(last) if last.run.kind() == kind => {
+                last.run.push(ch);
+                true
+            }
+            _ => false,
+        };
+        if !extends_last {
+            runs.push(SpannedRun {
+                run: kind.run(ch),
+                start: index,
+            });
         }
+        index += 1;
     }
 
     runs
@@ -287,22 +377,40 @@ pub fn keep_punctuation(text: &str) -> String {
 /// that would have to change together, and this is the cheaper half to get
 /// right.
 pub fn collapse_whitespace(text: &str) -> String {
+    collapse_whitespace_with_map(text).0
+}
+
+/// [`collapse_whitespace`], with each surviving character's position in the
+/// result, so a caller that records offsets against the uncollapsed text can
+/// follow them through — and `None` for the whitespace the collapse removes.
+///
+/// One implementation for both callers: the pipelines that want the plain
+/// string and the word spans that want the map have to agree on what a
+/// collapse *is*, and this is the one place that decides.
+///
+/// Returns the collapsed string, a position per input character, and the
+/// collapsed length in characters.
+pub fn collapse_whitespace_with_map(text: &str) -> (String, Vec<Option<usize>>, usize) {
     let mut out = String::with_capacity(text.len());
+    let mut remap: Vec<Option<usize>> = Vec::with_capacity(text.chars().count());
     let mut in_space = false;
 
     for ch in text.chars() {
         if is_js_whitespace(ch) {
             in_space = true;
+            remap.push(None);
             continue;
         }
         if in_space && !out.is_empty() {
             out.push(' ');
         }
         in_space = false;
+        remap.push(Some(out.chars().count()));
         out.push(ch);
     }
 
-    out
+    let length = out.chars().count();
+    (out, remap, length)
 }
 
 /// JavaScript's `\s`, which is a fixed set rather than a Unicode property.

@@ -109,7 +109,12 @@ export class LocalProvider implements Provider {
   capabilities(config: ProviderConfig): ProviderCapabilities {
     // Read for its side effect: a mismatched config is a wiring bug.
     requireConfig(config, 'local');
-    return { timings: 'none', maxChars: MAX_CHARS, concurrency: CONCURRENCY };
+    // `exact`: the timestamped model reports per-token durations and the
+    // phonemizer traces each word's phonemes, so the highlight is measured, not
+    // estimated — and a sentence whose words could not be traced reports no
+    // timings at all rather than approximate ones, which is the same
+    // no-fabrication rule `alignTimings` runs on.
+    return { timings: 'exact', maxChars: MAX_CHARS, concurrency: CONCURRENCY };
   }
 
   /**
@@ -171,19 +176,18 @@ export class LocalProvider implements Provider {
       await engine.load(model, tier, device);
 
       const lang = local.lang ?? voiceLanguage(request.voiceId) ?? 'en-US';
-      const { pcm, sampleRate } = await engine.synthesize(
+      const { pcm, sampleRate, timings } = await engine.synthesize(
         request.text,
         request.voiceId,
         lang,
         request.signal
       );
 
-      // No timings, ever: Kokoro returns audio and nothing else, and SayLoud
-      // highlights the whole sentence rather than estimating word positions.
       return {
         audio: pcmToWav(pcm, sampleRate),
         mime: 'audio/wav',
         durationMs: durationMsFor(pcm.length, sampleRate),
+        timings,
       };
     } catch (error) {
       // A worker that died cannot answer anything again, so this instance is

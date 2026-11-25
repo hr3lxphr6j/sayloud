@@ -17,8 +17,13 @@
  * worker from a previous version is a real possibility.
  */
 import type { ProviderErrorCode } from '../providers/errors';
+import type { WordTiming } from '../providers/types';
 import type { Device } from './device';
 import type { DeviceInfo } from './engine';
+import type { PhonemeSpan } from './phonemize-rust';
+
+export type { PhonemeSpan };
+
 import { isModelSource, type ModelSource } from './urls';
 import { isMessageId, messageTypeOf } from './worker-message';
 
@@ -39,6 +44,19 @@ import { isMessageId, messageTypeOf } from './worker-message';
  */
 export interface SynthesizePiece {
   readonly ipa: string;
+  /**
+   * Where each word of `ipa` came from, in characters of the piece's own text.
+   *
+   * Present when the phonemizer could trace them; absent for a piece whose
+   * words it could not (a sentence whose numerals the engine rewrote reports
+   * no spans, and a piece cut out of such a sentence carries none). The
+   * engine's word timings come from these plus the model's durations output.
+   */
+  readonly spans?: readonly PhonemeSpan[];
+  // The span's character offsets are already sentence-relative — the
+  // coordinator shifts them when it cuts the sentence into pieces, because only
+  // it knows where each piece sits — so the engine needs no second coordinate
+  // system here.
 }
 
 /** Main thread → worker. */
@@ -87,7 +105,14 @@ export type WorkerReply =
   | { type: 'ready'; id: number }
   | { type: 'loaded'; id: number; info: DeviceInfo }
   | { type: 'counted'; id: number; tokens: number }
-  | { type: 'pcm'; id: number; pcm: Float32Array; sampleRate: number }
+  | {
+      type: 'pcm';
+      id: number;
+      pcm: Float32Array;
+      sampleRate: number;
+      /** Sentence-relative word timings, when the model produced any. */
+      timings?: WordTiming[];
+    }
   | { type: 'error'; id: number; code: ProviderErrorCode; message: string };
 
 const REQUEST_TYPES: ReadonlySet<string> = new Set([

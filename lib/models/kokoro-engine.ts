@@ -18,10 +18,16 @@
  * (in the other worker). That leaves this class with exactly the model, which is
  * the split `kokoro.worker.ts` is named after.
  */
+import { Tensor } from '@huggingface/transformers';
 import { KokoroTTS } from 'kokoro-js';
+import type { WordTiming } from '../providers/types';
 import { concatPcm, KOKORO_SAMPLE_RATE } from './audio';
+import { voiceKey } from './downloader';
 import { abortError, type DeviceInfo, type RawPcm } from './engine';
-import { type ModelTier, modelById, tierById } from './registry';
+import { type ModelTier, modelById, type OnDeviceModel, tierById } from './registry';
+import { KOKORO_VOICES_CACHE } from './urls';
+import { readStyleVector } from './voice-file';
+import { wordTimings } from './word-timings';
 import type { SynthesizePiece } from './worker-protocol';
 
 /** One synthesis in flight, so a cancel can reach it. */
@@ -29,14 +35,27 @@ interface InFlight {
   readonly controller: AbortController;
 }
 
-/** The voice ids `kokoro-js` types as a union; ours come from its own list. */
-type GenerateOptions = NonNullable<Parameters<KokoroTTS['generate']>[1]>;
+/**
+ * What a test may stand in for.
+ *
+ * The real voice loader reads Cache Storage, which a unit test has no business
+ * owning; everything else this class does is ordinary mocking.
+ */
+export interface KokoroEngineDeps {
+  /** The style vector for one voice, as the model's `style` input wants it. */
+  readonly loadVoice?: (model: OnDeviceModel, voiceId: string) => Promise<Float32Array>;
+}
 
 export class KokoroEngine {
+  constructor(private readonly deps: KokoroEngineDeps = {}) {}
+
   private tts: KokoroTTS | null = null;
   private tier: ModelTier | null = null;
+  private model: OnDeviceModel | null = null;
   private device: DeviceInfo['device'] = 'wasm';
   private readonly inFlight = new Map<number, InFlight>();
+  /** The voice style vectors, one fetch per voice for the session's life. */
+  private readonly voices = new Map<string, Promise<Float32Array>>();
   /**
    * Bumped by every `load`, so one that finishes late cannot install itself
    * over the session a newer call built.
@@ -75,6 +94,7 @@ export class KokoroEngine {
 
     this.tts = session;
     this.tier = tier;
+    this.model = model;
     this.device = device;
 
     return { device, sessionInitMs: Date.now() - started };
@@ -116,11 +136,34 @@ export class KokoroEngine {
 
     try {
       const chunks: Float32Array[] = [];
+      const timings: WordTiming[] = [];
+      // Each piece's audio starts where the ones before it ended, and the
+      // spans' character offsets are already sentence-relative — so only the
+      // times are shifted here, by the audio that came before the piece.
+      let samplesSoFar = 0;
       for (const piece of pieces) {
         if (inFlight.controller.signal.aborted) throw abortError();
-        chunks.push(await this.render(piece, voiceId, lang));
+        const rendered = await this.render(piece, voiceId, lang);
+        chunks.push(rendered.audio);
+        console.warn('[dbg] spans?', piece.spans !== undefined, 'durs?', rendered.durations !== undefined, JSON.stringify(rendered.durations));
+        if (piece.spans !== undefined && rendered.durations !== undefined) {
+          timings.push(
+            ...wordTimings(
+              piece.ipa,
+              rendered.durations,
+              piece.spans,
+              rendered.audio.length,
+              samplesSoFar / (KOKORO_SAMPLE_RATE / 1000)
+            )
+          );
+        }
+        samplesSoFar += rendered.audio.length;
       }
-      return { pcm: concatPcm(chunks), sampleRate: KOKORO_SAMPLE_RATE };
+      return {
+        pcm: concatPcm(chunks),
+        sampleRate: KOKORO_SAMPLE_RATE,
+        timings: timings.length > 0 ? timings : undefined,
+      };
     } finally {
       this.inFlight.delete(id);
     }
@@ -165,22 +208,103 @@ export class KokoroEngine {
     piece: SynthesizePiece,
     voiceId: string,
     _lang: string
-  ): Promise<Float32Array> {
+  ): Promise<{ audio: Float32Array; durations?: Float32Array }> {
     const tts = this.tts;
     if (!tts) throw new Error('the model is not loaded');
-    const options = { voice: voiceId } as GenerateOptions;
 
     const encoded = tts.tokenizer(piece.ipa, { truncation: false });
-    const audio = await tts.generate_from_ids(encoded.input_ids, options);
-    return audio.audio;
+    const inputIds = encoded.input_ids;
+
+    // The model is called directly rather than through `generate_from_ids()`,
+    // which destructures only `waveform` and throws the durations away. The
+    // feeds are the ones `generate_from_ids()` builds — same style slice, same
+    // speed — so the audio is the audio the library would have produced, and
+    // `durationMs`-style parity tests hold on the waveform alone.
+    const offset = STYLE_SPAN * Math.min(Math.max((inputIds.dims.at(-1) ?? 0) - 2, 0), 509);
+    const style = new Tensor(
+      'float32',
+      (await this.voice(voiceId)).slice(offset, offset + STYLE_SPAN),
+      [1, STYLE_SPAN]
+    );
+    const speed = new Tensor('float32', new Float32Array([1]), [1]);
+
+    // The timestamped model adds a `durations` output: per input token, how
+    // many frames the model spoke it for. A model without it — the plain
+    // weights — returns `undefined` here, and the sentence then plays without
+    // word timings rather than with guessed ones.
+    const output = await tts.model({ input_ids: inputIds, style, speed });
+    const durations = output.durations?.data as Float32Array | undefined;
+    // `generate_from_ids()` wraps `waveform.data` in a `RawAudio`; this is that
+    // data, straight out of the tensor.
+    const audio = output.waveform.data as Float32Array;
+    return { audio, durations };
+  }
+
+  /**
+   * The style vector for `voiceId`, fetched once per session.
+   *
+   * The same file the downloader wrote under the model's repository, read back
+   * through the cache the engine's own fetch already resolves. `Float32Array`
+   * is what the style tensor is sliced from, per kokoro-js's own loading.
+   */
+  private voice(voiceId: string): Promise<Float32Array> {
+    const cached = this.voices.get(voiceId);
+    if (cached) return cached;
+
+    const model = this.model;
+    if (!model) throw new Error('the model is not loaded');
+    if (this.deps.loadVoice) {
+      const injected = this.deps.loadVoice(model, voiceId);
+      this.voices.set(voiceId, injected);
+      return injected;
+    }
+    const loading = (async () => {
+      // `voiceKey` resolves the model's own `voiceFile` template — passing it a
+      // path instead of the id doubles every segment (`voices/x.bin.bin`), which
+      // is exactly the 404 this once was.
+      const key = voiceKey(model, voiceId);
+      const bucket = await caches.open(KOKORO_VOICES_CACHE);
+      return readStyleVector(
+        voiceId,
+        key,
+        async () => (await bucket.match(key)) ?? undefined,
+        () => fetch(key)
+      );
+    })();
+    this.voices.set(voiceId, loading);
+    return loading;
   }
 
   private disposeSession(): void {
     this.tts?.model?.dispose?.();
     this.tts = null;
     this.tier = null;
+    this.model = null;
+    this.voices.clear();
     // Not left at whatever the last session used: the next `load` with the
     // default preference must not be mistaken for a session that is still here.
     this.device = 'wasm';
   }
 }
+
+/**
+ * One style vector, in floats.
+ *
+ * The model takes one per synthesis, sliced out of the voice file at an offset
+ * that grows with the token count — the arithmetic `generate_from_ids()` has
+ * always used, and the reason a piece cut to the model's limit slices at most
+ * 256 × 509 floats into the file.
+ */
+const STYLE_SPAN = 256;
+
+/**
+ * The characters that survive the model's tokenizer, verbatim.
+ *
+ * The Rust phonemizer's vocabulary gate refuses any phoneme string holding a
+ * character outside the model's vocabulary, and every vocabulary character
+ * survives the tokenizer's own normalizer — measured against `tokenizer.json`
+ * the same way `crates/phonemize`'s `KOKORO_PUNCTUATION` was — so a phoneme's
+ * character index *is* its token index, offset by the BOS the tokenizer adds.
+ * The length check below is what catches that assumption breaking, instead of
+ * letting a misaligned highlight ship.
+ */

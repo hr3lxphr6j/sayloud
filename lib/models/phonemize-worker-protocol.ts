@@ -21,6 +21,7 @@
  */
 import type { ProviderErrorCode } from '../providers/errors';
 import { isDictionaryLoadError } from './phonemize-dict';
+import type { PhonemeSpan } from './phonemize-rust';
 import { isVocabId, type VocabId } from './vocab';
 import { isMessageId, messageTypeOf } from './worker-message';
 
@@ -75,6 +76,15 @@ export type PhonemizeWorkerReply =
       type: 'phonemized';
       id: number;
       phonemes: string;
+      /**
+       * Where each word of `phonemes` came from, in UTF-16 offsets of `text`.
+       *
+       * Absent when the phonemizer could not trace the words — a sentence
+       * whose numerals the engine rewrote has no spans, nor one whose phonemes
+       * a piece boundary would have to cut. Carried through because the
+       * coordinator is what turns them into sentence offsets.
+       */
+      spans?: readonly PhonemeSpan[];
       /**
        * Runs of text that produced no phonemes, one message each.
        *

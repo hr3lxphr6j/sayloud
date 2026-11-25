@@ -69,17 +69,19 @@ async function handle(request: PhonemizeWorkerRequest): Promise<void> {
 
       case 'phonemize': {
         const result = service.phonemize(request.text, request.vocab, request.lang);
-        // `warnings` is sent only when there are some, because the Rust side
-        // omits the field when there is nothing to report and an empty array
-        // would be a second spelling of "none" for every caller to handle.
+        // `warnings` and `spans` are sent only when there are some, because the
+        // Rust side omits both fields when there is nothing to report and an
+        // empty array would be a second spelling of "none" for every caller to
+        // handle.
         reply(
-          result.warnings === undefined
+          result.warnings === undefined && result.spans === undefined
             ? { type: 'phonemized', id: request.id, phonemes: result.phonemes }
             : {
                 type: 'phonemized',
                 id: request.id,
                 phonemes: result.phonemes,
                 warnings: result.warnings,
+                spans: result.spans,
               }
         );
         return;

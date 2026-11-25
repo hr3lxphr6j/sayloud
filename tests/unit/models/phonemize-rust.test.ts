@@ -491,9 +491,9 @@ describe('RustPhonemizer.phonemize', { timeout: DICTIONARY_TIMEOUT_MS }, () => {
   it.skipIf(!hasDictionary)("returns the pipeline's phonemes", async () => {
     const phonemizer = await prepared();
 
-    expect(phonemizer.phonemize('経営', { vocab: 'kokoro-v1', lang: 'ja-JP' })).toEqual({
-      phonemes: 'keːeː',
-    });
+    expect(phonemizer.phonemize('経営', { vocab: 'kokoro-v1', lang: 'ja-JP' }).phonemes).toBe(
+      'keːeː'
+    );
   });
 
   it.skipIf(!hasDictionary)('phonemizes a Latin run instead of passing it through', async () => {
@@ -507,8 +507,8 @@ describe('RustPhonemizer.phonemize', { timeout: DICTIONARY_TIMEOUT_MS }, () => {
     // 使う is why the Japanese half is here at all: it used to reach the
     // dictionary as two runs — kanji and kana — so 使 was read on its own as シ.
     // Read as the word it is, it is ツカウ.
-    expect(phonemizer.phonemize('Chatを使う', options)).toEqual({ phonemes: 'tʃˈætoʦukau' });
-    expect(phonemizer.phonemize('あQい', options)).toEqual({ phonemes: 'akjˈuːi' });
+    expect(phonemizer.phonemize('Chatを使う', options).phonemes).toBe('tʃˈætoʦukau');
+    expect(phonemizer.phonemize('あQい', options).phonemes).toBe('akjˈuːi');
   });
 
   it.skipIf(!hasDictionary)('reads a word the English dictionary does not have', async () => {
@@ -525,9 +525,7 @@ describe('RustPhonemizer.phonemize', { timeout: DICTIONARY_TIMEOUT_MS }, () => {
       lang: 'ja-JP',
     });
 
-    expect(result).toEqual({
-      phonemes: 'kɑkɔɹoʊoʦukau',
-    });
+    expect(result.phonemes).toBe('kɑkɔɹoʊoʦukau');
   });
 
   it('throws rather than degrading when nothing was prepared', async () => {

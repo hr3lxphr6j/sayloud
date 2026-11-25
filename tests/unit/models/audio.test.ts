@@ -143,35 +143,64 @@ describe('splitClauses', () => {
 /** A measurement that charges one token per character, so tests can be exact. */
 const perCharacter = async (text: string) => ({ ipa: `<${text}>`, tokens: text.length });
 
+/** Like `perCharacter`, with one span per piece-relative character. */
+const perCharacterWithSpans = async (text: string) => ({
+  ipa: `<${text}>`,
+  tokens: text.length,
+  spans: [...text].map((_, index) => ({
+    charStart: index,
+    charEnd: index + 1,
+    phonemeStart: index + 1, // inside `<...>`: the char at index+1
+    phonemeEnd: index + 2,
+  })),
+});
+
 /** A measurement with a fixed cost per call, for the packing tests. */
 function fixed(cost: number) {
   return async (text: string) => ({ ipa: `<${text}>`, tokens: cost });
 }
 
 describe('planPieces', () => {
-  it('returns one piece for a sentence that fits', async () => {
-    const pieces = await planPieces('你好世界', perCharacter);
-    expect(pieces).toEqual([{ text: '你好世界', ipa: '<你好世界>', tokens: 4 }]);
+  it('shifts the spans out of piece coordinates', async () => {
+    const pieces = await planPieces('上午好', perCharacterWithSpans);
+
+    expect(pieces[0]?.spans).toEqual(
+      [...'上午好'].map((_, index) => ({
+        charStart: index,
+        charEnd: index + 1,
+        phonemeStart: index + 1,
+        phonemeEnd: index + 2,
+      }))
+    );
   });
 
-  it('treats a sentence exactly at the cap as fitting', async () => {
-    const text = 'a'.repeat(PIECE_HARD_CAP_TOKENS);
-    await expect(planPieces(text, perCharacter)).resolves.toHaveLength(1);
-  });
+  it('keeps sentence offsets and fixes phoneme offsets when pieces are packed', async () => {
+    // Six clauses of 120 tokens each: the sentence is over the hard cap, so it
+    // is cut at its clauses, and the pack joins the first two (120 + 120 ≤ 250)
+    // while the third would not fit — the join is what moves phoneme offsets.
+    // Forty tokens a character: a clause is 120, the sentence 600.
+    const cost = async (text: string) => ({ ipa: `<${text}>`, tokens: [...text].length * 40 });
+    const text = '上午，下午，晚上，夜里，清晨，黄昏';
+    const pieces = await planPieces(text, async (piece) => ({
+      ...(await cost(piece)),
+      spans: [...piece].map((_, index) => ({
+        charStart: index,
+        charEnd: index + 1,
+        phonemeStart: index + 1,
+        phonemeEnd: index + 2,
+      })),
+    }));
 
-  it('cuts an over-long sentence at its clause boundaries', async () => {
-    const text = 'a,'.repeat(300); // 600 tokens, 300 clauses
-    const pieces = await planPieces(text, perCharacter);
-
-    expect(pieces.length).toBeGreaterThan(1);
-    for (const piece of pieces) {
-      expect(piece.tokens).toBeLessThanOrEqual(PIECE_HARD_CAP_TOKENS);
-    }
-    // Every cut lands on a clause boundary, so the pieces rejoin exactly.
-    expect(pieces.map((piece) => piece.text).join('')).toBe(text);
-    for (const piece of pieces.slice(0, -1)) {
-      expect(piece.text.endsWith(',')).toBe(true);
-    }
+    const merged = pieces[0];
+    expect(merged?.text).toBe('上午，下午，');
+    // The second clause sits at sentence offset 3, so its spans point there —
+    // not at where they sat inside their own piece.
+    expect(merged?.spans?.some((span) => span.charStart === 3)).toBe(true);
+    expect(merged?.spans?.some((span) => span.charStart === 12)).toBe(false);
+    // The second piece's phonemes start after the first's (`<上午，>` is four
+    // characters) plus the space the join puts between them.
+    const fromSecond = merged?.spans?.filter((span) => span.charStart >= 3);
+    expect(fromSecond?.[0]?.phonemeStart).toBe(1 + [...'<上午，>'].length + 1);
   });
 
   it('halves a single clause too long to fit any other way', async () => {

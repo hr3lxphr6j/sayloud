@@ -8,6 +8,8 @@
  * seconds.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { voiceKey } from '~/lib/models/downloader';
+import { KOKORO_82M } from '~/lib/models/registry';
 
 const { fromPretrained } = vi.hoisted(() => ({ fromPretrained: vi.fn() }));
 
@@ -27,27 +29,49 @@ function fakeSession() {
  * A session that can actually speak.
  *
  * The tokenizer reports one token per character, so a count is readable in an
- * assertion without a real vocabulary; `generate` and `generate_from_ids`
- * return distinguishable sample values, which is what says which path a
- * language took.
+ * assertion without a real vocabulary; the model call returns distinguishable
+ * sample values, and `durations` when the test wants to see the timings path.
  */
-function speakingSession() {
+/** The feeds the engine builds, and what a model call answers with. */
+type ModelFeeds = { input_ids: { dims: number[] }; style: unknown; speed: { data: Float32Array } };
+type ModelResult = {
+  waveform: { data: Float32Array };
+  durations?: { data: ArrayLike<number> } | undefined;
+};
+
+function speakingSession(options: { durations?: ArrayLike<number> } = {}) {
   const dispose = vi.fn();
   const generate = vi.fn(async () => ({ audio: new Float32Array([1, 1]) }));
-  const generateFromIds = vi.fn(async () => ({ audio: new Float32Array([2]) }));
+  // `waveform.data` is what `generate_from_ids()` used to wrap in a RawAudio;
+  // the engine reads the tensor directly now, so this is the same numbers.
+  const modelCall = vi.fn(
+    async (_feeds: ModelFeeds): Promise<ModelResult> => ({
+      waveform: { data: new Float32Array(2_400) },
+      durations: options.durations === undefined ? undefined : { data: options.durations },
+    })
+  );
   // Two parameters because `KokoroEngine` always passes the second one —
   // `{ truncation: false }` — and a one-parameter fake would make the argument
   // invisible to `mock.calls` as well as to the type checker.
   const tokenizer = vi.fn((text: string, _options?: { truncation?: boolean }) => ({
     input_ids: { dims: [1, text.length] },
   }));
-  const session = {
-    model: { dispose },
-    generate,
-    generate_from_ids: generateFromIds,
-    tokenizer,
-  };
-  return { session, dispose, generate, generateFromIds, tokenizer };
+  // `session.model` is the model itself — callable, with `dispose` on it.
+  Object.assign(modelCall, { dispose });
+  const session = { model: modelCall, generate, tokenizer };
+  return { session, dispose, generate, tokenizer, modelCall };
+}
+
+/** An engine whose model is loaded and whose session is the given one. */
+async function speaking(session: unknown): Promise<InstanceType<typeof KokoroEngine>> {
+  fromPretrained.mockResolvedValue(session);
+  const engine = new KokoroEngine({
+    // The real loader reads Cache Storage; the fake hands the style vector
+    // over, long enough for any slice the offset arithmetic can ask for.
+    loadVoice: async () => new Float32Array(256 * 510),
+  });
+  await engine.load('kokoro-82m', 'fp32', 'wasm');
+  return engine;
 }
 
 /** A promise whose settling this test decides. */
@@ -62,14 +86,6 @@ function deferred<T>() {
 /** Let every microtask queued by the engine run. */
 function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-/** An engine whose model is loaded and whose session is the given one. */
-async function speaking(session: unknown): Promise<InstanceType<typeof KokoroEngine>> {
-  fromPretrained.mockResolvedValue(session);
-  const engine = new KokoroEngine();
-  await engine.load('kokoro-82m', 'fp32', 'wasm');
-  return engine;
 }
 
 describe('KokoroEngine.load', () => {
@@ -191,11 +207,11 @@ describe('KokoroEngine.synthesize', () => {
 
     const pcm = await engine.synthesize(1, PIECES, 'af_heart', 'en-US');
 
-    expect(session.generateFromIds).toHaveBeenCalledTimes(2);
+    expect(session.modelCall).toHaveBeenCalledTimes(2);
     expect(session.generate).not.toHaveBeenCalled();
     // Same sample rate by construction, so the concatenation is exact.
     expect(pcm.sampleRate).toBe(24_000);
-    expect([...pcm.pcm]).toEqual([2, 2]);
+    expect(pcm.pcm.length).toBe(4_800);
   });
 
   it('speaks English from the IPA the Rust pipeline produced', async () => {
@@ -210,12 +226,15 @@ describe('KokoroEngine.synthesize', () => {
     await engine.synthesize(1, [PIECES[0] as (typeof PIECES)[number]], 'af_heart', 'en-GB');
 
     expect(session.tokenizer).toHaveBeenCalledWith('həlˈoʊ', { truncation: false });
-    expect(session.generateFromIds).toHaveBeenCalledWith(
-      { dims: [1, 6] },
-      {
-        voice: 'af_heart',
-      }
-    );
+    // The model is called with the same three feeds `generate_from_ids()` used
+    // to build — the style vector now sliced here, from the voice file.
+    expect(session.modelCall).toHaveBeenCalledTimes(1);
+    const feeds = session.modelCall.mock.calls[0]?.[0] as {
+      input_ids: { dims: number[] };
+      speed: { data: Float32Array };
+    };
+    expect(feeds.input_ids.dims).toEqual([1, 6]);
+    expect([...feeds.speed.data]).toEqual([1]);
     expect(session.generate).not.toHaveBeenCalled();
   });
 
@@ -231,7 +250,7 @@ describe('KokoroEngine.synthesize', () => {
     await engine.synthesize(2, [PIECES[0] as (typeof PIECES)[number]], 'jf_alpha', 'ja-JP');
 
     expect(session.tokenizer).toHaveBeenNthCalledWith(1, 'həlˈoʊ', { truncation: false });
-    expect(session.generateFromIds).toHaveBeenCalledTimes(2);
+    expect(session.modelCall).toHaveBeenCalledTimes(2);
     expect(session.generate).not.toHaveBeenCalled();
   });
 
@@ -254,18 +273,18 @@ describe('KokoroEngine.synthesize', () => {
   it('stops rendering the pieces still to come once it is cancelled', async () => {
     const session = speakingSession();
     const engine = await speaking(session.session);
-    const first = deferred<{ audio: Float32Array<ArrayBuffer> }>();
-    session.generateFromIds.mockReturnValueOnce(first.promise);
+    const first = deferred<ModelResult>();
+    session.modelCall.mockReturnValueOnce(first.promise);
 
     const synthesis = engine.synthesize(7, PIECES, 'af_heart', 'en-US');
     await tick();
     engine.cancel(7);
-    first.resolve({ audio: new Float32Array([1]) });
+    first.resolve({ waveform: { data: new Float32Array([1]) } });
 
     await expect(synthesis).rejects.toThrow('aborted');
     // The second piece is not rendered: the caller has moved on, and rendering
     // it would occupy the device for audio nobody will play.
-    expect(session.generateFromIds).toHaveBeenCalledTimes(1);
+    expect(session.modelCall).toHaveBeenCalledTimes(1);
   });
 
   it('refuses to speak before a model is loaded', async () => {
@@ -303,3 +322,88 @@ describe('KokoroEngine.countTokens', () => {
     expect(() => engine.countTokens('həlˈoʊ')).toThrow('the model is not loaded');
   });
 });
+
+describe('KokoroEngine voice loading', () => {
+  beforeEach(() => {
+    fromPretrained.mockReset();
+  });
+
+  it('reads the voice from the key the downloader wrote', async () => {
+    // The key must be built from the voice *id* — `voiceKey` applies the
+    // model's `voiceFile` template itself, and a caller that passes a path
+    // doubles every segment (`voices/x.bin.bin`), which answers 404.
+    const matched: string[] = [];
+    vi.stubGlobal('caches', {
+      open: async () => ({
+        match: async (key: string) => {
+          matched.push(key);
+          return new Response(new ArrayBuffer(522_240));
+        },
+      }),
+    });
+
+    // No injected loader: the real path is what builds the key.
+    const session = speakingSession();
+    Object.assign(session.modelCall, { dispose: session.dispose });
+    fromPretrained.mockResolvedValue({ model: session.modelCall, tokenizer: session.tokenizer });
+    const engine = new KokoroEngine();
+    await engine.load('kokoro-82m', 'fp32', 'wasm');
+    await engine.synthesize(1, [{ ipa: 'həlˈoʊ' }], 'zf_xiaoyi', 'zh-CN');
+
+    expect(matched).toEqual([voiceKey(KOKORO_82M, 'zf_xiaoyi')]);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('KokoroEngine word-timings wiring', () => {
+  beforeEach(() => {
+    fromPretrained.mockReset();
+  });
+
+  it('forwards the word timings the durations produce, shifted by earlier pieces', async () => {
+    // The arithmetic lives in `word-timings.ts` and is tested there; this one
+    // line pins the wiring: the engine hands the model's durations and the
+    // piece's spans to it, and puts the answer on the reply.
+    const session = speakingSession({ durations: [0.5, 1, 1, 1, 1, 1, 1, 0.5] });
+    const engine = await speaking(session.session);
+
+    const result = await engine.synthesize(
+      1,
+      [
+        {
+          ipa: 'həlˈoʊ',
+          spans: [{ charStart: 10, charEnd: 13, phonemeStart: 0, phonemeEnd: 3 }],
+        },
+      ],
+      'af_heart',
+      'en-US'
+    );
+
+    expect(result.timings?.[0]).toEqual({
+      charStart: 10,
+      charEnd: 13,
+      startMs: expect.closeTo((0.5 / 7) * 100, 4),
+      endMs: expect.closeTo((3.5 / 7) * 100, 4),
+    });
+  });
+
+  it('plays without timings when the model has no durations output', async () => {
+    const session = speakingSession();
+    const engine = await speaking(session.session);
+
+    const result = await engine.synthesize(
+      1,
+      [{ ipa: 'həlˈoʊ', spans: SPANS }],
+      'af_heart',
+      'en-US'
+    );
+
+    expect(result.timings).toBeUndefined();
+  });
+});
+
+/** The spans the timing tests share, over 'həlˈoʊ'. */
+const SPANS = [
+  { charStart: 10, charEnd: 13, phonemeStart: 0, phonemeEnd: 3 },
+  { charStart: 14, charEnd: 17, phonemeStart: 4, phonemeEnd: 6 },
+];

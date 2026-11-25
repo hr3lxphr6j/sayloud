@@ -38,6 +38,7 @@ import {
   type RawPcm,
   WORKER_DEAD,
 } from './engine';
+import type { PhonemeSpan } from './phonemize-rust';
 import {
   isPhonemizeWorkerReply,
   type PhonemizeWorkerReply,
@@ -336,15 +337,18 @@ export class WorkerLocalEngine implements OnDeviceEngine {
 
     const pieces = await planPieces(text, async (piece) => {
       if (signal.aborted) throw abortError();
-      const ipa = await this.phonemizeText(piece, vocab, lang);
-      return { ipa, tokens: await this.countTokens(ipa) };
+      const { phonemes, spans } = await this.phonemizeText(piece, vocab, lang);
+      return { ipa: phonemes, tokens: await this.countTokens(phonemes), spans };
     });
     if (signal.aborted) throw abortError();
 
     const { id, reply } = this.kokoro.request((requestId) => ({
       type: 'synthesize',
       id: requestId,
-      pieces: pieces.map(({ ipa }) => ({ ipa })),
+      pieces: pieces.map(({ ipa, spans }) => ({
+        ipa,
+        spans: spans !== undefined && spans.length > 0 ? spans : undefined,
+      })),
       voiceId,
       lang,
     }));
@@ -361,7 +365,7 @@ export class WorkerLocalEngine implements OnDeviceEngine {
     try {
       const settled = await reply;
       if (settled.type !== 'pcm') throw unexpected('kokoro', settled.type);
-      return { pcm: settled.pcm, sampleRate: settled.sampleRate };
+      return { pcm: settled.pcm, sampleRate: settled.sampleRate, timings: settled.timings };
     } finally {
       signal.removeEventListener('abort', onAbort);
     }
@@ -483,7 +487,11 @@ export class WorkerLocalEngine implements OnDeviceEngine {
   }
 
   /** One piece of text to IPA, through the phonemize worker. */
-  private async phonemizeText(text: string, vocab: VocabId, lang: string): Promise<string> {
+  private async phonemizeText(
+    text: string,
+    vocab: VocabId,
+    lang: string
+  ): Promise<{ phonemes: string; spans?: PhonemeSpan[] }> {
     const { reply } = this.phonemizer.request((id) => ({
       type: 'phonemize',
       id,
@@ -500,7 +508,7 @@ export class WorkerLocalEngine implements OnDeviceEngine {
     if (settled.warnings !== undefined && settled.warnings.length > 0) {
       console.warn('[SayLoud] the phonemizer dropped text', settled.warnings);
     }
-    return settled.phonemes;
+    return { phonemes: settled.phonemes, spans: settled.spans ? [...settled.spans] : undefined };
   }
 
   /** How many tokens the model's tokenizer makes of this IPA. */

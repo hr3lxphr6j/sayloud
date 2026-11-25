@@ -164,7 +164,7 @@ async function handle(request: WorkerRequest): Promise<void> {
 
     case 'synthesize':
       try {
-        const { pcm, sampleRate } = await engine.synthesize(
+        const { pcm, sampleRate, timings } = await engine.synthesize(
           request.id,
           request.pieces,
           request.voiceId,
@@ -172,7 +172,12 @@ async function handle(request: WorkerRequest): Promise<void> {
         );
         // Transferred rather than copied: a ten-second sentence is 960 KB, and
         // this side has no further use for it.
-        scope.postMessage({ type: 'pcm', id: request.id, pcm, sampleRate }, [pcm.buffer]);
+        scope.postMessage(
+          timings === undefined
+            ? { type: 'pcm', id: request.id, pcm, sampleRate }
+            : { type: 'pcm', id: request.id, pcm, sampleRate, timings },
+          [pcm.buffer]
+        );
       } catch (error) {
         // A cancellation is the caller's own decision and it has already
         // rejected its own promise; answering with an error would be noise.

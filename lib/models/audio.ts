@@ -10,6 +10,8 @@
  * implementation for all three.
  */
 
+import type { PhonemeSpan } from './phonemize-rust';
+
 /** Kokoro's output rate. Not configurable — the model decides it. */
 export const KOKORO_SAMPLE_RATE = 24_000;
 
@@ -143,15 +145,33 @@ export interface Piece {
   /** Its IPA, ready for the tokenizer. */
   readonly ipa: string;
   readonly tokens: number;
+  /**
+   * Where each word of the IPA came from, in UTF-16 offsets of the *sentence*.
+   *
+   * Already shifted out of piece coordinates: the phonemizer sees only the
+   * piece, and this is where the piece's place in the sentence is added, so the
+   * engine can hand back timings the highlighter slices the sentence with.
+   * Absent when the phonemizer could not trace the words, and a piece of a
+   * sentence it could not trace carries none either.
+   */
+  readonly spans?: readonly PhonemeSpan[];
+  /** The piece text's first character, in UTF-16 units of the sentence. */
+  readonly charStart: number;
 }
 
 /**
  * Phonemize `text` and count its tokens.
  *
  * Injected so this module never needs a tokenizer: the real one lives with the
- * model, and a unit test has no business loading it.
+ * model, and a unit test has no business loading it. `spans`, when present, are
+ * UTF-16 offsets into the `text` passed in — the shift into sentence
+ * coordinates is this module's, because only it knows where `text` sits.
  */
-export type Measure = (text: string) => Promise<{ ipa: string; tokens: number }>;
+export type Measure = (text: string) => Promise<{
+  ipa: string;
+  tokens: number;
+  spans?: readonly PhonemeSpan[];
+}>;
 
 /**
  * Cut `text` down until every piece fits, then pack pieces back up to the
@@ -165,27 +185,78 @@ export type Measure = (text: string) => Promise<{ ipa: string; tokens: number }>
  * one `segmentSentences` sentence, so highlighting is unaffected.
  */
 export async function planPieces(text: string, measure: Measure): Promise<Piece[]> {
-  const pieces = await cutToFit(text, measure);
+  const pieces = await cutToFit(text, measure, 0);
   return pack(pieces);
 }
 
-async function cutToFit(text: string, measure: Measure): Promise<Piece[]> {
-  const { ipa, tokens } = await measure(text);
+async function cutToFit(text: string, measure: Measure, offset: number): Promise<Piece[]> {
+  const { ipa, tokens, spans } = await measure(text);
   if (tokens <= PIECE_HARD_CAP_TOKENS || text.length <= 1) {
-    return [{ text, ipa, tokens }];
+    return [
+      {
+        text,
+        ipa,
+        tokens,
+        // A span is worth keeping only when the piece has a place to point at:
+        // the whole sentence's spans are already where they belong, and a
+        // piece's own are shifted once, here, where the offset is known. An
+        // unanchored piece (the locate() fallback) points nowhere, so it keeps
+        // no spans.
+        spans: spans === undefined || offset < 0 ? undefined : shift(spans, offset),
+        charStart: offset,
+      },
+    ];
   }
 
   const clauses = splitClauses(text);
   const parts =
     clauses.length > 1
-      ? clauses
+      ? locate(clauses, text)
       : // No punctuation to cut at — a single unbroken clause longer than the
         // model's limit. Halving is arbitrary but it is the only cut available,
         // and it terminates because every step strictly shrinks the text.
-        [text.slice(0, Math.floor(text.length / 2)), text.slice(Math.floor(text.length / 2))];
+        [
+          { text: text.slice(0, Math.floor(text.length / 2)), start: offset },
+          {
+            text: text.slice(Math.floor(text.length / 2)),
+            start: offset + Math.floor(text.length / 2),
+          },
+        ];
 
-  const cut = await Promise.all(parts.map((part) => cutToFit(part, measure)));
+  const cut = await Promise.all(parts.map((part) => cutToFit(part.text, measure, part.start)));
   return cut.flat();
+}
+
+/**
+ * Add `offset` to every span's character offsets, in place of the piece's.
+ *
+ * New objects rather than mutation: the spans came from the phonemizer's
+ * result and are readonly there, and a piece is one consumer of them.
+ */
+function shift(spans: readonly PhonemeSpan[], offset: number): PhonemeSpan[] {
+  return spans.map((span) => ({
+    ...span,
+    charStart: span.charStart + offset,
+    charEnd: span.charEnd + offset,
+  }));
+}
+
+/** Each clause with the sentence offset it starts at. */
+function locate(clauses: readonly string[], text: string): Array<{ text: string; start: number }> {
+  const located: Array<{ text: string; start: number }> = [];
+  let cursor = 0;
+  for (const clause of clauses) {
+    const start = text.indexOf(clause, cursor);
+    // A clause is a slice of `text`, so it is always found — but a guard is
+    // cheaper than a wrong highlight, and `indexOf` failing would mean this
+    // module's slicing and `splitClauses`'s disagreeing. `-1` marks the piece
+    // as unanchored: its spans are dropped (a highlight at the wrong offset is
+    // worse than no highlight) while the audio and the phonemes are untouched.
+    if (start < 0) return clauses.map((part) => ({ text: part, start: -1 }));
+    located.push({ text: clause, start });
+    cursor = start + clause.length;
+  }
+  return located;
 }
 
 /** Merge consecutive pieces while they stay within the target. */
@@ -195,11 +266,14 @@ function pack(pieces: readonly Piece[]): Piece[] {
   let tokens = 0;
 
   const flush = (): void => {
-    if (current.length === 0) return;
+    const first = current[0];
+    if (first === undefined) return;
     packed.push({
       text: current.map((piece) => piece.text).join(''),
       ipa: current.map((piece) => piece.ipa).join(' '),
       tokens,
+      spans: mergeSpans(current),
+      charStart: first.charStart,
     });
     current = [];
     tokens = 0;
@@ -213,4 +287,28 @@ function pack(pieces: readonly Piece[]): Piece[] {
   flush();
 
   return packed;
+}
+
+/**
+ * The merged piece's spans: each source piece's, shifted into the joined IPA.
+ *
+ * The character offsets need nothing — they are sentence offsets already — but
+ * the phoneme offsets are piece-relative, and the join puts one space between
+ * the pieces, which every piece after the first must reach past.
+ */
+function mergeSpans(pieces: readonly Piece[]): PhonemeSpan[] | undefined {
+  if (pieces.every((piece) => piece.spans === undefined)) return undefined;
+  const merged: PhonemeSpan[] = [];
+  let phonemeOffset = 0;
+  for (const piece of pieces) {
+    for (const span of piece.spans ?? []) {
+      merged.push({
+        ...span,
+        phonemeStart: span.phonemeStart + phonemeOffset,
+        phonemeEnd: span.phonemeEnd + phonemeOffset,
+      });
+    }
+    phonemeOffset += [...piece.ipa].length + 1;
+  }
+  return merged;
 }

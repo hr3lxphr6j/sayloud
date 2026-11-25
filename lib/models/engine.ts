@@ -12,6 +12,7 @@
  * 92–325 MB model and the whole point of the seam is that it does not have to.
  */
 import { abortError } from '../providers/errors';
+import type { WordTiming } from '../providers/types';
 import { KOKORO_SAMPLE_RATE } from './audio';
 import type { Device } from './device';
 import type { ModelTier, OnDeviceFamily, OnDeviceModel } from './registry';
@@ -47,6 +48,12 @@ export interface DeviceInfo {
 export interface RawPcm {
   readonly pcm: Float32Array;
   readonly sampleRate: number;
+  /**
+   * Word timings in sentence-relative character offsets, when the engine could
+   * produce them. Absent for a sentence the caller highlights per sentence —
+   * the same contract `alignTimings` has, without its estimation.
+   */
+  readonly timings?: WordTiming[];
 }
 
 export interface OnDeviceEngine {
